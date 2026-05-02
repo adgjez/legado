@@ -1,6 +1,5 @@
 package io.legado.app.utils
 
-import android.net.Uri
 import android.util.Base64
 
 fun String.decodeBase64DataUrlBytes(): ByteArray? {
@@ -16,7 +15,7 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
     if (!meta.contains(";base64")) return null
     val rawPayload = clean.substring(commaIndex + 1)
         .trimMatchingDataUrlWrapper()
-        .let { Uri.decode(it) }
+        .let { it.decodePercentEscapesPreservingPlus() }
         .filterNot { it.isWhitespace() }
     if (rawPayload.isBlank()) return null
     val paddedPayload = rawPayload.padBase64()
@@ -35,6 +34,33 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
         .padBase64()
     if (sanitizedPayload.isBlank()) return null
     return decode(sanitizedPayload)
+}
+
+private fun String.decodePercentEscapesPreservingPlus(): String {
+    if (!contains('%')) return this
+    val bytes = ByteArray(length)
+    var write = 0
+    var index = 0
+    while (index < length) {
+        val ch = this[index]
+        if (ch == '%' && index + 2 < length) {
+            val hi = this[index + 1].digitToIntOrNull(16)
+            val lo = this[index + 2].digitToIntOrNull(16)
+            if (hi != null && lo != null) {
+                bytes[write++] = ((hi shl 4) or lo).toByte()
+                index += 3
+                continue
+            }
+        }
+        if (ch.code <= 0x7F) {
+            bytes[write++] = ch.code.toByte()
+        } else {
+            val encoded = ch.toString().toByteArray(Charsets.UTF_8)
+            encoded.forEach { b -> bytes[write++] = b }
+        }
+        index++
+    }
+    return bytes.copyOf(write).toString(Charsets.UTF_8)
 }
 
 private fun String.trimMatchingDataUrlWrapper(): String {
