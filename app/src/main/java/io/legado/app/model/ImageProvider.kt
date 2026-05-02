@@ -167,6 +167,17 @@ object ImageProvider {
         op.inJustDecodeBounds = true
         BitmapFactory.decodeFile(file.absolutePath, op)
         if (op.outWidth < 1 && op.outHeight < 1) {
+            if (src.isDataUrl()) {
+                src.decodeBase64DataUrlBytes()?.let { bytes ->
+                    val dataOptions = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, dataOptions)
+                    if (dataOptions.outWidth > 0 && dataOptions.outHeight > 0) {
+                        return Size(dataOptions.outWidth, dataOptions.outHeight)
+                    }
+                }
+            }
             //svg size
             val size = SvgUtils.getSize(file.absolutePath)
             if (size != null) return size
@@ -212,6 +223,33 @@ object ImageProvider {
         }
         val cacheBitmap = getNotRecycled(cacheKey)
         if (cacheBitmap != null) return cacheBitmap
+        if (!vFile.exists() && src.isDataUrl()) {
+            return kotlin.runCatching {
+                val dataBytes = src.decodeBase64DataUrlBytes()
+                    ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
+                options.inSampleSize = kotlin.run {
+                    val wRatio = if (width > 0) options.outWidth / width else -1
+                    val hRatio = height?.takeIf { it > 0 }?.let { options.outHeight / it } ?: -1
+                    when {
+                        wRatio > 1 && hRatio > 1 -> maxOf(wRatio, hRatio)
+                        wRatio > 1 -> wRatio
+                        hRatio > 1 -> hRatio
+                        else -> 1
+                    }
+                }
+                options.inJustDecodeBounds = false
+                val bitmap = BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
+                    ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+                put(cacheKey, bitmap)
+                bitmap
+            }.onFailure {
+                put(cacheKey, errorBitmap)
+            }.getOrDefault(errorBitmap)
+        }
         return kotlin.runCatching {
             val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
                 ?: SvgUtils.createBitmap(vFile.absolutePath, width, height)

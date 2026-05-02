@@ -20,13 +20,21 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
         .filterNot { it.isWhitespace() }
     if (rawPayload.isBlank()) return null
     val paddedPayload = rawPayload.padBase64()
-    return runCatching {
-        Base64.decode(paddedPayload, Base64.DEFAULT)
-    }.getOrElse {
-        runCatching {
-            Base64.decode(paddedPayload, Base64.URL_SAFE)
-        }.getOrNull()
+    fun decode(payload: String): ByteArray? {
+        return runCatching {
+            Base64.decode(payload, Base64.DEFAULT)
+        }.getOrElse {
+            runCatching {
+                Base64.decode(payload, Base64.URL_SAFE)
+            }.getOrNull()
+        }
     }
+    decode(paddedPayload)?.let { return it }
+    val sanitizedPayload = rawPayload
+        .replace(Regex("[^A-Za-z0-9+/=_-]"), "")
+        .padBase64()
+    if (sanitizedPayload.isBlank()) return null
+    return decode(sanitizedPayload)
 }
 
 private fun String.trimMatchingDataUrlWrapper(): String {
