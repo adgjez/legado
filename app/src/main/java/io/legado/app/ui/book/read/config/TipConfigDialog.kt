@@ -8,6 +8,7 @@ import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.EventBus
+import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.databinding.DialogTipConfigBinding
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
@@ -49,6 +50,7 @@ class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
             ReadBookConfig.titleMode = 0
         }
         binding.rgTitleMode.checkByIndex(ReadBookConfig.titleMode)
+        upAdvancedTitleConfigState()
         binding.dsbTitleSize.progress = ReadBookConfig.titleSize
         binding.dsbTitleTop.progress = ReadBookConfig.titleTopSpacing
         binding.dsbTitleBottom.progress = ReadBookConfig.titleBottomSpacing
@@ -100,7 +102,11 @@ class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
     private fun initEvent() = binding.run {
         rgTitleMode.setOnCheckedChangeListener { _, checkedId ->
             ReadBookConfig.titleMode = rgTitleMode.getIndexById(checkedId)
+            upAdvancedTitleConfigState()
             postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+        }
+        llAdvancedTitleConfig.setOnClickListener {
+            AdvancedTitleConfigDialog().show(parentFragmentManager, "advancedTitleConfig")
         }
         dsbTitleSize.onChanged = {
             ReadBookConfig.titleSize = it
@@ -218,6 +224,12 @@ class TipConfigDialog : BaseDialogFragment(R.layout.dialog_tip_config) {
                 }
             }
         }
+    }
+
+    private fun upAdvancedTitleConfigState() {
+        val enabled = ReadBookConfig.titleMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED
+        binding.llAdvancedTitleConfig.isEnabled = enabled
+        binding.llAdvancedTitleConfig.alpha = if (enabled) 1f else 0.55f
     }
 
     private fun clearRepeat(repeat: Int) = ReadTipConfig.apply {

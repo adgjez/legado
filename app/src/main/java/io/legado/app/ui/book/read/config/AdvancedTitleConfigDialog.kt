@@ -1,0 +1,181 @@
+package io.legado.app.ui.book.read.config
+
+import android.app.Dialog
+import android.os.Bundle
+import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.ScrollView
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.core.widget.doAfterTextChanged
+import androidx.fragment.app.DialogFragment
+import androidx.lifecycle.lifecycleScope
+import io.legado.app.constant.EventBus
+import io.legado.app.data.entities.Book
+import io.legado.app.help.config.AdvancedTitleConfig
+import io.legado.app.model.ReadBook
+import io.legado.app.utils.dpToPx
+import io.legado.app.utils.postEvent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class AdvancedTitleConfigDialog : DialogFragment() {
+
+    private val currentBook: Book?
+        get() = ReadBook.book
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val context = requireContext()
+        val book = currentBook
+        val globalRule = AdvancedTitleConfig.globalRule
+        val bookRule = AdvancedTitleConfig.bookRule(book)
+        val startRule = bookRule ?: globalRule
+        val template = AdvancedTitleConfig.template
+
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18.dpToPx(), 12.dpToPx(), 18.dpToPx(), 4.dpToPx())
+        }
+
+        fun label(text: String) = TextView(context).apply {
+            this.text = text
+            textSize = 14f
+            setPadding(0, 10.dpToPx(), 0, 4.dpToPx())
+        }
+
+        fun edit(text: String, minLines: Int = 1) = EditText(context).apply {
+            setText(text)
+            this.minLines = minLines
+            maxLines = if (minLines > 1) 8 else 2
+            setSingleLine(minLines == 1)
+        }
+
+        val scopeGroup = RadioGroup(context).apply {
+            orientation = RadioGroup.HORIZONTAL
+        }
+        val rbGlobal = RadioButton(context).apply {
+            text = "全局生效"
+            id = 1
+        }
+        val rbBook = RadioButton(context).apply {
+            text = "仅本书生效"
+            id = 2
+            isEnabled = book != null
+        }
+        scopeGroup.addView(rbGlobal)
+        scopeGroup.addView(rbBook)
+        scopeGroup.check(if (bookRule != null) rbBook.id else rbGlobal.id)
+
+        val useRegexCheck = CheckBox(context).apply {
+            text = "使用正则"
+            isChecked = startRule.mode == AdvancedTitleConfig.SPLIT_REGEX
+        }
+        val ruleEdit = edit(
+            if (startRule.mode == AdvancedTitleConfig.SPLIT_REGEX) {
+                startRule.regex
+            } else {
+                startRule.delimiter
+            }
+        )
+        val sampleEdit = edit("第一章 接生")
+        val htmlEdit = edit(template.html, minLines = 4)
+        val cssEdit = edit(template.css, minLines = 6)
+        val preview = TextView(context).apply {
+            setPadding(0, 8.dpToPx(), 0, 0)
+        }
+
+        fun buildRule(): AdvancedTitleConfig.SplitRule {
+            return AdvancedTitleConfig.SplitRule(
+                mode = if (useRegexCheck.isChecked) {
+                    AdvancedTitleConfig.SPLIT_REGEX
+                } else {
+                    AdvancedTitleConfig.SPLIT_DELIMITER
+                },
+                delimiter = if (useRegexCheck.isChecked) startRule.delimiter else ruleEdit.text?.toString().orEmpty(),
+                regex = if (useRegexCheck.isChecked) ruleEdit.text?.toString().orEmpty() else startRule.regex
+            )
+        }
+
+        fun updatePreview() {
+            val rule = buildRule()
+            preview.text = runCatching {
+                val parts = AdvancedTitleConfig.split(sampleEdit.text?.toString().orEmpty(), rule)
+                "s1: ${parts.s1.ifBlank { "空" }}\ns2: ${parts.s2.ifBlank { "空" }}"
+            }.getOrElse {
+                "规则错误：${it.localizedMessage}"
+            }
+        }
+
+        listOf(ruleEdit, sampleEdit).forEach {
+            it.doAfterTextChanged { updatePreview() }
+        }
+        useRegexCheck.setOnCheckedChangeListener { _, isChecked ->
+            ruleEdit.setText(if (isChecked) startRule.regex else startRule.delimiter)
+            ruleEdit.setSelection(ruleEdit.text?.length ?: 0)
+            updatePreview()
+        }
+
+        root.addView(label("作用范围"))
+        root.addView(scopeGroup)
+        root.addView(label("分隔规则，不勾选时按符号分隔，勾选后按正则分隔"))
+        root.addView(useRegexCheck)
+        root.addView(ruleEdit)
+        root.addView(label("预览章节名"))
+        root.addView(sampleEdit)
+        root.addView(preview)
+        root.addView(label("标题 HTML 模板"))
+        root.addView(htmlEdit)
+        root.addView(label("标题 CSS 样式"))
+        root.addView(cssEdit)
+
+        updatePreview()
+
+        val scrollView = ScrollView(context).apply {
+            addView(
+                root,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+
+        return AlertDialog.Builder(context)
+            .setTitle("高级设置")
+            .setView(scrollView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val rule = buildRule()
+                AdvancedTitleConfig.template = AdvancedTitleConfig.Template(
+                    html = htmlEdit.text?.toString().orEmpty(),
+                    css = cssEdit.text?.toString().orEmpty()
+                )
+                if (scopeGroup.checkedRadioButtonId == rbBook.id && book != null) {
+                    AdvancedTitleConfig.setBookRule(book, rule)
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { book.save() }
+                    }
+                } else {
+                    AdvancedTitleConfig.globalRule = rule
+                }
+                postEvent(EventBus.UP_CONFIG, arrayListOf(5, 8))
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton("恢复默认") { _, _ ->
+                AdvancedTitleConfig.globalRule = AdvancedTitleConfig.SplitRule()
+                AdvancedTitleConfig.template = AdvancedTitleConfig.Template()
+                book?.let {
+                    AdvancedTitleConfig.setBookRule(it, null)
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { it.save() }
+                    }
+                }
+                postEvent(EventBus.UP_CONFIG, arrayListOf(5, 8))
+            }
+            .create()
+    }
+}

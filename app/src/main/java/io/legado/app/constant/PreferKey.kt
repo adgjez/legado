@@ -169,6 +169,8 @@ object PreferKey {
     const val contentSelectMenuConfig = "contentSelectMenuConfig"
     const val contentSelectActions = "contentSelectActions"
     const val contentSelectDefaultOpen = "contentSelectDefaultOpen"
+    const val advancedTitleConfig = "advancedTitleConfig"
+    const val advancedTitleTemplate = "advancedTitleTemplate"
     const val doublePageHorizontal = "doubleHorizontalPage"
     const val readUrlOpenInBrowser = "readUrlInBrowser"
     const val defaultBookTreeUri = "defaultBookTreeUri"

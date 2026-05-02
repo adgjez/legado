@@ -27,6 +27,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
@@ -256,7 +257,15 @@ class TextChapterLayout(
         if (!book.isEpub && (titleMode != 2 || bookChapter.isVolume || contents.isEmpty())) {
             var firstLine = true
             //标题非隐藏
-            displayTitle.splitNotBlank("\n").forEach { text ->
+            val advancedTitleHandled = titleMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED &&
+                !bookChapter.isVolume &&
+                setTypeAdvancedTitle(book, displayTitle)
+            val titleLines: Array<String> = if (advancedTitleHandled) {
+                emptyArray()
+            } else {
+                displayTitle.splitNotBlank("\n")
+            }
+            for (text in titleLines) {
                 val srcList = LinkedList<String>()
                 val clickList = LinkedList<String?>()
                 val titleImg = if (firstLine) {
@@ -336,7 +345,9 @@ class TextChapterLayout(
                 pendingTextPage.lines.last().isParagraphEnd = true
                 stringBuilder.append("\n")
             }
-            durY += titleBottomSpacing
+            if (!advancedTitleHandled) {
+                durY += titleBottomSpacing
+            }
 
             // 如果是单图模式且当前页有内容，强制分页
             if (isSingleImageStyle && pendingTextPage.lines.isNotEmpty() && contents.isNotEmpty()) {
@@ -725,6 +736,49 @@ class TextChapterLayout(
             clickList = null
         )
         prepareNextPageIfNeed()
+    }
+
+    private suspend fun setTypeAdvancedTitle(book: Book, title: String): Boolean {
+        if (title.isBlank()) return false
+        return runCatching {
+            currentCoroutineContext().ensureActive()
+            val parts = AdvancedTitleConfig.split(title, book)
+            val titleName = parts.s2.ifBlank { title }
+            val titleIndex = parts.s1
+            setTypeText(
+                book = book,
+                text = titleName,
+                textPaint = titlePaint,
+                textHeight = titlePaintTextHeight,
+                fontMetrics = titlePaintFontMetrics,
+                imageStyle = Book.imgStyleDefault,
+                clickList = null,
+                isTitle = true,
+                emptyContent = true
+            )
+            pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
+            stringBuilder.append("\n")
+            if (titleIndex.isNotBlank()) {
+                setTypeText(
+                    book = book,
+                    text = titleIndex,
+                    textPaint = titlePaint,
+                    textHeight = titlePaintTextHeight,
+                    fontMetrics = titlePaintFontMetrics,
+                    imageStyle = Book.imgStyleDefault,
+                    clickList = null,
+                    isTitle = true,
+                    emptyContent = true
+                )
+                pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
+                stringBuilder.append("\n")
+            }
+            durY += titleBottomSpacing
+            true
+        }.getOrElse {
+            AppLog.put("高级标题渲染失败: ${it.localizedMessage}", it)
+            false
+        }
     }
 
     private suspend fun setTypeNativeEpubLayout(layout: EpubLayoutDocument) {

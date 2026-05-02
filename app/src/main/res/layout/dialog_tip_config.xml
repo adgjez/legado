@@ -43,7 +43,38 @@
                 android:layout_height="wrap_content"
                 android:padding="3dp"
                 android:text="@string/title_hide" />
+
+            <RadioButton
+                android:id="@+id/rb_title_mode4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="3dp"
+                android:text="高级" />
         </RadioGroup>
+
+        <LinearLayout
+            android:id="@+id/ll_advanced_title_config"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:text="高级标题设置"
+                android:textColor="@color/primaryText" />
+
+            <TextView
+                android:id="@+id/tv_advanced_title_config"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="6dp"
+                android:text="分隔规则和CSS"
+                android:textColor="@color/primaryText" />
+        </LinearLayout>
 
         <io.legado.app.ui.widget.DetailSeekBar
             android:id="@+id/dsb_title_size"
