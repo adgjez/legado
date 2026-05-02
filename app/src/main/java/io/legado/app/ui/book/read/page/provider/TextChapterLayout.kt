@@ -2042,10 +2042,12 @@ class TextChapterLayout(
             else -> lastLine.paragraphNum
         }
         textLine.paragraphNum = paragraphNum
-        textLine.chapterPosition =
-            (textPages.lastOrNull()?.lines?.lastOrNull()?.run {
+        val previousPageEndPosition = textPages.lastOrNull()?.let { lastPage ->
+            lastPage.lines.lastOrNull()?.run {
                 chapterPosition + charSize + if (isParagraphEnd) 1 else 0
-            } ?: 0) + sbLength
+            } ?: (lastPage.chapterPosition + lastPage.charSize)
+        } ?: 0
+        textLine.chapterPosition = previousPageEndPosition + sbLength
         textLine.pagePosition = sbLength
     }
 
