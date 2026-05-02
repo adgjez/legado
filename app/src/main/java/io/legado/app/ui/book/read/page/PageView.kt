@@ -382,7 +382,13 @@ class PageView(context: Context) : FrameLayout(context) {
             resetPageOffset()
         }
         binding.contentTextView.setContent(textPage, resetPageOffset)
-        upAdvancedTitleWeb(textPage)
+        releaseAdvancedTitleWeb()
+    }
+
+    fun getAdvancedTitleOverlayInfo(): ContentTextView.AdvancedTitleOverlayInfo? {
+        return binding.contentTextView.getAdvancedTitleOverlayInfo()?.let {
+            it.copy(top = binding.contentTextView.top + it.top)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
