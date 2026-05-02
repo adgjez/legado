@@ -2,7 +2,6 @@ package io.legado.app.model
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Base64
 import android.util.Size
 import androidx.collection.LruCache
 import io.legado.app.R
@@ -19,6 +18,7 @@ import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.model.localBook.PdfFile
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.decodeBase64DataUrlBytes
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.isDataUrl
@@ -133,9 +133,7 @@ object ImageProvider {
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
                 val inputStream = when {
-                    src.isDataUrl() -> ByteArrayInputStream(
-                        Base64.decode(src.substringAfter("base64,"), Base64.DEFAULT)
-                    )
+                    src.isDataUrl() -> src.decodeBase64DataUrlBytes()?.let(::ByteArrayInputStream)
                     book.isEpub -> EpubFile.getImage(book, src)
                     book.isPdf -> PdfFile.getImage(book, src)
                     book.isMobi -> MobiFile.getImage(book, src)

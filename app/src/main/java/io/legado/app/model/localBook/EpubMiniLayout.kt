@@ -2,8 +2,8 @@ package io.legado.app.model.localBook
 
 import android.graphics.BitmapFactory
 import android.text.TextPaint
-import android.util.Base64
 import android.util.Size
+import io.legado.app.utils.decodeBase64DataUrlBytes
 import org.jsoup.Jsoup
 import kotlin.math.ceil
 import kotlin.math.max
@@ -55,9 +55,7 @@ internal object EpubMiniLayout {
 
     private fun resolveDataImageSize(src: String): Size? {
         if (!src.startsWith("data:", ignoreCase = true)) return null
-        val bytes = runCatching {
-            Base64.decode(src.substringAfter("base64,"), Base64.DEFAULT)
-        }.getOrNull() ?: return null
+        val bytes = src.decodeBase64DataUrlBytes() ?: return null
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
