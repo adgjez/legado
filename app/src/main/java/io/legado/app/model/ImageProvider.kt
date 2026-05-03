@@ -200,6 +200,17 @@ object ImageProvider {
         return getImage(book, src, width, height, null)
     }
 
+    fun getImageOrNull(
+        book: Book,
+        src: String,
+        width: Int,
+        height: Int? = null,
+        cacheKeySuffix: String? = null
+    ): Bitmap? {
+        val bitmap = getImage(book, src, width, height, cacheKeySuffix)
+        return bitmap.takeUnless { it == errorBitmap }
+    }
+
     fun getImage(
         book: Book,
         src: String,

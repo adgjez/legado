@@ -806,41 +806,58 @@ internal class EpubLayoutEngine(
             pageHasFullBackground = true
             return
         }
+        val bleed = node.style.duokanBleedValue()
+        val bleedLeft = bleed?.contains("left") == true
+        val bleedRight = bleed?.contains("right") == true
+        val bleedTop = bleed?.contains("top") == true
+        val bleedExtraLeft = if (bleedLeft) ChapterProvider.paddingLeft.toFloat() else 0f
+        val bleedExtraRight = if (bleedRight) ChapterProvider.paddingRight.toFloat() else 0f
+        val layoutWidth = (width + bleedExtraLeft + bleedExtraRight).coerceAtLeast(width)
         val rawImageWidth = node.style.lengthPx("width", width)
             .takeIf { it > 0f }
-            ?: node.attributes["data-legado-width"]?.toCssLengthPx(width)
-            ?: node.attributes["width"]?.toCssLengthPx(width)
-            ?: width
+            ?: node.attributes["data-legado-width"]?.toCssLengthPx(layoutWidth)
+            ?: node.attributes["width"]?.toCssLengthPx(layoutWidth)
+            ?: layoutWidth
         val rawImageHeight = node.style.lengthPx("height", width)
             .takeIf { it > 0f }
-            ?: node.attributes["height"]?.toCssLengthPx(width)
+            ?: node.attributes["height"]?.toCssLengthPx(layoutWidth)
             ?: imageSizeResolver(node.src).scaledHeight(rawImageWidth)
         val constrainedWidth = rawImageWidth.applyMinMax(
-            minValue = node.style["min-width"]?.toCssLengthPx(width),
+            minValue = node.style["min-width"]?.toCssLengthPx(layoutWidth),
             maxValue = null
         )
         val constrainedHeight = rawImageHeight.applyMinMax(
             minValue = node.style["min-height"]?.toCssLengthPx(viewportHeight.toFloat()),
             maxValue = null
         )
-        val maxWidth = node.style["max-width"]?.toCssLengthPx(width) ?: width
+        val maxWidth = node.style["max-width"]?.toCssLengthPx(layoutWidth) ?: layoutWidth
         val maxHeight = node.style["max-height"]?.toCssLengthPx(viewportHeight.toFloat())
             ?: viewportHeight.toFloat()
         val (boundedImageWidth, boundedImageHeight) = (constrainedWidth to constrainedHeight)
             .fitInside(maxWidth, maxHeight)
-        val imageScale = if (boundedImageWidth > width && boundedImageWidth > 0f) {
-            width / boundedImageWidth
+        val imageScale = if (boundedImageWidth > layoutWidth && boundedImageWidth > 0f) {
+            layoutWidth / boundedImageWidth
         } else {
             1f
         }
         val imageWidth = boundedImageWidth * imageScale
         val imageHeight = boundedImageHeight * imageScale
         flushPageIfNeedForHeight(cursorY + imageHeight)
+        val imageX = if (bleedLeft || bleedRight) {
+            left - bleedExtraLeft + ((layoutWidth - imageWidth) / 2f).coerceAtLeast(0f)
+        } else {
+            left + ((width - imageWidth) / 2f).coerceAtLeast(0f)
+        }
+        val imageY = if (bleedTop && cursorY <= 1f) {
+            cursorY - ChapterProvider.paddingTop.toFloat()
+        } else {
+            cursorY
+        }
         currentCommands.add(
             EpubImageBox(
                 src = node.src,
-                x = left + ((width - imageWidth) / 2f).coerceAtLeast(0f),
-                y = cursorY,
+                x = imageX,
+                y = imageY,
                 width = imageWidth.coerceAtLeast(1f),
                 height = imageHeight.coerceAtLeast(1f),
                 isBackground = false,
@@ -1941,6 +1958,13 @@ internal class EpubLayoutEngine(
             token.endsWith("%") -> token.dropLast(1).toFloatOrNull()?.div(100f)
             else -> token.toFloatOrNull()
         }?.coerceIn(0f, 4f)
+    }
+
+    private fun EpubComputedStyle.duokanBleedValue(): String? {
+        return this["duokan-bleed"]
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.takeIf { it.isNotBlank() && it != "none" }
     }
 
     private fun String.extractBackgroundRepeat(): String? {

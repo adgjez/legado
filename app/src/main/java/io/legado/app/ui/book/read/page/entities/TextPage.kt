@@ -575,13 +575,13 @@ data class TextPage(
         val width = view.width.toFloat()
         val height = view.height.toFloat()
         if (width <= 0f || height <= 0f) return
-        val bitmap = ImageProvider.getImage(
+        val bitmap = ImageProvider.getImageOrNull(
             book = book,
             src = src,
             width = width.toInt(),
             height = height.toInt(),
             cacheKeySuffix = "epub-bg-${width.toInt()}x${height.toInt()}"
-        )
+        ) ?: return
         val (drawWidth, drawHeight) = resolveEpubBackgroundSize(
             sourceWidth = bitmap.width.toFloat(),
             sourceHeight = bitmap.height.toFloat(),
@@ -802,13 +802,13 @@ data class TextPage(
     ) {
         val book = ReadBook.book ?: return
         if (targetWidth <= 0f || targetHeight <= 0f) return
-        val bitmap = ImageProvider.getImage(
+        val bitmap = ImageProvider.getImageOrNull(
             book = book,
             src = image.src,
             width = targetWidth.toInt().coerceAtLeast(1),
             height = targetHeight.toInt().coerceAtLeast(1),
             cacheKeySuffix = "epub-title-bg-${targetWidth.toInt()}x${targetHeight.toInt()}"
-        )
+        ) ?: return
         val (drawWidth, drawHeight) = resolveEpubBackgroundSize(
             sourceWidth = bitmap.width.toFloat(),
             sourceHeight = bitmap.height.toFloat(),

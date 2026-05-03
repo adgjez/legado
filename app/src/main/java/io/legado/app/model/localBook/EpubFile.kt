@@ -16,6 +16,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.SvgUtils
+import io.legado.app.utils.decodeBase64DataUrlBytes
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isXml
 import io.legado.app.utils.printOnDebug
@@ -57,7 +58,8 @@ class EpubFile(var book: Book) {
     companion object : BaseLocalBookParse {
         const val NATIVE_CONTENT_FLAG = "<epub-native"
         const val NATIVE_LAYOUT_FLAG = "data-href="
-        private const val NATIVE_LAYOUT_DISK_CACHE_VERSION = 1
+        const val NATIVE_CONTENT_VERSION_FLAG = "data-native-ver=\"2\""
+        private const val NATIVE_LAYOUT_DISK_CACHE_VERSION = 2
         private const val ENABLE_EPUB_DEBUG_DUMP = false
         private const val SMALL_EPUB_TEXT_PRELOAD_LIMIT = 12L * 1024L * 1024L
         private val maxNativeDomCache: Int
@@ -335,7 +337,7 @@ class EpubFile(var book: Book) {
         val nativeHref = currentChapterFirstResourceHref.escapeXmlAttr()
         val nativeHrefList = nativeHrefs.distinct().joinToString("|") { it.escapeXmlAttr() }
         val title = chapter.title.escapeXmlAttr()
-        return """<epub-native data-href="$nativeHref" data-hrefs="$nativeHrefList" data-title="$title" />"""
+        return """<epub-native data-native-ver="2" data-href="$nativeHref" data-hrefs="$nativeHrefList" data-title="$title" />"""
     }
 
     private fun collectChapterResources(
@@ -978,10 +980,11 @@ class EpubFile(var book: Book) {
     private fun getEpubImageSize(href: String): Size? {
         val cleanHref = href.stripUrlOptions()
         imageSizeCache[cleanHref]?.let { return it }
-        val data = if (cleanHref == "cover.jpeg") {
-            epubBook?.coverImage?.data
-        } else {
-            findEpubResource(cleanHref)?.data
+        val data = when {
+            cleanHref.startsWith("data:", true) -> cleanHref.decodeBase64DataUrlBytes()
+            cleanHref.startsWith("http://", true) || cleanHref.startsWith("https://", true) -> null
+            cleanHref == "cover.jpeg" -> epubBook?.coverImage?.data
+            else -> findEpubResource(cleanHref)?.data
         } ?: return null
         val options = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
@@ -997,6 +1000,10 @@ class EpubFile(var book: Book) {
         }
         imageSizeCache[cleanHref] = size
         return size
+    }
+
+    private fun canRenderEpubImage(href: String): Boolean {
+        return getEpubImageSize(href) != null
     }
 
     private fun getEpubTypeface(
@@ -1471,6 +1478,10 @@ class EpubFile(var book: Book) {
         }
         elements.forEach { element ->
             val imageHref = element.backgroundImageHref(res.href) ?: return@forEach
+            if (!canRenderEpubImage(imageHref)) {
+                AppLog.putDebug("EPUB skip invalid background image: href=$imageHref, source=${res.href}")
+                return@forEach
+            }
             if (element.normalName() != "body" && element.selectFirst("img") != null) return@forEach
             val img = Element("img")
             img.attr("src", imageHref)
