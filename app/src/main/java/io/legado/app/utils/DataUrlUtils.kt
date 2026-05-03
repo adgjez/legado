@@ -8,17 +8,25 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
         .replace("&amp;", "&")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-    if (!clean.startsWith("data:", ignoreCase = true)) return null
-    val commaIndex = clean.indexOf(',')
-    if (commaIndex < 0) return null
-    val meta = clean.substring(0, commaIndex).lowercase()
-    if (!meta.contains(";base64")) return null
-    val rawPayload = clean.substring(commaIndex + 1)
+    val rawPayload = when {
+        clean.startsWith("data:", ignoreCase = true) -> {
+            val commaIndex = clean.indexOf(',')
+            if (commaIndex < 0) return null
+            val meta = clean.substring(0, commaIndex).lowercase()
+            if (!meta.contains(";base64")) return null
+            clean.substring(commaIndex + 1)
+        }
+        clean.startsWith("data64:", ignoreCase = true) -> {
+            clean.substringAfter(':').substringBefore(",{")
+        }
+        else -> return null
+    }
+    val payload = rawPayload
         .trimMatchingDataUrlWrapper()
         .let { it.decodePercentEscapesPreservingPlus() }
         .filterNot { it.isWhitespace() }
-    if (rawPayload.isBlank()) return null
-    val paddedPayload = rawPayload.padBase64()
+    if (payload.isBlank()) return null
+    val paddedPayload = payload.padBase64()
     fun decode(payload: String): ByteArray? {
         return runCatching {
             Base64.decode(payload, Base64.DEFAULT)
@@ -29,7 +37,7 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
         }
     }
     decode(paddedPayload)?.let { return it }
-    val sanitizedPayload = rawPayload
+    val sanitizedPayload = payload
         .replace(Regex("[^A-Za-z0-9+/=_-]"), "")
         .padBase64()
     if (sanitizedPayload.isBlank()) return null

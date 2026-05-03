@@ -574,7 +574,6 @@ class PageView(context: Context) : FrameLayout(context) {
             lottieView.visibility = GONE
         }
         if (ReadBookConfig.titleMode != AdvancedTitleConfig.TITLE_MODE_ADVANCED ||
-            AdvancedTitleConfig.renderMode != AdvancedTitleConfig.RENDER_LOTTIE ||
             isScroll
         ) {
             hide()

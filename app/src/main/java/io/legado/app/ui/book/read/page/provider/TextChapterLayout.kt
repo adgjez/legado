@@ -73,7 +73,6 @@ import io.legado.app.model.localBook.EpubCss
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.EpubImageBox
 import io.legado.app.model.localBook.EpubLayoutDocument
-import io.legado.app.model.localBook.EpubMiniLayout
 import io.legado.app.model.localBook.EpubPageColor
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
@@ -740,59 +739,6 @@ class TextChapterLayout(
 
     private suspend fun setTypeAdvancedTitle(book: Book, title: String): Boolean {
         if (title.isBlank()) return false
-        if (AdvancedTitleConfig.renderMode == AdvancedTitleConfig.RENDER_LOTTIE) {
-            return setTypeAdvancedTitleLottie(book, title)
-        }
-        return runCatching {
-            currentCoroutineContext().ensureActive()
-            val maxTitleHeight = (visibleHeight * 0.42f)
-                .coerceAtLeast(titlePaintTextHeight * 6f)
-                .coerceAtMost(visibleHeight * 0.65f)
-                .roundToInt()
-                .coerceAtLeast(1)
-            val layout = EpubMiniLayout.layoutTitle(
-                html = AdvancedTitleConfig.renderHtml(book, title),
-                viewportWidth = visibleWidth,
-                viewportHeight = maxTitleHeight,
-                basePaint = contentPaint
-            )
-            val commands = layout.pages
-                .flatMap { it.commands }
-                .filterNot { it is EpubPageColor }
-            if (commands.isEmpty()) {
-                error("高级标题 EPUB 布局没有生成绘制命令")
-            }
-            commands.filterIsInstance<EpubImageBox>().forEach { command ->
-                ImageProvider.cacheImage(book, command.src, ReadBook.bookSource)
-            }
-            val blockHeight = EpubMiniLayout.contentHeight(
-                commands = commands,
-                minHeight = titlePaintTextHeight * 4f,
-                maxHeight = maxTitleHeight.toFloat()
-            )
-            prepareNextPageIfNeed(durY + blockHeight)
-            pendingTextPage.epubEmbeddedBlocks.add(
-                TextPage.EpubEmbeddedBlock(
-                    offsetX = paddingLeft.toFloat(),
-                    offsetY = paddingTop + durY,
-                    width = visibleWidth.toFloat(),
-                    height = blockHeight,
-                    commands = commands
-                )
-            )
-            durY += blockHeight + titleBottomSpacing
-            if (pendingTextPage.height < durY) {
-                pendingTextPage.height = durY
-            }
-            true
-        }.getOrElse {
-            AppLog.put("高级标题渲染失败: ${it.localizedMessage}", it)
-            setTypeEpubDiagnosticPage("高级标题 EPUB 渲染失败", it.localizedMessage.orEmpty())
-            true
-        }
-    }
-
-    private suspend fun setTypeAdvancedTitleLottie(book: Book, title: String): Boolean {
         currentCoroutineContext().ensureActive()
         val blockHeight = (titlePaintTextHeight * 5.5f)
             .coerceAtLeast(80f)

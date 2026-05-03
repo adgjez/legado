@@ -43,7 +43,8 @@ fun String?.isAbsUrl() =
 fun String?.isDataUrl() =
     this?.let {
         val clean = it.trim()
-        clean.startsWith("data:", true) && clean.contains(";base64", true) && clean.contains(',')
+        clean.startsWith("data64:", true) ||
+            clean.startsWith("data:", true) && clean.contains(";base64", true) && clean.contains(',')
     } ?: false
 
 fun String?.isJson(): Boolean =

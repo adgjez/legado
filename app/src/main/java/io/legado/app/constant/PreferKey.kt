@@ -170,8 +170,6 @@ object PreferKey {
     const val contentSelectActions = "contentSelectActions"
     const val contentSelectDefaultOpen = "contentSelectDefaultOpen"
     const val advancedTitleConfig = "advancedTitleConfig"
-    const val advancedTitleTemplate = "advancedTitleTemplate"
-    const val advancedTitleRenderMode = "advancedTitleRenderMode"
     const val advancedTitleLottieJson = "advancedTitleLottieJson"
     const val advancedTitleLottiePath = "advancedTitleLottiePath"
     const val doublePageHorizontal = "doubleHorizontalPage"
