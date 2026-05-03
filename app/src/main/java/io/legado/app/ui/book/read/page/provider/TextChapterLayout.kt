@@ -742,6 +742,7 @@ class TextChapterLayout(
 
     private suspend fun setTypeAdvancedTitle(book: Book, title: String): Boolean {
         if (title.isBlank()) return false
+        if (pageAnim == PageAnim.scrollPageAnim) return false
         currentCoroutineContext().ensureActive()
         val lottieJson = AdvancedTitleConfig.renderValidLottieJson(book, title) ?: return false
         val blockHeight = (visibleHeight * (AdvancedTitleConfig.heightFactor / 100f))
