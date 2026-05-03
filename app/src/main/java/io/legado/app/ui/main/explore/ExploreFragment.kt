@@ -447,7 +447,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         runCatching { binding.discoverWebContainer.removeView(webView) }
         runCatching {
             webView.webChromeClient = null
-            webView.webViewClient = null
+            webView.webViewClient = WebViewClient()
         }
         runCatching { webView.clearHistory() }
         runCatching { webView.clearFormData() }
