@@ -3,10 +3,12 @@ package io.legado.app.ui.book.read.page
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.LayerDrawable
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import com.airbnb.lottie.FontAssetDelegate
 import com.airbnb.lottie.ImageAssetDelegate
 import android.widget.FrameLayout
 import com.airbnb.lottie.LottieImageAsset
@@ -594,6 +596,7 @@ class PageView(context: Context) : FrameLayout(context) {
         }
         lottieView.translationY = block.offsetY
         lottieView.repeatCount = LottieDrawable.INFINITE
+        lottieView.setFontAssetDelegate(defaultFontAssetDelegate)
         lottieView.setImageAssetDelegate(dataUriImageAssetDelegate)
         val json = block.payload?.takeIf { it.isNotBlank() }
         val nextKey = json?.let { "advanced_title:${it.hashCode()}" } ?: "advanced_title:raw"
@@ -617,6 +620,12 @@ class PageView(context: Context) : FrameLayout(context) {
             ?: return@ImageAssetDelegate null
         val bytes = source.decodeBase64DataUrlBytes() ?: return@ImageAssetDelegate null
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    private val defaultFontAssetDelegate = object : FontAssetDelegate() {
+        override fun fetchFont(fontFamily: String): Typeface {
+            return Typeface.DEFAULT
+        }
     }
 
     val textPage get() = binding.contentTextView.textPage
