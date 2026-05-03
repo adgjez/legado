@@ -11,7 +11,6 @@
     <Preference
         android:key="search_jump_showDiscovery"
         android:title="@string/show_discovery"
-        android:summary="@string/show_discovery"
         android:visible="false" />
 
     <io.legado.app.lib.prefs.NameListPreference
@@ -26,7 +25,6 @@
     <Preference
         android:key="search_jump_modernDiscoveryMode"
         android:title="@string/modern_discovery_page"
-        android:summary="@string/modern_discovery_page_summary"
         android:visible="false" />
 
 </androidx.preference.PreferenceScreen>

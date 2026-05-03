@@ -12,6 +12,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.ReadRecordDailyHelper
 import io.legado.app.help.book.ContentProcessor
@@ -430,6 +431,7 @@ object AudioPlay : CoroutineScope by MainScope() {
                 }
             }
             book.update()
+            appDb.readRecentBookDao.insert(ReadRecentBook(book.bookUrl, durTime))
         }
     }
 

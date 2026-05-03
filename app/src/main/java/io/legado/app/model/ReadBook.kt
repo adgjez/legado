@@ -6,6 +6,7 @@ import io.legado.app.constant.PageAnim.scrollPageAnim
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReadRecord
@@ -933,6 +934,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     }
                 }
                 book.update()
+                appDb.readRecentBookDao.insert(ReadRecentBook(book.bookUrl, durTime))
             }.onFailure {
                 AppLog.put("保存书籍阅读进度信息出错\n$it", it)
             }

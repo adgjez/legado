@@ -129,7 +129,7 @@ class PageView(context: Context) : FrameLayout(context) {
             tvFooterMiddle.setColor(tipColor)
             tvFooterRight.setColor(tipColor)
             advancedTitleFallback.setTextColor(textColor)
-            advancedTitleFallback.textSize = (it.textSize + it.titleSize).toFloat()
+            advancedTitleFallback.textSize = advancedTitleTextSizeSp()
             advancedTitleFallback.typeface = ChapterProvider.titlePaint.typeface ?: ChapterProvider.typeface
             vwTopDivider.backgroundColor = tipDividerColor
             vwBottomDivider.backgroundColor = tipDividerColor
@@ -591,8 +591,9 @@ class PageView(context: Context) : FrameLayout(context) {
             lottieView.cancelAnimation()
             lottieView.visibility = GONE
             advancedTitleLottieKey = null
-            val targetWidth = (block.width * 0.86f).toInt().coerceAtLeast(160)
-            val targetHeight = block.height.toInt().coerceAtLeast(1)
+            val scale = advancedTitleScale()
+            val targetWidth = (block.width * 0.86f * scale).toInt().coerceAtLeast(160)
+            val targetHeight = (block.height * scale).toInt().coerceAtLeast(1)
             val params = fallbackView.layoutParams as ViewGroup.LayoutParams
             if (params.width != targetWidth || params.height != targetHeight) {
                 params.width = targetWidth
@@ -618,8 +619,10 @@ class PageView(context: Context) : FrameLayout(context) {
             showFallback(block, forceDefaultTitle = true)
             return
         }
-        val targetWidth = (block.width * 0.86f).toInt().coerceAtLeast(160)
-        val targetHeight = block.height.toInt().coerceAtLeast((targetWidth * 120f / 720f).toInt())
+        val scale = advancedTitleScale()
+        val targetWidth = (block.width * 0.86f * scale).toInt().coerceAtLeast(160)
+        val targetHeight = (block.height * scale).toInt()
+            .coerceAtLeast((targetWidth * 120f / 720f).toInt())
         val params = lottieView.layoutParams as ViewGroup.LayoutParams
         if (params.width != targetWidth || params.height != targetHeight) {
             params.width = targetWidth
@@ -657,6 +660,18 @@ class PageView(context: Context) : FrameLayout(context) {
             }
         }.onFailure {
             showFallback(block)
+        }
+    }
+
+    private fun advancedTitleTextSizeSp(): Float {
+        return with(ReadBookConfig) {
+            (textSize + titleSize * 1.5f).coerceAtLeast(1f)
+        }
+    }
+
+    private fun advancedTitleScale(): Float {
+        return with(ReadBookConfig) {
+            (advancedTitleTextSizeSp() / textSize.coerceAtLeast(1)).coerceIn(0.6f, 2.5f)
         }
     }
 

@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.ConcurrentRateLimiter
@@ -348,6 +349,7 @@ object ReadManga : CoroutineScope by MainScope() {
                     }
                 }
                 appDb.bookDao.update(book)
+                appDb.readRecentBookDao.insert(ReadRecentBook(book.bookUrl, book.durChapterTime))
             }.onFailure {
                 AppLog.put("保存漫画阅读进度信息出错\n$it", it)
             }

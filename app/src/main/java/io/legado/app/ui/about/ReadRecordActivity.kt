@@ -94,11 +94,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                             withContext(IO) {
                                 appDb.readRecordDao.clear()
                                 appDb.readRecordDailyDao.clear()
-                                appDb.bookDao.all.forEach { book ->
-                                    book.durChapterTime = 0L
-                                    book.durChapterTitle = null
-                                    appDb.bookDao.update(book)
-                                }
+                                appDb.readRecentBookDao.clear()
                             }
                             loadData()
                         }
@@ -141,10 +137,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             }.getOrNull()
         }.sortedByDescending { it.date }
         val dailyMap = dailyStats.associate { it.date to it.readTime }
-        val recentBooks = appDb.bookDao.all
-            .filter { it.durChapterTime > 0L && it.name.isNotBlank() }
-            .sortedByDescending { it.durChapterTime }
-            .take(6)
+        val recentBooks = appDb.readRecentBookDao.recentBooks(6)
             .map { book ->
                 RecentReadBook(
                     book = book,

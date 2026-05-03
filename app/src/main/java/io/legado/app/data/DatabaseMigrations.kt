@@ -20,7 +20,29 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
+            migration_90_91,
         )
+    }
+
+    private val migration_90_91 = object : Migration(90, 91) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `readRecentBooks` (
+                    `bookUrl` TEXT NOT NULL,
+                    `lastRead` INTEGER NOT NULL,
+                    PRIMARY KEY(`bookUrl`)
+                )
+                """
+            )
+            db.execSQL(
+                """
+                INSERT OR REPLACE INTO `readRecentBooks` (`bookUrl`, `lastRead`)
+                SELECT `bookUrl`, `durChapterTime` FROM `books`
+                WHERE `durChapterTime` > 0
+                """
+            )
+        }
     }
 
     private val migration_10_11 = object : Migration(10, 11) {
