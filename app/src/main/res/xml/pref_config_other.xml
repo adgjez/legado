@@ -39,7 +39,6 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="discoverySettings"
-            android:summary="@string/discovery_settings_summary"
             android:title="@string/discovery_settings_title"
             app:iconSpaceReserved="false" />
 
@@ -51,7 +50,6 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="subscriptionSettings"
-            android:summary="@string/subscription_settings_summary"
             android:title="@string/subscription_settings_title"
             app:iconSpaceReserved="false" />
 

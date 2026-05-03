@@ -587,7 +587,7 @@ class PageView(context: Context) : FrameLayout(context) {
             lottieView.visibility = GONE
             fallbackView.visibility = GONE
         }
-        fun showFallback(block: TextPage.EpubEmbeddedBlock) {
+        fun showFallback(block: TextPage.EpubEmbeddedBlock, forceDefaultTitle: Boolean = false) {
             lottieView.cancelAnimation()
             lottieView.visibility = GONE
             advancedTitleLottieKey = null
@@ -601,7 +601,7 @@ class PageView(context: Context) : FrameLayout(context) {
             }
             fallbackView.translationY = block.offsetY
             fallbackView.gravity = Gravity.CENTER
-            fallbackView.text = textPage.title
+            fallbackView.text = if (forceDefaultTitle) textPage.title else textPage.title
             fallbackView.visibility = VISIBLE
         }
         if (ReadBookConfig.titleMode != AdvancedTitleConfig.TITLE_MODE_ADVANCED) {
@@ -612,6 +612,10 @@ class PageView(context: Context) : FrameLayout(context) {
             it.role == AdvancedTitleConfig.LOTTIE_BLOCK_ROLE
         } ?: run {
             hide()
+            return
+        }
+        if (isScroll) {
+            showFallback(block, forceDefaultTitle = true)
             return
         }
         val targetWidth = (block.width * 0.86f).toInt().coerceAtLeast(160)

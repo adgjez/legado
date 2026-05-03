@@ -744,14 +744,15 @@ class TextChapterLayout(
         if (title.isBlank()) return false
         currentCoroutineContext().ensureActive()
         val lottieJson = AdvancedTitleConfig.renderValidLottieJson(book, title) ?: return false
-        val blockHeight = (titlePaintTextHeight * AdvancedTitleConfig.heightFactor / 10f)
+        val blockHeight = (visibleHeight * (AdvancedTitleConfig.heightFactor / 100f))
             .coerceAtLeast(80f)
-            .coerceAtMost(visibleHeight * 0.35f)
-        prepareNextPageIfNeed(durY + blockHeight)
+            .coerceAtMost(visibleHeight * 0.6f)
+        val startY = durY + titleTopSpacing
+        prepareNextPageIfNeed(startY + blockHeight)
         pendingTextPage.epubEmbeddedBlocks.add(
             TextPage.EpubEmbeddedBlock(
                 offsetX = paddingLeft.toFloat(),
-                offsetY = paddingTop + durY,
+                offsetY = paddingTop + startY,
                 width = visibleWidth.toFloat(),
                 height = blockHeight,
                 commands = emptyList(),
@@ -759,7 +760,7 @@ class TextChapterLayout(
                 payload = lottieJson
             )
         )
-        durY += blockHeight + titleBottomSpacing
+        durY = startY + blockHeight + titleBottomSpacing
         if (pendingTextPage.height < durY) {
             pendingTextPage.height = durY
         }

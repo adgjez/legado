@@ -171,7 +171,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         )
         val sampleEdit = edit("第一章 接生")
         val heightFactorEdit = edit(AdvancedTitleConfig.heightFactor.toString()).apply {
-            hint = "30-120，默认55"
+            hint = "30-120，默认55（按可视高度百分比）"
         }
         val lottieJsonEdit = edit(currentJson, minLines = 6).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -233,7 +233,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         root.addView(label("预览"))
         root.addView(sampleEdit)
         root.addView(preview)
-        root.addView(label("渲染区域比例"))
+        root.addView(label("高级标题占位高度系数"))
         root.addView(heightFactorEdit)
         root.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
