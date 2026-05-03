@@ -80,6 +80,18 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.apply {
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(
+                (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+                (resources.displayMetrics.heightPixels * 0.78f).toInt()
+            )
+        }
+    }
+
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val context = requireContext()
         val book = currentBook
@@ -91,6 +103,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
             orientation = LinearLayout.VERTICAL
             setPadding(18.dpToPx(), 12.dpToPx(), 18.dpToPx(), 4.dpToPx())
             background = context.filletBackground
+            clipToOutline = true
         }
 
         fun label(text: String) = TextView(context).apply {
@@ -186,6 +199,11 @@ class AdvancedTitleConfigDialog : DialogFragment() {
             updatePreview()
         }
 
+        root.addView(TextView(context).apply {
+            text = "高级标题设置"
+            textSize = 18f
+            setPadding(0, 2.dpToPx(), 0, 8.dpToPx())
+        })
         root.addView(label("作用范围"))
         root.addView(scopeGroup)
         root.addView(label("分隔规则"))
@@ -194,10 +212,13 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         root.addView(label("预览"))
         root.addView(sampleEdit)
         root.addView(preview)
-        root.addView(label("高级标题 JSON"))
         root.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("高级标题 JSON").apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setPadding(0, 10.dpToPx(), 0, 4.dpToPx())
+            })
             addView(openEditorButton)
         })
         root.addView(lottieJsonEdit)
@@ -209,8 +230,9 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         })
         root.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
             addView(button("导入").apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 setOnClickListener {
                     importJson.launch {
                         mode = HandleFileContract.FILE
@@ -221,6 +243,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
                 }
             })
             addView(button("导出").apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 setOnClickListener {
                     val json = lottieJsonEdit.text?.toString().orEmpty()
                     exportJson.launch {
@@ -238,6 +261,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         updatePreview()
 
         val scrollView = ScrollView(context).apply {
+            clipToOutline = true
             addView(
                 root,
                 ViewGroup.LayoutParams(
@@ -248,7 +272,6 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         }
 
         return AlertDialog.Builder(context)
-            .setTitle("高级标题设置")
             .setView(scrollView)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val rule = buildRule()
@@ -279,16 +302,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
                 }
                 postEvent(EventBus.UP_CONFIG, arrayListOf(5, 8))
             }
-            .create().apply {
-                setOnShowListener {
-                    window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                    window?.setBackgroundDrawableResource(android.R.color.transparent)
-                    window?.setLayout(
-                        (resources.displayMetrics.widthPixels * 0.92f).toInt(),
-                        (resources.displayMetrics.heightPixels * 0.78f).toInt()
-                    )
-                }
-            }
+            .create()
     }
 
     private fun importNetJsonAlert() {
