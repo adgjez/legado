@@ -71,6 +71,8 @@ class CodeEditActivity :
                 viewModel.title?.let {
                     binding.titleBar.title = it
                 }
+                // IME 组合态和提交态同时触发配对时会出现 `())` 这类重复闭合
+                getProps().autoCompletionOnComposing = false
                 nonPrintablePaintingFlags = AppConfig.editNonPrintable
                 setEditorLanguage(viewModel.language)
                 upEdit(AppConfig.editFontScale, null, AppConfig.editAutoWrap)
