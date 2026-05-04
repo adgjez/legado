@@ -74,6 +74,10 @@ object BookHelp {
         FileUtils.delete(filePath)
     }
 
+    fun getCacheDir(book: Book): File {
+        return downloadDir.getFile(cacheFolderName, book.getFolderName())
+    }
+
     fun updateCacheFolder(oldBook: Book, newBook: Book) {
         val oldFolderName = oldBook.getFolderNameNoCache()
         val newFolderName = newBook.getFolderNameNoCache()
@@ -447,6 +451,26 @@ object BookHelp {
     fun delContent(book: Book, bookChapter: BookChapter) {
         getContentFileCandidates(book, bookChapter).forEach {
             if (it.exists()) it.delete()
+        }
+    }
+
+    /**
+     * 删除单章缓存。漫画会一并删除正文中引用的图片缓存。
+     */
+    fun delChapterCache(book: Book, bookChapter: BookChapter) {
+        if (book.isImage) {
+            delChapterImages(book, bookChapter)
+        }
+        delContent(book, bookChapter)
+    }
+
+    private fun delChapterImages(book: Book, bookChapter: BookChapter) {
+        val content = getContent(book, bookChapter) ?: return
+        val matcher = AppPattern.imgPattern.matcher(content)
+        while (matcher.find()) {
+            val src = matcher.group(1) ?: continue
+            val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
+            getImage(book, mSrc).takeIf { it.exists() }?.delete()
         }
     }
 

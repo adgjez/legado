@@ -325,6 +325,9 @@
         <activity
             android:name=".ui.book.cache.CacheActivity"
             android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.book.cache.CacheManageActivity"
+            android:launchMode="singleTop" />
         <!-- WebView界面 -->
         <activity
             android:name=".ui.browser.WebViewActivity"

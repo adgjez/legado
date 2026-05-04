@@ -188,6 +188,17 @@ object AppWebDav {
         WebDav(typeUrl + fileName, authorization).upload(zipFile)
     }
 
+    suspend fun uploadCachePackage(fileName: String, zipFile: File) {
+        val authorization = authorization ?: throw NoStackTraceException("webDav未配置")
+        if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络未连接")
+        val safeFileName = UrlUtil.replaceReservedChar(
+            fileName.trimEnd('/').removeSuffix(".zip").normalizeFileName()
+        ).ifBlank { "cache_${System.currentTimeMillis()}" }
+        WebDav(exportsWebDavUrl, authorization).makeAsDir()
+        WebDav(exportsWebDavUrl + safeFileName + ".zip", authorization)
+            .upload(zipFile, "application/zip")
+    }
+
     suspend fun downloadThemePackage(isNightTheme: Boolean, remoteDirName: String, zipFile: File) {
         val authorization = authorization ?: throw NoStackTraceException("webDav未配置")
         if (!NetworkUtils.isAvailable()) throw NoStackTraceException("网络未连接")
