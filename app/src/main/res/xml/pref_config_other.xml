@@ -49,12 +49,6 @@
             android:title="@string/discovery_subscription_settings_title"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.Preference
-            android:key="cacheManage"
-            android:summary="@string/cache_manage_summary"
-            android:title="@string/cache_manage_title"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="bookshelf"
             android:key="defaultHomePage"

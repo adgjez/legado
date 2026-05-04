@@ -30,7 +30,6 @@ import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
 import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
-import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
 import io.legado.app.ui.video.config.SettingsDialog
@@ -144,9 +143,6 @@ class OtherConfigFragment : PreferenceFragment(),
                 }
 
             PreferKey.cleanCache -> clearCache()
-            PreferKey.cacheManage -> {
-                startActivity(Intent(requireContext(), CacheManageActivity::class.java))
-            }
             PreferKey.contentSelectMenuConfig -> ContentSelectMenuConfigDialog()
                 .show(parentFragmentManager, "contentSelectMenuConfig")
             PreferKey.uploadRule -> showDialogFragment<DirectLinkUploadConfig>()

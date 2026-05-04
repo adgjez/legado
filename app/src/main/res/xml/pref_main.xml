@@ -98,6 +98,12 @@
             android:title="@string/backup_restore"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="cacheManage"
+            android:summary="@string/cache_manage_summary"
+            android:title="@string/cache_manage_title"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:key="webService"

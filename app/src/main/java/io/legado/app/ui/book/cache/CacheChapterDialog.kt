@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
+import androidx.core.view.isVisible
 import androidx.core.os.bundleOf
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -23,6 +24,9 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class CacheChapterDialog : BaseDialogFragment(R.layout.dialog_source_picker) {
@@ -33,9 +37,13 @@ class CacheChapterDialog : BaseDialogFragment(R.layout.dialog_source_picker) {
     private val searchView: SearchView by lazy {
         binding.toolBar.findViewById(R.id.search_view)
     }
+    private val cachedOnlyCheckBox by lazy {
+        binding.cbCachedOnly
+    }
     private val book: Book by lazy {
         requireArguments().getParcelable<Book>("book")!!
     }
+    private var chapterLoadJob: Job? = null
 
     override fun onStart() {
         super.onStart()
@@ -52,6 +60,12 @@ class CacheChapterDialog : BaseDialogFragment(R.layout.dialog_source_picker) {
         toolBar.title = getString(R.string.cache_manage_chapters)
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         recyclerView.adapter = adapter
+        cbCachedOnly.text = getString(R.string.cache_manage_cached_only)
+        cbCachedOnly.isChecked = false
+        cbCachedOnly.isVisible = true
+        cbCachedOnly.setOnCheckedChangeListener { _, _ ->
+            loadChapters(searchView.query?.toString())
+        }
         tvFooterLeft.text = getString(R.string.cache_manage_swipe_delete_hint)
         tvFooterLeft.visible()
         tvCancel.gone()
@@ -88,26 +102,37 @@ class CacheChapterDialog : BaseDialogFragment(R.layout.dialog_source_picker) {
     }
 
     private fun loadChapters(key: String? = null) {
+        chapterLoadJob?.cancel()
         binding.rotateLoading.visible()
-        lifecycleScope.launch {
-            kotlin.runCatching {
-                viewModel.getChapterItems(book, key)
-            }.onSuccess {
-                adapter.setItems(it)
+        val cachedOnly = cachedOnlyCheckBox.isChecked
+        lateinit var job: Job
+        job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val items = viewModel.getChapterItems(book, key, cachedOnly)
+                if (chapterLoadJob !== job) return@launch
+                adapter.setItems(items)
                 binding.tvMsg.run {
-                    if (it.isEmpty()) {
+                    if (items.isEmpty()) {
                         setText(R.string.chapter_list_empty)
                         visible()
                     } else {
                         gone()
                     }
                 }
-            }.onFailure {
-                binding.tvMsg.text = it.localizedMessage
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (chapterLoadJob !== job) return@launch
+                binding.tvMsg.text = e.localizedMessage
                 binding.tvMsg.visible()
+            } finally {
+                if (chapterLoadJob === job) {
+                    binding.rotateLoading.gone()
+                }
             }
-            binding.rotateLoading.gone()
         }
+        chapterLoadJob = job
+        job.start()
     }
 
     private fun confirmDeleteChapter(position: Int, item: CacheChapterItem) {

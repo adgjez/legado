@@ -6,11 +6,11 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
+import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.utils.externalCache
@@ -18,6 +18,8 @@ import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.compress.ZipUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,26 +39,34 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     fun load(mode: CacheManageMode = this.mode) {
         this.mode = mode
         loadJob?.cancel()
-        loadJob = viewModelScope.launch(Dispatchers.IO) {
+        lateinit var job: Job
+        job = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             loadingLiveData.postValue(true)
-            val items = appDb.bookDao.all
-                .asSequence()
-                .filter { it.matchMode(mode) }
-                .map { book -> buildCacheBookItem(book, mode) }
-                .filter { it.cachedCount > 0 }
-                .sortedWith(compareByDescending<CacheBookItem> { it.cachedCount }.thenBy { it.book.name })
-                .toList()
-            ensureActive()
-            itemsLiveData.postValue(items)
-            summaryLiveData.postValue(
-                CacheSummary(
-                    bookCount = items.size,
-                    cachedChapterCount = items.sumOf { it.cachedCount },
-                    mode = mode
+            try {
+                val items = getBooks(mode)
+                    .asSequence()
+                    .mapNotNull { book -> buildCacheBookItem(book, mode) }
+                    .sortedWith(compareByDescending<CacheBookItem> { it.cachedCount }.thenBy { it.book.name })
+                    .toList()
+                ensureActive()
+                itemsLiveData.postValue(items)
+                summaryLiveData.postValue(
+                    CacheSummary(
+                        bookCount = items.size,
+                        cachedChapterCount = items.sumOf { it.cachedCount },
+                        mode = mode
+                    )
                 )
-            )
-            loadingLiveData.postValue(false)
+            } catch (e: CancellationException) {
+                throw e
+            } finally {
+                if (loadJob === job) {
+                    loadingLiveData.postValue(false)
+                }
+            }
         }
+        loadJob = job
+        job.start()
     }
 
     fun deleteBookCache(book: Book, onDone: () -> Unit) {
@@ -70,17 +80,33 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     }
 
     suspend fun getChapterItems(book: Book, key: String? = null): List<CacheChapterItem> {
+        return getChapterItems(book, key, false)
+    }
+
+    suspend fun getChapterItems(
+        book: Book,
+        key: String? = null,
+        cachedOnly: Boolean = false
+    ): List<CacheChapterItem> {
         return withContext(Dispatchers.IO) {
-            val cacheNames = BookHelp.getChapterFiles(book)
-            appDb.bookChapterDao.getChapterList(book.bookUrl)
+            val cacheNames = getCacheFileNames(book)
+            if (cachedOnly && cacheNames.none { it.endsWith(".nb") }) {
+                return@withContext emptyList()
+            }
+            val chapters = if (key.isNullOrBlank()) {
+                appDb.bookChapterDao.getChapterList(book.bookUrl)
+            } else {
+                appDb.bookChapterDao.search(book.bookUrl, key)
+            }
+            chapters
                 .asSequence()
                 .filterNot { it.isVolume }
-                .filter { key.isNullOrBlank() || it.title.contains(key, ignoreCase = true) }
-                .map { chapter ->
-                    CacheChapterItem(
-                        chapter = chapter,
-                        cached = isChapterCached(book, chapter, cacheNames)
-                    )
+                .mapNotNull { chapter ->
+                    val cached = isChapterCached(book, chapter, cacheNames, validateImageContent = false)
+                    if (cachedOnly && !cached) {
+                        return@mapNotNull null
+                    }
+                    CacheChapterItem(chapter = chapter, cached = cached)
                 }
                 .toList()
         }
@@ -114,39 +140,49 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         }
     }
 
-    private fun buildCacheBookItem(book: Book, mode: CacheManageMode): CacheBookItem {
-        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-            .filterNot { it.isVolume }
-        val cacheNames = BookHelp.getChapterFiles(book)
-        val cachedCount = chapters.count { isChapterCached(book, it, cacheNames) }
+    private fun buildCacheBookItem(book: Book, mode: CacheManageMode): CacheBookItem? {
+        val rawCachedCount = getFastCachedCount(book)
+        if (rawCachedCount <= 0) return null
+        val totalChapterCount = book.totalChapterNum.takeIf { it > 0 } ?: rawCachedCount
+        val cachedCount = rawCachedCount.coerceAtMost(totalChapterCount)
         return CacheBookItem(
             book = book,
             mode = mode,
             cachedCount = cachedCount,
-            totalChapterCount = chapters.size.takeIf { it > 0 } ?: book.totalChapterNum
+            totalChapterCount = totalChapterCount
         )
+    }
+
+    private fun getFastCachedCount(book: Book): Int {
+        return getCacheFileNames(book).count { it.endsWith(".nb") }
+    }
+
+    private fun getCacheFileNames(book: Book): Set<String> {
+        val cacheDir = BookHelp.getCacheDir(book)
+        if (!cacheDir.exists() || !cacheDir.isDirectory) return emptySet()
+        return cacheDir.list()?.toSet().orEmpty()
     }
 
     private fun isChapterCached(
         book: Book,
         chapter: BookChapter,
-        cacheNames: Set<String> = BookHelp.getChapterFiles(book)
+        cacheNames: Set<String> = getCacheFileNames(book),
+        validateImageContent: Boolean = true
     ): Boolean {
         if (book.isLocal) return false
         val hasContent = BookHelp.getChapterCacheFileNames(book, chapter).any(cacheNames::contains)
-        return if (book.isImage && hasContent) {
+        return if (validateImageContent && book.isImage && hasContent) {
             BookHelp.hasImageContent(book, chapter)
         } else {
             hasContent
         }
     }
 
-    private fun Book.matchMode(mode: CacheManageMode): Boolean {
-        if (isLocal) return false
+    private fun getBooks(mode: CacheManageMode): List<Book> {
         return when (mode) {
-            CacheManageMode.BOOK -> !isAudio && !isImage
-            CacheManageMode.AUDIO -> isAudio
-            CacheManageMode.MANGA -> isImage
+            CacheManageMode.BOOK -> appDb.bookDao.getByTypeOnLine(BookType.text)
+            CacheManageMode.AUDIO -> appDb.bookDao.getByTypeOnLine(BookType.audio)
+            CacheManageMode.MANGA -> appDb.bookDao.getByTypeOnLine(BookType.image)
         }
     }
 }

@@ -24,6 +24,7 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.about.AboutActivity
 import io.legado.app.ui.about.ReadRecordActivity
 import io.legado.app.ui.book.bookmark.AllBookmarkActivity
+import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
 import io.legado.app.ui.config.ConfigActivity
@@ -353,6 +354,8 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 "web_dav_setting" -> startActivity<ConfigActivity> {
                     putExtra("configTag", ConfigTag.BACKUP_CONFIG)
                 }
+
+                "cacheManage" -> startActivity<CacheManageActivity>()
 
                 "theme_setting" -> startActivity<ConfigActivity> {
                     putExtra("configTag", ConfigTag.THEME_CONFIG)
