@@ -1,6 +1,7 @@
 package io.legado.app.lib.prefs.fragment
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.DialogFragment
@@ -21,6 +22,8 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        view.setBackgroundColor(Color.TRANSPARENT)
+        listView.setBackgroundColor(Color.TRANSPARENT)
         listView.clipToPadding = false
         listView.applyNavigationBarPadding()
     }

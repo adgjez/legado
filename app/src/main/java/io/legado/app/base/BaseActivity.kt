@@ -48,6 +48,7 @@ abstract class BaseActivity<VB : ViewBinding>(
 ) : AppCompatActivity() {
 
     protected abstract val binding: VB
+    private var lastThemeValuesChanged = 0L
 
     val isInMultiWindow: Boolean
         @SuppressLint("ObsoleteSdkInt")
@@ -70,7 +71,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         attrs: AttributeSet
     ): View? {
         if (AppConst.menuViewNames.contains(name) && parent?.parent is FrameLayout) {
-            (parent.parent as View).setBackgroundColor(backgroundColor)
+            (parent.parent as View).setBackgroundResource(R.drawable.bg_popup_action_modern)
         }
         return super.onCreateView(parent, name, context, attrs)
     }
@@ -84,6 +85,7 @@ abstract class BaseActivity<VB : ViewBinding>(
         setupSystemBar()
         setContentView(binding.root)
         upBackgroundImage()
+        lastThemeValuesChanged = ThemeStore.valuesChanged(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             findViewById<TitleBar>(R.id.title_bar)
                 ?.onMultiWindowModeChanged(isInMultiWindowMode, fullScreen)
@@ -98,6 +100,16 @@ abstract class BaseActivity<VB : ViewBinding>(
     override fun onResume() {
         super.onResume()
         applyPreferredRefreshRate()
+        refreshThemeBackgroundIfChanged()
+    }
+
+    private fun refreshThemeBackgroundIfChanged() {
+        val valuesChanged = ThemeStore.valuesChanged(this)
+        if (valuesChanged != lastThemeValuesChanged) {
+            lastThemeValuesChanged = valuesChanged
+            setupSystemBar()
+            upBackgroundImage()
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

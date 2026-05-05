@@ -1,5 +1,7 @@
 package io.legado.app.ui.config
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +14,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.bumptech.glide.Glide
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
@@ -25,6 +28,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemePackageManager
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.ThemeStore
@@ -59,7 +63,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(imageBg = false),
+class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     ColorPickerDialogListener {
 
     override val binding by viewBinding(ActivityThemeManageBinding::inflate)
@@ -866,10 +870,39 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(imageBg = f
                 btnApply.text = getString(if (isApplied(entry)) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.setTextColor(primaryTextColor)
                 btnMore.setTextColor(primaryTextColor)
+                bindPreview(entry)
                 btnApply.setOnClickListener { applyTheme(entry) }
                 btnEdit.setOnClickListener { showEditDialog(entry) }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
+            }
+
+            private fun ItemThemePackageBinding.bindPreview(entry: ThemePackageManager.Entry) {
+                val config = kotlin.runCatching { ThemePackageManager.getConfig(entry) }
+                    .getOrElse { entry.packageInfo.config }
+                val fallbackColor = config?.backgroundColor.toPreviewColor(entry.packageInfo.isNightTheme)
+                Glide.with(ivPreview.context).clear(ivPreview)
+                cardPreview.setCardBackgroundColor(fallbackColor)
+                ivPreview.setBackgroundColor(fallbackColor)
+                ivPreview.setImageDrawable(null)
+                val backgroundPath = config?.backgroundImgPath?.takeIf { it.isNotBlank() }
+                if (backgroundPath.isNullOrBlank()) {
+                    return
+                }
+                ImageLoader.load(ivPreview.context, backgroundPath)
+                    .centerCrop()
+                    .error(ColorDrawable(fallbackColor))
+                    .into(ivPreview)
+            }
+
+            private fun String?.toPreviewColor(isNightTheme: Boolean): Int {
+                return kotlin.runCatching {
+                    val color = this?.trim().orEmpty()
+                    val normalized = if (color.startsWith("#")) color else "#$color"
+                    normalized.toColorInt()
+                }.getOrElse {
+                    if (isNightTheme) Color.BLACK else Color.WHITE
+                }
             }
         }
     }

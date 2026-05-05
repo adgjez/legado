@@ -151,7 +151,7 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
                 attributes = attr
                 setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
             } else {
-                setBackgroundDrawableResource(R.drawable.bg_book_info_intro_panel)
+                setBackgroundDrawableResource(R.drawable.bg_dialog_surface)
             }
         }
         return dialog
@@ -167,7 +167,7 @@ internal class AndroidAlertBuilder(override val ctx: Context) : AlertBuilder<Ale
                 attributes = attr
                 setBackgroundDrawableResource(R.drawable.bg_eink_border_dialog)
             } else {
-                setBackgroundDrawableResource(R.drawable.bg_book_info_intro_panel)
+                setBackgroundDrawableResource(R.drawable.bg_dialog_surface)
             }
         }
         return dialog

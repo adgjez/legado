@@ -54,22 +54,6 @@
                 android:textStyle="bold"
                 tools:text="@string/book_name" />
 
-            <TextView
-                android:id="@+id/tv_type"
-                android:layout_width="wrap_content"
-                android:layout_height="26dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_discover_embedded_chip"
-                android:ellipsize="end"
-                android:gravity="center"
-                android:maxWidth="110dp"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
-                android:singleLine="true"
-                android:textColor="@color/secondaryText"
-                android:textSize="12sp"
-                tools:text="@string/cache_manage_books" />
-
         </LinearLayout>
 
         <TextView
@@ -82,6 +66,22 @@
             android:textColor="@color/secondaryText"
             android:textSize="12sp"
             tools:text="@string/author" />
+
+        <TextView
+            android:id="@+id/tv_type"
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/bg_discover_embedded_chip"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxWidth="180dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:singleLine="true"
+            android:textColor="@color/secondaryText"
+            android:textSize="12sp"
+            tools:text="@string/cache_manage_books" />
 
         <TextView
             android:id="@+id/tv_read"

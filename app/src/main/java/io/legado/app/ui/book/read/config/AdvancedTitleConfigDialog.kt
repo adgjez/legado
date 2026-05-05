@@ -30,7 +30,7 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.filletBackground
+import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.file.HandleFileContract
@@ -362,7 +362,7 @@ class AdvancedTitleConfigDialog : DialogFragment() {
             cardElevation = 0f
             preventCornerOverlap = false
             useCompatPadding = false
-            background = context.filletBackground
+            background = context.dialogSurfaceBackground
             addView(
                 scrollView,
                 ViewGroup.LayoutParams(
