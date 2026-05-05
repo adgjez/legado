@@ -998,6 +998,13 @@
     <string name="read_record_yesterday_word">Yesterday</string>
     <string name="read_record_select_date">Select date</string>
     <string name="read_record_selected_day_label">Selected day</string>
+    <string name="read_record_customize_components">Customize stats widgets</string>
+    <string name="read_record_components_hint">Check to show widgets, drag to reorder</string>
+    <string name="read_record_drag_sort">Drag to reorder</string>
+    <string name="read_record_component_overview">Overview cards</string>
+    <string name="read_record_component_heatmap">Reading heatmap</string>
+    <string name="read_record_component_recent_books">Recently reading</string>
+    <string name="read_record_component_daily_records">Daily summary</string>
     <string name="local_tts">Local TTS</string>
     <string name="thread_count">Thread count</string>
     <string name="all_read_time">Total read time</string>

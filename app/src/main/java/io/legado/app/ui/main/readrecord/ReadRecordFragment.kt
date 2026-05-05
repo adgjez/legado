@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -24,6 +25,9 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.about.ReadHeatmapCell
+import io.legado.app.ui.about.ReadRecordComponentConfigDialog
+import io.legado.app.ui.about.ReadRecordComponentType
+import io.legado.app.ui.about.ReadRecordComponents
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyMainBottomBarPadding
@@ -72,15 +76,20 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private var loadJob: Job? = null
     private var loadedDate: LocalDate? = null
     private var lastLoadTime = 0L
+    private var componentItems = ReadRecordComponents.load()
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
         binding.titleBar.visibility = View.GONE
         binding.scrollView.applyMainBottomBarPadding(withInitialPadding = true)
-        binding.tvRecordDate.applyStatusBarPadding(withInitialPadding = true)
+        binding.llRecordHeader.applyStatusBarPadding(withInitialPadding = true)
         binding.tvRecordDate.setOnClickListener {
             showDatePicker()
         }
+        binding.ivComponentMenu.setOnClickListener {
+            showComponentConfigDialog()
+        }
+        applyComponentLayout()
         preloadData()
     }
 
@@ -228,6 +237,47 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         applyPageChrome()
     }
 
+    private fun showComponentConfigDialog() {
+        ReadRecordComponentConfigDialog.show(requireContext(), componentItems) { items ->
+            componentItems = items.toMutableList()
+            ReadRecordComponents.save(componentItems)
+            applyComponentLayout()
+            applyPageChrome()
+        }
+    }
+
+    private fun applyComponentLayout() {
+        if (componentItems.none { it.enabled }) {
+            componentItems.firstOrNull()?.enabled = true
+            ReadRecordComponents.save(componentItems)
+        }
+        val parent = binding.llReadRecordComponents
+        val componentViews = linkedMapOf(
+            ReadRecordComponentType.OVERVIEW to binding.panelOverview,
+            ReadRecordComponentType.HEATMAP to binding.panelHeatmap,
+            ReadRecordComponentType.RECENT_BOOKS to binding.panelRecentBooks,
+            ReadRecordComponentType.DAILY_RECORDS to binding.panelDailyRecords
+        )
+        componentViews.values.forEach { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.isVisible = false
+        }
+        parent.removeAllViews()
+        componentItems.filter { it.enabled }.forEachIndexed { index, item ->
+            componentViews[item.type]?.let { view ->
+                val lp = (view.layoutParams as? ViewGroup.MarginLayoutParams)
+                    ?: ViewGroup.MarginLayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                lp.topMargin = if (index == 0) 0 else 16.dpToPx()
+                view.layoutParams = lp
+                view.isVisible = true
+                parent.addView(view)
+            }
+        }
+    }
+
     private fun showDatePicker() {
         val date = selectedDate
         DatePickerDialog(
@@ -316,6 +366,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             0.16f
         )
 
+        binding.panelOverview.background = null
         listOf(
             binding.panelHeatmap,
             binding.panelRecentBooks,
@@ -349,6 +400,12 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         binding.tvHeatmapMonthStart.setTextColor(secondaryTextColor)
         binding.tvHeatmapMonthCenter.setTextColor(secondaryTextColor)
         binding.tvHeatmapMonthEnd.setTextColor(secondaryTextColor)
+        binding.ivComponentMenu.background = UiCorner.actionSelector(
+            ColorUtils.adjustAlpha(panelSurfaceColor, 0.92f),
+            ContextCompat.getColor(requireContext(), R.color.background_menu),
+            UiCorner.actionRadius(requireContext())
+        )
+        binding.ivComponentMenu.setColorFilter(primaryTextColor)
         binding.heatmapView.submit(currentHeatmapCells, accentColor, panelSurfaceColor)
     }
 

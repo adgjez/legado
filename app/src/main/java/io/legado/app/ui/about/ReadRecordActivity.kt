@@ -6,6 +6,7 @@ import android.app.DatePickerDialog
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -58,6 +59,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private var currentHeatmapCells: List<ReadHeatmapCell> = emptyList()
     private var selectedDate: LocalDate = LocalDate.now()
+    private var componentItems = ReadRecordComponents.load()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -112,6 +114,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         binding.tvRecordDate.setOnClickListener {
             showDatePicker()
         }
+        binding.ivComponentMenu.setOnClickListener {
+            showComponentConfigDialog()
+        }
+        applyComponentLayout()
     }
 
     private fun loadData() {
@@ -205,6 +211,47 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         applyPageChrome()
     }
 
+    private fun showComponentConfigDialog() {
+        ReadRecordComponentConfigDialog.show(this, componentItems) { items ->
+            componentItems = items.toMutableList()
+            ReadRecordComponents.save(componentItems)
+            applyComponentLayout()
+            applyPageChrome()
+        }
+    }
+
+    private fun applyComponentLayout() {
+        if (componentItems.none { it.enabled }) {
+            componentItems.firstOrNull()?.enabled = true
+            ReadRecordComponents.save(componentItems)
+        }
+        val parent = binding.llReadRecordComponents
+        val componentViews = linkedMapOf(
+            ReadRecordComponentType.OVERVIEW to binding.panelOverview,
+            ReadRecordComponentType.HEATMAP to binding.panelHeatmap,
+            ReadRecordComponentType.RECENT_BOOKS to binding.panelRecentBooks,
+            ReadRecordComponentType.DAILY_RECORDS to binding.panelDailyRecords
+        )
+        componentViews.values.forEach { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.isVisible = false
+        }
+        parent.removeAllViews()
+        componentItems.filter { it.enabled }.forEachIndexed { index, item ->
+            componentViews[item.type]?.let { view ->
+                val lp = (view.layoutParams as? ViewGroup.MarginLayoutParams)
+                    ?: ViewGroup.MarginLayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                lp.topMargin = if (index == 0) 0 else 16.dpToPx()
+                view.layoutParams = lp
+                view.isVisible = true
+                parent.addView(view)
+            }
+        }
+    }
+
     private fun showDatePicker() {
         val date = selectedDate
         DatePickerDialog(
@@ -293,6 +340,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             0.16f
         )
 
+        binding.panelOverview.background = null
         listOf(
             binding.panelHeatmap,
             binding.panelRecentBooks,
@@ -326,6 +374,12 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         binding.tvHeatmapMonthStart.setTextColor(secondaryTextColor)
         binding.tvHeatmapMonthCenter.setTextColor(secondaryTextColor)
         binding.tvHeatmapMonthEnd.setTextColor(secondaryTextColor)
+        binding.ivComponentMenu.background = UiCorner.actionSelector(
+            ColorUtils.adjustAlpha(panelSurfaceColor, 0.92f),
+            ContextCompat.getColor(this, R.color.background_menu),
+            UiCorner.actionRadius(this)
+        )
+        binding.ivComponentMenu.setColorFilter(primaryTextColor)
         binding.heatmapView.submit(currentHeatmapCells, accentColor, panelSurfaceColor)
     }
 

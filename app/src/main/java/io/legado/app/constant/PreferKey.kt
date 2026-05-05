@@ -185,6 +185,7 @@ object PreferKey {
     const val tocUiUseReplace = "tocUiUseReplace"
     const val tocCountWords = "tocCountWords"
     const val enableReadRecord = "enableReadRecord"
+    const val readRecordComponents = "readRecordComponents"
     const val localBookImportSort = "localBookImportSort"
     const val customWelcome = "customWelcome"
     const val welcomeShowTime = "welcomeShowTime"
