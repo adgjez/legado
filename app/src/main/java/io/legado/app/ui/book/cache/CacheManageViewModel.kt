@@ -58,11 +58,13 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             try {
                 val currentBooks = getBooks(mode)
                 val currentBookUrls = currentBooks.mapTo(hashSetOf()) { it.bookUrl }
+                val manifests = CacheManifestHelper.listManifests()
+                val manifestByBookUrl = manifests.associateBy { it.bookUrl }
                 val currentItems = currentBooks
                     .asSequence()
-                    .mapNotNull { book -> buildCacheBookItem(book, mode) }
+                    .mapNotNull { book -> buildCacheBookItem(book, mode, manifestByBookUrl[book.bookUrl]) }
                     .toList()
-                val manifestItems = CacheManifestHelper.listManifests()
+                val manifestItems = manifests
                     .asSequence()
                     .filter { it.matches(mode) }
                     .filterNot { currentBookUrls.contains(it.bookUrl) }
@@ -191,7 +193,11 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         return indexes.size
     }
 
-    suspend fun cacheAudioChapters(book: Book, chapters: List<BookChapter>): Int {
+    suspend fun cacheAudioChapters(
+        book: Book,
+        chapters: List<BookChapter>,
+        reloadOnFinished: Boolean = true
+    ): Int {
         if (!book.isAudio) return 0
         val targets = withContext(Dispatchers.IO) {
             chapters
@@ -213,7 +219,9 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             },
             onFinished = {
                 refreshManifest(book)
-                load(mode)
+                if (reloadOnFinished) {
+                    load(mode)
+                }
             }
         )
         if (started) {
@@ -372,10 +380,17 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             )
     }
 
-    private fun buildCacheBookItem(book: Book, mode: CacheManageMode): CacheBookItem? {
+    private fun buildCacheBookItem(
+        book: Book,
+        mode: CacheManageMode,
+        knownManifest: CacheBookManifest? = null
+    ): CacheBookItem? {
         val taskState = AudioCacheTaskManager.snapshot(book.bookUrl)
+        if (mode == CacheManageMode.AUDIO) {
+            return buildAudioCacheBookItem(book, knownManifest, taskState)
+        }
         val cacheNames = getCacheFileNames(book)
-        val needsChapterList = mode == CacheManageMode.AUDIO || book.totalChapterNum <= 0
+        val needsChapterList = book.totalChapterNum <= 0
         val manifest = if (needsChapterList) CacheManifestHelper.read(book) else null
         val dbChapters = if (needsChapterList) {
             appDb.bookChapterDao.getChapterList(book.bookUrl)
@@ -417,6 +432,40 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         )
     }
 
+    private fun buildAudioCacheBookItem(
+        book: Book,
+        manifest: CacheBookManifest?,
+        taskState: AudioCacheTaskState?
+    ): CacheBookItem? {
+        val active = taskState?.active == true
+        if (manifest == null && !active) return null
+        val rawCachedCount = manifest?.cachedChapterCount?.takeIf { it > 0 }
+            ?: taskState?.completedChapters
+            ?: 0
+        if (rawCachedCount <= 0 && !active) {
+            CacheManifestHelper.delete(book)
+            return null
+        }
+        val totalChapterCount = book.totalChapterNum.takeIf { it > 0 }
+            ?: manifest?.totalChapterNum?.takeIf { it > 0 }
+            ?: taskState?.totalChapters?.takeIf { it > 0 }
+            ?: rawCachedCount.coerceAtLeast(1)
+        val cachedCount = rawCachedCount.coerceAtMost(totalChapterCount)
+        return CacheBookItem(
+            book = book,
+            mode = CacheManageMode.AUDIO,
+            groupKey = book.cacheGroupKey(CacheManageMode.AUDIO),
+            sourceKey = book.cacheSourceKey(),
+            sourceName = book.cacheSourceName(),
+            cachedCount = cachedCount,
+            totalChapterCount = totalChapterCount,
+            taskState = taskState,
+            manifest = manifest,
+            inBookshelf = true,
+            sourceAvailable = book.isLocal || book.getBookSource() != null
+        )
+    }
+
     private fun buildCacheBookItem(
         manifest: CacheBookManifest,
         mode: CacheManageMode
@@ -425,7 +474,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         val chapters = CacheManifestHelper.toChapters(manifest)
         val cacheNames = getCacheFileNames(book)
         val rawCachedCount = if (mode == CacheManageMode.AUDIO) {
-            getAudioCachedCount(chapters)
+            manifest.cachedChapterCount
         } else {
             chapters.count {
                 isChapterCached(book, it, cacheNames, validateImageContent = false)

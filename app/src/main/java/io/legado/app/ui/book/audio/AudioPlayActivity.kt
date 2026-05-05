@@ -223,15 +223,14 @@ class AudioPlayActivity :
         binding.ivTimer.setOnClickListener {
             timerSliderPopup.showAsDropDown(it, 0, (-100).dpToPx(), Gravity.TOP)
         }
+        binding.ivCache.setOnClickListener {
+            AudioPlay.book?.let(::showAudioCacheRangeDialog)
+                ?: toastOnUi(R.string.book_source_not_found)
+        }
         binding.llPlayMenu.applyNavigationBarPadding()
     }
 
     private fun initListener() {
-        binding.ivCache?.setOnClickListener {
-            AudioPlay.book?.let {
-                showAudioCacheRangeDialog(it)
-            }
-        }
         binding.fabPlayStop.setOnClickListener {
             playButton()
         }
@@ -273,7 +272,7 @@ class AudioPlayActivity :
                         return@launch
                     }
                     kotlin.runCatching {
-                        cacheViewModel.cacheAudioChapters(book, chapters)
+                        cacheViewModel.cacheAudioChapters(book, chapters, reloadOnFinished = false)
                     }.onSuccess { count ->
                         if (count > 0) {
                             toastOnUi(getString(R.string.cache_manage_audio_cache_started, count))
