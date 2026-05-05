@@ -294,10 +294,10 @@ class BookInfoActivity :
         val menuColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_menu)
         val transparent = Color.TRANSPARENT
         ivCoverC.radius = UiCorner.panelRadius(this@BookInfoActivity)
-        listOf(llDetailPanel, llInfoPage, llDetailContentPanel).forEach {
+        listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel).forEach {
             it.background = UiCorner.rounded(panelColor, UiCorner.panelRadius(this@BookInfoActivity))
         }
-        listOf(tvTabIntro, tvTabToc, tvTabInfo, tvIntroToggle, tvShelf).forEach {
+        listOfNotNull(tvTabIntro, tvTabToc, tvTabInfo, tvIntroToggle, tvShelf).forEach {
             it.background = UiCorner.actionSelector(
                 transparent,
                 menuColor,
