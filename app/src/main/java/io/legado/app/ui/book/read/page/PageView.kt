@@ -49,7 +49,6 @@ import io.legado.app.utils.setTextIfNotEqual
 import splitties.views.backgroundColor
 import java.io.ByteArrayInputStream
 import java.util.Date
-import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 
 /**
@@ -74,7 +73,16 @@ class PageView(context: Context) : FrameLayout(context) {
     private var isMainView = false
     private var currentTextPage: TextPage? = null
     private var advancedTitleLottieKey: String? = null
-    private val lottieImageCache = ConcurrentHashMap<String, android.graphics.Bitmap?>()
+    private val lottieImageCache = object : LinkedHashMap<String, android.graphics.Bitmap>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.Bitmap>?): Boolean {
+            return size > MAX_LOTTIE_IMAGE_CACHE_SIZE
+        }
+    }
+    private val styledLottieJsonCache = object : LinkedHashMap<String, String>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+            return size > MAX_STYLED_LOTTIE_CACHE_SIZE
+        }
+    }
     var isScroll = false
 
     val headerHeight: Int
@@ -103,6 +111,12 @@ class PageView(context: Context) : FrameLayout(context) {
 
     override fun onDetachedFromWindow() {
         binding.advancedTitleLottie.cancelAnimation()
+        synchronized(lottieImageCache) {
+            lottieImageCache.clear()
+        }
+        synchronized(styledLottieJsonCache) {
+            styledLottieJsonCache.clear()
+        }
         super.onDetachedFromWindow()
     }
 
@@ -677,6 +691,10 @@ class PageView(context: Context) : FrameLayout(context) {
         val fallbackColor = ReadBookConfig.textColor
         val fallbackHex = String.format("#%06X", 0xFFFFFF and fallbackColor)
         val fallbackFont = "legado_default_font"
+        val cacheKey = "${rawJson.hashCode()}:$fallbackHex"
+        synchronized(styledLottieJsonCache) {
+            styledLottieJsonCache[cacheKey]?.let { return it }
+        }
         return runCatching {
             val root = JSONObject(rawJson)
             val layers = root.optJSONArray("layers") ?: return rawJson
@@ -716,7 +734,11 @@ class PageView(context: Context) : FrameLayout(context) {
                 })
             }
             root.toString()
-        }.getOrDefault(rawJson)
+        }.getOrDefault(rawJson).also { styledJson ->
+            synchronized(styledLottieJsonCache) {
+                styledLottieJsonCache[cacheKey] = styledJson
+            }
+        }
     }
 
     private fun parseColorArray(hex: String): org.json.JSONArray {
@@ -730,10 +752,14 @@ class PageView(context: Context) : FrameLayout(context) {
 
     private val dataUriImageAssetDelegate = ImageAssetDelegate { asset: LottieImageAsset ->
         val source = resolveLottieAssetSource(asset) ?: return@ImageAssetDelegate null
-        lottieImageCache[source]?.let { return@ImageAssetDelegate it }
+        synchronized(lottieImageCache) {
+            lottieImageCache[source]?.let { return@ImageAssetDelegate it }
+        }
         val bitmap = loadLottieAssetBitmap(source)
         if (bitmap != null) {
-            lottieImageCache[source] = bitmap
+            synchronized(lottieImageCache) {
+                lottieImageCache[source] = bitmap
+            }
         }
         bitmap
     }
@@ -783,5 +809,7 @@ class PageView(context: Context) : FrameLayout(context) {
 
     private companion object {
         const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
+        const val MAX_STYLED_LOTTIE_CACHE_SIZE = 6
+        const val MAX_LOTTIE_IMAGE_CACHE_SIZE = 4
     }
 }

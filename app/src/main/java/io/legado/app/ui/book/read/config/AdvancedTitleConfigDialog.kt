@@ -392,9 +392,13 @@ class AdvancedTitleConfigDialog : DialogFragment() {
     private fun importNetJson(url: String) {
         lifecycleScope.launch {
             runCatching {
-                okHttpClient.newCallResponseBody {
-                    url(url)
-                }.string()
+                withContext(Dispatchers.IO) {
+                    okHttpClient.newCallResponseBody {
+                        url(url)
+                    }.use { body ->
+                        body.string()
+                    }
+                }
             }.onSuccess { text ->
                 currentJson = text
                 jsonCursorPosition = text.length

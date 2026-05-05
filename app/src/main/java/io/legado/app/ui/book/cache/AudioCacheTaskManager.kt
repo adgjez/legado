@@ -6,7 +6,6 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.NotificationId
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.globalExecutor
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.activityPendingIntent
@@ -21,7 +20,9 @@ import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
@@ -29,7 +30,14 @@ object AudioCacheTaskManager {
 
     const val EXTRA_BOOK_URL = "bookUrl"
 
-    private val executor: ExecutorService = globalExecutor
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor(
+        ThreadFactory { runnable ->
+            Thread(runnable, "audio-cache-worker").apply {
+                isDaemon = true
+                priority = Thread.NORM_PRIORITY - 1
+            }
+        }
+    )
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
     private val lastNotifyTimes = ConcurrentHashMap<String, Long>()

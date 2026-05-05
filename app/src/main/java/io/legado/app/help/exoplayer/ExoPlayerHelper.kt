@@ -14,7 +14,6 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
-import androidx.media3.datasource.cache.NoOpCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -75,7 +74,7 @@ object ExoPlayerHelper {
 
 
     private val resolvingDataSource: ResolvingDataSource.Factory by lazy {
-        ResolvingDataSource.Factory(audioCacheDataSourceFactory) {
+        ResolvingDataSource.Factory(audioReadDataSourceFactory) {
             var res = it
 
             if (it.uri.toString().contains(SPLIT_TAG)) {
@@ -123,6 +122,14 @@ object ExoPlayerHelper {
             )
     }
 
+    private val audioReadDataSourceFactory by lazy {
+        CacheDataSource.Factory()
+            .setCache(audioCache)
+            .setUpstreamDataSourceFactory(okhttpDataFactory)
+            .setCacheReadDataSourceFactory(FileDataSource.Factory())
+            .setCacheWriteDataSinkFactory(null)
+    }
+
     /**
      * Okhttp DataSource.Factory
      */
@@ -153,7 +160,7 @@ object ExoPlayerHelper {
         val databaseProvider = StandaloneDatabaseProvider(appCtx)
         return@lazy SimpleCache(
             File(appCtx.externalCache, "audio_exoplayer"),
-            NoOpCacheEvictor(),
+            LeastRecentlyUsedCacheEvictor(AUDIO_OFFLINE_CACHE_MAX_BYTES),
             databaseProvider
         )
     }
@@ -181,7 +188,7 @@ object ExoPlayerHelper {
         val mediaSourceBuilder = ConcatenatingMediaSource2.Builder()
         for (uri in uris) {
             mediaSourceBuilder.add(
-                ProgressiveMediaSource.Factory(audioCacheDataSourceFactory)
+                ProgressiveMediaSource.Factory(audioReadDataSourceFactory)
                     .createMediaSource(MediaItem.fromUri(uri)), 3000
             )
         }
@@ -273,4 +280,6 @@ object ExoPlayerHelper {
         val url: String,
         val headers: Map<String, String> = emptyMap()
     )
+
+    private const val AUDIO_OFFLINE_CACHE_MAX_BYTES = 4L * 1024 * 1024 * 1024
 }
