@@ -224,7 +224,7 @@ class AudioPlayActivity :
     }
 
     private fun initListener() {
-        binding.ivCache.setOnClickListener {
+        binding.ivCache?.setOnClickListener {
             AudioPlay.book?.let {
                 showDialogFragment(CacheChapterDialog.newInstance(it))
             }
