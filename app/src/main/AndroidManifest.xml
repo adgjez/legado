@@ -545,6 +545,9 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".ui.book.cache.AudioCacheActionReceiver"
+            android:exported="false" />
 
         <provider
             android:name=".api.ReaderProvider"

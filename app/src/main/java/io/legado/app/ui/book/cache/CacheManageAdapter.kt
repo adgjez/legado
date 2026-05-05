@@ -49,6 +49,10 @@ class CacheManageAdapter(
         item: CacheBookItem,
         payloads: MutableList<Any>
     ) = binding.run {
+        if (payloads.any { it === PAYLOAD_TASK_STATE }) {
+            updateTaskViews(this, item)
+            return@run
+        }
         val book = item.book
         ivCover.load(book, false)
         tvName.text = book.name
@@ -64,11 +68,22 @@ class CacheManageAdapter(
             item.cachedCount,
             item.totalChapterCount
         )
-        val taskState = taskStates[book.bookUrl] ?: item.taskState
+        btnBookshelf.setText(
+            if (item.inBookshelf) R.string.cache_manage_use_cache
+            else R.string.cache_manage_add_bookshelf
+        )
+        if (item.manifest != null) btnBookshelf.visible() else btnBookshelf.gone()
+        updateTaskViews(this, item)
+    }
+
+    private fun updateTaskViews(binding: ItemCacheManageBookBinding, item: CacheBookItem) = binding.run {
+        val taskState = taskStateFor(item)
         val isCaching = taskState?.active == true
-        if (taskState?.active == true) {
+        val isPaused = taskState?.status == CacheTaskStatus.PAUSED
+        if (isCaching || isPaused) {
             tvTask.visible()
-            tvTask.text = taskState.message
+            tvTask.text = taskState?.message
+            btnStop.setText(if (isPaused) R.string.resume else R.string.pause)
             btnStop.visible()
         } else {
             val lastMessage = taskState?.message
@@ -81,15 +96,11 @@ class CacheManageAdapter(
             btnStop.gone()
         }
         val hasCache = item.cachedCount > 0
-        btnBookshelf.setText(
-            if (item.inBookshelf) R.string.cache_manage_use_cache
-            else R.string.cache_manage_add_bookshelf
-        )
-        if (item.manifest != null) btnBookshelf.visible() else btnBookshelf.gone()
-        btnUpload.isEnabled = hasCache && !isCaching
-        btnDelete.isEnabled = hasCache && !isCaching
-        btnUpload.alpha = if (hasCache && !isCaching) 1f else 0.45f
-        btnDelete.alpha = if (hasCache && !isCaching) 1f else 0.45f
+        val taskLocked = isCaching || isPaused
+        btnUpload.isEnabled = hasCache && !taskLocked
+        btnDelete.isEnabled = hasCache && !taskLocked
+        btnUpload.alpha = if (hasCache && !taskLocked) 1f else 0.45f
+        btnDelete.alpha = if (hasCache && !taskLocked) 1f else 0.45f
     }
 
     override fun registerListener(holder: ItemViewHolder, binding: ItemCacheManageBookBinding) {
@@ -117,8 +128,15 @@ class CacheManageAdapter(
     }
 
     fun updateTaskStates(states: Map<String, AudioCacheTaskState>) {
+        val changedBookUrls = (taskStates.keys + states.keys)
+            .filterTo(hashSetOf<String>()) { taskStates[it] != states[it] }
         taskStates = states
-        notifyDataSetChanged()
+        if (changedBookUrls.isEmpty()) return
+        getItems().forEachIndexed { index, item ->
+            if (item.containsBookUrl(changedBookUrls)) {
+                notifyItemChanged(index, PAYLOAD_TASK_STATE)
+            }
+        }
     }
 
     interface Callback {
@@ -128,5 +146,22 @@ class CacheManageAdapter(
         fun deleteBookCache(item: CacheBookItem)
         fun stopAudioCache(item: CacheBookItem)
         fun selectSource(item: CacheBookItem)
+    }
+
+    private fun CacheBookItem.containsBookUrl(bookUrls: Set<String>): Boolean {
+        return book.bookUrl in bookUrls || sourceVariants.any { it.book.bookUrl in bookUrls }
+    }
+
+    private fun taskStateFor(item: CacheBookItem): AudioCacheTaskState? {
+        taskStates[item.book.bookUrl]?.let { return it }
+        item.sourceVariants.forEach { variant ->
+            taskStates[variant.book.bookUrl]?.let { return it }
+            variant.taskState?.let { return it }
+        }
+        return item.taskState
+    }
+
+    private companion object {
+        private val PAYLOAD_TASK_STATE = Any()
     }
 }

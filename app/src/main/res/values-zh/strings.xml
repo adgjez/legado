@@ -1596,6 +1596,7 @@
     <string name="cache_manage_task_progress">%1$d/%2$d · %3$s / %4$s · %5$s</string>
     <string name="cache_manage_task_done">缓存完成：%1$d 章</string>
     <string name="cache_manage_task_cancelled">缓存已停止</string>
+    <string name="cache_manage_task_paused">缓存已暂停</string>
     <string name="cache_manage_all_chapters">全部章节</string>
     <string name="cache_manage_long_press_hint">长按章节进入多选，可批量缓存或删除。</string>
     <string name="cache_manage_selected_count">已选择 %1$d 章</string>

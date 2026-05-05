@@ -27,6 +27,7 @@ import io.legado.app.utils.visible
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class CacheChapterDialog :
@@ -138,11 +139,20 @@ class CacheChapterDialog :
 
     private fun loadChapters(key: String? = null) {
         chapterLoadJob?.cancel()
-        binding.rotateLoading.visible()
+        val searchKey = key?.trim()
+        val shouldDebounce = !searchKey.isNullOrBlank()
+        if (!shouldDebounce) {
+            binding.rotateLoading.visible()
+        }
         lateinit var job: Job
         job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val items = viewModel.getChapterItems(book, key, filter)
+                if (shouldDebounce) {
+                    delay(SEARCH_DEBOUNCE_MS)
+                    if (chapterLoadJob !== job) return@launch
+                    binding.rotateLoading.visible()
+                }
+                val items = viewModel.getChapterItems(book, searchKey, filter)
                 if (chapterLoadJob !== job) return@launch
                 adapter.setItems(items)
                 binding.tvMsg.run {
@@ -213,7 +223,7 @@ class CacheChapterDialog :
                 binding.rotateLoading.visible()
                 lifecycleScope.launch {
                     kotlin.runCatching {
-                        items.forEach { viewModel.deleteChapterCache(book, it.chapter) }
+                        viewModel.deleteChapterCaches(book, items.map { it.chapter })
                     }.onSuccess {
                         callback?.onCacheChanged()
                         adapter.setSelectionMode(false)
@@ -244,6 +254,8 @@ class CacheChapterDialog :
     }
 
     companion object {
+        private const val SEARCH_DEBOUNCE_MS = 180L
+
         fun newInstance(book: Book): CacheChapterDialog {
             return CacheChapterDialog().apply {
                 arguments = bundleOf("book" to book)

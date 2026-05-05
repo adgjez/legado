@@ -10,10 +10,12 @@ import io.legado.app.help.globalExecutor
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.activityPendingIntent
+import io.legado.app.utils.broadcastPendingIntent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
@@ -25,10 +27,16 @@ import kotlin.math.max
 
 object AudioCacheTaskManager {
 
+    const val EXTRA_BOOK_URL = "bookUrl"
+
     private val executor: ExecutorService = globalExecutor
     private val cancelFlags = ConcurrentHashMap<String, AtomicBoolean>()
     private val futures = ConcurrentHashMap<String, Future<*>>()
     private val lastNotifyTimes = ConcurrentHashMap<String, Long>()
+    private val requests = ConcurrentHashMap<String, AudioCacheTaskRequest>()
+    private val pausingBookUrls = ConcurrentHashMap.newKeySet<String>()
+    private val pendingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
+    private val preparingResumeBookUrls = ConcurrentHashMap.newKeySet<String>()
     private val _states = MutableStateFlow<Map<String, AudioCacheTaskState>>(emptyMap())
     val states: StateFlow<Map<String, AudioCacheTaskState>> = _states.asStateFlow()
 
@@ -46,6 +54,43 @@ object AudioCacheTaskManager {
         if (chapters.isEmpty()) return false
         val existing = _states.value[book.bookUrl]
         if (existing?.active == true) return false
+        if (existing?.status == CacheTaskStatus.PAUSED) return false
+        val request = AudioCacheTaskRequest(
+            book = book,
+            chapters = chapters,
+            resolver = resolver,
+            onChapterResolved = onChapterResolved,
+            onFinished = onFinished,
+            totalChapters = chapters.size
+        )
+        requests[book.bookUrl] = request
+        return startRequest(request, chapters, completedOffset = 0)
+    }
+
+    private fun startRequest(
+        request: AudioCacheTaskRequest,
+        chapters: List<BookChapter>,
+        completedOffset: Int
+    ): Boolean {
+        val book = request.book
+        if (chapters.isEmpty()) {
+            updateState(
+                book.bookUrl,
+                AudioCacheTaskState(
+                    bookUrl = book.bookUrl,
+                    bookName = book.name,
+                    totalChapters = request.totalChapters,
+                    completedChapters = request.totalChapters,
+                    status = CacheTaskStatus.COMPLETED,
+                    active = false,
+                    message = appCtx.getString(R.string.cache_manage_task_done, request.totalChapters)
+                )
+            )
+            requests.remove(book.bookUrl)
+            request.onFinished?.invoke()
+            return true
+        }
+        if (futures.containsKey(book.bookUrl)) return false
         val cancelFlag = AtomicBoolean(false)
         cancelFlags[book.bookUrl] = cancelFlag
         updateState(
@@ -53,44 +98,47 @@ object AudioCacheTaskManager {
             AudioCacheTaskState(
                 bookUrl = book.bookUrl,
                 bookName = book.name,
-                totalChapters = chapters.size,
+                totalChapters = request.totalChapters,
+                completedChapters = completedOffset,
                 status = CacheTaskStatus.PENDING,
                 message = appCtx.getString(R.string.data_loading)
             )
         )
         val future = executor.submit {
-            var completed = 0
+            var finalStatus: CacheTaskStatus? = null
+            var completed = completedOffset
             var downloadedBytes = 0L
             var knownTotalBytes = 0L
             var speedBytes = 0L
             var speedWindowStart = System.currentTimeMillis()
             try {
-                chapters.forEachIndexed { index, chapter ->
+                chapters.forEach { chapter ->
                     if (cancelFlag.get()) throw CancellationException("cancelled")
+                    val displayIndex = (completed + 1).coerceAtMost(request.totalChapters)
                     updateState(
                         book.bookUrl
                     ) {
                         it.copy(
                             status = CacheTaskStatus.RESOLVING,
                             currentChapterTitle = chapter.title,
-                            currentChapterIndex = index + 1,
+                            currentChapterIndex = displayIndex,
                             completedChapters = completed,
                             active = true,
                             message = appCtx.getString(
                                 R.string.cache_manage_resolving_chapter,
-                                index + 1,
-                                chapters.size
+                                displayIndex,
+                                request.totalChapters
                             )
                         )
                     }
-                    val request = runBlocking {
-                        resolver(book, chapter)
+                    val mediaRequest = runBlocking {
+                        request.resolver(book, chapter)
                     }
-                    onChapterResolved?.invoke(chapter, request)
+                    request.onChapterResolved?.invoke(chapter, mediaRequest)
                     var chapterKnownLength = 0L
                     ExoPlayerHelper.cacheMedia(
-                        request = request,
-                        progress = { requestLength, bytesCached, newBytesCached ->
+                        request = mediaRequest,
+                        progress = progress@{ requestLength, bytesCached, newBytesCached ->
                             if (cancelFlag.get()) throw CancellationException("cancelled")
                             if (requestLength > 0 && bytesCached <= requestLength) {
                                 val previousKnown = chapterKnownLength
@@ -101,19 +149,15 @@ object AudioCacheTaskManager {
                             speedBytes += newBytesCached.coerceAtLeast(0L)
                             val now = System.currentTimeMillis()
                             val delta = (now - speedWindowStart).coerceAtLeast(1L)
-                            val speed = if (delta >= 750L) {
-                                val value = speedBytes * 1000L / delta
-                                speedBytes = 0L
-                                speedWindowStart = now
-                                value
-                            } else {
-                                _states.value[book.bookUrl]?.speedBytesPerSecond ?: 0L
-                            }
+                            if (delta < PROGRESS_STATE_INTERVAL_MS) return@progress
+                            val speed = speedBytes * 1000L / delta
+                            speedBytes = 0L
+                            speedWindowStart = now
                             updateState(book.bookUrl) {
                                 it.copy(
                                     status = CacheTaskStatus.CACHING,
                                     currentChapterTitle = chapter.title,
-                                    currentChapterIndex = index + 1,
+                                    currentChapterIndex = displayIndex,
                                     completedChapters = completed,
                                     downloadedBytes = downloadedBytes,
                                     totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
@@ -121,7 +165,7 @@ object AudioCacheTaskManager {
                                     active = true,
                                     message = buildProgressMessage(
                                         completed = completed,
-                                        total = chapters.size,
+                                        total = request.totalChapters,
                                         downloadedBytes = downloadedBytes,
                                         totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
                                         speedBytes = speed
@@ -137,11 +181,11 @@ object AudioCacheTaskManager {
                             status = CacheTaskStatus.CACHING,
                             completedChapters = completed,
                             currentChapterTitle = chapter.title,
-                            currentChapterIndex = index + 1,
+                            currentChapterIndex = displayIndex,
                             active = true,
                             message = buildProgressMessage(
                                 completed = completed,
-                                total = chapters.size,
+                                total = request.totalChapters,
                                 downloadedBytes = downloadedBytes,
                                 totalBytes = knownTotalBytes.takeIf { value -> value > 0L },
                                 speedBytes = _states.value[book.bookUrl]?.speedBytesPerSecond ?: 0L
@@ -158,28 +202,71 @@ object AudioCacheTaskManager {
                         message = appCtx.getString(R.string.cache_manage_task_done, completed)
                     )
                 }
+                finalStatus = CacheTaskStatus.COMPLETED
             } catch (e: CancellationException) {
+                finalStatus = if (pausingBookUrls.contains(book.bookUrl)) {
+                    CacheTaskStatus.PAUSED
+                } else {
+                    CacheTaskStatus.CANCELLED
+                }
                 updateState(book.bookUrl) {
                     it.copy(
-                        status = CacheTaskStatus.CANCELLED,
+                        status = finalStatus ?: CacheTaskStatus.CANCELLED,
                         active = false,
                         speedBytesPerSecond = 0L,
-                        message = appCtx.getString(R.string.cache_manage_task_cancelled)
+                        message = appCtx.getString(
+                            if (finalStatus == CacheTaskStatus.PAUSED) {
+                                R.string.cache_manage_task_paused
+                            } else {
+                                R.string.cache_manage_task_cancelled
+                            }
+                        )
                     )
                 }
             } catch (e: Exception) {
+                finalStatus = if (cancelFlag.get() && pausingBookUrls.contains(book.bookUrl)) {
+                    CacheTaskStatus.PAUSED
+                } else {
+                    CacheTaskStatus.FAILED
+                }
                 updateState(book.bookUrl) {
                     it.copy(
-                        status = CacheTaskStatus.FAILED,
+                        status = finalStatus ?: CacheTaskStatus.FAILED,
                         active = false,
                         speedBytesPerSecond = 0L,
-                        message = e.localizedMessage ?: appCtx.getString(R.string.error)
+                        message = if (finalStatus == CacheTaskStatus.PAUSED) {
+                            appCtx.getString(R.string.cache_manage_task_paused)
+                        } else {
+                            e.localizedMessage ?: appCtx.getString(R.string.error)
+                        }
                     )
                 }
             } finally {
+                val shouldResume = finalStatus == CacheTaskStatus.PAUSED &&
+                    pendingResumeBookUrls.remove(book.bookUrl)
+                val remainingChapters = if (shouldResume) {
+                    request.chapters.filterNot { ExoPlayerHelper.isMediaCached(it.resourceUrl) }
+                } else {
+                    emptyList()
+                }
+                val resumeCompletedOffset = if (shouldResume) {
+                    (request.totalChapters - remainingChapters.size)
+                        .coerceAtLeast(completed)
+                        .coerceIn(0, request.totalChapters)
+                } else {
+                    completed
+                }
                 cancelFlags.remove(book.bookUrl)
                 futures.remove(book.bookUrl)
-                onFinished?.invoke()
+                pausingBookUrls.remove(book.bookUrl)
+                if (shouldResume) {
+                    startRequest(request, remainingChapters, resumeCompletedOffset)
+                } else {
+                    if (finalStatus != CacheTaskStatus.PAUSED) {
+                        requests.remove(book.bookUrl)
+                    }
+                    request.onFinished?.invoke()
+                }
                 lastNotifyTimes.remove(book.bookUrl)
             }
         }
@@ -188,8 +275,65 @@ object AudioCacheTaskManager {
     }
 
     fun cancel(bookUrl: String) {
+        requests.remove(bookUrl)
+        pausingBookUrls.remove(bookUrl)
+        pendingResumeBookUrls.remove(bookUrl)
+        preparingResumeBookUrls.remove(bookUrl)
         cancelFlags[bookUrl]?.set(true)
         futures[bookUrl]?.cancel(true)
+    }
+
+    fun pause(bookUrl: String) {
+        val state = _states.value[bookUrl] ?: return
+        if (!state.active) return
+        pausingBookUrls.add(bookUrl)
+        cancelFlags[bookUrl]?.set(true)
+        futures[bookUrl]?.cancel(true)
+        updateState(bookUrl) {
+            it.copy(
+                status = CacheTaskStatus.PAUSED,
+                active = false,
+                speedBytesPerSecond = 0L,
+                message = appCtx.getString(R.string.cache_manage_task_paused)
+            )
+        }
+    }
+
+    fun resume(bookUrl: String): Boolean {
+        val state = _states.value[bookUrl] ?: return false
+        if (state.status != CacheTaskStatus.PAUSED) return false
+        if (futures.containsKey(bookUrl)) {
+            pendingResumeBookUrls.add(bookUrl)
+            return true
+        }
+        if (!preparingResumeBookUrls.add(bookUrl)) return true
+        executor.execute {
+            try {
+                val request = requests[bookUrl] ?: return@execute
+                val latestState = _states.value[bookUrl] ?: return@execute
+                if (latestState.status != CacheTaskStatus.PAUSED || futures.containsKey(bookUrl)) {
+                    return@execute
+                }
+                val remainingChapters = request.chapters
+                    .filterNot { ExoPlayerHelper.isMediaCached(it.resourceUrl) }
+                val completedOffset = (request.totalChapters - remainingChapters.size)
+                    .coerceAtLeast(latestState.completedChapters)
+                    .coerceIn(0, request.totalChapters)
+                startRequest(request, remainingChapters, completedOffset)
+            } finally {
+                preparingResumeBookUrls.remove(bookUrl)
+            }
+        }
+        return true
+    }
+
+    fun togglePause(bookUrl: String) {
+        val state = _states.value[bookUrl] ?: return
+        if (state.status == CacheTaskStatus.PAUSED) {
+            resume(bookUrl)
+        } else if (state.active) {
+            pause(bookUrl)
+        }
     }
 
     private fun buildProgressMessage(
@@ -217,26 +361,32 @@ object AudioCacheTaskManager {
     }
 
     private fun updateState(bookUrl: String, transform: (AudioCacheTaskState) -> AudioCacheTaskState) {
-        val current = _states.value[bookUrl] ?: return
-        updateState(bookUrl, transform(current))
+        var updatedState: AudioCacheTaskState? = null
+        _states.update { states ->
+            val current = states[bookUrl] ?: return@update states
+            val updated = transform(current)
+            updatedState = updated
+            states.toMutableMap().apply {
+                put(bookUrl, updated)
+            }
+        }
+        updatedState?.let(::notifyState)
     }
 
     private fun updateState(bookUrl: String, state: AudioCacheTaskState) {
-        _states.value = _states.value.toMutableMap().apply {
-            put(bookUrl, state)
+        _states.update { states ->
+            states.toMutableMap().apply {
+                put(bookUrl, state)
+            }
         }
         notifyState(state)
     }
 
     private fun notifyState(state: AudioCacheTaskState) {
-        val terminal = !state.active && state.status in setOf(
-            CacheTaskStatus.COMPLETED,
-            CacheTaskStatus.CANCELLED,
-            CacheTaskStatus.FAILED
-        )
+        val terminal = !state.active && state.status.isTerminalNotificationStatus()
         val now = System.currentTimeMillis()
         val last = lastNotifyTimes[state.bookUrl] ?: 0L
-        if (!terminal && now - last < 1000L) return
+        if (!terminal && now - last < NOTIFICATION_INTERVAL_MS) return
         lastNotifyTimes[state.bookUrl] = now
         val progressMax = state.totalChapters.coerceAtLeast(1)
         val progress = state.completedChapters.coerceIn(0, progressMax)
@@ -248,6 +398,18 @@ object AudioCacheTaskManager {
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(appCtx.activityPendingIntent<CacheManageActivity>("audioCacheManage"))
+        if (state.active || state.status == CacheTaskStatus.PAUSED) {
+            val paused = state.status == CacheTaskStatus.PAUSED
+            builder.addAction(
+                if (paused) R.drawable.ic_play_24dp else R.drawable.ic_pause_24dp,
+                appCtx.getString(if (paused) R.string.resume else R.string.pause),
+                appCtx.broadcastPendingIntent<AudioCacheActionReceiver>(
+                    "$ACTION_AUDIO_CACHE_TOGGLE:${state.bookUrl.hashCode()}:${state.status}"
+                ) {
+                    putExtra(EXTRA_BOOK_URL, state.bookUrl)
+                }
+            )
+        }
         if (state.active) {
             builder.setProgress(progressMax, progress, state.status == CacheTaskStatus.RESOLVING)
         } else {
@@ -261,9 +423,30 @@ enum class CacheTaskStatus {
     PENDING,
     RESOLVING,
     CACHING,
+    PAUSED,
     COMPLETED,
     CANCELLED,
     FAILED
+}
+
+private data class AudioCacheTaskRequest(
+    val book: Book,
+    val chapters: List<BookChapter>,
+    val resolver: suspend (Book, BookChapter) -> ExoPlayerHelper.MediaRequest,
+    val onChapterResolved: ((BookChapter, ExoPlayerHelper.MediaRequest) -> Unit)?,
+    val onFinished: (() -> Unit)?,
+    val totalChapters: Int
+)
+
+private const val PROGRESS_STATE_INTERVAL_MS = 750L
+private const val NOTIFICATION_INTERVAL_MS = 1000L
+private const val ACTION_AUDIO_CACHE_TOGGLE = "audioCacheToggle"
+
+private fun CacheTaskStatus.isTerminalNotificationStatus(): Boolean {
+    return this == CacheTaskStatus.COMPLETED ||
+        this == CacheTaskStatus.PAUSED ||
+        this == CacheTaskStatus.CANCELLED ||
+        this == CacheTaskStatus.FAILED
 }
 
 data class AudioCacheTaskState(

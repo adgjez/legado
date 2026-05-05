@@ -23,9 +23,11 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.collectLatest
 
 class CacheManageActivity :
     VMBaseActivity<ActivityCacheManageBinding, CacheManageViewModel>(),
@@ -36,6 +38,9 @@ class CacheManageActivity :
     override val viewModel by viewModels<CacheManageViewModel>()
 
     private val adapter by lazy { CacheManageAdapter(this, this) }
+    private var audioTaskReloadJob: Job? = null
+    private var lastMissingTaskReloadAt = 0L
+    private val handledTerminalTaskReloads = hashSetOf<String>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -85,18 +90,52 @@ class CacheManageActivity :
             AudioCacheTaskManager.states.collectLatest { states ->
                 adapter.updateTaskStates(states)
                 if (viewModel.mode == CacheManageMode.AUDIO) {
-                    val visibleBookUrls = adapter.getItems()
-                        .flatMap { item ->
-                            item.sourceVariants.map { it.book.bookUrl }.ifEmpty { listOf(item.book.bookUrl) }
-                        }
-                        .toSet()
-                    val taskBookUrls = states.values.filter { it.active }.map { it.bookUrl }.toSet()
-                    if (!visibleBookUrls.containsAll(taskBookUrls)) {
-                        viewModel.load()
-                    } else if (states.values.any { !it.active }) {
-                        viewModel.load()
-                    }
+                    reloadAudioItemsWhenNeeded(states)
                 }
+            }
+        }
+    }
+
+    private fun reloadAudioItemsWhenNeeded(states: Map<String, AudioCacheTaskState>) {
+        val stateValues = states.values
+        val activeTaskBookUrls = stateValues
+            .asSequence()
+            .filter { it.active }
+            .mapTo(hashSetOf<String>()) { it.bookUrl }
+        if (activeTaskBookUrls.isNotEmpty()) {
+            val visibleBookUrls = hashSetOf<String>()
+            adapter.getItems().forEach { item ->
+                if (item.sourceVariants.isEmpty()) {
+                    visibleBookUrls.add(item.book.bookUrl)
+                } else {
+                    item.sourceVariants.forEach { visibleBookUrls.add(it.book.bookUrl) }
+                }
+            }
+            val missingActiveTasks = activeTaskBookUrls - visibleBookUrls
+            if (missingActiveTasks.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                if (now - lastMissingTaskReloadAt > MISSING_TASK_RELOAD_INTERVAL_MS && !viewModel.isLoading()) {
+                    lastMissingTaskReloadAt = now
+                    scheduleAudioTaskReload(MISSING_TASK_RELOAD_DELAY_MS)
+                }
+            }
+        }
+        stateValues
+            .filter { !it.active && it.status.isTerminalForListRefresh() }
+            .forEach { state ->
+                val key = "${state.bookUrl}:${state.status}:${state.completedChapters}:${state.totalChapters}"
+                if (handledTerminalTaskReloads.add(key)) {
+                    scheduleAudioTaskReload(TERMINAL_TASK_RELOAD_DELAY_MS)
+                }
+            }
+    }
+
+    private fun scheduleAudioTaskReload(delayMs: Long) {
+        if (audioTaskReloadJob?.isActive == true) return
+        audioTaskReloadJob = lifecycleScope.launch {
+            delay(delayMs)
+            if (viewModel.mode == CacheManageMode.AUDIO && !viewModel.isLoading()) {
+                viewModel.load(CacheManageMode.AUDIO)
             }
         }
     }
@@ -168,7 +207,7 @@ class CacheManageActivity :
     }
 
     override fun stopAudioCache(item: CacheBookItem) {
-        AudioCacheTaskManager.cancel(item.book.bookUrl)
+        AudioCacheTaskManager.togglePause(item.book.bookUrl)
     }
 
     override fun selectSource(item: CacheBookItem) {
@@ -200,7 +239,7 @@ class CacheManageActivity :
     }
 
     private fun uploadAll() {
-        val items = adapter.getItems().filter { it.cachedCount > 0 }
+        val items = adapter.getItems().filter { it.cachedCount > 0 && !it.hasLockedAudioTask() }
         if (items.isEmpty()) {
             toastOnUi(R.string.cache_manage_batch_empty)
             return
@@ -226,7 +265,7 @@ class CacheManageActivity :
     }
 
     private fun deleteAll() {
-        val items = adapter.getItems().filter { it.cachedCount > 0 }
+        val items = adapter.getItems().filter { it.cachedCount > 0 && !it.hasLockedAudioTask() }
         if (items.isEmpty()) {
             toastOnUi(R.string.cache_manage_batch_empty)
             return
@@ -261,4 +300,24 @@ class CacheManageActivity :
             startActivityForBook(target)
         }
     }
+}
+
+private fun CacheTaskStatus.isTerminalForListRefresh(): Boolean {
+    return this == CacheTaskStatus.COMPLETED ||
+        this == CacheTaskStatus.PAUSED ||
+        this == CacheTaskStatus.CANCELLED ||
+        this == CacheTaskStatus.FAILED
+}
+
+private const val MISSING_TASK_RELOAD_INTERVAL_MS = 2500L
+private const val MISSING_TASK_RELOAD_DELAY_MS = 250L
+private const val TERMINAL_TASK_RELOAD_DELAY_MS = 600L
+
+private fun CacheBookItem.hasLockedAudioTask(): Boolean {
+    if (AudioCacheTaskManager.snapshot(book.bookUrl).locksCacheActions()) return true
+    return sourceVariants.any { AudioCacheTaskManager.snapshot(it.book.bookUrl).locksCacheActions() }
+}
+
+private fun AudioCacheTaskState?.locksCacheActions(): Boolean {
+    return this?.active == true || this?.status == CacheTaskStatus.PAUSED
 }

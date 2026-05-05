@@ -49,6 +49,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     var mode: CacheManageMode = CacheManageMode.BOOK
         private set
 
+    fun isLoading(): Boolean = loadJob?.isActive == true
+
     fun load(mode: CacheManageMode = this.mode) {
         this.mode = mode
         loadJob?.cancel()
@@ -133,8 +135,14 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         filter: CacheChapterFilter = CacheChapterFilter.ALL
     ): List<CacheChapterItem> {
         return withContext(Dispatchers.IO) {
-            val cacheNames = getCacheFileNames(book)
+            val cacheNames = if (book.isAudio) emptySet() else getCacheFileNames(book)
             val manifest = CacheManifestHelper.read(book)
+            val manifestCachedIndexes = manifest
+                ?.chapters
+                ?.asSequence()
+                ?.filter { it.cached }
+                ?.mapTo(hashSetOf<Int>()) { it.index }
+                .orEmpty()
             val dbChapters = if (key.isNullOrBlank()) {
                 appDb.bookChapterDao.getChapterList(book.bookUrl)
             } else {
@@ -150,12 +158,16 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 .asSequence()
                 .filterNot { it.isVolume }
                 .mapNotNull { chapter ->
-                    val cached = isChapterCached(
-                        book,
-                        chapter,
-                        cacheNames,
-                        validateImageContent = false
-                    )
+                    val cached = if (book.isAudio && manifest != null) {
+                        chapter.index in manifestCachedIndexes
+                    } else {
+                        isChapterCached(
+                            book,
+                            chapter,
+                            cacheNames,
+                            validateImageContent = false
+                        )
+                    }
                     when (filter) {
                         CacheChapterFilter.CACHED -> if (!cached) return@mapNotNull null
                         CacheChapterFilter.UNCACHED -> if (cached) return@mapNotNull null
@@ -168,11 +180,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     }
 
     suspend fun deleteChapterCache(book: Book, chapter: BookChapter) {
+        deleteChapterCaches(book, listOf(chapter))
+    }
+
+    suspend fun deleteChapterCaches(book: Book, chapters: List<BookChapter>) {
         withContext(Dispatchers.IO) {
-            if (book.isAudio) {
-                ExoPlayerHelper.removeMediaCache(chapter.resourceUrl)
+            if (chapters.isEmpty()) return@withContext
+            chapters.forEach { chapter ->
+                if (book.isAudio) {
+                    ExoPlayerHelper.removeMediaCache(chapter.resourceUrl)
+                }
+                BookHelp.delChapterCache(book, chapter)
             }
-            BookHelp.delChapterCache(book, chapter)
             refreshManifest(book)
         }
     }
@@ -200,9 +219,15 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     ): Int {
         if (!book.isAudio) return 0
         val targets = withContext(Dispatchers.IO) {
-            chapters
+            val realChapters = chapters
                 .asSequence()
                 .filterNot { it.isVolume }
+                .toList()
+            if (CacheManifestHelper.mergeResourceUrls(realChapters, CacheManifestHelper.read(book))) {
+                appDb.bookChapterDao.update(*realChapters.toTypedArray())
+            }
+            realChapters
+                .asSequence()
                 .filterNot { ExoPlayerHelper.isMediaCached(it.resourceUrl) }
                 .toList()
         }
@@ -219,12 +244,12 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             },
             onFinished = {
                 refreshManifest(book)
-                if (reloadOnFinished) {
+                if (reloadOnFinished && mode == CacheManageMode.AUDIO) {
                     load(mode)
                 }
             }
         )
-        if (started) {
+        if (started && mode == CacheManageMode.AUDIO) {
             load(mode)
         }
         return if (started) targets.size else 0
@@ -357,7 +382,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             .mapNotNull { group ->
                 val variants = group
                     .sortedWith(
-                        compareByDescending<CacheBookItem> { if (it.taskState?.active == true) 1 else 0 }
+                        compareByDescending<CacheBookItem> { if (it.taskState.isVisibleAudioTask()) 1 else 0 }
                             .thenByDescending { it.cachedCount }
                             .thenBy { it.sourceName }
                     )
@@ -365,7 +390,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 val groupKey = group.firstOrNull()?.groupKey ?: return@mapNotNull null
                 val selectedKey = selectedSourceKeys[groupKey]
                 val selected = group.firstOrNull { it.sourceKey == selectedKey }
-                    ?: group.firstOrNull { it.taskState?.active == true }
+                    ?: group.firstOrNull { it.taskState.isVisibleAudioTask() }
                     ?: group.maxWithOrNull(
                         compareBy<CacheBookItem> { it.cachedCount }
                             .thenBy { it.totalChapterCount }
@@ -437,12 +462,12 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         manifest: CacheBookManifest?,
         taskState: AudioCacheTaskState?
     ): CacheBookItem? {
-        val active = taskState?.active == true
-        if (manifest == null && !active) return null
+        val hasVisibleTask = taskState.isVisibleAudioTask()
+        if (manifest == null && !hasVisibleTask) return null
         val rawCachedCount = manifest?.cachedChapterCount?.takeIf { it > 0 }
             ?: taskState?.completedChapters
             ?: 0
-        if (rawCachedCount <= 0 && !active) {
+        if (rawCachedCount <= 0 && !hasVisibleTask) {
             CacheManifestHelper.delete(book)
             return null
         }
@@ -708,6 +733,10 @@ private data class AudioCacheManifest(
 
 private fun CacheBookManifest.matches(mode: CacheManageMode): Boolean {
     return type and mode.bookType > 0
+}
+
+private fun AudioCacheTaskState?.isVisibleAudioTask(): Boolean {
+    return this?.active == true || this?.status == CacheTaskStatus.PAUSED
 }
 
 private fun List<BookChapter>.filterByKey(key: String?): List<BookChapter> {

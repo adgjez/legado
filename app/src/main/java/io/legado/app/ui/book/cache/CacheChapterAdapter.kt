@@ -43,8 +43,16 @@ class CacheChapterAdapter(
         item: CacheChapterItem,
         payloads: MutableList<Any>
     ) = binding.run {
+        if (payloads.any { it === PAYLOAD_SELECTION }) {
+            updateSelectionState(this, item)
+            return@run
+        }
         tvTitle.text = "${item.chapter.index + 1}. ${item.chapter.title}"
         tvState.setText(if (item.cached) R.string.cache_manage_cached else R.string.cache_manage_not_cached)
+        updateSelectionState(this, item)
+    }
+
+    private fun updateSelectionState(binding: ItemCacheChapterBinding, item: CacheChapterItem) = binding.run {
         cbSelect.isVisible = selectionMode
         cbSelect.isChecked = selectedKeys.contains(item.key)
         root.isSelected = selectedKeys.contains(item.key)
@@ -78,7 +86,9 @@ class CacheChapterAdapter(
         } else {
             selectedKeys.add(item.key)
         }
-        notifyDataSetChanged()
+        getItems().indexOfFirst { it.key == item.key }
+            .takeIf { it >= 0 }
+            ?.let { notifyItemChanged(it, PAYLOAD_SELECTION) }
     }
 
     fun selectAllVisible() {
@@ -100,6 +110,10 @@ class CacheChapterAdapter(
     interface Callback {
         fun onChapterClick(item: CacheChapterItem)
         fun onChapterLongClick(item: CacheChapterItem)
+    }
+
+    private companion object {
+        private val PAYLOAD_SELECTION = Any()
     }
 }
 
