@@ -235,13 +235,13 @@
             android:layout_weight="1" />
 
         <io.legado.app.ui.widget.image.ImageButton
-            android:id="@+id/iv_play_mode"
+            android:id="@+id/iv_cache"
             android:layout_width="46dp"
             android:layout_height="46dp"
             android:background="@drawable/selector_circle_btn_bg"
-            android:contentDescription="@string/play_mode"
+            android:contentDescription="@string/offline_cache"
             android:padding="5dp"
-            android:src="@drawable/ic_play_mode_list_end_stop"
+            android:src="@drawable/ic_download"
             app:tint="@color/md_white_1000"
             tools:ignore="ImageContrastCheck" />
 

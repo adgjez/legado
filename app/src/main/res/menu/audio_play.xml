@@ -28,6 +28,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_play_mode"
+        android:title="@string/play_mode"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_edit_source"
         android:title="@string/edit_book_source"
         app:showAsAction="never" />

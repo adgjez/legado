@@ -29,6 +29,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
+import io.legado.app.ui.book.cache.CacheChapterDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.login.SourceLoginActivity
@@ -124,6 +125,7 @@ class AudioPlayActivity :
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = !AudioPlay.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
+        menu.findItem(R.id.menu_play_mode)?.title = getPlayModeTitle(playMode)
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -170,6 +172,7 @@ class AudioPlayActivity :
                     }
                 }
             }
+            R.id.menu_play_mode -> AudioPlay.changePlayMode()
             R.id.menu_edit_source -> AudioPlay.bookSource?.let {
                 sourceEditResult.launch {
                     putExtra("sourceUrl", it.bookSourceUrl)
@@ -221,8 +224,10 @@ class AudioPlayActivity :
     }
 
     private fun initListener() {
-        binding.ivPlayMode.setOnClickListener {
-            AudioPlay.changePlayMode()
+        binding.ivCache.setOnClickListener {
+            AudioPlay.book?.let {
+                showDialogFragment(CacheChapterDialog.newInstance(it))
+            }
         }
         binding.fabPlayStop.setOnClickListener {
             playButton()
@@ -244,7 +249,16 @@ class AudioPlayActivity :
     }
 
     private fun updatePlayModeIcon() {
-        binding.ivPlayMode.setImageResource(playMode.iconRes)
+        invalidateOptionsMenu()
+    }
+
+    private fun getPlayModeTitle(mode: AudioPlay.PlayMode): String {
+        return when (mode) {
+            AudioPlay.PlayMode.LIST_END_STOP -> getString(R.string.play_mode)
+            AudioPlay.PlayMode.SINGLE_LOOP -> getString(R.string.play_mode) + "：单章循环"
+            AudioPlay.PlayMode.RANDOM -> getString(R.string.play_mode) + "：随机播放"
+            AudioPlay.PlayMode.LIST_LOOP -> getString(R.string.play_mode) + "：列表循环"
+        }
     }
 
     private fun upCover(path: String?) {
