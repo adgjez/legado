@@ -34,13 +34,13 @@ data class ReadRecordComponentItem(
 object ReadRecordComponents {
 
     private val defaultOrder = listOf(
+        ReadRecordComponentType.GOAL_CARD,
         ReadRecordComponentType.OVERVIEW,
         ReadRecordComponentType.HEATMAP,
-        ReadRecordComponentType.RECENT_BOOKS,
-        ReadRecordComponentType.DAILY_RECORDS,
         ReadRecordComponentType.RECENT_COVERS,
+        ReadRecordComponentType.RECENT_BOOKS,
         ReadRecordComponentType.READ_RANK,
-        ReadRecordComponentType.GOAL_CARD
+        ReadRecordComponentType.DAILY_RECORDS
     )
 
     fun load(): MutableList<ReadRecordComponentItem> {

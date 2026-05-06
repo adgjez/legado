@@ -573,50 +573,72 @@
                             android:orientation="vertical">
 
                             <TextView
+                                android:id="@+id/tv_goal_user_name"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:textColor="@color/secondaryText"
+                                android:textSize="12sp" />
+
+                            <TextView
                                 android:id="@+id/tv_goal_today"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
                                 android:textColor="@color/primaryText"
-                                android:textSize="15sp"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
 
                             <TextView
-                                android:id="@+id/tv_goal_total"
+                                android:id="@+id/tv_goal_progress"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
+                                android:layout_marginTop="6dp"
                                 android:textColor="@color/secondaryText"
-                                android:textSize="12sp" />
+                                android:textSize="13sp" />
 
-                            <TextView
-                                android:id="@+id/tv_goal_books"
+                            <ProgressBar
+                                android:id="@+id/progress_goal"
+                                style="?android:attr/progressBarStyleHorizontal"
                                 android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:textColor="@color/secondaryText"
-                                android:textSize="12sp" />
+                                android:layout_height="8dp"
+                                android:layout_marginTop="10dp"
+                                android:max="100"
+                                android:progress="0" />
 
                         </LinearLayout>
 
                     </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/tv_goal_progress"
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:textColor="@color/primaryText"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
+                        android:orientation="horizontal">
 
-                    <ProgressBar
-                        android:id="@+id/progress_goal"
-                        style="?android:attr/progressBarStyleHorizontal"
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp"
-                        android:layout_marginTop="8dp"
-                        android:max="100"
-                        android:progress="0" />
+                        <TextView
+                            android:id="@+id/tv_goal_total"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:textColor="@color/secondaryText"
+                            android:textSize="13sp" />
+
+                        <Space
+                            android:layout_width="12dp"
+                            android:layout_height="1dp" />
+
+                        <TextView
+                            android:id="@+id/tv_goal_books"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="end"
+                            android:textColor="@color/secondaryText"
+                            android:textSize="13sp" />
+
+                    </LinearLayout>
 
                 </LinearLayout>
 

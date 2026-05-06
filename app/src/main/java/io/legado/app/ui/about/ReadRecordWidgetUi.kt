@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -15,18 +16,25 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.databinding.ItemReadRecordCoverBinding
 import io.legado.app.databinding.ItemReadRecordRankBinding
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.BookCover
+import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 
-fun Context.openReadRecordBook(book: io.legado.app.data.entities.Book?) {
+fun Context.openReadRecordBook(
+    book: io.legado.app.data.entities.Book?,
+    fallbackName: String? = null
+) {
     if (book == null) {
+        fallbackName?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            SearchActivity.start(this, it)
+            return
+        }
         toastOnUi(getString(R.string.read_record_goal_open_missing))
         return
     }
@@ -87,8 +95,8 @@ class ReadRecordRankAdapter(
     inner class RankHolder(private val binding: ItemReadRecordRankBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun bind(item: ReadRecordRankItem, position: Int) {
-            val name = item.book?.name ?: item.snapshot?.name.orEmpty()
-            val author = item.book?.author ?: item.snapshot?.author.orEmpty()
+            val name = item.book?.name ?: item.snapshot?.name ?: item.displayName
+            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
             binding.tvName.text = name
             binding.tvMeta.text = if (author.isBlank()) {
                 context.getString(R.string.read_record_rank_number, position + 1)
@@ -114,7 +122,7 @@ object ReadRecordRankDialog {
         val recyclerView = androidx.recyclerview.widget.RecyclerView(context).apply {
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
             adapter = ReadRecordRankAdapter(context, items, formatDuring) {
-                context.openReadRecordBook(it.book)
+                context.openReadRecordBook(it.book, it.displayName)
             }
             overScrollMode = View.OVER_SCROLL_NEVER
         }
@@ -153,52 +161,94 @@ object ReadRecordRankDialog {
 
 fun Context.showReadRecordGoalDialog(
     initial: ReadRecordGoalConfig,
+    onPickAvatarRequest: (((String) -> Unit) -> Unit)? = null,
     onSave: (ReadRecordGoalConfig) -> Unit
 ) {
-    alert(R.string.read_record_goal_card) {
-        val container = LinearLayout(this@showReadRecordGoalDialog).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20.dpToPx(), 8.dpToPx(), 20.dpToPx(), 0)
-        }
-        val avatarInput = EditText(this@showReadRecordGoalDialog).apply {
-            hint = getString(R.string.read_record_goal_avatar_hint)
-            setText(initial.avatar.orEmpty())
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        }
-        val goalInput = EditText(this@showReadRecordGoalDialog).apply {
-            hint = getString(R.string.read_record_goal_minutes)
-            setText(initial.dailyGoalMinutes.toString())
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        container.addView(
-            androidx.appcompat.widget.AppCompatTextView(this@showReadRecordGoalDialog).apply {
-                text = getString(R.string.read_record_goal_avatar)
-                setTextColor(primaryTextColor)
-                textSize = 14f
+    val container = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(20.dpToPx(), 12.dpToPx(), 20.dpToPx(), 0)
+    }
+    val userNameInput = EditText(this).apply {
+        hint = getString(R.string.read_record_goal_user_name_hint)
+        setText(initial.userName.orEmpty())
+        inputType = InputType.TYPE_CLASS_TEXT
+        minLines = 1
+        maxLines = 1
+    }
+    val avatarInput = EditText(this).apply {
+        hint = getString(R.string.read_record_goal_avatar_hint)
+        setText(initial.avatar.orEmpty())
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        minLines = 1
+        maxLines = 2
+    }
+    val avatarButton = Button(this).apply {
+        text = getString(R.string.read_record_goal_avatar_pick)
+        setOnClickListener {
+            onPickAvatarRequest?.invoke { value ->
+                avatarInput.setText(value)
+                avatarInput.setSelection(avatarInput.text?.length ?: 0)
             }
-        )
-        container.addView(avatarInput)
-        container.addView(
-            androidx.appcompat.widget.AppCompatTextView(this@showReadRecordGoalDialog).apply {
-                text = getString(R.string.read_record_goal_target)
-                setTextColor(primaryTextColor)
-                textSize = 14f
-                setPadding(0, 12.dpToPx(), 0, 0)
-            }
-        )
-        container.addView(goalInput)
-        customView { container }
-        okButton {
+        }
+    }
+    val goalInput = EditText(this).apply {
+        hint = getString(R.string.read_record_goal_minutes)
+        setText(initial.dailyGoalMinutes.toString())
+        inputType = InputType.TYPE_CLASS_NUMBER
+    }
+    fun sectionTitle(textRes: Int) =
+        androidx.appcompat.widget.AppCompatTextView(this).apply {
+            text = getString(textRes)
+            setTextColor(primaryTextColor)
+            textSize = 14f
+        }
+    container.addView(sectionTitle(R.string.read_record_goal_user_name))
+    container.addView(userNameInput)
+    container.addView(sectionTitle(R.string.read_record_goal_avatar).apply {
+        setPadding(0, 14.dpToPx(), 0, 0)
+    })
+    container.addView(
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            addView(
+                avatarInput,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = 10.dpToPx()
+                }
+            )
+            addView(
+                avatarButton,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+    )
+    container.addView(sectionTitle(R.string.read_record_goal_target).apply {
+        setPadding(0, 14.dpToPx(), 0, 0)
+    })
+    container.addView(goalInput)
+    AlertDialog.Builder(this)
+        .setTitle(R.string.read_record_goal_card)
+        .setView(container)
+        .setPositiveButton(android.R.string.ok) { _, _ ->
             val minutes = goalInput.text?.toString()?.trim()?.toIntOrNull()?.coerceAtLeast(1) ?: 120
             onSave(
                 ReadRecordGoalConfig(
+                    userName = userNameInput.text?.toString()?.trim().orEmpty().ifBlank { null },
                     avatar = avatarInput.text?.toString()?.trim().orEmpty().ifBlank { null },
                     dailyGoalMinutes = minutes
                 )
             )
         }
-        cancelButton()
-    }
+        .setNegativeButton(android.R.string.cancel, null)
+        .create()
+        .apply {
+            setOnShowListener { applyTint() }
+        }
+        .show()
 }
 
 fun buildReadRecordPreviewBackground(context: Context, weight: Float = 1f): GradientDrawable {

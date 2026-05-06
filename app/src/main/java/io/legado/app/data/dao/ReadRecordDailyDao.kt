@@ -21,6 +21,9 @@ interface ReadRecordDailyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg record: ReadRecordDaily)
 
+    @Query("delete from readRecordDaily where date = :date")
+    fun delete(date: String)
+
     @Query("delete from readRecordDaily")
     fun clear()
 }

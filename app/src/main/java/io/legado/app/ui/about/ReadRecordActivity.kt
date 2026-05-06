@@ -25,9 +25,12 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
@@ -66,6 +69,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private var currentTodayTime: Long = 0L
     private var currentTotalTime: Long = 0L
     private var currentReadBookCount: Int = 0
+    private var pendingAvatarUpdate: ((String) -> Unit)? = null
+    private val selectGoalAvatar = registerForActivityResult(HandleFileContract()) {
+        it.uri?.toString()?.let { uri ->
+            pendingAvatarUpdate?.invoke(uri)
+        }
+        pendingAvatarUpdate = null
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -103,6 +113,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                                 appDb.readRecordDao.clear()
                                 appDb.readRecordDailyDao.clear()
                                 appDb.readRecentBookDao.clear()
+                                ReadRecordWidgetStore.clearRecentSnapshots()
                             }
                             loadData()
                         }
@@ -127,7 +138,16 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             ReadRecordRankDialog.show(this, currentRankItems, ::formatDuring)
         }
         binding.ivGoalEdit.setOnClickListener {
-            showReadRecordGoalDialog(currentGoalConfig) { config ->
+            showReadRecordGoalDialog(
+                initial = currentGoalConfig,
+                onPickAvatarRequest = { update ->
+                    pendingAvatarUpdate = update
+                    selectGoalAvatar.launch {
+                        mode = HandleFileContract.IMAGE
+                        title = getString(R.string.read_record_goal_avatar)
+                    }
+                }
+            ) { config ->
                 currentGoalConfig = config
                 ReadRecordWidgetStore.saveGoalConfig(config)
                 renderGoalCard(currentTodayTime, currentTotalTime, currentReadBookCount)
@@ -313,6 +333,21 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             itemBinding.root.setOnClickListener {
                 startActivityForBook(item.book)
             }
+            itemBinding.root.setOnLongClickListener {
+                alert(R.string.delete, item.book.name) {
+                    yesButton {
+                        lifecycleScope.launch {
+                            withContext(IO) {
+                                appDb.readRecentBookDao.delete(item.book.bookUrl)
+                                ReadRecordWidgetStore.removeRecentSnapshot(item.book.bookUrl)
+                            }
+                            loadData()
+                        }
+                    }
+                    noButton()
+                }
+                true
+            }
             binding.llRecentBooks.addView(itemBinding.root)
             if (index < items.lastIndex) {
                 binding.llRecentBooks.addView(createDivider())
@@ -331,6 +366,20 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             itemBinding.tvDayTitle.text = item.date.format(fullDayFormatter)
             itemBinding.tvDaySubtitle.text = buildDaySubtitle(item.date)
             itemBinding.tvDayTime.text = formatDuring(item.readTime)
+            itemBinding.root.setOnLongClickListener {
+                alert(R.string.delete, item.date.format(fullDayFormatter)) {
+                    yesButton {
+                        lifecycleScope.launch {
+                            withContext(IO) {
+                                appDb.readRecordDailyDao.delete(item.date.toString())
+                            }
+                            loadData()
+                        }
+                    }
+                    noButton()
+                }
+                true
+            }
             binding.llDailyRecords.addView(itemBinding.root)
             if (index < items.lastIndex) {
                 binding.llDailyRecords.addView(createDivider())
@@ -342,7 +391,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         binding.tvRecentCoversEmpty.isVisible = items.isEmpty()
         binding.rvRecentCovers.isVisible = items.isNotEmpty()
         binding.rvRecentCovers.adapter = ReadRecordCoverAdapter(this, items) {
-            openReadRecordBook(it.book)
+            openReadRecordBook(it.book, it.snapshot.name)
         }
     }
 
@@ -356,8 +405,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             val rowBinding =
                 io.legado.app.databinding.ItemReadRecordRankBinding.inflate(layoutInflater, binding.llReadRank, false)
             rowBinding.ivCover.loadReadRecordCover(item.book?.getDisplayCover() ?: item.snapshot?.displayCover())
-            rowBinding.tvName.text = item.book?.name ?: item.snapshot?.name.orEmpty()
-            val author = item.book?.author ?: item.snapshot?.author.orEmpty()
+            rowBinding.tvName.text = item.book?.name ?: item.snapshot?.name ?: item.displayName
+            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
             rowBinding.tvMeta.text = if (author.isBlank()) {
                 getString(R.string.read_record_rank_number, index + 1)
             } else {
@@ -366,7 +415,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             rowBinding.tvTime.text = formatDuring(item.readTime)
             rowBinding.root.alpha = if (item.book == null) 0.72f else 1f
             rowBinding.root.setOnClickListener {
-                openReadRecordBook(item.book)
+                openReadRecordBook(item.book, item.displayName)
             }
             binding.llReadRank.addView(rowBinding.root)
             if (index < items.lastIndex) {
@@ -379,16 +428,17 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         val todayText = formatDuring(todayTime)
         val totalText = formatDuring(totalTime)
         binding.ivGoalAvatar.loadReadRecordCover(currentGoalConfig.avatar)
+        binding.tvGoalUserName.text = currentGoalConfig.userName.orEmpty()
+        binding.tvGoalUserName.isVisible = !currentGoalConfig.userName.isNullOrBlank()
         binding.tvGoalToday.text = getString(R.string.read_record_goal_today, todayText)
         binding.tvGoalTotal.text = getString(R.string.read_record_goal_total, totalText)
         binding.tvGoalBooks.text = getString(R.string.read_record_goal_books, readBookCount)
         val goalMs = currentGoalConfig.dailyGoalMinutes * 60L * 1000L
         val percent = if (goalMs <= 0L) 0 else ((todayTime * 100) / goalMs).toInt().coerceIn(0, 100)
         binding.tvGoalProgress.text = getString(
-            R.string.read_record_goal_progress,
+            R.string.read_record_goal_target_progress,
             todayText,
-            formatDuring(goalMs),
-            percent
+            formatDuring(goalMs)
         )
         binding.progressGoal.progress = percent
     }

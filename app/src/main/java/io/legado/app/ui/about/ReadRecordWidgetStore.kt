@@ -28,6 +28,7 @@ data class ReadRecentVisualItem(
 )
 
 data class ReadRecordGoalConfig(
+    val userName: String? = null,
     val avatar: String? = null,
     val dailyGoalMinutes: Int = 120
 )
@@ -35,6 +36,8 @@ data class ReadRecordGoalConfig(
 data class ReadRecordRankItem(
     val book: Book?,
     val snapshot: ReadRecentVisualSnapshot?,
+    val displayName: String,
+    val displayAuthor: String,
     val readTime: Long
 )
 
@@ -69,6 +72,16 @@ object ReadRecordWidgetStore {
         appCtx.putPrefString(PreferKey.readRecordRecentSnapshots, GSON.toJson(items))
     }
 
+    fun removeRecentSnapshot(bookUrl: String) {
+        val current = loadRecentSnapshots()
+            .filterNot { it.bookUrl == bookUrl }
+        saveRecentSnapshots(current)
+    }
+
+    fun clearRecentSnapshots() {
+        saveRecentSnapshots(emptyList())
+    }
+
     fun loadRecentVisualItems(limit: Int): List<ReadRecentVisualItem> {
         val booksByUrl = appDb.bookDao.all.associateBy { it.bookUrl }
         return loadRecentSnapshots()
@@ -96,9 +109,13 @@ object ReadRecordWidgetStore {
             .sortedByDescending { it.lastRead }
             .associateBy { it.name }
         val result = readRecords.map { record: ReadRecordShow ->
+            val book = booksByName[record.bookName]
+            val snapshot = snapshotsByName[record.bookName]
             ReadRecordRankItem(
-                book = booksByName[record.bookName],
-                snapshot = snapshotsByName[record.bookName],
+                book = book,
+                snapshot = snapshot,
+                displayName = record.bookName,
+                displayAuthor = book?.author ?: snapshot?.author.orEmpty(),
                 readTime = record.readTime
             )
         }
