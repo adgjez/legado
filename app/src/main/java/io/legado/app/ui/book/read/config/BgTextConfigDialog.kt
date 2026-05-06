@@ -152,6 +152,9 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         ivDelete.setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
         tvBgAlpha.setTextColor(primaryTextColor)
         tvBgImage.setTextColor(primaryTextColor)
+        dsbTextShadow.valueFormat = {
+            if (it == 0) getString(R.string.jf_convert_o) else "$it%"
+        }
         if (ReadBook.book?.isImage == true) {
             spUnderline.isGone = true
         } else {
@@ -211,6 +214,7 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         binding.swScrollFollowBg.isChecked = curReadScrollFollowBackground()
         binding.spUnderline.setSelectionSafely(underlineMode)
         binding.sbBgAlpha.progress = bgAlpha
+        binding.dsbTextShadow.progress = ReadBookConfig.paperInkStrength
     }
 
     @SuppressLint("InflateParams")
@@ -250,6 +254,12 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
             ReadBookConfig.durConfig.setCurReadScrollFollowBackground(isChecked)
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 5))
         }
+        val updateTextShadow: (Int) -> Unit = {
+            ReadBookConfig.paperInkStrength = it
+            postEvent(EventBus.UP_CONFIG, arrayListOf(2, 9, 6))
+        }
+        binding.dsbTextShadow.onChanging = updateTextShadow
+        binding.dsbTextShadow.onChanged = updateTextShadow
         binding.tvTextColor.setOnClickListener {
             ColorPickerDialog.newBuilder()
                 .setColor(curTextColor())

@@ -212,6 +212,14 @@
         android:padding="6dp"
         tools:ignore="UnusedAttribute" />
 
+    <io.legado.app.ui.widget.DetailSeekBar
+        android:id="@+id/dsb_text_shadow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="6dp"
+        app:max="100"
+        app:title="@string/text_shadow" />
+
     <TextView
         android:id="@+id/tv_bg_image"
         android:layout_width="match_parent"

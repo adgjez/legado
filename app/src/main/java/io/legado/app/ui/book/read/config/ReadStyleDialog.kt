@@ -87,9 +87,6 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         }
         dsbLineSize.valueFormat = { ((it - 10) / 10f).toString() }
         dsbParagraphSpacing.valueFormat = { (it / 10f).toString() }
-        dsbPaperInk.valueFormat = {
-            if (it == 0) getString(R.string.jf_convert_o) else "$it%"
-        }
         styleAdapter = StyleAdapter()
         rvStyle.adapter = styleAdapter
         styleAdapter.addFooterView {
@@ -167,12 +164,6 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
             ReadBookConfig.paragraphSpacing = it
             postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
         }
-        val updatePaperInk: (Int) -> Unit = {
-            ReadBookConfig.paperInkStrength = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2, 9, 6))
-        }
-        dsbPaperInk.onChanging = updatePaperInk
-        dsbPaperInk.onChanged = updatePaperInk
     }
 
     private fun changeBgTextConfig(index: Int) {
@@ -206,7 +197,6 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
             dsbTextLetterSpacing.progress = (it.letterSpacing * 100).toInt() + 50
             dsbLineSize.progress = it.lineSpacingExtra
             dsbParagraphSpacing.progress = it.paragraphSpacing
-            dsbPaperInk.progress = it.paperInkStrength
         }
     }
 

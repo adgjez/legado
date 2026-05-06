@@ -331,16 +331,6 @@
 
         </LinearLayout>
 
-        <io.legado.app.ui.widget.DetailSeekBar
-            android:id="@+id/dsb_paper_ink"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginTop="8dp"
-            app:isBottomBackground="true"
-            app:max="100"
-            app:title="@string/paper_effect" />
-
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rv_style"
             android:layout_width="match_parent"
