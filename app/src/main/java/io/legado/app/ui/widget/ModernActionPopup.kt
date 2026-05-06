@@ -85,10 +85,7 @@ object ModernActionPopup {
         val textColor = ContextCompat.getColor(context, R.color.primaryText)
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiCorner.rounded(
-                ContextCompat.getColor(context, R.color.background_card),
-                UiCorner.panelRadius(context)
-            )
+            background = ColorDrawable(Color.TRANSPARENT)
             setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
             actions.forEach { action ->
                 addView(createItem(context, action, textColor, dismiss))
@@ -96,12 +93,15 @@ object ModernActionPopup {
         }
         return ScrollView(context).apply {
             isFillViewport = false
-            isVerticalScrollBarEnabled = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
             background = UiCorner.rounded(
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.panelRadius(context)
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                clipToOutline = true
+            }
             addView(
                 list,
                 ViewGroup.LayoutParams(

@@ -39,7 +39,7 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:paddingTop="@dimen/bookshelf_title_row_margin_top"
-                android:paddingBottom="4dp">
+                android:paddingBottom="0dp">
 
                 <LinearLayout
                     android:id="@+id/ll_rss_source_select"
@@ -143,7 +143,7 @@
                 android:id="@+id/rv_rss_tags"
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/bookshelf_tag_bar_height"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="@dimen/bookshelf_tag_bar_margin_top"
                 android:visibility="gone" />
 
             <FrameLayout

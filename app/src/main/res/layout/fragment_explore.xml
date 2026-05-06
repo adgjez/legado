@@ -48,7 +48,7 @@
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingTop="@dimen/bookshelf_title_row_margin_top"
-                    android:paddingBottom="4dp">
+                    android:paddingBottom="0dp">
 
                     <LinearLayout
                         android:id="@+id/ll_discover_source_select"
@@ -137,14 +137,14 @@
                     android:id="@+id/rv_discover_selects"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/bookshelf_tag_bar_height"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="@dimen/bookshelf_tag_bar_margin_top"
                     android:visibility="gone" />
 
                 <io.legado.app.ui.widget.RoundedTagBarView
                     android:id="@+id/rv_discover_tags"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/bookshelf_tag_bar_height"
-                    android:layout_marginTop="8dp" />
+                    android:layout_marginTop="@dimen/bookshelf_tag_bar_margin_top" />
 
                 <FrameLayout
                     android:id="@+id/fl_discover_books"
