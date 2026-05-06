@@ -591,7 +591,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             add(ThemeAction.APPLY)
             add(ThemeAction.EDIT)
             if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.EXPORT)
-            if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.UPLOAD_URL)
             if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DOWNLOAD)
             if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.UPLOAD)
             if (!isApplied(entry)) {
@@ -604,8 +603,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             when (actions[index]) {
                 ThemeAction.APPLY -> applyTheme(entry)
                 ThemeAction.EDIT -> showEditDialog(entry)
-                ThemeAction.EXPORT -> exportThemeZip(entry)
-                ThemeAction.UPLOAD_URL -> uploadThemeUrl(entry)
+                ThemeAction.EXPORT -> showThemeExportOptions(entry)
                 ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) { ThemePackageManager.download(entry) }
                 ThemeAction.UPLOAD -> {
                     enqueueUploadIfNeeded(entry)
@@ -621,6 +619,19 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     ThemePackageManager.deleteLocal(entry)
                     enqueueRemoteDelete(entry)
                 }
+            }
+        }
+    }
+
+    private fun showThemeExportOptions(entry: ThemePackageManager.Entry) {
+        val options = listOf(
+            getString(R.string.theme_export_zip),
+            getString(R.string.upload_url)
+        )
+        selector(getString(R.string.export_str), options) { _, index ->
+            when (index) {
+                0 -> exportThemeZip(entry)
+                1 -> uploadThemeUrl(entry)
             }
         }
     }
@@ -1035,7 +1046,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         APPLY(R.string.theme_apply),
         EDIT(R.string.edit),
         EXPORT(R.string.theme_export_zip),
-        UPLOAD_URL(R.string.upload_url),
         DOWNLOAD(R.string.theme_download_local),
         UPLOAD(R.string.theme_upload_remote),
         DELETE_LOCAL(R.string.theme_delete_local),

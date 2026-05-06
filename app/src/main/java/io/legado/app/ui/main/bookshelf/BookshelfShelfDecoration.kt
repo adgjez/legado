@@ -27,12 +27,14 @@ class BookshelfShelfDecoration(
     private val plankRect = RectF()
     private val contactShadowRect = RectF()
     private val topPath = Path()
+    private val frontPath = Path()
     private val sideInset = 18.dpToPx().toFloat()
     private val bookToPlankGap = (-2).dpToPx().toFloat()
     private val topHeight = 12.dpToPx().toFloat()
     private val frontHeight = 11.dpToPx().toFloat()
     private val shadowHeight = 9.dpToPx().toFloat()
     private val bottomEdgeHeight = 1.dpToPx().toFloat()
+    private val frontBottomInset = 8.dpToPx().toFloat()
     private val rowTopSpacing = 14.dpToPx()
     private val bottomSpacing = 12.dpToPx()
     private val surfaceColor: Int
@@ -68,10 +70,10 @@ class BookshelfShelfDecoration(
             if (position == RecyclerView.NO_POSITION) continue
             val row = position / spanCount
             val cover = child.findViewById<View>(R.id.iv_cover)
-            val coverTop = cover?.let { child.top + it.top + child.translationY }
-                ?: (child.top + child.translationY)
-            val coverBottom = cover?.let { child.top + it.bottom + child.translationY }
-                ?: (child.bottom + child.translationY)
+            // Item animations move the book views with translation. The shelf is a stable
+            // background layer, so it must use layout bounds only and not follow translation.
+            val coverTop = cover?.let { child.top + it.top }?.toFloat() ?: child.top.toFloat()
+            val coverBottom = cover?.let { child.top + it.bottom }?.toFloat() ?: child.bottom.toFloat()
             rows[row] = rows[row]?.include(coverTop, coverBottom)
                 ?: RowBounds(coverTop, coverBottom)
         }
@@ -120,16 +122,31 @@ class BookshelfShelfDecoration(
         topPaint.color = topColor
         canvas.drawPath(topPath, topPaint)
 
-        plankRect.set(visualLeft, topBottom, visualRight, frontBottom)
+        frontPath.reset()
+        frontPath.moveTo(visualLeft, topBottom)
+        frontPath.lineTo(visualRight, topBottom)
+        frontPath.lineTo(visualRight - frontBottomInset, frontBottom)
+        frontPath.lineTo(visualLeft + frontBottomInset, frontBottom)
+        frontPath.close()
         plankPaint.color = frontColor
-        canvas.drawRect(plankRect, plankPaint)
+        canvas.drawPath(frontPath, plankPaint)
 
         plankRect.set(visualLeft, topBottom, visualRight, topBottom + 1.dpToPx())
         canvas.drawRect(plankRect, highlightPaint)
-        plankRect.set(visualLeft, frontBottom - bottomEdgeHeight, visualRight, frontBottom)
+        plankRect.set(
+            visualLeft + frontBottomInset,
+            frontBottom - bottomEdgeHeight,
+            visualRight - frontBottomInset,
+            frontBottom
+        )
         canvas.drawRect(plankRect, bottomEdgePaint)
 
-        plankRect.set(visualLeft + 8.dpToPx(), frontBottom, visualRight - 8.dpToPx(), frontBottom + shadowHeight)
+        plankRect.set(
+            visualLeft + frontBottomInset + 2.dpToPx(),
+            frontBottom,
+            visualRight - frontBottomInset - 2.dpToPx(),
+            frontBottom + shadowHeight
+        )
         canvas.drawRect(plankRect, shadowPaint)
     }
 

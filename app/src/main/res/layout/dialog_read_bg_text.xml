@@ -218,6 +218,7 @@
         android:layout_height="wrap_content"
         android:padding="6dp"
         app:max="100"
+        app:isBottomBackground="true"
         app:title="@string/text_shadow" />
 
     <TextView
