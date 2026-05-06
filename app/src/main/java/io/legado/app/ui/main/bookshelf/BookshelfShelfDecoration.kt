@@ -12,8 +12,8 @@ import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.getCompatColor
 
 class BookshelfShelfDecoration(
     context: Context,
@@ -29,38 +29,36 @@ class BookshelfShelfDecoration(
     private val plankRect = RectF()
     private val contactShadowRect = RectF()
     private val topPath = Path()
+    private val shelfShadowPath = Path()
     private val sideInset = 18.dpToPx().toFloat()
     private val bookToPlankGap = (-2).dpToPx().toFloat()
     private val topHeight = 12.dpToPx().toFloat()
     private val frontHeight = 16.dpToPx().toFloat()
-    private val shadowHeight = 10.dpToPx().toFloat()
+    private val shadowHeight = 9.dpToPx().toFloat()
     private val rowTopSpacing = 14.dpToPx()
     private val bottomSpacing = 12.dpToPx()
+    private val surfaceColor: Int
+    private val toneColor: Int
+    private val shadowColor = 0xFF000000.toInt()
     private val topStartColor: Int
     private val topEndColor: Int
-    private val frontStartColor: Int
-    private val frontMiddleColor: Int
     private val frontEndColor: Int
     private val frontBottomStartColor: Int
     private val frontBottomEndColor: Int
 
     init {
-        val surface = context.getCompatColor(R.color.background_card)
-        val darkBase = if (ColorUtils.calculateLuminance(surface) > 0.5) {
+        surfaceColor = context.backgroundColor
+        toneColor = if (ColorUtils.calculateLuminance(surfaceColor) > 0.5) {
             0xFF000000.toInt()
         } else {
             0xFFFFFFFF.toInt()
         }
-        topStartColor = ColorUtils.blendARGB(surface, darkBase, 0.03f)
-        topEndColor = ColorUtils.blendARGB(surface, darkBase, 0.08f)
-        frontStartColor = ColorUtils.blendARGB(surface, darkBase, 0.08f)
-        frontMiddleColor = ColorUtils.blendARGB(surface, darkBase, 0.15f)
-        frontEndColor = ColorUtils.blendARGB(surface, darkBase, 0.22f)
-        frontBottomStartColor = ColorUtils.blendARGB(surface, darkBase, 0.18f)
-        frontBottomEndColor = ColorUtils.blendARGB(surface, darkBase, 0.32f)
-        shadowPaint.color = ColorUtils.setAlphaComponent(darkBase, 34)
-        highlightPaint.color = ColorUtils.setAlphaComponent(surface, 88)
-        contactShadowPaint.color = ColorUtils.setAlphaComponent(darkBase, 84)
+        topStartColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.05f)
+        topEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.11f)
+        frontEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.24f)
+        frontBottomStartColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.20f)
+        frontBottomEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.34f)
+        highlightPaint.color = ColorUtils.setAlphaComponent(0xFFFFFFFF.toInt(), 38)
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
@@ -113,8 +111,18 @@ class BookshelfShelfDecoration(
         val topLeft = left + sideInset
         val topRight = right - sideInset
 
-        contactShadowRect.set(topLeft, bounds.bottom - 2.dpToPx(), topRight, bounds.bottom + 7.dpToPx())
-        canvas.drawRoundRect(contactShadowRect, 6.dpToPx().toFloat(), 6.dpToPx().toFloat(), contactShadowPaint)
+        contactShadowRect.set(topLeft, bounds.bottom - 1.dpToPx(), topRight, bounds.bottom + 6.dpToPx())
+        contactShadowPaint.shader = LinearGradient(
+            0f,
+            contactShadowRect.top,
+            0f,
+            contactShadowRect.bottom,
+            ColorUtils.setAlphaComponent(shadowColor, 72),
+            ColorUtils.setAlphaComponent(shadowColor, 0),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(contactShadowRect, 5.dpToPx().toFloat(), 5.dpToPx().toFloat(), contactShadowPaint)
+        contactShadowPaint.shader = null
 
         topPath.reset()
         topPath.moveTo(topLeft, plankTop)
@@ -136,18 +144,18 @@ class BookshelfShelfDecoration(
 
         plankRect.set(visualLeft, topBottom, visualRight, frontBottom)
         plankPaint.shader = LinearGradient(
-            visualLeft,
+            0f,
             topBottom,
-            visualRight,
+            0f,
             frontBottom,
-            intArrayOf(frontStartColor, frontMiddleColor, frontEndColor),
-            floatArrayOf(0f, 0.58f, 1f),
+            topEndColor,
+            frontEndColor,
             Shader.TileMode.CLAMP
         )
         canvas.drawRect(plankRect, plankPaint)
         plankPaint.shader = null
 
-        plankRect.set(visualLeft, plankTop, visualRight, plankTop + 1.dpToPx())
+        plankRect.set(visualLeft, topBottom, visualRight, topBottom + 1.dpToPx())
         canvas.drawRect(plankRect, highlightPaint)
         plankRect.set(visualLeft, frontBottom - 7.dpToPx(), visualRight, frontBottom)
         plankFrontPaint.shader = LinearGradient(
@@ -162,8 +170,23 @@ class BookshelfShelfDecoration(
         canvas.drawRect(plankRect, plankFrontPaint)
         plankFrontPaint.shader = null
 
-        plankRect.set(visualLeft + 8.dpToPx(), frontBottom, visualRight - 8.dpToPx(), frontBottom + shadowHeight)
-        canvas.drawRect(plankRect, shadowPaint)
+        shelfShadowPath.reset()
+        shelfShadowPath.moveTo(visualLeft + 10.dpToPx(), frontBottom)
+        shelfShadowPath.lineTo(visualRight - 4.dpToPx(), frontBottom)
+        shelfShadowPath.lineTo(visualRight - 18.dpToPx(), frontBottom + shadowHeight)
+        shelfShadowPath.lineTo(visualLeft + 2.dpToPx(), frontBottom + shadowHeight)
+        shelfShadowPath.close()
+        shadowPaint.shader = LinearGradient(
+            0f,
+            frontBottom,
+            0f,
+            frontBottom + shadowHeight,
+            ColorUtils.setAlphaComponent(shadowColor, 42),
+            ColorUtils.setAlphaComponent(shadowColor, 0),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawPath(shelfShadowPath, shadowPaint)
+        shadowPaint.shader = null
     }
 
     private data class RowBounds(

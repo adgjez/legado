@@ -7,6 +7,8 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_item_focused_on_tv"
     android:clickable="true"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:focusable="true"
     android:scrollbars="none"
     tools:ignore="UnusedAttribute">
@@ -16,6 +18,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
         android:paddingLeft="4dp"
@@ -26,6 +30,8 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:scrollbars="none">
 
             <View
@@ -34,8 +40,9 @@
                 android:layout_height="0dp"
                 android:layout_margin="4dp"
                 android:background="@drawable/bg_bookshelf_book_shadow"
-                android:translationX="4dp"
-                android:translationY="6dp"
+                android:rotation="-1.3"
+                android:translationX="5dp"
+                android:translationY="7dp"
                 app:layout_constraintBottom_toBottomOf="@id/iv_cover"
                 app:layout_constraintEnd_toEndOf="@id/iv_cover"
                 app:layout_constraintStart_toStartOf="@id/iv_cover"
@@ -71,6 +78,9 @@
                 android:layout_marginStart="4dp"
                 android:layout_marginEnd="4dp"
                 android:background="@drawable/bg_bookshelf_book_bottom"
+                android:rotation="-1.8"
+                android:translationX="1dp"
+                android:translationY="1dp"
                 app:layout_constraintBottom_toBottomOf="@id/iv_cover"
                 app:layout_constraintEnd_toEndOf="@id/iv_cover"
                 app:layout_constraintStart_toStartOf="@id/iv_cover" />
@@ -129,5 +139,4 @@
         tools:layout_editor_absoluteX="0dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
-
 
