@@ -17,6 +17,7 @@ import androidx.annotation.Keep
 import androidx.core.graphics.withTranslation
 import io.legado.app.R
 import io.legado.app.help.PaintPool
+import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ImageProvider
@@ -135,7 +136,10 @@ data class TextPage(
      * 底部对齐更新行位置
      */
     fun upLinesPosition() {
-        if (hasEpubBackground() || epubEmbeddedBlocks.isNotEmpty()) return
+        val hasNonTitleEmbeddedBlock = epubEmbeddedBlocks.any {
+            it.role != AdvancedTitleConfig.LOTTIE_BLOCK_ROLE
+        }
+        if (hasEpubBackground() || hasNonTitleEmbeddedBlock) return
         if (!ReadBookConfig.textBottomJustify) return
         if (textLines.size <= 1) return
         if (leftLineSize == 0) {
