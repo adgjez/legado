@@ -2,9 +2,12 @@ package io.legado.app.ui.book.read.page
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -16,6 +19,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.isOnLineTxt
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
@@ -80,6 +84,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     private var doubleClick = false
     private var nativeSelectedText: String? = null
     private var nativeSelectionRect: RectF? = null
+    private var paperShader: BitmapShader? = null
+    private val paperPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val paperTintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     //绘制图片的paint
     val imagePaint by lazy {
@@ -128,6 +135,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             canvas.translate(0f, scrollY.toFloat())
         }
         drawScrollFollowBackground(canvas)
+        drawPaperEffect(canvas)
         check(!visibleRect.isEmpty) { "visibleRect 为空" }
         if (!textPage.hasEpubBackground()) {
             canvas.clipRect(visibleRect)
@@ -282,6 +290,40 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             it.setBounds(0, 0, width, height)
             it.draw(canvas)
         }
+    }
+
+    private fun drawPaperEffect(canvas: Canvas) {
+        if (!ReadBookConfig.paperEffect || width <= 0 || height <= 0) return
+        canvas.save()
+        canvas.clipRect(0, 0, width, height)
+        paperTintPaint.color = if (AppConfig.isNightTheme) {
+            Color.argb(10, 255, 245, 220)
+        } else {
+            Color.argb(18, 255, 246, 220)
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperTintPaint)
+        paperPaint.shader = paperShader ?: createPaperShader().also { paperShader = it }
+        paperPaint.alpha = if (AppConfig.isNightTheme) 26 else 38
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperPaint)
+        canvas.restore()
+    }
+
+    private fun createPaperShader(): BitmapShader {
+        val size = 96
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        for (y in 0 until size) {
+            for (x in 0 until size) {
+                val seed = (x * 1103515245 + y * 12345 + x * y * 31)
+                val alpha = 4 + (seed ushr 24 and 0x07)
+                val color = if ((seed and 1) == 0) {
+                    Color.argb(alpha, 255, 255, 255)
+                } else {
+                    Color.argb(alpha, 0, 0, 0)
+                }
+                bitmap.setPixel(x, y, color)
+            }
+        }
+        return BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
     }
 
     /**

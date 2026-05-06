@@ -305,6 +305,12 @@ object ReadBookConfig {
             config.paragraphSpacing = value
         }
 
+    var paperEffect: Boolean
+        get() = config.paperEffect
+        set(value) {
+            config.paperEffect = value
+        }
+
     /**
      * 标题位置 0:居左 1:居中 2:隐藏
      */
@@ -441,6 +447,7 @@ object ReadBookConfig {
             exportConfig.letterSpacing = shareConfig.letterSpacing
             exportConfig.lineSpacingExtra = shareConfig.lineSpacingExtra
             exportConfig.paragraphSpacing = shareConfig.paragraphSpacing
+            exportConfig.paperEffect = shareConfig.paperEffect
             exportConfig.titleMode = shareConfig.titleMode
             exportConfig.titleSize = shareConfig.titleSize
             exportConfig.titleTopSpacing = shareConfig.titleTopSpacing
@@ -573,6 +580,7 @@ object ReadBookConfig {
         var letterSpacing: Float = 0.1f,//字间距
         var lineSpacingExtra: Int = 12,//行间距
         var paragraphSpacing: Int = 2,//段距
+        var paperEffect: Boolean = false,//纸质化
         var titleMode: Int = 0,//标题位置 0:居左 1:居中 2:隐藏
         var titleSize: Int = 0,
         var titleTopSpacing: Int = 0,
@@ -881,6 +889,7 @@ object ReadBookConfig {
             "letterSpacing" to letterSpacing,
             "lineSpacingExtra" to lineSpacingExtra,
             "paragraphSpacing" to paragraphSpacing,
+            "paperEffect" to paperEffect,
             "titleMode" to titleMode,
             "titleSize" to titleSize,
             "titleTopSpacing" to titleTopSpacing,

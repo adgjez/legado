@@ -78,6 +78,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         panelStyleLibrary.background = null
         tvPageAnim.setTextColor(palette.secondaryTextColor)
         tvBgTs.setTextColor(palette.secondaryTextColor)
+        tvPaperEffect.setTextColor(textColor)
         tvShareLayout.setTextColor(textColor)
         dsbTextSize.valueFormat = {
             (it + 5).toString()
@@ -106,6 +107,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
 
     private fun initData() {
         binding.cbShareLayout.isChecked = ReadBookConfig.shareLayout
+        binding.cbPaperEffect.isChecked = ReadBookConfig.paperEffect
         upView()
         styleAdapter.setItems(ReadBookConfig.configList)
     }
@@ -147,6 +149,13 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
             ReadBookConfig.shareLayout = isChecked
             upView()
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+        }
+        cbPaperEffect.onCheckedChangeListener = { _, isChecked ->
+            ReadBookConfig.paperEffect = isChecked
+            postEvent(EventBus.UP_CONFIG, arrayListOf(2))
+        }
+        tvPaperEffect.setOnClickListener {
+            cbPaperEffect.isChecked = !cbPaperEffect.isChecked
         }
         dsbTextSize.onChanged = {
             ReadBookConfig.textSize = it + 5
@@ -193,6 +202,7 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
             rgPageAnim.check(pageAnimIdByValue(it))
         }
         ReadBookConfig.let {
+            cbPaperEffect.isChecked = it.paperEffect
             dsbTextSize.progress = it.textSize - 5
             dsbTextLetterSpacing.progress = (it.letterSpacing * 100).toInt() + 50
             dsbLineSize.progress = it.lineSpacingExtra

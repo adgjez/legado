@@ -2,6 +2,7 @@ package io.legado.app.ui.about
 
 import android.content.Context
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -14,6 +15,8 @@ import io.legado.app.databinding.ItemReadRecordComponentBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.dpToPx
+import kotlin.math.min
 
 object ReadRecordComponentConfigDialog {
 
@@ -26,6 +29,12 @@ object ReadRecordComponentConfigDialog {
         val adapter = ComponentAdapter(context, initialItems.map { it.copy() }.toMutableList())
         binding.recyclerView.layoutManager = LinearLayoutManager(context)
         binding.recyclerView.adapter = adapter
+        val fixedListHeight = min(420.dpToPx(), (context.resources.displayMetrics.heightPixels * 0.48f).toInt())
+            .coerceAtLeast(260.dpToPx())
+        binding.recyclerView.layoutParams = binding.recyclerView.layoutParams.apply {
+            height = fixedListHeight
+        }
+        binding.recyclerView.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         val itemTouchCallback = ItemTouchCallback(adapter).apply {
             isCanDrag = true
         }
@@ -47,6 +56,10 @@ object ReadRecordComponentConfigDialog {
             }
         }
         dialog.show()
+        dialog.window?.setLayout(
+            (context.resources.displayMetrics.widthPixels * 0.9f).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     private class ComponentAdapter(
