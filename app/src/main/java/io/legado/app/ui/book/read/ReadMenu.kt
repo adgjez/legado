@@ -171,8 +171,8 @@ class ReadMenu @JvmOverloads constructor(
         } else {
             cornerRadius = radius
         }
-        setColor(color)
-        setStroke(1.dpToPx(), strokeColor)
+        setColor(UiCorner.surfaceColor(color))
+        setStroke(1.dpToPx(), if (UiCorner.effectMode() == "solid") strokeColor else UiCorner.effectStrokeColor(color))
     }
 
     private fun createFillDrawable(color: Int) = GradientDrawable().apply {

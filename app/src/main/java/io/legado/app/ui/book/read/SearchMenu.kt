@@ -99,15 +99,15 @@ class SearchMenu @JvmOverloads constructor(
         )
         llBottomMenu.background = GradientDrawable().apply {
             cornerRadius = UiCorner.scaledDp(18F)
-            setColor(panelBaseColor)
-            setStroke(1.dpToPx(), panelStrokeColor)
+            setColor(UiCorner.surfaceColor(panelBaseColor))
+            setStroke(1.dpToPx(), if (UiCorner.effectMode() == "solid") panelStrokeColor else UiCorner.effectStrokeColor(panelBaseColor))
         }
         llSearchBaseInfo.background = GradientDrawable().apply {
             cornerRadius = UiCorner.searchRadius(14F)
-            setColor(panelInnerColor)
+            setColor(UiCorner.surfaceColor(panelInnerColor))
             setStroke(
                 1.dpToPx(),
-                panelStrokeColor
+                if (UiCorner.effectMode() == "solid") panelStrokeColor else UiCorner.effectStrokeColor(panelInnerColor)
             )
         }
         tvCurrentSearchInfo.setTextColor(textColor)

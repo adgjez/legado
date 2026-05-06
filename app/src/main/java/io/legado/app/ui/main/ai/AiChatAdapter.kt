@@ -115,8 +115,8 @@ class AiChatAdapter(
                     small, small
                 )
             }
-            setColor(fillColor)
-            setStroke(1.dpToPx(), strokeColor)
+            setColor(UiCorner.surfaceColor(fillColor))
+            setStroke(1.dpToPx(), if (UiCorner.effectMode() == "solid") strokeColor else UiCorner.effectStrokeColor(fillColor))
         }
     }
 
@@ -227,14 +227,19 @@ class AiChatAdapter(
         val row = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
+                val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.05f)
                 cornerRadius = UiCorner.scaledDp(16f)
-                setColor(ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.05f))
+                setColor(UiCorner.surfaceColor(fill))
                 setStroke(
                     1.dpToPx(),
-                    ColorUtils.adjustAlpha(
-                        if (allSuccess) context.accentColor else ContextCompat.getColor(context, R.color.md_red_500),
-                        0.14f
-                    )
+                    if (UiCorner.effectMode() == "solid") {
+                        ColorUtils.adjustAlpha(
+                            if (allSuccess) context.accentColor else ContextCompat.getColor(context, R.color.md_red_500),
+                            0.14f
+                        )
+                    } else {
+                        UiCorner.effectStrokeColor(fill)
+                    }
                 )
             }
             setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
@@ -311,9 +316,17 @@ class AiChatAdapter(
             orientation = LinearLayout.VERTICAL
             setPadding(cardPaddingH, cardPaddingV, cardPaddingH, cardPaddingV)
             background = GradientDrawable().apply {
+                val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.08f)
                 cornerRadius = UiCorner.scaledDp(12f)
-                setColor(ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.08f))
-                setStroke(1.dpToPx(), ColorUtils.adjustAlpha(context.accentColor, 0.18f))
+                setColor(UiCorner.surfaceColor(fill))
+                setStroke(
+                    1.dpToPx(),
+                    if (UiCorner.effectMode() == "solid") {
+                        ColorUtils.adjustAlpha(context.accentColor, 0.18f)
+                    } else {
+                        UiCorner.effectStrokeColor(fill)
+                    }
+                )
             }
             isClickable = true
             isFocusable = true

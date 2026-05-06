@@ -1106,6 +1106,23 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefString(PreferKey.uiCornerScale, value.coerceIn(0f, 3f).toPlainScale())
         }
 
+    var uiCornerEffectMode: String
+        get() = appCtx.getPrefString(PreferKey.uiCornerEffectMode, "solid")
+            ?.takeIf { it in setOf("solid", "glass", "frosted") }
+            ?: "solid"
+        set(value) {
+            appCtx.putPrefString(
+                PreferKey.uiCornerEffectMode,
+                value.takeIf { it in setOf("solid", "glass", "frosted") } ?: "solid"
+            )
+        }
+
+    var uiCornerEffectLevel: Int
+        get() = appCtx.getPrefInt(PreferKey.uiCornerEffectLevel, 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.uiCornerEffectLevel, value.coerceIn(0, 100))
+        }
+
     val uiCornerSearchFollow: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.uiCornerSearchFollow, false)
 

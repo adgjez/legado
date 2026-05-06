@@ -143,24 +143,18 @@ val Context.elevation: Float
 
 val Context.filletBackground: GradientDrawable
     get() {
-        val background = GradientDrawable()
-        background.cornerRadius = UiCorner.panelRadius(this)
-        background.setColor(backgroundColor)
-        return background
+        return UiCorner.rounded(backgroundColor, UiCorner.panelRadius(this))
     }
 
 val Context.dialogSurfaceBackground: GradientDrawable
     get() {
-        val background = GradientDrawable()
-        background.cornerRadius = UiCorner.panelRadius(this)
-        background.setColor(ContextCompat.getColor(this, R.color.dialog_surface))
-        return background
+        return UiCorner.rounded(ContextCompat.getColor(this, R.color.dialog_surface), UiCorner.panelRadius(this))
     }
 
 fun Context.filletTopBackground(@ColorInt color: Int): GradientDrawable {
     val radius = UiCorner.scaledDp(16f)
     return GradientDrawable().apply {
         cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
-        setColor(color)
+        setColor(UiCorner.surfaceColor(color))
     }
 }

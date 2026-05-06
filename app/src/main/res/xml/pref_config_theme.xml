@@ -66,6 +66,20 @@
         android:title="@string/ui_corner_scale"
         app:iconSpaceReserved="false" />
 
+    <io.legado.app.lib.prefs.NameListPreference
+        android:defaultValue="solid"
+        android:key="uiCornerEffectMode"
+        android:title="@string/ui_corner_effect_mode"
+        app:entries="@array/ui_corner_effect_mode_entries"
+        app:entryValues="@array/ui_corner_effect_mode_values"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
+        android:key="uiCornerEffectLevel"
+        android:summary="@string/ui_corner_effect_level_summary"
+        android:title="@string/ui_corner_effect_level"
+        app:iconSpaceReserved="false" />
+
     <io.legado.app.lib.prefs.SwitchPreference
         android:defaultValue="false"
         android:key="uiCornerSearchFollow"

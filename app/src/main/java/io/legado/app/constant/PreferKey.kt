@@ -128,6 +128,8 @@ object PreferKey {
     const val liquidGlassLevel = "liquidGlassLevel"
     const val frostedGlassLevel = "frostedGlassLevel"
     const val uiCornerScale = "uiCornerScale"
+    const val uiCornerEffectMode = "uiCornerEffectMode"
+    const val uiCornerEffectLevel = "uiCornerEffectLevel"
     const val uiCornerSearchFollow = "uiCornerSearchFollow"
     const val uiCornerReplyFollow = "uiCornerReplyFollow"
     const val transparentStatusBar = "transparentStatusBar"

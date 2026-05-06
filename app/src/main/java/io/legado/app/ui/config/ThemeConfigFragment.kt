@@ -32,6 +32,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.EditTextPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
@@ -105,6 +106,8 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.liquidGlassLevel, AppConfig.liquidGlassLevel.toString())
         upPreferenceSummary(PreferKey.frostedGlassLevel, AppConfig.frostedGlassLevel.toString())
         upPreferenceSummary(PreferKey.uiCornerScale, AppConfig.uiCornerScale.toScaleText())
+        upPreferenceSummary(PreferKey.uiCornerEffectMode, AppConfig.uiCornerEffectMode)
+        upPreferenceSummary(PreferKey.uiCornerEffectLevel, AppConfig.uiCornerEffectLevel.toString())
         upPreferenceSummary(PreferKey.fontScale)
         setupUiCornerPreference()
         updateBottomBarEffectPreferences()
@@ -199,10 +202,19 @@ class ThemeConfigFragment : PreferenceFragment(),
                 recreateActivities()
             }
 
+            PreferKey.uiCornerEffectMode -> {
+                AppConfig.uiCornerEffectMode = getPrefString(key).orEmpty()
+                upPreferenceSummary(key, AppConfig.uiCornerEffectMode)
+                upPreferenceSummary(PreferKey.uiCornerEffectLevel, AppConfig.uiCornerEffectLevel.toString())
+                recreateActivities()
+            }
+
             PreferKey.uiCornerScale,
+            PreferKey.uiCornerEffectLevel,
             PreferKey.uiCornerSearchFollow,
             PreferKey.uiCornerReplyFollow -> {
                 upPreferenceSummary(PreferKey.uiCornerScale, AppConfig.uiCornerScale.toScaleText())
+                upPreferenceSummary(PreferKey.uiCornerEffectLevel, AppConfig.uiCornerEffectLevel.toString())
                 recreateActivities()
             }
         }
@@ -257,6 +269,8 @@ class ThemeConfigFragment : PreferenceFragment(),
                     upPreferenceSummary(PreferKey.frostedGlassLevel, it.toString())
                     recreateActivities()
                 }
+
+            PreferKey.uiCornerEffectLevel -> showUiCornerEffectLevelDialog()
 
             PreferKey.fontScale -> NumberPickerDialog(requireContext())
                 .setTitle(getString(R.string.font_scale))
@@ -442,6 +456,20 @@ class ThemeConfigFragment : PreferenceFragment(),
             PreferKey.uiCornerScale -> preference.summary =
                 getString(R.string.ui_corner_scale_summary, value ?: AppConfig.uiCornerScale.toScaleText())
 
+            PreferKey.uiCornerEffectMode -> {
+                val modeValue = value ?: AppConfig.uiCornerEffectMode
+                val labels = resources.getStringArray(R.array.ui_corner_effect_mode_entries)
+                val values = resources.getStringArray(R.array.ui_corner_effect_mode_values)
+                val selectedLabel = values.indexOf(modeValue)
+                    .takeIf { it >= 0 }
+                    ?.let { labels.getOrNull(it) }
+                    ?: modeValue
+                preference.summary = getString(R.string.ui_corner_effect_mode_summary, selectedLabel)
+            }
+
+            PreferKey.uiCornerEffectLevel -> preference.summary =
+                getString(R.string.ui_corner_effect_level_summary, UiCorner.effectValueText(requireContext()))
+
             PreferKey.fontScale -> {
                 val fontScale = AppContextWrapper.getFontScale(requireContext())
                 preference.summary = getString(R.string.font_scale_summary, fontScale)
@@ -464,6 +492,24 @@ class ThemeConfigFragment : PreferenceFragment(),
         val mode = AppConfig.bottomBarEffectMode
         findPreference<Preference>(PreferKey.liquidGlassLevel)?.isVisible = mode == "glass"
         findPreference<Preference>(PreferKey.frostedGlassLevel)?.isVisible = mode == "frosted"
+    }
+
+    private fun showUiCornerEffectLevelDialog() {
+        NumberPickerDialog(requireContext())
+            .setTitle(getString(R.string.ui_corner_effect_level))
+            .setMaxValue(100)
+            .setMinValue(0)
+            .setValue(AppConfig.uiCornerEffectLevel)
+            .setCustomButton(R.string.btn_default_s) {
+                AppConfig.uiCornerEffectLevel = 100
+                upPreferenceSummary(PreferKey.uiCornerEffectLevel, AppConfig.uiCornerEffectLevel.toString())
+                recreateActivities()
+            }
+            .show {
+                AppConfig.uiCornerEffectLevel = it
+                upPreferenceSummary(PreferKey.uiCornerEffectLevel, it.toString())
+                recreateActivities()
+            }
     }
 
     private fun setupUiCornerPreference() {

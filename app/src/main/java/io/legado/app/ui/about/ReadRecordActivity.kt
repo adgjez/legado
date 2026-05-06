@@ -590,8 +590,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.scaledDp(radiusDp)
-            setColor(fillColor)
-            setStroke(1.dpToPx(), strokeColor)
+            setColor(UiCorner.surfaceColor(fillColor))
+            setStroke(1.dpToPx(), if (UiCorner.effectMode() == "solid") strokeColor else UiCorner.effectStrokeColor(fillColor))
         }
     }
 
@@ -599,7 +599,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.scaledDp(radiusDp)
-            setColor(fillColor)
+            setColor(UiCorner.surfaceColor(fillColor))
         }
     }
 

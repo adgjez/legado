@@ -285,8 +285,15 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
         )
         return GradientDrawable().apply {
             cornerRadius = UiCorner.scaledDp(12f)
-            setColor(fill)
-            setStroke(1.dpToPx(), ColorUtils.adjustAlpha(primaryTextColor, 0.08f))
+            setColor(UiCorner.surfaceColor(fill))
+            setStroke(
+                1.dpToPx(),
+                if (UiCorner.effectMode() == "solid") {
+                    ColorUtils.adjustAlpha(primaryTextColor, 0.08f)
+                } else {
+                    UiCorner.effectStrokeColor(fill)
+                }
+            )
         }
     }
 
