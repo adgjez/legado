@@ -14,7 +14,6 @@ import androidx.core.view.MenuProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import io.legado.app.R
-import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditTextBinding
@@ -32,7 +31,6 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -43,7 +41,6 @@ import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
 import io.legado.app.utils.removePref
@@ -97,11 +94,6 @@ class ThemeConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.bgImageN, getPrefString(PreferKey.bgImageN))
         upPreferenceSummary(PreferKey.bookInfoBgImage, getPrefString(PreferKey.bookInfoBgImage))
         upPreferenceSummary(PreferKey.bookInfoBgImageN, getPrefString(PreferKey.bookInfoBgImageN))
-        upPreferenceSummary(PreferKey.bottomBarEffectMode, AppConfig.bottomBarEffectMode)
-        upPreferenceSummary(PreferKey.liquidGlassLevel, AppConfig.liquidGlassLevel.toString())
-        upPreferenceSummary(PreferKey.frostedGlassLevel, AppConfig.frostedGlassLevel.toString())
-        upPreferenceSummary(PreferKey.fontScale)
-        updateBottomBarEffectPreferences()
         findPreference<ColorPreference>(PreferKey.cBackground)?.let {
             it.onSaveColor = { color ->
                 if (!ColorUtils.isColorLight(color)) {
@@ -186,12 +178,6 @@ class ThemeConfigFragment : PreferenceFragment(),
                 upPreferenceSummary(key, getPrefString(key))
             }
 
-            PreferKey.bottomBarEffectMode -> {
-                upPreferenceSummary(key, getPrefString(key))
-                updateBottomBarEffectPreferences()
-                recreateActivities()
-            }
-
         }
 
     }
@@ -199,57 +185,13 @@ class ThemeConfigFragment : PreferenceFragment(),
     @SuppressLint("PrivateResource")
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (val key = preference.key) {
-            PreferKey.liquidGlassLevel -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.liquid_glass_level))
-                .setMaxValue(100)
-                .setMinValue(0)
-                .setValue(AppConfig.liquidGlassLevel)
-                .setCustomButton(R.string.btn_default_s) {
-                    AppConfig.liquidGlassLevel = 68
-                    upPreferenceSummary(PreferKey.liquidGlassLevel, AppConfig.liquidGlassLevel.toString())
-                    recreateActivities()
-                }
-                .show {
-                    AppConfig.liquidGlassLevel = it
-                    upPreferenceSummary(PreferKey.liquidGlassLevel, it.toString())
-                    recreateActivities()
-                }
-
-            PreferKey.frostedGlassLevel -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.frosted_glass_level))
-                .setMaxValue(100)
-                .setMinValue(0)
-                .setValue(AppConfig.frostedGlassLevel)
-                .setCustomButton(R.string.btn_default_s) {
-                    AppConfig.frostedGlassLevel = 70
-                    upPreferenceSummary(PreferKey.frostedGlassLevel, AppConfig.frostedGlassLevel.toString())
-                    recreateActivities()
-                }
-                .show {
-                    AppConfig.frostedGlassLevel = it
-                    upPreferenceSummary(PreferKey.frostedGlassLevel, it.toString())
-                    recreateActivities()
-                }
-
-            PreferKey.fontScale -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.font_scale))
-                .setMaxValue(16)
-                .setMinValue(8)
-                .setValue(10)
-                .setCustomButton((R.string.btn_default_s)) {
-                    putPrefInt(PreferKey.fontScale, 0)
-                    recreateActivities()
-                }
-                .show {
-                    putPrefInt(PreferKey.fontScale, it)
-                    recreateActivities()
-                }
-
             PreferKey.bgImage -> selectBgAction(false)
             PreferKey.bgImageN -> selectBgAction(true)
             PreferKey.bookInfoBgImage -> selectBookInfoBgAction(false)
             PreferKey.bookInfoBgImageN -> selectBookInfoBgAction(true)
             "themeList" -> startActivity<ThemeManageActivity>()
+            "theme_manage" -> startActivity<ThemeManageActivity>()
+            "navigation_bar_manage" -> startActivity<NavigationBarManageActivity>()
             "saveDayTheme",
             "saveNightTheme" -> alertSaveTheme(key)
 
@@ -389,31 +331,6 @@ class ThemeConfigFragment : PreferenceFragment(),
     private fun upPreferenceSummary(preferenceKey: String, value: String? = null) {
         val preference = findPreference<Preference>(preferenceKey) ?: return
         when (preferenceKey) {
-            PreferKey.bottomBarEffectMode -> {
-                val modeValue = value ?: AppConfig.bottomBarEffectMode
-                val labels = resources.getStringArray(R.array.bottom_bar_effect_mode_entries)
-                val values = resources.getStringArray(R.array.bottom_bar_effect_mode_values)
-                val selectedLabel = values.indexOf(modeValue)
-                    .takeIf { it >= 0 }
-                    ?.let { labels.getOrNull(it) }
-                    ?: modeValue
-                preference.summary = getString(R.string.bottom_bar_effect_mode_summary, selectedLabel)
-            }
-
-            PreferKey.liquidGlassLevel -> preference.summary =
-                getString(
-                    R.string.liquid_glass_level_summary,
-                    value ?: AppConfig.liquidGlassLevel.toString()
-                )
-
-            PreferKey.frostedGlassLevel -> preference.summary =
-                getString(R.string.frosted_glass_level_summary, value ?: AppConfig.frostedGlassLevel.toString())
-
-            PreferKey.fontScale -> {
-                val fontScale = AppContextWrapper.getFontScale(requireContext())
-                preference.summary = getString(R.string.font_scale_summary, fontScale)
-            }
-
             PreferKey.bgImage,
             PreferKey.bgImageN,
             PreferKey.bookInfoBgImage,
@@ -425,12 +342,6 @@ class ThemeConfigFragment : PreferenceFragment(),
 
             else -> preference.summary = value
         }
-    }
-
-    private fun updateBottomBarEffectPreferences() {
-        val mode = AppConfig.bottomBarEffectMode
-        findPreference<Preference>(PreferKey.liquidGlassLevel)?.isVisible = mode == "glass"
-        findPreference<Preference>(PreferKey.frostedGlassLevel)?.isVisible = mode == "frosted"
     }
 
     private fun setBgFromUri(uri: Uri, preferenceKey: String, success: () -> Unit) {

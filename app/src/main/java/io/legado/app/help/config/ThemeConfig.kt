@@ -285,6 +285,9 @@ object ThemeConfig {
             config.uiCornerReplyFollow?.let {
                 context.putPrefBoolean(PreferKey.uiCornerReplyFollow, it)
             }
+            config.fontScale?.let {
+                context.putPrefInt(PreferKey.fontScale, it.coerceIn(0, 16))
+            }
             if (backgroundPath != null && backgroundPath.startsWith("http")) {
                 val fileRoot = context.externalFiles
                 val preferenceKey = if (isNightTheme) {
@@ -413,22 +416,23 @@ object ThemeConfig {
 
         return mergeStoredThemeAssets(
             Config(
-            themeName = name,
-            isNightTheme = false,
-            primaryColor = "#${primary.hexString}",
-            accentColor = "#${accent.hexString}",
-            backgroundColor = "#${background.hexString}",
-            bottomBackground = "#${bBackground.hexString}",
-            transparentNavBar = true,
-            backgroundImgPath = bgImgPath,
-            backgroundImgBlur = bgImgBlur,
-            bookInfoBackgroundImgPath = bookInfoBgImgPath,
-            primaryTextColor = "#${ThemeStore.textColorPrimary(context).hexString}",
-            secondaryTextColor = "#${ThemeStore.textColorSecondary(context).hexString}",
-            uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
-            uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
-            uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
-            uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
+                themeName = name,
+                isNightTheme = false,
+                primaryColor = "#${primary.hexString}",
+                accentColor = "#${accent.hexString}",
+                backgroundColor = "#${background.hexString}",
+                bottomBackground = "#${bBackground.hexString}",
+                transparentNavBar = true,
+                backgroundImgPath = bgImgPath,
+                backgroundImgBlur = bgImgBlur,
+                bookInfoBackgroundImgPath = bookInfoBgImgPath,
+                primaryTextColor = "#${ThemeStore.textColorPrimary(context).hexString}",
+                secondaryTextColor = "#${ThemeStore.textColorSecondary(context).hexString}",
+                uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
+                uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
+                uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
+                fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0)
             )
         )
     }
@@ -464,22 +468,23 @@ object ThemeConfig {
         }
         return mergeStoredThemeAssets(
             Config(
-            themeName = name,
-            isNightTheme = true,
-            primaryColor = "#${primary.hexString}",
-            accentColor = "#${accent.hexString}",
-            backgroundColor = "#${background.hexString}",
-            bottomBackground = "#${bBackground.hexString}",
-            transparentNavBar = true,
-            backgroundImgPath = bgImgPath,
-            backgroundImgBlur = bgImgBlur,
-            bookInfoBackgroundImgPath = bookInfoBgImgPath,
-            primaryTextColor = "#${ThemeStore.textColorPrimary(context).hexString}",
-            secondaryTextColor = "#${ThemeStore.textColorSecondary(context).hexString}",
-            uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
-            uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
-            uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
-            uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
+                themeName = name,
+                isNightTheme = true,
+                primaryColor = "#${primary.hexString}",
+                accentColor = "#${accent.hexString}",
+                backgroundColor = "#${background.hexString}",
+                bottomBackground = "#${bBackground.hexString}",
+                transparentNavBar = true,
+                backgroundImgPath = bgImgPath,
+                backgroundImgBlur = bgImgBlur,
+                bookInfoBackgroundImgPath = bookInfoBgImgPath,
+                primaryTextColor = "#${ThemeStore.textColorPrimary(context).hexString}",
+                secondaryTextColor = "#${ThemeStore.textColorSecondary(context).hexString}",
+                uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
+                uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
+                uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
+                fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0)
             )
         )
     }
@@ -505,7 +510,8 @@ object ThemeConfig {
             uiCornerScale = config.uiCornerScale ?: stored.uiCornerScale,
             uiLayoutAlpha = config.uiLayoutAlpha ?: stored.uiLayoutAlpha,
             uiCornerSearchFollow = config.uiCornerSearchFollow ?: stored.uiCornerSearchFollow,
-            uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow
+            uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow,
+            fontScale = config.fontScale ?: stored.fontScale
         )
     }
 
@@ -639,7 +645,8 @@ object ThemeConfig {
         var uiCornerScale: Float? = null,
         var uiLayoutAlpha: Int? = null,
         var uiCornerSearchFollow: Boolean? = null,
-        var uiCornerReplyFollow: Boolean? = null
+        var uiCornerReplyFollow: Boolean? = null,
+        var fontScale: Int? = null
     ) {
 
         override fun hashCode(): Int {
@@ -665,6 +672,7 @@ object ThemeConfig {
                         && other.uiLayoutAlpha == uiLayoutAlpha
                         && other.uiCornerSearchFollow == uiCornerSearchFollow
                         && other.uiCornerReplyFollow == uiCornerReplyFollow
+                        && other.fontScale == fontScale
             }
             return false
         }
@@ -685,7 +693,8 @@ object ThemeConfig {
             "uiCornerScale" to uiCornerScale,
             "uiLayoutAlpha" to uiLayoutAlpha,
             "uiCornerSearchFollow" to uiCornerSearchFollow,
-            "uiCornerReplyFollow" to uiCornerReplyFollow
+            "uiCornerReplyFollow" to uiCornerReplyFollow,
+            "fontScale" to fontScale
         )
 
     }

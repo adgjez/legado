@@ -93,6 +93,10 @@
                 layout="@layout/item_theme_package_option" />
 
             <include
+                android:id="@+id/row_font_scale"
+                layout="@layout/item_theme_package_option" />
+
+            <include
                 android:id="@+id/row_search_follow"
                 layout="@layout/item_theme_package_option" />
 

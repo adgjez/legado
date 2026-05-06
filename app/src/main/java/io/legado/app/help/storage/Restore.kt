@@ -291,7 +291,6 @@ object Restore {
             edit.commit()
         }
         normalizeBackgroundPrefs()
-        normalizeNavigationIconPrefs()
         kotlin.runCatching {
             ThemePackageManager.ensureLocalAppliedTheme(appCtx, false)
             ThemePackageManager.ensureLocalAppliedTheme(appCtx, true)
@@ -378,7 +377,7 @@ object Restore {
     }
 
     private fun restoreNavigationIcons(path: String) {
-        val sourceDir = File(path, "navigationIcons")
+        val sourceDir = File(path, "navigationBarPackages")
         if (!sourceDir.exists() || !sourceDir.isDirectory) return
         val targetDir = NavigationBarIconConfig.rootDir
         kotlin.runCatching {
@@ -401,36 +400,6 @@ object Restore {
             if (restoredFile.exists()) {
                 edit.putString(key, restoredFile.absolutePath)
                 changed = true
-            }
-        }
-        if (changed) {
-            edit.commit()
-        }
-    }
-
-    private fun normalizeNavigationIconPrefs() {
-        val edit = appCtx.defaultSharedPreferences.edit()
-        var changed = false
-        val modes = arrayOf(
-            NavigationBarIconConfig.MODE_DAY,
-            NavigationBarIconConfig.MODE_NIGHT
-        )
-        val states = arrayOf(
-            NavigationBarIconConfig.STATE_NORMAL,
-            NavigationBarIconConfig.STATE_SELECTED
-        )
-        modes.forEach { mode ->
-            NavigationBarIconConfig.items.forEach { item ->
-                states.forEach { state ->
-                    val key = NavigationBarIconConfig.prefKey(mode, item.key, state)
-                    val current = appCtx.getPrefString(key) ?: return@forEach
-                    if (current.isBlank() || File(current).exists()) return@forEach
-                    val restoredFile = File(NavigationBarIconConfig.rootDir, File(current).name)
-                    if (restoredFile.exists()) {
-                        edit.putString(key, restoredFile.absolutePath)
-                        changed = true
-                    }
-                }
             }
         }
         if (changed) {

@@ -239,6 +239,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onResume() {
         super.onResume()
+        NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         applyBottomNavigationIcons()
         scheduleLiquidGlassSetup()
     }
@@ -511,6 +512,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
         val baseColor = bottomBackground
+        val alpha = (AppConfig.liquidGlassLevel / 100f).coerceIn(0f, 1f)
         val strokeColor = AppColorUtils.withAlpha(
             if (AppColorUtils.isColorLight(baseColor)) Color.BLACK else Color.WHITE,
             0.10f
@@ -520,7 +522,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!oval) {
                 this.cornerRadius = cornerRadius
             }
-            setColor(baseColor)
+            setColor(AppColorUtils.withAlpha(baseColor, alpha))
             setStroke(1.dpToPx(), strokeColor)
         }
     }
@@ -558,9 +560,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         } else {
             AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
         }
-        val startAlpha = (0.24f + glassLevel * 0.14f).coerceIn(0f, 0.46f)
-        val centerAlpha = (0.14f + glassLevel * 0.12f).coerceIn(0f, 0.34f)
-        val endAlpha = (0.10f + glassLevel * 0.10f).coerceIn(0f, 0.28f)
+        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
+        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
+        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
         val selectedBoost = if (selected) 0.08f else 0f
         val strokeAlpha = (0.22f + glassLevel * 0.22f + selectedBoost).coerceIn(0f, 0.58f)
         return GradientDrawable(

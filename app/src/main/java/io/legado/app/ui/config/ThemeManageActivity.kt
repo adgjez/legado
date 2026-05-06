@@ -81,6 +81,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var pendingBookInfoBackgroundPath: String? = null
     private var pendingUiCornerScale = 1f
     private var pendingUiLayoutAlpha = 100
+    private var pendingFontScale = 0
     private var pendingUiCornerSearchFollow = false
     private var pendingUiCornerReplyFollow = false
     private var loadVersion = 0
@@ -316,6 +317,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingBlur = current.backgroundImgBlur
         pendingUiCornerScale = current.uiCornerScale ?: AppConfig.uiCornerScale
         pendingUiLayoutAlpha = current.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha
+        pendingFontScale = current.fontScale ?: getPrefInt(PreferKey.fontScale, 0)
         pendingUiCornerSearchFollow = current.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow
         pendingUiCornerReplyFollow = current.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow
         return DialogThemePackageEditBinding.inflate(layoutInflater).apply {
@@ -336,6 +338,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun setupInterfaceRows(binding: DialogThemePackageEditBinding) = binding.run {
         setupCornerScaleRow(rowCornerScale)
         setupLayoutAlphaRow(rowLayoutAlpha)
+        setupFontScaleRow(rowFontScale)
         setupSwitchRow(rowSearchFollow, R.string.ui_corner_search_follow) {
             pendingUiCornerSearchFollow = !pendingUiCornerSearchFollow
             updateSwitchRow(rowSearchFollow, pendingUiCornerSearchFollow)
@@ -386,6 +389,31 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 .show {
                     pendingUiLayoutAlpha = it.coerceIn(0, 100)
                     row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingUiLayoutAlpha)
+                }
+        }
+    }
+
+    private fun setupFontScaleRow(row: ItemThemePackageOptionBinding) {
+        row.tvTitle.text = getString(R.string.font_scale)
+        row.viewSwatch.visibility = View.INVISIBLE
+        row.tvValue.text = if (pendingFontScale == 0) {
+            getString(R.string.btn_default_s)
+        } else {
+            "%.1f".format(Locale.US, pendingFontScale / 10f)
+        }
+        row.root.setOnClickListener {
+            NumberPickerDialog(this)
+                .setTitle(getString(R.string.font_scale))
+                .setMaxValue(16)
+                .setMinValue(8)
+                .setValue(if (pendingFontScale == 0) 10 else pendingFontScale)
+                .setCustomButton(R.string.btn_default_s) {
+                    pendingFontScale = 0
+                    setupFontScaleRow(row)
+                }
+                .show {
+                    pendingFontScale = it.coerceIn(8, 16)
+                    setupFontScaleRow(row)
                 }
         }
     }
@@ -557,7 +585,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 uiCornerScale = pendingUiCornerScale,
                 uiLayoutAlpha = pendingUiLayoutAlpha,
                 uiCornerSearchFollow = pendingUiCornerSearchFollow,
-                uiCornerReplyFollow = pendingUiCornerReplyFollow
+                uiCornerReplyFollow = pendingUiCornerReplyFollow,
+                fontScale = pendingFontScale
             )
         }.onFailure {
             toastOnUi("颜色格式不正确")
@@ -648,7 +677,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             uiCornerScale = AppConfig.uiCornerScale,
             uiLayoutAlpha = AppConfig.uiLayoutAlpha,
             uiCornerSearchFollow = AppConfig.uiCornerSearchFollow,
-            uiCornerReplyFollow = AppConfig.uiCornerReplyFollow
+            uiCornerReplyFollow = AppConfig.uiCornerReplyFollow,
+            fontScale = getPrefInt(PreferKey.fontScale, 0)
         )
     }
 
