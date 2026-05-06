@@ -2,17 +2,15 @@ package io.legado.app.ui.main.bookshelf
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.Shader
 import android.view.View
 import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.utils.dpToPx
 
 class BookshelfShelfDecoration(
@@ -29,7 +27,6 @@ class BookshelfShelfDecoration(
     private val plankRect = RectF()
     private val contactShadowRect = RectF()
     private val topPath = Path()
-    private val shelfShadowPath = Path()
     private val sideInset = 18.dpToPx().toFloat()
     private val bookToPlankGap = (-2).dpToPx().toFloat()
     private val topHeight = 12.dpToPx().toFloat()
@@ -40,25 +37,23 @@ class BookshelfShelfDecoration(
     private val surfaceColor: Int
     private val toneColor: Int
     private val shadowColor = 0xFF000000.toInt()
-    private val topStartColor: Int
-    private val topEndColor: Int
-    private val frontEndColor: Int
-    private val frontBottomStartColor: Int
-    private val frontBottomEndColor: Int
+    private val topColor: Int
+    private val frontColor: Int
+    private val frontBottomColor: Int
 
     init {
-        surfaceColor = context.backgroundColor
+        surfaceColor = context.bottomBackground
         toneColor = if (ColorUtils.calculateLuminance(surfaceColor) > 0.5) {
             0xFF000000.toInt()
         } else {
             0xFFFFFFFF.toInt()
         }
-        topStartColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.05f)
-        topEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.11f)
-        frontEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.24f)
-        frontBottomStartColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.20f)
-        frontBottomEndColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.34f)
+        topColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.06f)
+        frontColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.16f)
+        frontBottomColor = ColorUtils.blendARGB(surfaceColor, toneColor, 0.26f)
         highlightPaint.color = ColorUtils.setAlphaComponent(0xFFFFFFFF.toInt(), 38)
+        shadowPaint.color = ColorUtils.setAlphaComponent(shadowColor, 34)
+        contactShadowPaint.color = ColorUtils.setAlphaComponent(shadowColor, 58)
     }
 
     override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
@@ -112,17 +107,7 @@ class BookshelfShelfDecoration(
         val topRight = right - sideInset
 
         contactShadowRect.set(topLeft, bounds.bottom - 1.dpToPx(), topRight, bounds.bottom + 6.dpToPx())
-        contactShadowPaint.shader = LinearGradient(
-            0f,
-            contactShadowRect.top,
-            0f,
-            contactShadowRect.bottom,
-            ColorUtils.setAlphaComponent(shadowColor, 72),
-            ColorUtils.setAlphaComponent(shadowColor, 0),
-            Shader.TileMode.CLAMP
-        )
         canvas.drawRoundRect(contactShadowRect, 5.dpToPx().toFloat(), 5.dpToPx().toFloat(), contactShadowPaint)
-        contactShadowPaint.shader = null
 
         topPath.reset()
         topPath.moveTo(topLeft, plankTop)
@@ -130,63 +115,21 @@ class BookshelfShelfDecoration(
         topPath.lineTo(visualRight, topBottom)
         topPath.lineTo(visualLeft, topBottom)
         topPath.close()
-        topPaint.shader = LinearGradient(
-            0f,
-            plankTop,
-            0f,
-            topBottom,
-            intArrayOf(topStartColor, topEndColor),
-            null,
-            Shader.TileMode.CLAMP
-        )
+        topPaint.color = topColor
         canvas.drawPath(topPath, topPaint)
-        topPaint.shader = null
 
         plankRect.set(visualLeft, topBottom, visualRight, frontBottom)
-        plankPaint.shader = LinearGradient(
-            0f,
-            topBottom,
-            0f,
-            frontBottom,
-            topEndColor,
-            frontEndColor,
-            Shader.TileMode.CLAMP
-        )
+        plankPaint.color = frontColor
         canvas.drawRect(plankRect, plankPaint)
-        plankPaint.shader = null
 
         plankRect.set(visualLeft, topBottom, visualRight, topBottom + 1.dpToPx())
         canvas.drawRect(plankRect, highlightPaint)
         plankRect.set(visualLeft, frontBottom - 7.dpToPx(), visualRight, frontBottom)
-        plankFrontPaint.shader = LinearGradient(
-            0f,
-            frontBottom - 7.dpToPx(),
-            0f,
-            frontBottom,
-            frontBottomStartColor,
-            frontBottomEndColor,
-            Shader.TileMode.CLAMP
-        )
+        plankFrontPaint.color = frontBottomColor
         canvas.drawRect(plankRect, plankFrontPaint)
-        plankFrontPaint.shader = null
 
-        shelfShadowPath.reset()
-        shelfShadowPath.moveTo(visualLeft + 10.dpToPx(), frontBottom)
-        shelfShadowPath.lineTo(visualRight - 4.dpToPx(), frontBottom)
-        shelfShadowPath.lineTo(visualRight - 18.dpToPx(), frontBottom + shadowHeight)
-        shelfShadowPath.lineTo(visualLeft + 2.dpToPx(), frontBottom + shadowHeight)
-        shelfShadowPath.close()
-        shadowPaint.shader = LinearGradient(
-            0f,
-            frontBottom,
-            0f,
-            frontBottom + shadowHeight,
-            ColorUtils.setAlphaComponent(shadowColor, 42),
-            ColorUtils.setAlphaComponent(shadowColor, 0),
-            Shader.TileMode.CLAMP
-        )
-        canvas.drawPath(shelfShadowPath, shadowPaint)
-        shadowPaint.shader = null
+        plankRect.set(visualLeft + 8.dpToPx(), frontBottom, visualRight - 8.dpToPx(), frontBottom + shadowHeight)
+        canvas.drawRect(plankRect, shadowPaint)
     }
 
     private data class RowBounds(
