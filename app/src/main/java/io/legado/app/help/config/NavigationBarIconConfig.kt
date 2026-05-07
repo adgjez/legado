@@ -110,7 +110,8 @@ object NavigationBarIconConfig {
         NavItem("discovery", R.string.discovery, R.id.menu_discovery, R.drawable.ic_bottom_explore),
         NavItem("rss", R.string.rss, R.id.menu_rss, R.drawable.ic_bottom_rss_feed),
         NavItem("readRecord", R.string.read_record, R.id.menu_read_record, R.drawable.ic_bottom_read_record),
-        NavItem("my", R.string.my, R.id.menu_my_config, R.drawable.ic_bottom_person)
+        NavItem("my", R.string.my, R.id.menu_my_config, R.drawable.ic_bottom_person),
+        NavItem("ai", R.string.ai_assistant, R.id.menu_ai, R.drawable.ic_bottom_ai_assistant)
     )
 
     fun activeDirName(isNight: Boolean): String {
@@ -306,6 +307,11 @@ object NavigationBarIconConfig {
         return loadDrawable(context, iconPath(entry, item.key, state))
             ?: loadDrawable(context, iconPath(entry, item.key, STATE_NORMAL))
             ?: ContextCompat.getDrawable(context, item.defaultIconRes)
+    }
+
+    fun currentDrawable(context: Context, itemKey: String, selected: Boolean): Drawable? {
+        val item = items.firstOrNull { it.key == itemKey } ?: return null
+        return previewDrawable(context, currentEntry(AppConfig.isNightTheme), item, selected)
     }
 
     fun getIconFileName(entry: Entry, itemKey: String, selected: Boolean): String? {

@@ -170,7 +170,7 @@
         app:layout_constraintHorizontal_bias="0"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintWidth_percent="0.76">
+        app:layout_constraintWidth_percent="0.66">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -235,200 +235,246 @@
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
-            <LinearLayout
-                android:id="@+id/side_navigation_view"
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/side_navigation_scroll"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:background="@color/transparent"
-                android:orientation="vertical"
+                android:clipToPadding="false"
+                android:fillViewport="false"
+                android:overScrollMode="ifContentScrolls"
                 android:paddingTop="2dp"
                 android:paddingBottom="2dp">
 
                 <LinearLayout
-                    android:id="@+id/side_nav_bookshelf_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp">
-
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/side_nav_bookshelf"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="@drawable/bg_more_icon_button_clear"
-                        android:contentDescription="@string/bookshelf"
-                        android:padding="11dp"
-                        android:scaleType="centerInside" />
-
-                    <TextView
-                        android:id="@+id/side_nav_bookshelf_text"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:text="@string/bookshelf"
-                        android:textColor="@color/primaryText"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/side_nav_bookshelf_groups"
+                    android:id="@+id/side_navigation_view"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:orientation="vertical"
-                    android:visibility="gone" />
+                    android:orientation="vertical">
 
-                <LinearLayout
-                    android:id="@+id/side_nav_discovery_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp">
+                    <LinearLayout
+                        android:id="@+id/side_nav_bookshelf_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
 
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/side_nav_discovery"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="@drawable/bg_more_icon_button_clear"
-                        android:contentDescription="@string/discovery"
-                        android:padding="11dp"
-                        android:scaleType="centerInside" />
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_bookshelf"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/bookshelf"
+                            android:padding="11dp"
+                            android:scaleType="centerInside" />
 
-                    <TextView
-                        android:id="@+id/side_nav_discovery_text"
-                        android:layout_width="0dp"
+                        <TextView
+                            android:id="@+id/side_nav_bookshelf_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/bookshelf"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_bookshelf_groups"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:text="@string/discovery"
-                        android:textColor="@color/primaryText"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:layout_marginBottom="8dp"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_discovery_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_discovery"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/discovery"
+                            android:padding="11dp"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:id="@+id/side_nav_discovery_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/discovery"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_rss_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_rss"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/rss"
+                            android:padding="11dp"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:id="@+id/side_nav_rss_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/rss"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_read_record_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_read_record"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/read_record"
+                            android:padding="11dp"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:id="@+id/side_nav_read_record_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/read_record"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_my_config_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_my_config"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/my"
+                            android:padding="11dp"
+                            android:scaleType="centerInside" />
+
+                        <TextView
+                            android:id="@+id/side_nav_my_config_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/my"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/side_nav_ai_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="60dp"
+                        android:layout_marginBottom="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:visibility="gone">
+
+                        <androidx.appcompat.widget.AppCompatImageButton
+                            android:id="@+id/side_nav_ai"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_more_icon_button_clear"
+                            android:contentDescription="@string/ai_assistant"
+                            android:padding="11dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_bottom_ai_e" />
+
+                        <TextView
+                            android:id="@+id/side_nav_ai_text"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:text="@string/ai_assistant"
+                            android:textColor="@color/primaryText"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                    </LinearLayout>
 
                 </LinearLayout>
 
-                <LinearLayout
-                    android:id="@+id/side_nav_rss_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp">
-
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/side_nav_rss"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="@drawable/bg_more_icon_button_clear"
-                        android:contentDescription="@string/rss"
-                        android:padding="11dp"
-                        android:scaleType="centerInside" />
-
-                    <TextView
-                        android:id="@+id/side_nav_rss_text"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:text="@string/rss"
-                        android:textColor="@color/primaryText"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/side_nav_read_record_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp">
-
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/side_nav_read_record"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="@drawable/bg_more_icon_button_clear"
-                        android:contentDescription="@string/read_record"
-                        android:padding="11dp"
-                        android:scaleType="centerInside" />
-
-                    <TextView
-                        android:id="@+id/side_nav_read_record_text"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:text="@string/read_record"
-                        android:textColor="@color/primaryText"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/side_nav_my_config_row"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginBottom="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp">
-
-                    <androidx.appcompat.widget.AppCompatImageButton
-                        android:id="@+id/side_nav_my_config"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:background="@drawable/bg_more_icon_button_clear"
-                        android:contentDescription="@string/my"
-                        android:padding="11dp"
-                        android:scaleType="centerInside" />
-
-                    <TextView
-                        android:id="@+id/side_nav_my_config_text"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:layout_weight="1"
-                        android:ellipsize="end"
-                        android:singleLine="true"
-                        android:text="@string/my"
-                        android:textColor="@color/primaryText"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
-
-                </LinearLayout>
-
-            </LinearLayout>
+            </androidx.core.widget.NestedScrollView>
 
             <LinearLayout
                 android:id="@+id/side_search_row"
                 android:layout_width="match_parent"
-                android:layout_height="60dp"
+                android:layout_height="42dp"
                 android:layout_marginTop="12dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
@@ -437,11 +483,11 @@
 
                 <androidx.appcompat.widget.AppCompatImageButton
                     android:id="@+id/side_search_button"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
                     android:background="@drawable/bg_more_icon_button_clear"
                     android:contentDescription="@string/search"
-                    android:padding="11dp"
+                    android:padding="10dp"
                     android:scaleType="centerInside"
                     android:src="@drawable/ic_search"
                     android:tint="@color/primaryText" />

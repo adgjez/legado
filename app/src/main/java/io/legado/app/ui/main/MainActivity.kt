@@ -509,6 +509,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             sideNavigationPanel.background = createSideNavigationPanelDrawable()
             sideNavigationHeader.background = createSideNavigationHeaderDrawable()
             sideSearchRow.background = createSideNavigationSearchDrawable()
+            sideNavAiRow.background = createSideNavigationRowDrawable(false)
             updateSideNavigationItems()
             placeSideNavigation(animate = false)
         } else {
@@ -529,6 +530,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         sideSearchRow.setOnClickListener {
             closeSideNavigation()
             startActivity(Intent(this@MainActivity, SearchActivity::class.java))
+        }
+        sideNavAiRow.setOnClickListener {
+            closeSideNavigation()
+            startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
+        }
+        sideNavAi.setOnClickListener {
+            sideNavAiRow.performClick()
         }
         sideNavigationRowMap().forEach { (itemId, row) ->
             row.setOnClickListener {
@@ -585,9 +593,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun updateSideNavigationItems() = binding.run {
         val selectedItemId = getBottomNavigationItemId(pagePosition)
+        val mergedDiscovery = AppConfig.mergeDiscoveryRss && AppConfig.showDiscovery && AppConfig.showRSS
         sideNavigationButtonMap().forEach { (itemId, button) ->
             val menuItem = bottomNavigationView.menu.findItem(itemId)
-            val visible = menuItem?.isVisible == true
+            val visible = menuItem?.isVisible == true && !(mergedDiscovery && itemId == R.id.menu_rss)
             sideNavigationRowMap()[itemId]?.isVisible = visible
             button.isVisible = visible
             button.isSelected = itemId == selectedItemId
@@ -599,6 +608,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         sideNavBookshelfGroups.isVisible = sideBookshelfGroupsExpanded &&
                 bottomNavigationView.menu.findItem(R.id.menu_bookshelf)?.isVisible == true
+        sideNavAiRow.isVisible = AppConfig.aiAssistantEnabled
+        sideNavAi.setImageDrawable(NavigationBarIconConfig.currentDrawable(this@MainActivity, "ai", false))
+        sideNavAi.imageTintList = bottomNavigationView.createThemeColorStateList()
     }
 
     private fun renderSideBookshelfGroups() = binding.run {
@@ -653,23 +665,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun placeSideNavigation(animate: Boolean) = binding.run {
-        if (!isSidebarMode() || sideNavigationPanel.width == 0) return
+        if (!isSidebarMode()) return
         sideNavigationPanel.animate().cancel()
         updateSideNavigationPanelWidth()
-        val fromEnd = sideNavigationGravity == "end"
-        (sideNavigationPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let {
-            it.startToStart = ConstraintSet.PARENT_ID
-            it.endToEnd = ConstraintSet.PARENT_ID
-            it.startToEnd = ConstraintLayout.LayoutParams.UNSET
-            it.endToStart = ConstraintLayout.LayoutParams.UNSET
-            it.horizontalBias = if (fromEnd) 1f else 0f
-            sideNavigationPanel.layoutParams = it
+        if (sideNavigationPanel.width == 0) {
+            sideNavigationPanel.doOnLayout { placeSideNavigation(animate) }
+            return
         }
-        val closedOffset = if (fromEnd) {
-            sideNavigationPanel.width + 14.dpToPx()
-        } else {
-            -sideNavigationPanel.width - 14.dpToPx()
-        }
+        applySideNavigationEdge(sideNavigationGravity)
+        val closedOffset = sideNavigationClosedOffset()
         val target = if (sideNavigationOpen) 0f else closedOffset.toFloat()
         if (animate) {
             animateSideNavigationScrim(sideNavigationOpen)
@@ -685,11 +689,31 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun applySideNavigationEdge(gravity: String) = binding.run {
+        val fromEnd = gravity == "end"
+        (sideNavigationPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let {
+            it.startToStart = ConstraintSet.PARENT_ID
+            it.endToEnd = ConstraintSet.PARENT_ID
+            it.startToEnd = ConstraintLayout.LayoutParams.UNSET
+            it.endToStart = ConstraintLayout.LayoutParams.UNSET
+            it.horizontalBias = if (fromEnd) 1f else 0f
+            sideNavigationPanel.layoutParams = it
+        }
+    }
+
+    private fun sideNavigationClosedOffset(): Int = binding.run {
+        if (sideNavigationGravity == "end") {
+            sideNavigationPanel.width + 14.dpToPx()
+        } else {
+            -sideNavigationPanel.width - 14.dpToPx()
+        }
+    }
+
     private fun updateSideNavigationPanelWidth() = binding.run {
         val rootWidth = root.width
         val rootHeight = root.height
         if (rootWidth <= 0 || rootHeight <= 0) return@run
-        val percent = if (rootWidth > rootHeight) 0.50f else 0.76f
+        val percent = if (rootWidth > rootHeight) 0.33f else 0.66f
         (sideNavigationPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let {
             if (it.matchConstraintPercentWidth != percent) {
                 it.matchConstraintPercentWidth = percent
@@ -728,8 +752,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         sideNavigationGravity = gravity.takeIf { it == "end" } ?: "start"
         sideNavigationLockedGravity = sideNavigationGravity
         binding.sideNavigationPanel.background = createSideNavigationPanelDrawable()
-        sideNavigationOpen = true
-        placeSideNavigation(animate = true)
+        binding.sideNavigationPanel.animate().cancel()
+        updateSideNavigationPanelWidth()
+        applySideNavigationEdge(sideNavigationGravity)
+        sideNavigationOpen = false
+        binding.sideNavigationPanel.isVisible = true
+        binding.sideNavigationPanel.doOnLayout {
+            applySideNavigationEdge(sideNavigationGravity)
+            binding.sideNavigationPanel.translationX = sideNavigationClosedOffset().toFloat()
+            sideNavigationOpen = true
+            placeSideNavigation(animate = true)
+        }
     }
 
     private fun closeSideNavigation() {
@@ -976,11 +1009,20 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun createSideNavigationSearchDrawable(): GradientDrawable {
+        val searchSurfaceColor = if (AppConfig.isNightTheme) {
+            AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.36f)
+        } else {
+            ContextCompat.getColor(this@MainActivity, R.color.background_card)
+        }
+        val strokeColor = AppColorUtils.withAlpha(
+            ContextCompat.getColor(this@MainActivity, R.color.primaryText),
+            if (AppConfig.isNightTheme) 0.10f else 0.08f
+        )
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.searchRadius(18f)
-            setColor(ContextCompat.getColor(this@MainActivity, R.color.background_card))
-            setStroke(1.dpToPx(), ContextCompat.getColor(this@MainActivity, R.color.divider))
+            setColor(searchSurfaceColor)
+            setStroke(1.dpToPx(), strokeColor)
         }
     }
 
