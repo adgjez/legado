@@ -165,16 +165,62 @@
             android:gravity="center"
             android:orientation="vertical">
 
-            <com.google.android.material.navigationrail.NavigationRailView
+            <LinearLayout
                 android:id="@+id/side_navigation_view"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@color/transparent"
+                android:gravity="center"
+                android:orientation="vertical"
                 android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                app:itemIconSize="@dimen/main_bottom_nav_icon_size"
-                app:labelVisibilityMode="unlabeled"
-                app:menu="@menu/main_bnv" />
+                android:paddingBottom="8dp">
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/side_nav_bookshelf"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_more_icon_button_clear"
+                    android:contentDescription="@string/bookshelf"
+                    android:padding="12dp"
+                    android:scaleType="centerInside" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/side_nav_discovery"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_more_icon_button_clear"
+                    android:contentDescription="@string/discovery"
+                    android:padding="12dp"
+                    android:scaleType="centerInside" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/side_nav_rss"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_more_icon_button_clear"
+                    android:contentDescription="@string/rss"
+                    android:padding="12dp"
+                    android:scaleType="centerInside" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/side_nav_read_record"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_more_icon_button_clear"
+                    android:contentDescription="@string/read_record"
+                    android:padding="12dp"
+                    android:scaleType="centerInside" />
+
+                <androidx.appcompat.widget.AppCompatImageButton
+                    android:id="@+id/side_nav_my_config"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_more_icon_button_clear"
+                    android:contentDescription="@string/my"
+                    android:padding="12dp"
+                    android:scaleType="centerInside" />
+
+            </LinearLayout>
 
             <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/side_search_button"

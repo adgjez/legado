@@ -20,6 +20,7 @@ import androidx.activity.addCallback
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
+import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
 import androidx.core.view.isVisible
@@ -32,7 +33,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.viewpager.widget.ViewPager
 import com.qmdeve.liquidglass.widget.LiquidGlassView
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -315,11 +315,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
         bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
         bottomNavigationView.setOnNavigationItemReselectedListener(this@MainActivity)
-        sideNavigationView.setOnItemSelectedListener(NavigationBarView.OnItemSelectedListener {
-            handleNavigationItemSelected(it, closeSidebar = true)
-        })
+        bindSideNavigationButtons()
         bottomNavigationView.menu.findItem(getBottomNavigationItemId(initialPage))?.isChecked = true
-        sideNavigationView.menu.findItem(getBottomNavigationItemId(initialPage))?.isChecked = true
         applyBottomNavigationIcons()
         searchButton.setOnClickListener {
             startActivity(Intent(this@MainActivity, SearchActivity::class.java))
@@ -408,10 +405,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (sidebarMode) {
             bottomIndicatorAnimator.cancel()
             bottomNavigationIndicatorContainer.isVisible = false
-            sideNavigationView.setBackgroundColor(Color.TRANSPARENT)
             sideNavigationPanel.background = createSideNavigationPanelDrawable()
             sideNavigationHandle.background = createSideNavigationHandleDrawable()
-            sideNavigationView.menu.findItem(getBottomNavigationItemId(pagePosition))?.isChecked = true
+            updateSideNavigationItems()
             placeSideNavigation(animate = false)
         } else {
             sideNavigationOpen = false
@@ -420,6 +416,42 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             sideNavigationPanel.visibility = View.GONE
             sideNavigationHandle.visibility = View.GONE
             bottomNavigationView.menu.findItem(getBottomNavigationItemId(pagePosition))?.isChecked = true
+        }
+    }
+
+    private fun bindSideNavigationButtons() = binding.run {
+        sideNavigationButtonMap().forEach { (itemId, button) ->
+            button.setOnClickListener {
+                val menuItem = bottomNavigationView.menu.findItem(itemId) ?: return@setOnClickListener
+                if (menuItem.itemId == getBottomNavigationItemId(pagePosition)) {
+                    onNavigationItemReselected(menuItem)
+                    closeSideNavigation()
+                } else {
+                    handleNavigationItemSelected(menuItem, closeSidebar = true)
+                }
+            }
+        }
+    }
+
+    private fun sideNavigationButtonMap(): Map<Int, AppCompatImageButton> = binding.run {
+        linkedMapOf(
+            R.id.menu_bookshelf to sideNavBookshelf,
+            R.id.menu_discovery to sideNavDiscovery,
+            R.id.menu_rss to sideNavRss,
+            R.id.menu_read_record to sideNavReadRecord,
+            R.id.menu_my_config to sideNavMyConfig
+        )
+    }
+
+    private fun updateSideNavigationItems() = binding.run {
+        val selectedItemId = getBottomNavigationItemId(pagePosition)
+        sideNavigationButtonMap().forEach { (itemId, button) ->
+            val menuItem = bottomNavigationView.menu.findItem(itemId)
+            button.isVisible = menuItem?.isVisible == true
+            button.isSelected = itemId == selectedItemId
+            button.contentDescription = menuItem?.title
+            button.setImageDrawable(menuItem?.icon?.constantState?.newDrawable()?.mutate() ?: menuItem?.icon)
+            button.imageTintList = null
         }
     }
 
@@ -622,18 +654,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             this@MainActivity,
             AppConfig.isNightTheme
         )
-        NavigationBarIconConfig.applyTo(
-            sideNavigationView.menu,
-            this@MainActivity,
-            AppConfig.isNightTheme
-        )
         if (hasCustom) {
             bottomNavigationView.itemIconTintList = null
-            sideNavigationView.itemIconTintList = null
         } else {
             bottomNavigationView.restoreThemeIconTint()
-            sideNavigationView.itemIconTintList = bottomNavigationView.createThemeColorStateList()
         }
+        updateSideNavigationItems()
         syncSearchButtonTint()
     }
 
@@ -1093,8 +1119,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 if (it) {
                     bottomNavigationView.menu.clear()
                     bottomNavigationView.inflateMenu(R.menu.main_bnv)
-                    sideNavigationView.menu.clear()
-                    sideNavigationView.inflateMenu(R.menu.main_bnv)
                     applyBottomNavigationIcons()
                     onUpBooksBadgeView = null
                 }
@@ -1115,7 +1139,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val showRss = AppConfig.showRSS && binding.bottomNavigationView.menu.findItem(R.id.menu_rss) != null
         val showReadRecord = AppConfig.showReadRecord
         val mergedDiscovery = AppConfig.mergeDiscoveryRss && showDiscovery && showRss
-        listOf(binding.bottomNavigationView.menu, binding.sideNavigationView.menu).forEach { menu ->
+        binding.bottomNavigationView.menu.let { menu ->
             menu.findItem(R.id.menu_discovery).isVisible = showDiscovery || (mergedDiscovery && showRss)
             menu.findItem(R.id.menu_rss)?.isVisible = showRss && !mergedDiscovery
             menu.findItem(R.id.menu_read_record)?.isVisible = showReadRecord
@@ -1153,6 +1177,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         adapter.notifyDataSetChanged()
         binding.bottomNavigationView.post {
             bindMergedDiscoveryLongClick()
+            updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = false)
         }
     }
@@ -1194,7 +1219,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         override fun onPageSelected(position: Int) {
             pagePosition = position
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
-            binding.sideNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
+            updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)
         }
 
