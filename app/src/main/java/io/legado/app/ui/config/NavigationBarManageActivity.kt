@@ -292,6 +292,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun buildEditView(): LinearLayout {
         val config = pendingConfig!!
+        val currentEntry = editingEntry
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(2, 2, 2, 4)
@@ -381,13 +382,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                         }
                     ) { _, index ->
                         if (index == 0) {
-                            pendingSidebarBackgroundEntry = entry
+                            pendingSidebarBackgroundEntry = currentEntry
                             selectSidebarBackground.launch {
                                 mode = HandleFileContract.IMAGE
                                 title = getString(R.string.navigation_bar_sidebar_background)
                             }
-                        } else {
-                            editingEntry = NavigationBarIconConfig.clearSidebarBackground(entry)
+                        } else if (currentEntry != null) {
+                            editingEntry = NavigationBarIconConfig.clearSidebarBackground(currentEntry)
                             pendingConfig = editingEntry!!.config.copy(icons = editingEntry!!.config.icons.toMutableMap())
                             notifyAppliedIfNeeded(editingEntry!!)
                             refreshEditDialog()
