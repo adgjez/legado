@@ -211,9 +211,10 @@
                         android:id="@+id/side_goal_avatar"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
+                        android:layout_margin="3dp"
                         android:contentDescription="@null"
                         android:importantForAccessibility="no"
-                        android:scaleType="centerCrop" />
+                        android:scaleType="fitCenter" />
 
                 </androidx.cardview.widget.CardView>
 
@@ -513,9 +514,8 @@
                     android:ellipsize="end"
                     android:singleLine="true"
                     android:text="@string/search"
-                    android:textColor="@color/primaryText"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:textColor="@color/secondaryText"
+                    android:textSize="16sp" />
 
             </LinearLayout>
 

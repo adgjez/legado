@@ -91,6 +91,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_read)
             upPreferenceSummary(PreferKey.pageTouchSlop, slopSquare.toString())
+            upPreferenceSummary(PreferKey.readMenuAlpha, AppConfig.readMenuAlpha.toString())
             if (!CanvasRecorderFactory.isSupport) {
                 removePref(PreferKey.optimizeRender)
                 preferenceScreen.removePreferenceRecursively(PreferKey.optimizeRender)
@@ -167,7 +168,8 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                 }
 
                 PreferKey.showReadTitleAddition,
-                PreferKey.readBarStyleFollowPage -> {
+                PreferKey.readBarStyleFollowPage,
+                PreferKey.readMenuAlpha -> {
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }
 
@@ -223,6 +225,18 @@ class MoreConfigDialog : BasePrefDialogFragment() {
                             postEvent(EventBus.UP_CONFIG, arrayListOf(12))
                         }
                 }
+
+                PreferKey.readMenuAlpha -> {
+                    NumberPickerDialog(requireContext())
+                        .setTitle(getString(R.string.read_menu_alpha))
+                        .setMaxValue(100)
+                        .setMinValue(35)
+                        .setValue(AppConfig.readMenuAlpha)
+                        .show {
+                            AppConfig.readMenuAlpha = it
+                            postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
+                        }
+                }
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -233,6 +247,8 @@ class MoreConfigDialog : BasePrefDialogFragment() {
             when (preferenceKey) {
                 PreferKey.pageTouchSlop -> preference.summary =
                     getString(R.string.page_touch_slop_summary, value)
+                PreferKey.readMenuAlpha -> preference.summary =
+                    getString(R.string.read_menu_alpha_summary)
             }
         }
 

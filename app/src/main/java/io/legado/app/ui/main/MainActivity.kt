@@ -5,7 +5,9 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -63,6 +65,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.ReadRecordWidgetStore
+import io.legado.app.ui.about.loadReadRecordAvatar
 import io.legado.app.ui.about.loadReadRecordCover
 import io.legado.app.ui.association.ImportBookSourceDialog
 import io.legado.app.ui.association.ImportReplaceRuleDialog
@@ -647,11 +650,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return TextView(this).apply {
             text = group.groupName
             textSize = 15f
-            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.primaryText))
+            setTextColor(
+                if (selected) {
+                    ContextCompat.getColor(this@MainActivity, R.color.primaryText)
+                } else {
+                    ContextCompat.getColor(this@MainActivity, R.color.secondaryText)
+                }
+            )
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(58.dpToPx(), 0, 14.dpToPx(), 0)
+            gravity = android.view.Gravity.CENTER
+            setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
             background = createSideNavigationGroupDrawable(selected)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -781,7 +790,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 appDb.readRecordDailyDao.get(java.time.LocalDate.now().toString())?.readTime ?: 0L
             }
             val todayText = formatSideReadDuration(todayTime)
-            binding.sideGoalAvatar.loadReadRecordCover(goalConfig.avatar)
+            binding.sideGoalAvatar.loadReadRecordAvatar(goalConfig.avatar)
             binding.sideGoalUserName.text = goalConfig.userName?.takeIf { it.isNotBlank() }
                 ?: getString(R.string.read_record_goal_card)
             binding.sideGoalToday.text = getString(R.string.read_record_goal_today, todayText)
@@ -1068,20 +1077,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSideNavigationHeaderDrawable(): GradientDrawable {
         val baseColor = bottomBackground
-        if (binding.sideNavigationBackground.isVisible) {
-            return GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = UiCorner.panelRadius(this@MainActivity)
-                setColor(Color.TRANSPARENT)
-                setStroke(0, Color.TRANSPARENT)
-            }
-        }
         val isLight = AppColorUtils.isColorLight(baseColor)
-        val surface = AppColorUtils.blendColors(
-            baseColor,
-            if (isLight) Color.WHITE else Color.BLACK,
-            if (isLight) 0.34f else 0.16f
-        )
+        val surface = if (binding.sideNavigationBackground.isVisible) {
+            AppColorUtils.withAlpha(
+                if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
+                if (AppConfig.isNightTheme) 0.20f else 0.42f
+            )
+        } else {
+            AppColorUtils.blendColors(
+                baseColor,
+                if (isLight) Color.WHITE else Color.BLACK,
+                if (isLight) 0.34f else 0.16f
+            )
+        }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.panelRadius(this@MainActivity)
@@ -1090,7 +1098,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 1.dpToPx(),
                 AppColorUtils.withAlpha(
                     if (isLight) Color.BLACK else Color.WHITE,
-                    0.10f
+                    if (binding.sideNavigationBackground.isVisible) 0.06f else 0.10f
                 )
             )
         }
@@ -1100,17 +1108,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val searchSurfaceColor = if (AppConfig.isNightTheme) {
             AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.42f)
         } else {
-            AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.18f)
+            AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.22f)
         }
-        val strokeColor = AppColorUtils.withAlpha(
-            ContextCompat.getColor(this@MainActivity, R.color.primaryText),
-            if (AppConfig.isNightTheme) 0.10f else 0.08f
-        )
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = UiCorner.searchRadius(18f)
             setColor(searchSurfaceColor)
-            setStroke(1.dpToPx(), strokeColor)
+            setStroke(0, Color.TRANSPARENT)
         }
     }
 
@@ -1135,42 +1139,61 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun createSideNavigationRowDrawable(selected: Boolean): GradientDrawable {
+    private fun createSideNavigationRowDrawable(selected: Boolean): Drawable {
         val baseColor = bottomBackground
         val isLight = AppColorUtils.isColorLight(baseColor)
-        val surface = Color.TRANSPARENT
-        val stroke = if (selected) {
-            AppColorUtils.withAlpha(
-                if (binding.sideNavigationBackground.isVisible) {
-                    if (isLight) Color.BLACK else Color.WHITE
+        val fill = if (selected) {
+            if (binding.sideNavigationBackground.isVisible) {
+                AppColorUtils.withAlpha(
+                    if (AppConfig.isNightTheme) Color.BLACK else Color.WHITE,
+                    if (AppConfig.isNightTheme) 0.18f else 0.34f
+                )
+            } else {
+                if (AppConfig.isNightTheme) {
+                    AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.46f)
                 } else {
-                    primaryColor
-                },
-                if (binding.sideNavigationBackground.isVisible) 0.12f else if (isLight) 0.22f else 0.34f
-            )
+                    AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.20f)
+                }
+            }
         } else {
             Color.TRANSPARENT
         }
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = UiCorner.actionRadius(this@MainActivity)
-            setColor(surface)
-            setStroke(1.dpToPx(), stroke)
-        }
+        return InsetDrawable(
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = UiCorner.actionRadius(this@MainActivity)
+                setColor(fill)
+                setStroke(0, Color.TRANSPARENT)
+            },
+            4.dpToPx(),
+            5.dpToPx(),
+            4.dpToPx(),
+            5.dpToPx()
+        )
     }
 
-    private fun createSideNavigationGroupDrawable(selected: Boolean): GradientDrawable {
-        val baseColor = ContextCompat.getColor(this, R.color.background_card)
-        val surface = if (selected) {
-            AppColorUtils.blendColors(baseColor, primaryColor, 0.14f)
+    private fun createSideNavigationGroupDrawable(selected: Boolean): Drawable {
+        val fill = if (selected) {
+            if (AppConfig.isNightTheme) {
+                AppColorUtils.withAlpha(Color.rgb(52, 52, 56), 0.42f)
+            } else {
+                AppColorUtils.withAlpha(Color.rgb(120, 120, 128), 0.18f)
+            }
         } else {
             Color.TRANSPARENT
         }
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = UiCorner.actionRadius(this@MainActivity)
-            setColor(surface)
-        }
+        return InsetDrawable(
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = UiCorner.actionRadius(this@MainActivity)
+                setColor(fill)
+                setStroke(0, Color.TRANSPARENT)
+            },
+            12.dpToPx(),
+            0,
+            12.dpToPx(),
+            0
+        )
     }
 
     private fun createLiquidGlassShellDrawable(
