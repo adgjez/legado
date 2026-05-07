@@ -266,20 +266,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     refreshEditDialog()
                 }
             })
-            if (config.layoutMode == "sidebar") {
-                addView(optionRow(getString(R.string.bottom_bar_sidebar_gravity), sidebarGravityLabel(config.sidebarGravity)) {
-                    selector(
-                        getString(R.string.bottom_bar_sidebar_gravity),
-                        listOf(
-                            getString(R.string.bottom_bar_sidebar_left),
-                            getString(R.string.bottom_bar_sidebar_right)
-                        )
-                    ) { _, index ->
-                        config.sidebarGravity = if (index == 1) "end" else "start"
-                        refreshEditDialog()
-                    }
-                })
-            } else {
+            if (config.layoutMode != "sidebar") {
                 addView(optionRow(getString(R.string.bottom_bar_effect_mode), effectModeLabel(config.effectMode)) {
                     selector(
                         getString(R.string.bottom_bar_effect_mode),
@@ -562,13 +549,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return when (value) {
             "sidebar" -> getString(R.string.bottom_bar_layout_sidebar)
             else -> getString(R.string.bottom_bar_layout_floating)
-        }
-    }
-
-    private fun sidebarGravityLabel(value: String): String {
-        return when (value) {
-            "end" -> getString(R.string.bottom_bar_sidebar_right)
-            else -> getString(R.string.bottom_bar_sidebar_left)
         }
     }
 

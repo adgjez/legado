@@ -237,6 +237,13 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         updateHeaderTitle()
     }
 
+    fun switchToGroupId(groupId: Long) {
+        val index = bookGroups.indexOfFirst { it.groupId == groupId }
+        if (index >= 0) {
+            switchToGroup(index)
+        }
+    }
+
     override fun showBookTagManageAlert() {
         val group = selectedGroup ?: return
         val targetBooks = groupBooksCache[group.groupId].orEmpty()

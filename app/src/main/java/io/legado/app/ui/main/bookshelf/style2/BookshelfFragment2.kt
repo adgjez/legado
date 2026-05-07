@@ -236,6 +236,11 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         return false
     }
 
+    fun switchToGroupId(targetGroupId: Long) {
+        groupId = targetGroupId
+        initBooksData()
+    }
+
     override fun onQueryTextSubmit(query: String?): Boolean {
         SearchActivity.start(requireContext(), query)
         return false
