@@ -13,8 +13,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.canhub.cropper.CropImage
-import com.canhub.cropper.CropImageContract
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.data.appDb
@@ -43,6 +41,7 @@ import io.legado.app.ui.about.openReadRecordBook
 import io.legado.app.ui.about.showReadRecordBookActionDialog
 import io.legado.app.ui.about.showReadRecordGoalDialog
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ImageCropHelper
@@ -110,19 +109,17 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             pendingAvatarUpdate = null
         }
     }
-    @Suppress("DEPRECATION")
-    private val cropGoalAvatar = registerForActivityResult(CropImageContract()) { result ->
+    private val cropGoalAvatar = registerForActivityResult(ImageCropContract()) { result ->
         val request = pendingAvatarCropRequest ?: return@registerForActivityResult
         pendingAvatarCropRequest = null
-        if (result === CropImage.CancelledResult) {
+        if (result == null) {
             pendingAvatarUpdate = null
             return@registerForActivityResult
         }
-        val path = ImageCropHelper.resultPath(result.uriContent, request.outputPath)
-        if (result.isSuccessful && path != null) {
-            pendingAvatarUpdate?.invoke(path)
+        if (java.io.File(result).exists()) {
+            pendingAvatarUpdate?.invoke(result)
         } else {
-            toastOnUi(getString(R.string.image_crop_failed, result.error?.localizedMessage.orEmpty()))
+            toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
         }
         pendingAvatarUpdate = null
     }
@@ -256,7 +253,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             targetWidth = 512
         )
         pendingAvatarCropRequest = request
-        cropGoalAvatar.launch(request.options)
+        cropGoalAvatar.launch(request.params)
     }
 
     private fun buildDashboard(today: LocalDate): ReadRecordDashboard {

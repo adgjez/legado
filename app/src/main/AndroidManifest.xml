@@ -238,7 +238,7 @@
             android:name=".ui.config.NavigationBarManageActivity"
             android:launchMode="standard" />
         <activity
-            android:name="com.canhub.cropper.CropImageActivity"
+            android:name=".ui.image.ImageCropActivity"
             android:screenOrientation="portrait"
             android:theme="@style/AppTheme.Light" />
         <activity

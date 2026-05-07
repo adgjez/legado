@@ -16,8 +16,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.bumptech.glide.Glide
-import com.canhub.cropper.CropImage
-import com.canhub.cropper.CropImageContract
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
@@ -40,6 +38,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -98,24 +97,22 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             startImageCrop(uri, it.requestCode)
         }
     }
-    @Suppress("DEPRECATION")
-    private val cropImage = registerForActivityResult(CropImageContract()) { result ->
+    private val cropImage = registerForActivityResult(ImageCropContract()) { result ->
         val request = pendingImageCropRequest ?: return@registerForActivityResult
         pendingImageCropRequest = null
-        if (result === CropImage.CancelledResult) {
+        if (result == null) {
             return@registerForActivityResult
         }
-        val targetPath = ImageCropHelper.resultPath(result.uriContent, request.outputPath)
-        if (result.isSuccessful && targetPath != null) {
+        if (java.io.File(result).exists()) {
             if (request.requestCode == requestMainBackground) {
-                pendingMainBackgroundPath = targetPath
+                pendingMainBackgroundPath = result
                 editDialogBinding?.let { binding -> updateImageRow(binding.rowMainBackground, true) }
             } else {
-                pendingBookInfoBackgroundPath = targetPath
+                pendingBookInfoBackgroundPath = result
                 editDialogBinding?.let { binding -> updateImageRow(binding.rowBookInfoBackground, false) }
             }
         } else {
-            toastOnUi(getString(R.string.image_crop_failed, result.error?.localizedMessage.orEmpty()))
+            toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
         }
     }
     private val importThemePackage = registerForActivityResult(HandleFileContract()) {
@@ -675,7 +672,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             targetWidth = 1600
         )
         pendingImageCropRequest = request
-        cropImage.launch(request.options)
+        cropImage.launch(request.params)
     }
 
     private fun showActions(entry: ThemePackageManager.Entry) {

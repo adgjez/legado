@@ -13,8 +13,6 @@ import android.widget.SeekBar
 import androidx.core.view.MenuProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
-import com.canhub.cropper.CropImage
-import com.canhub.cropper.CropImageContract
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -33,6 +31,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -71,18 +70,16 @@ class ThemeConfigFragment : PreferenceFragment(),
             startImageCrop(uri, it.requestCode)
         }
     }
-    @Suppress("DEPRECATION")
-    private val cropImage = registerForActivityResult(CropImageContract()) { result ->
+    private val cropImage = registerForActivityResult(ImageCropContract()) { result ->
         val request = pendingImageCropRequest ?: return@registerForActivityResult
         pendingImageCropRequest = null
-        if (result === CropImage.CancelledResult) {
+        if (result == null) {
             return@registerForActivityResult
         }
-        val path = ImageCropHelper.resultPath(result.uriContent, request.outputPath)
-        if (result.isSuccessful && path != null) {
-            applyCroppedImage(request.requestCode, path)
+        if (java.io.File(result).exists()) {
+            applyCroppedImage(request.requestCode, result)
         } else {
-            toastOnUi(getString(R.string.image_crop_failed, result.error?.localizedMessage.orEmpty()))
+            toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
         }
     }
 
@@ -366,7 +363,7 @@ class ThemeConfigFragment : PreferenceFragment(),
             targetWidth = 1600
         )
         pendingImageCropRequest = request
-        cropImage.launch(request.options)
+        cropImage.launch(request.params)
     }
 
     private fun applyCroppedImage(requestCode: Int, path: String) {

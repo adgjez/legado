@@ -938,6 +938,10 @@ class PhotoView @JvmOverloads constructor(
         mTranslateY = 0
     }
 
+    fun getDisplayMatrixCopy(): Matrix {
+        return Matrix(mSynthesisMatrix)
+    }
+
     interface ClipCalculate {
         fun calculateTop(): Float
     }
