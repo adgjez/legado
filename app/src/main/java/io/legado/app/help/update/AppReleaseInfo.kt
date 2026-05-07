@@ -1,5 +1,6 @@
 package io.legado.app.help.update
 
+import android.os.Build
 import androidx.annotation.Keep
 import com.google.gson.annotations.SerializedName
 import io.legado.app.exception.NoStackTraceException
@@ -17,6 +18,18 @@ data class AppReleaseInfo(
     private val match = apkNameRegex.matchEntire(name)
     val versionName: String = match?.groupValues?.getOrNull(1).orEmpty()
     val versionCode: Long = match?.groupValues?.getOrNull(2)?.toLongOrNull() ?: 0L
+    val abi: String? = when {
+        name.contains("arm64-v8a", ignoreCase = true) -> "arm64-v8a"
+        name.contains("armeabi-v7a", ignoreCase = true) -> "armeabi-v7a"
+        name.contains("x86_64", ignoreCase = true) -> "x86_64"
+        name.contains("x86", ignoreCase = true) -> "x86"
+        else -> null
+    }
+
+    fun supportsDeviceAbi(): Boolean {
+        val assetAbi = abi ?: return true
+        return Build.SUPPORTED_ABIS.any { it.equals(assetAbi, ignoreCase = true) }
+    }
 }
 
 enum class AppVariant {

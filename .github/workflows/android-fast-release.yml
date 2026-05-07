@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  build-release-full:
+  build-release-abi:
     runs-on: ubuntu-latest
 
     steps:
@@ -63,26 +63,34 @@ jobs:
           - 修复主题背景图、在线图片和管理页显示相关问题。
           EOF
 
-      - name: Build full release APK
+      - name: Build arm64 release APK
         run: |
-          ./gradlew :app:assembleAppRelease \
+          rm -rf release-apks app/build/outputs/apk/app/release
+          mkdir -p release-apks
+          ./gradlew :app:clean :app:assembleAppRelease \
+            -Pabi=arm64-v8a \
             -PVERSION_NAME="${{ steps.version.outputs.name }}" \
             -PVERSION_CODE="${{ steps.version.outputs.code }}" \
             --stacktrace
-
-      - name: Resolve APK
-        id: apk
-        run: |
           APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
-          APK_NAME=$(basename "$APK_PATH")
-          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "name=$APK_NAME" >> "$GITHUB_OUTPUT"
+          cp "$APK_PATH" "release-apks/legado-arm64-v8a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
+
+      - name: Build armeabi-v7a release APK
+        run: |
+          rm -rf app/build/outputs/apk/app/release
+          ./gradlew :app:clean :app:assembleAppRelease \
+            -Pabi=armeabi-v7a \
+            -PVERSION_NAME="${{ steps.version.outputs.name }}" \
+            -PVERSION_CODE="${{ steps.version.outputs.code }}" \
+            --stacktrace
+          APK_PATH=$(find app/build/outputs/apk/app/release -type f -name '*.apk' | head -n 1)
+          cp "$APK_PATH" "release-apks/legado-armeabi-v7a_app_${{ steps.version.outputs.name }}_${{ steps.version.outputs.code }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: legado-release-full
-          path: ${{ steps.apk.outputs.path }}
+          name: legado-release-abi
+          path: release-apks/*.apk
 
       - name: Publish versioned release
         uses: softprops/action-gh-release@v2
@@ -92,7 +100,7 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: false
-          files: ${{ steps.apk.outputs.path }}
+          files: release-apks/*.apk
           body_path: release-notes.md
 
       - name: Refresh app update channel
@@ -107,12 +115,12 @@ jobs:
               | while read -r ASSET_ID; do
                   gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
                 done
-            gh release upload "$CHANNEL_TAG" "${{ steps.apk.outputs.path }}" --clobber
+            gh release upload "$CHANNEL_TAG" release-apks/*.apk --clobber
             gh release edit "$CHANNEL_TAG" \
               --title "阅读Archive 更新通道" \
               --notes-file release-notes.md
           else
-            gh release create "$CHANNEL_TAG" "${{ steps.apk.outputs.path }}" \
+            gh release create "$CHANNEL_TAG" release-apks/*.apk \
               --title "阅读Archive 更新通道" \
               --notes-file release-notes.md
           fi

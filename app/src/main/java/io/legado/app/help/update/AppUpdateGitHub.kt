@@ -65,6 +65,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
         return Coroutine.async(scope) {
             getLatestRelease()
                 .filter { it.appVariant == checkVariant }
+                .filter { it.supportsDeviceAbi() }
                 .firstOrNull {
                     if (it.versionCode > 0L) {
                         it.versionCode > AppConst.appInfo.versionCode
