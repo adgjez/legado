@@ -1,8 +1,6 @@
 package io.legado.app.ui.main.explore
 
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -15,11 +13,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.view.SubMenu
 import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.isGone
@@ -42,13 +35,8 @@ import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.WebCacheManager
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
-import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
-import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
-import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
-import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
@@ -73,10 +61,7 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.gone
 import io.legado.app.utils.InfoMap
-import io.legado.app.utils.navigationBarHeight
-import io.legado.app.utils.setDarkeningAllowed
 import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
@@ -153,9 +138,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverRequestVersion = 0L
     private var discoverSourceVersion = 0L
     private var discoveryModeLoaded = false
-    private var discoverWebView: WebView? = null
-    private var discoverPendingPreloadJs: String? = null
-    private var discoverJsBridge: SourceLoginJsExtensions? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -178,7 +160,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.rvFind.applyMainBottomBarPadding()
         binding.rvDiscoverBooks.clipToPadding = false
         binding.rvDiscoverBooks.applyMainBottomBarPadding(withInitialPadding = true)
-        applyDiscoverWebContainerBottomPadding()
         applyDiscoveryMode(loadData = false)
         scheduleDiscoveryWarmup()
     }
@@ -218,7 +199,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun currentDiscoverScrollTarget(): View? {
         return when {
-            usingModernDiscovery && binding.discoverWebContainer.isVisible -> discoverWebView
             usingModernDiscovery -> binding.rvDiscoverBooks
             else -> binding.rvFind
         }
@@ -280,7 +260,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverAllTagItems.clear()
         discoverMajorGroups.clear()
         discoverTagItems.clear()
-        releaseDiscoverWebView()
         selectedDiscoverMajorGroup = null
         selectedDiscoverTagIndex = -1
         selectedDiscoverUrlIndex = -1
@@ -327,146 +306,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
             }
         })
-    }
-
-    @android.annotation.SuppressLint("SetJavaScriptEnabled")
-    private fun showDiscoverWebPage(url: String, html: String? = null, preloadJs: String? = null) {
-        releaseDiscoverWebView()
-        discoverPendingPreloadJs = preloadJs?.takeIf { it.isNotBlank() }
-        val webView = discoverWebView ?: WebView(requireContext()).also { created ->
-            created.layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            created.overScrollMode = View.OVER_SCROLL_NEVER
-            created.settings.javaScriptEnabled = true
-            created.settings.domStorageEnabled = true
-            created.settings.cacheMode = WebSettings.LOAD_DEFAULT
-            created.settings.loadsImagesAutomatically = true
-            created.settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            created.settings.loadWithOverviewMode = true
-            created.settings.useWideViewPort = true
-            created.settings.setDarkeningAllowed(AppConfig.isNightTheme)
-            created.setBackgroundColor(Color.TRANSPARENT)
-            created.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-            created.isVerticalScrollBarEnabled = false
-            created.webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView, url: String?) {
-                    super.onPageFinished(view, url)
-                    val preloadJs = discoverPendingPreloadJs
-                    val script = buildString {
-                        append("(() => {")
-                        append(getInjectionString)
-                        if (!preloadJs.isNullOrBlank()) {
-                            append('\n')
-                            append(preloadJs)
-                        }
-                        append("})();")
-                    }
-                    runCatching { view.evaluateJavascript(script, null) }
-                }
-            }
-            created.webChromeClient = WebChromeClient()
-            binding.discoverWebContainer.setBackgroundColor(Color.TRANSPARENT)
-            binding.discoverWebContainer.addView(created)
-            discoverWebView = created
-        }
-        selectedDiscoverSource?.let { source ->
-            val jsBridge = SourceLoginJsExtensions(
-                activity as? AppCompatActivity,
-                source,
-                callback = object : SourceLoginJsExtensions.Callback {
-                    override fun upUiData(data: Map<String, Any?>?) = Unit
-                    override fun reUiView(deltaUp: Boolean) = Unit
-                    override fun showBrowser(
-                        url: String,
-                        html: String?,
-                        preloadJs: String?,
-                        config: String?
-                    ): Boolean {
-                        return false
-                    }
-
-                    override fun open(
-                        name: String,
-                        url: String?,
-                        title: String?,
-                        origin: String?
-                    ): Boolean {
-                        if (!isAdded) return false
-                        if (name != "explore") return false
-                        val targetUrl = url?.takeIf { it.isNotBlank() } ?: return true
-                        val targetSourceUrl = origin
-                            ?.takeIf { it.isNotBlank() }
-                            ?: selectedDiscoverSource?.bookSourceUrl
-                            ?: source.bookSourceUrl
-                        val targetTitle = title ?: getString(R.string.discovery)
-                        binding.root.post { openExplore(targetSourceUrl, targetTitle, targetUrl) }
-                        return true
-                    }
-                }
-            )
-            discoverJsBridge = jsBridge
-            runCatching { webView.removeJavascriptInterface(nameJava) }
-            runCatching { webView.removeJavascriptInterface(nameSource) }
-            runCatching { webView.removeJavascriptInterface(nameCache) }
-            webView.addJavascriptInterface(jsBridge, nameJava)
-            webView.addJavascriptInterface(source, nameSource)
-            webView.addJavascriptInterface(WebCacheManager, nameCache)
-        }
-        binding.flDiscoverBooks.gone()
-        binding.discoverWebContainer.visible()
-        binding.pbDiscoverLoading.gone()
-        binding.swipeRefreshLayout.isRefreshing = false
-        webView.stopLoading()
-        if (html.isNullOrBlank()) {
-            webView.loadUrl(url)
-        } else {
-            webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", url)
-        }
-    }
-
-    private fun restoreDiscoverListPage() {
-        releaseDiscoverWebView()
-        binding.discoverWebContainer.gone()
-        binding.flDiscoverBooks.visible()
-    }
-
-    private fun releaseDiscoverWebView() {
-        val webView = discoverWebView ?: return
-        discoverWebView = null
-        discoverJsBridge = null
-        discoverPendingPreloadJs = null
-        runCatching { webView.stopLoading() }
-        runCatching { webView.loadUrl("about:blank") }
-        runCatching { webView.removeJavascriptInterface(nameJava) }
-        runCatching { webView.removeJavascriptInterface(nameSource) }
-        runCatching { webView.removeJavascriptInterface(nameCache) }
-        runCatching { binding.discoverWebContainer.removeView(webView) }
-        runCatching {
-            webView.webChromeClient = null
-            webView.webViewClient = WebViewClient()
-        }
-        runCatching { webView.clearHistory() }
-        runCatching { webView.clearFormData() }
-        runCatching { webView.destroy() }
-    }
-
-    private fun applyDiscoverWebContainerBottomPadding() {
-        val initialPadding = binding.discoverWebContainer.paddingBottom
-        val webBottomSpace =
-            resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding) +
-                resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height) +
-                5.dpToPx()
-        binding.discoverWebContainer.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            view.setPadding(
-                view.paddingLeft,
-                view.paddingTop,
-                view.paddingRight,
-                initialPadding + windowInsets.navigationBarHeight + webBottomSpace
-            )
-            windowInsets
-        }
     }
 
     private fun bindDiscoverSourceSelector() {
@@ -949,7 +788,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun selectDiscoverTag(index: Int, item: DiscoverTagItem, selectTab: Boolean) {
         val url = item.kind.url?.takeIf { it.isNotBlank() } ?: return
-        restoreDiscoverListPage()
         selectedDiscoverTagIndex = index
         selectedDiscoverUrlIndex = index
         if (selectTab) {
@@ -1050,7 +888,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val items = buildDiscoverTagItems(source, kinds)
         val firstUrlIndex = items.indexOfFirst { !it.isButton && !it.kind.url.isNullOrBlank() }
         if (firstUrlIndex >= 0) {
-            restoreDiscoverListPage()
             discoverAllTagItems.clear()
             discoverAllTagItems.addAll(items)
             applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
@@ -1071,7 +908,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun clearDiscoverBooksToEmpty(message: String) {
-        restoreDiscoverListPage()
         discoverRequestVersion += 1
         discoverLoadJob?.cancel()
         discoverLoadJob = null
@@ -1088,7 +924,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun loadDiscoverBooks(reset: Boolean) {
-        restoreDiscoverListPage()
         if (!usingModernDiscovery) return
         val source = selectedDiscoverSource ?: return
         val url = discoverCurrentUrl?.takeIf { it.isNotBlank() } ?: return

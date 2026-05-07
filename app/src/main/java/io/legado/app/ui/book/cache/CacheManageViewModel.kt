@@ -60,11 +60,20 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             try {
                 val currentBooks = getBooks(mode)
                 val currentBookUrls = currentBooks.mapTo(hashSetOf()) { it.bookUrl }
-                val manifests = CacheManifestHelper.listManifests()
+                val cacheDirs = CacheManifestHelper.listCacheDirs()
+                val cacheDirNames = cacheDirs.mapTo(hashSetOf()) { it.name }
+                val manifests = CacheManifestHelper.listManifests(cacheDirs)
                 val manifestByBookUrl = manifests.associateBy { it.bookUrl }
                 val currentItems = currentBooks
                     .asSequence()
-                    .mapNotNull { book -> buildCacheBookItem(book, mode, manifestByBookUrl[book.bookUrl]) }
+                    .mapNotNull { book ->
+                        buildCacheBookItem(
+                            book = book,
+                            mode = mode,
+                            knownManifest = manifestByBookUrl[book.bookUrl],
+                            cacheDirNames = cacheDirNames
+                        )
+                    }
                     .toList()
                 val manifestItems = manifests
                     .asSequence()
@@ -137,12 +146,6 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         return withContext(Dispatchers.IO) {
             val cacheNames = if (book.isAudio) emptySet() else getCacheFileNames(book)
             val manifest = CacheManifestHelper.read(book)
-            val manifestCachedIndexes = manifest
-                ?.chapters
-                ?.asSequence()
-                ?.filter { it.cached }
-                ?.mapTo(hashSetOf<Int>()) { it.index }
-                .orEmpty()
             val dbChapters = if (key.isNullOrBlank()) {
                 appDb.bookChapterDao.getChapterList(book.bookUrl)
             } else {
@@ -158,16 +161,12 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 .asSequence()
                 .filterNot { it.isVolume }
                 .mapNotNull { chapter ->
-                    val cached = if (book.isAudio && manifest != null) {
-                        chapter.index in manifestCachedIndexes
-                    } else {
-                        isChapterCached(
-                            book,
-                            chapter,
-                            cacheNames,
-                            validateImageContent = false
-                        )
-                    }
+                    val cached = isChapterCached(
+                        book,
+                        chapter,
+                        cacheNames,
+                        validateImageContent = false
+                    )
                     when (filter) {
                         CacheChapterFilter.CACHED -> if (!cached) return@mapNotNull null
                         CacheChapterFilter.UNCACHED -> if (cached) return@mapNotNull null
@@ -339,6 +338,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             .filterNot { it.isVolume }
             .mapNotNull { chapter ->
                 val chapterDir = File(audioDir, chapter.index.toString())
+                if (!ExoPlayerHelper.isMediaCached(chapter.resourceUrl)) {
+                    chapterDir.deleteRecursively()
+                    return@mapNotNull null
+                }
                 val fileCount = ExoPlayerHelper.copyMediaCache(chapter.resourceUrl, chapterDir)
                 if (fileCount <= 0) {
                     chapterDir.deleteRecursively()
@@ -408,11 +411,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     private fun buildCacheBookItem(
         book: Book,
         mode: CacheManageMode,
-        knownManifest: CacheBookManifest? = null
+        knownManifest: CacheBookManifest? = null,
+        cacheDirNames: Set<String> = emptySet()
     ): CacheBookItem? {
         val taskState = AudioCacheTaskManager.snapshot(book.bookUrl)
         if (mode == CacheManageMode.AUDIO) {
             return buildAudioCacheBookItem(book, knownManifest, taskState)
+        }
+        if (knownManifest == null &&
+            taskState?.active != true &&
+            !cacheDirNames.contains(book.getFolderName())
+        ) {
+            return null
         }
         val cacheNames = getCacheFileNames(book)
         val needsChapterList = book.totalChapterNum <= 0
@@ -422,18 +432,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         } else {
             emptyList()
         }
-        if (book.isAudio && dbChapters.isNotEmpty() && CacheManifestHelper.mergeResourceUrls(dbChapters, manifest)) {
-            appDb.bookChapterDao.update(*dbChapters.toTypedArray())
-        }
         val chapters = dbChapters.takeIf { it.isNotEmpty() }
             ?: manifest?.let(CacheManifestHelper::toChapters)
             ?: emptyList()
-        val rawCachedCount = if (mode == CacheManageMode.AUDIO) {
-            manifest?.cachedChapterCount?.takeIf { it > 0 }
-                ?: getAudioCachedCount(chapters)
-        } else {
-            getFastCachedCount(cacheNames)
-        }
+        val rawCachedCount = getFastCachedCount(cacheNames)
         if (rawCachedCount <= 0 && taskState?.active != true) {
             CacheManifestHelper.delete(book)
             return null
@@ -464,15 +466,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     ): CacheBookItem? {
         val hasVisibleTask = taskState.isVisibleAudioTask()
         if (manifest == null && !hasVisibleTask) return null
-        val rawCachedCount = manifest?.cachedChapterCount?.takeIf { it > 0 }
-            ?: taskState?.completedChapters
-            ?: 0
+        val candidateCachedIndexes = manifest.cachedIndexes()
+        val manifestChapters = manifest?.let(CacheManifestHelper::toChapters).orEmpty()
+        val realCachedCount = getAudioCachedCount(manifestChapters, candidateCachedIndexes)
+        val taskCompletedCount = taskState?.completedChapters ?: 0
+        val rawCachedCount = maxOf(realCachedCount, taskCompletedCount)
         if (rawCachedCount <= 0 && !hasVisibleTask) {
             CacheManifestHelper.delete(book)
             return null
         }
         val totalChapterCount = book.totalChapterNum.takeIf { it > 0 }
             ?: manifest?.totalChapterNum?.takeIf { it > 0 }
+            ?: manifestChapters.size.takeIf { it > 0 }
             ?: taskState?.totalChapters?.takeIf { it > 0 }
             ?: rawCachedCount.coerceAtLeast(1)
         val cachedCount = rawCachedCount.coerceAtMost(totalChapterCount)
@@ -499,13 +504,18 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         val chapters = CacheManifestHelper.toChapters(manifest)
         val cacheNames = getCacheFileNames(book)
         val rawCachedCount = if (mode == CacheManageMode.AUDIO) {
-            manifest.cachedChapterCount
+            getAudioCachedCount(chapters, manifest.cachedIndexes())
         } else {
             chapters.count {
                 isChapterCached(book, it, cacheNames, validateImageContent = false)
             }
         }
-        if (rawCachedCount <= 0) return null
+        if (rawCachedCount <= 0) {
+            if (mode == CacheManageMode.AUDIO) {
+                CacheManifestHelper.delete(manifest)
+            }
+            return null
+        }
         val totalChapterCount = manifest.totalChapterNum.takeIf { it > 0 }
             ?: chapters.size.takeIf { it > 0 }
             ?: rawCachedCount
@@ -528,10 +538,26 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     }
 
     private fun getAudioCachedCount(chapters: List<BookChapter>): Int {
+        return getAudioCachedCount(chapters, cachedIndexes = null)
+    }
+
+    private fun getAudioCachedCount(
+        chapters: List<BookChapter>,
+        cachedIndexes: Set<Int>? = null
+    ): Int {
         return chapters
             .asSequence()
             .filterNot { it.isVolume }
+            .filter { cachedIndexes == null || it.index in cachedIndexes }
             .count { ExoPlayerHelper.isMediaCached(it.resourceUrl) }
+    }
+
+    private fun CacheBookManifest?.cachedIndexes(): Set<Int>? {
+        return this
+            ?.chapters
+            ?.asSequence()
+            ?.filter { it.cached }
+            ?.mapTo(hashSetOf()) { it.index }
     }
 
     private fun getCacheFileNames(book: Book): Set<String> {

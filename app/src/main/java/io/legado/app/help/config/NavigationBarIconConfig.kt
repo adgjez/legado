@@ -209,8 +209,9 @@ object NavigationBarIconConfig {
         when (entry.source) {
             Source.REMOTE -> deleteRemote(entry)
             Source.BOTH -> {
-                deleteRemote(entry)
+                val remoteResult = runCatching { deleteRemote(entry) }
                 deleteLocal(entry)
+                remoteResult.getOrThrow()
             }
             Source.LOCAL -> deleteLocal(entry)
             Source.BUILTIN -> return

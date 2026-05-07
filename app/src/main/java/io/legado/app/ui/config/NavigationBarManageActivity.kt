@@ -482,9 +482,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             kotlin.runCatching { withContext(Dispatchers.IO) { block() } }
                 .onSuccess {
                     toastOnUi(R.string.success)
-                    loadPackages()
                 }
                 .onFailure { toastOnUi(it.localizedMessage) }
+            loadPackages()
         }
     }
 

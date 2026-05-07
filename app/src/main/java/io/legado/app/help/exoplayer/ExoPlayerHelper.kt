@@ -26,6 +26,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import com.google.gson.reflect.TypeToken
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.GSON
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isJsonArray
@@ -165,6 +166,10 @@ object ExoPlayerHelper {
         )
     }
 
+    private val audioCompleteMarkerDir: File by lazy {
+        File(appCtx.externalCache, "audio_exoplayer_complete").apply { mkdirs() }
+    }
+
     /**
      * 通过kotlin扩展函数+反射实现CacheDataSource.Factory设置默认请求头
      * 需要添加混淆规则 -keepclassmembers class com.google.android.exoplayer2.upstream.cache.CacheDataSource$Factory{upstreamDataSourceFactory;}
@@ -224,6 +229,7 @@ object ExoPlayerHelper {
                 cached = bytesCached
                 progress?.invoke(requestLength, bytesCached, newBytesCached)
             }.cache()
+            markMediaUrlComplete(url)
             totalCached += cached
         }
         return totalCached
@@ -238,7 +244,10 @@ object ExoPlayerHelper {
 
     fun removeMediaCache(url: String?) {
         if (url.isNullOrBlank()) return
-        getMediaUrls(url).forEach { audioCache.removeResource(it) }
+        getMediaUrls(url).forEach {
+            audioCache.removeResource(it)
+            mediaCompleteMarker(it).delete()
+        }
     }
 
     fun copyMediaCache(url: String?, targetDir: File): Int {
@@ -263,8 +272,19 @@ object ExoPlayerHelper {
         return if (contentLength > 0) {
             audioCache.isCached(url, 0, contentLength)
         } else {
-            audioCache.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
+            mediaCompleteMarker(url).isFile &&
+                audioCache.getCachedBytes(url, 0, Long.MAX_VALUE) > 0
         }
+    }
+
+    private fun markMediaUrlComplete(url: String) {
+        runCatching {
+            mediaCompleteMarker(url).writeText(System.currentTimeMillis().toString())
+        }
+    }
+
+    private fun mediaCompleteMarker(url: String): File {
+        return File(audioCompleteMarkerDir, MD5Utils.md5Encode(url))
     }
 
     private fun getMediaUrls(url: String): List<String> {

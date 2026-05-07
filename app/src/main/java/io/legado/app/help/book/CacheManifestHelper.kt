@@ -30,13 +30,23 @@ object CacheManifestHelper {
     }
 
     fun listManifests(): List<CacheBookManifest> {
+        return listManifests(listCacheDirs())
+    }
+
+    fun listCacheDirs(): List<File> {
         val root = File(BookHelp.cachePath)
         return root.listFiles()
             ?.asSequence()
             ?.filter { it.isDirectory }
-            ?.mapNotNull { read(File(it, MANIFEST_FILE_NAME)) }
             ?.toList()
             .orEmpty()
+    }
+
+    fun listManifests(cacheDirs: List<File>): List<CacheBookManifest> {
+        return cacheDirs
+            .asSequence()
+            .mapNotNull { read(File(it, MANIFEST_FILE_NAME)) }
+            .toList()
     }
 
     fun write(
@@ -99,6 +109,14 @@ object CacheManifestHelper {
 
     fun delete(book: Book) {
         manifestFile(book).delete()
+    }
+
+    fun delete(manifest: CacheBookManifest) {
+        val folderName = manifest.folderName.takeIf { it.isNotBlank() }
+            ?: toBook(manifest).getFolderName()
+        File(File(BookHelp.cachePath), folderName)
+            .resolve(MANIFEST_FILE_NAME)
+            .delete()
     }
 
     fun toBook(manifest: CacheBookManifest): Book {

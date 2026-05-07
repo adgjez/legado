@@ -273,7 +273,9 @@ object AudioCacheTaskManager {
                     if (finalStatus != CacheTaskStatus.PAUSED) {
                         requests.remove(book.bookUrl)
                     }
-                    request.onFinished?.invoke()
+                    if (finalStatus == CacheTaskStatus.COMPLETED) {
+                        request.onFinished?.invoke()
+                    }
                 }
                 lastNotifyTimes.remove(book.bookUrl)
             }
