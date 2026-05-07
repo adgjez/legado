@@ -2,11 +2,6 @@ name: Android Fast Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version_name:
-        description: "Optional fixed version name, for patching an existing release tag"
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -43,12 +38,10 @@ jobs:
       - name: Prepare release version
         id: version
         run: |
-          VERSION_NAME="${{ inputs.version_name }}"
-          if [ -z "$VERSION_NAME" ]; then
-            VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H)"
-          fi
+          RELEASE_DAY="$(TZ=Asia/Shanghai date +%y.%m%d)"
+          VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H)"
           VERSION_CODE=$(($(date -u +%s) / 60))
-          TAG_NAME="archive-v3-${VERSION_NAME}"
+          TAG_NAME="archive-v3-3.${RELEASE_DAY}"
           {
             echo "name=${VERSION_NAME}"
             echo "code=${VERSION_CODE}"
