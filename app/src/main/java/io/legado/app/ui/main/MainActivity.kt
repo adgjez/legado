@@ -10,8 +10,10 @@ import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -51,6 +53,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.service.BaseReadAloudService
@@ -89,6 +92,7 @@ import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
+import kotlin.math.abs
 import kotlin.time.Duration.Companion.hours
 
 /**
@@ -113,6 +117,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private var bookshelfReselected: Long = 0
     private var exploreReselected: Long = 0
     private var pagePosition = 0
+    private var sidebarDownX = 0f
+    private var sidebarDownY = 0f
+    private var sidebarGestureHandled = false
+    private var sidebarGestureAllowed = false
+    private val sidebarTouchSlop by lazy {
+        ViewConfiguration.get(this).scaledTouchSlop
+    }
     private val fragmentMap = hashMapOf<Int, Fragment>()
     private var bottomMenuCount = 4
     private val EXIT_INTERVAL = 2000L
@@ -323,7 +334,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             startActivity(Intent(this@MainActivity, SearchActivity::class.java))
         }
         sideNavigationHandle.setOnClickListener {
-            toggleSideNavigation()
+            closeSideNavigation()
         }
         sideSearchButton.setOnClickListener {
             closeSideNavigation()
@@ -397,12 +408,84 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return AppConfig.bottomBarLayoutMode == "sidebar"
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (handleSidebarSwipe(ev)) {
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun handleSidebarSwipe(ev: MotionEvent): Boolean {
+        if (!isSidebarMode()) return false
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                sidebarDownX = ev.rawX
+                sidebarDownY = ev.rawY
+                sidebarGestureHandled = false
+                val edgeGuard = 28.dpToPx()
+                sidebarGestureAllowed = ev.rawX > edgeGuard && ev.rawX < binding.root.width - edgeGuard
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (!sidebarGestureAllowed) return false
+                if (sidebarGestureHandled) return true
+                val dx = ev.rawX - sidebarDownX
+                val dy = ev.rawY - sidebarDownY
+                val absDx = abs(dx)
+                val absDy = abs(dy)
+                if (absDx < sidebarTouchSlop * 3 || absDx < absDy * 1.35f) return false
+                val handled = if (sideNavigationOpen) {
+                    if (isSidebarCloseGesture(dx)) {
+                        closeSideNavigation()
+                        true
+                    } else {
+                        false
+                    }
+                } else if (isSidebarOpenGesture(dx)) {
+                    openSideNavigation()
+                    true
+                } else {
+                    false
+                }
+                if (handled) {
+                    sidebarGestureHandled = true
+                    return true
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                sidebarGestureAllowed = false
+                if (sidebarGestureHandled) {
+                    sidebarGestureHandled = false
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun isSidebarOpenGesture(dx: Float): Boolean {
+        return if (AppConfig.bottomBarSidebarGravity == "end") {
+            dx < 0f
+        } else {
+            dx > 0f
+        }
+    }
+
+    private fun isSidebarCloseGesture(dx: Float): Boolean {
+        return if (AppConfig.bottomBarSidebarGravity == "end") {
+            dx > 0f
+        } else {
+            dx < 0f
+        }
+    }
+
     private fun applyBottomLayoutMode() = binding.run {
         val sidebarMode = isSidebarMode()
         viewPagerMain.swipeEnabled = !sidebarMode
         bottomControls.isVisible = !sidebarMode
         sideNavigationPanel.isVisible = sidebarMode
-        sideNavigationHandle.isVisible = sidebarMode
+        sideNavigationHandle.isVisible = sidebarMode && sideNavigationOpen
         if (sidebarMode) {
             bottomIndicatorAnimator.cancel()
             bottomNavigationIndicatorContainer.isVisible = false
@@ -499,6 +582,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun placeSideNavigation(animate: Boolean) = binding.run {
         if (!isSidebarMode() || sideNavigationPanel.width == 0) return
+        sideNavigationPanel.animate().cancel()
+        sideNavigationHandle.animate().cancel()
         val fromEnd = AppConfig.bottomBarSidebarGravity == "end"
         (sideNavigationPanel.layoutParams as? ConstraintLayout.LayoutParams)?.let {
             it.startToStart = ConstraintSet.PARENT_ID
@@ -530,6 +615,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (sideNavigationOpen) R.drawable.ic_baseline_close else R.drawable.ic_menu
         )
         if (animate) {
+            sideNavigationHandle.isVisible = true
             animateSideNavigationScrim(sideNavigationOpen)
             sideNavigationPanel.animate()
                 .translationX(target)
@@ -540,10 +626,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 .translationX(handleTarget)
                 .setDuration(220L)
                 .setInterpolator(bottomGlassPulseInterpolator)
+                .withEndAction {
+                    sideNavigationHandle.isVisible = sideNavigationOpen
+                }
                 .start()
         } else {
             sideNavigationPanel.translationX = target
             sideNavigationHandle.translationX = handleTarget
+            sideNavigationHandle.isVisible = sideNavigationOpen
             sideNavigationScrim.alpha = if (sideNavigationOpen) 1f else 0f
             sideNavigationScrim.isVisible = sideNavigationOpen
         }
@@ -573,9 +663,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun toggleSideNavigation() {
+    private fun openSideNavigation() {
         if (!isSidebarMode()) return
-        sideNavigationOpen = !sideNavigationOpen
+        if (sideNavigationOpen) return
+        sideNavigationOpen = true
         placeSideNavigation(animate = true)
     }
 
@@ -825,7 +916,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         )
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = bottomBarCornerRadius
+            cornerRadius = UiCorner.panelRadius(this@MainActivity)
             setColor(surface)
             setStroke(
                 1.dpToPx(),
@@ -847,7 +938,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         )
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = searchButtonCornerRadius
+            cornerRadius = UiCorner.actionRadius(this@MainActivity)
             setColor(surface)
             setStroke(
                 1.dpToPx(),
@@ -861,15 +952,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSideNavigationPanelDrawable(): GradientDrawable {
         val baseColor = bottomBackground
-        val radius = bottomBarCornerRadius
-        val fromEnd = AppConfig.bottomBarSidebarGravity == "end"
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadii = if (fromEnd) {
-                floatArrayOf(radius, radius, 0f, 0f, 0f, 0f, radius, radius)
-            } else {
-                floatArrayOf(0f, 0f, radius, radius, radius, radius, 0f, 0f)
-            }
+            cornerRadius = 0f
             setColor(baseColor)
             setStroke(
                 1.dpToPx(),
@@ -896,7 +981,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = searchButtonCornerRadius
+            cornerRadius = UiCorner.actionRadius(this@MainActivity)
             setColor(surface)
             setStroke(1.dpToPx(), stroke)
         }
