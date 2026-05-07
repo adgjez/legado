@@ -52,7 +52,6 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.CancellationException
@@ -108,20 +107,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
     private val exportThemePackage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            val url = uri.toString()
-            if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                alert(R.string.advanced_title_upload_success) {
-                    setMessage(url)
-                    positiveButton(R.string.copy_text) {
-                        sendToClip(url)
-                        toastOnUi(getString(R.string.copy_complete))
-                    }
-                    negativeButton(R.string.cancel)
-                }
-            } else {
-                toastOnUi(getString(R.string.theme_zip_exported))
-            }
+        it.uri?.let {
+            toastOnUi(getString(R.string.theme_zip_exported))
         }
     }
     private val dateFormat by lazy {
@@ -1025,23 +1012,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 )
                 cardPreview.radius = UiCorner.panelRadius(this@ThemeManageActivity)
                 tvName.text = pkg.name
-                tvSource.text = when (entry.source) {
-                    ThemePackageManager.Source.LOCAL -> if (isApplied(entry)) {
-                        getString(R.string.theme_source_using)
-                    } else {
-                        getString(R.string.theme_source_local)
-                    }
-                    ThemePackageManager.Source.REMOTE -> if (isApplied(entry)) {
-                        getString(R.string.theme_source_using)
-                    } else {
-                        getString(R.string.theme_source_remote)
-                    }
-                    ThemePackageManager.Source.BOTH -> if (isApplied(entry)) {
-                        getString(R.string.theme_source_using)
-                    } else {
-                        getString(R.string.theme_source_both)
-                    }
-                }
+                tvSource.visibility = View.GONE
                 tvInfo.text = buildString {
                     if (isApplied(entry)) {
                         append(getString(R.string.theme_current_applied))
@@ -1054,15 +1025,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 tvName.setTextColor(primaryTextColor)
                 tvInfo.setTextColor(secondaryTextColor)
-                tvSource.setTextColor(accentColor)
-                tvSource.background = UiCorner.actionSelector(
-                    ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
-                    ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
-                    UiCorner.actionRadius(this@ThemeManageActivity)
-                )
                 listOf(btnApply, btnEdit, btnMore).forEach {
                     it.background = UiCorner.actionSelector(
-                        ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
+                        Color.TRANSPARENT,
                         ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
                         UiCorner.actionRadius(this@ThemeManageActivity)
                     )

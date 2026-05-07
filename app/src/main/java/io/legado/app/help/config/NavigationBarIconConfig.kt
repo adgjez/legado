@@ -29,6 +29,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefBoolean
@@ -64,6 +65,9 @@ object NavigationBarIconConfig {
     private val tempDir: File
         get() = appCtx.externalFiles.getFile("navigationBarTemp").apply { mkdirs() }
 
+    private val remoteCacheDir: File
+        get() = rootDir.getFile("remote_cache").apply { mkdirs() }
+
     data class NavItem(
         val key: String,
         @StringRes val titleRes: Int,
@@ -91,6 +95,14 @@ object NavigationBarIconConfig {
 
     enum class Source { BUILTIN, LOCAL, REMOTE, BOTH }
 
+    @Keep
+    private data class RemoteCache(
+        val name: String,
+        val dirName: String,
+        val isNightMode: Boolean,
+        val updatedAt: Long
+    )
+
     val items = listOf(
         NavItem("bookshelf", R.string.bookshelf, R.id.menu_bookshelf, R.drawable.ic_bottom_books),
         NavItem("discovery", R.string.discovery, R.id.menu_discovery, R.drawable.ic_bottom_explore),
@@ -109,7 +121,7 @@ object NavigationBarIconConfig {
         migrateLegacyIconsIfNeeded(isNight)
         val local = loadLocal(isNight).associateBy { it.dirName }
         val remote = if (includeRemote && AppConfig.syncThemePackages) {
-            runCatching { loadRemote(isNight) }.getOrDefault(emptyList()).associateBy { it.dirName }
+            loadRemoteOrCache(isNight).associateBy { it.dirName }
         } else {
             emptyMap()
         }
@@ -128,8 +140,13 @@ object NavigationBarIconConfig {
                 else -> return@forEach
             }
         }
-        return entries.values.sortedWith(compareBy<Entry> { it.dirName != DEFAULT_DIR_NAME }
-            .thenByDescending { maxOf(it.config.updatedAt, it.remoteUpdatedAt) })
+        return entries.values.sortedWith(
+            compareBy<Entry> { it.dirName != DEFAULT_DIR_NAME }
+                .thenBy { it.source == Source.REMOTE }
+                .thenByDescending { if (it.source == Source.REMOTE) it.remoteUpdatedAt else it.config.updatedAt }
+                .thenBy { it.config.name }
+                .thenBy { it.dirName }
+        )
     }
 
     fun currentEntry(isNight: Boolean): Entry {
@@ -156,22 +173,19 @@ object NavigationBarIconConfig {
 
     fun addOrUpdate(config: Config, oldEntry: Entry? = null): Entry {
         val name = config.name.trim().ifBlank { defaultName(config.isNightMode) }
-        val dirName = name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
-        if (oldEntry?.dirName != dirName && readEntry(localDir(config.isNightMode, dirName)) != null) {
+        val keepOldDir = oldEntry != null &&
+            oldEntry.dirName.isNotBlank() &&
+            oldEntry.dirName != DEFAULT_DIR_NAME &&
+            oldEntry.source != Source.REMOTE
+        val dirName = if (keepOldDir) {
+            oldEntry!!.dirName
+        } else {
+            name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
+        }
+        if (!keepOldDir && readEntry(localDir(config.isNightMode, dirName)) != null) {
             throw IllegalArgumentException(appCtx.getString(R.string.navigation_bar_name_exists))
         }
         val dir = localDir(config.isNightMode, dirName).apply { mkdirs() }
-        if (oldEntry != null &&
-            oldEntry.dirName.isNotBlank() &&
-            oldEntry.dirName != dirName &&
-            oldEntry.source != Source.REMOTE &&
-            oldEntry.dirName != DEFAULT_DIR_NAME
-        ) {
-            val oldDir = oldEntry.localDir ?: localDir(oldEntry.config.isNightMode, oldEntry.dirName)
-            if (oldDir.exists()) {
-                oldDir.copyRecursively(dir, overwrite = true)
-            }
-        }
         val normalized = config.copy(
             name = name,
             effectMode = config.effectMode.takeIf { it in setOf("solid", "glass", "frosted") } ?: "glass",
@@ -180,21 +194,6 @@ object NavigationBarIconConfig {
             icons = config.icons.toMutableMap()
         )
         File(dir, packageFileName).writeText(GSON.toJson(normalized))
-        if (oldEntry != null &&
-            oldEntry.dirName.isNotBlank() &&
-            oldEntry.dirName != dirName &&
-            activeDirName(oldEntry.config.isNightMode) == oldEntry.dirName
-        ) {
-            appCtx.putPrefString(if (oldEntry.config.isNightMode) activeNightKey else activeDayKey, dirName)
-        }
-        if (oldEntry != null &&
-            oldEntry.dirName.isNotBlank() &&
-            oldEntry.dirName != dirName &&
-            oldEntry.source != Source.REMOTE &&
-            oldEntry.dirName != DEFAULT_DIR_NAME
-        ) {
-            FileUtils.delete(oldEntry.localDir ?: localDir(oldEntry.config.isNightMode, oldEntry.dirName), deleteRootDir = true)
-        }
         return Entry(normalized, Source.LOCAL, dirName, localDir = dir)
     }
 
@@ -336,6 +335,51 @@ object NavigationBarIconConfig {
                 remoteUpdatedAt = file.lastModify
             )
         }
+    }
+
+    private suspend fun loadRemoteOrCache(isNight: Boolean): List<Entry> {
+        return runCatching {
+            loadRemote(isNight).also { writeRemoteCache(isNight, it) }
+        }.getOrElse {
+            readRemoteCache(isNight)
+        }
+    }
+
+    private fun remoteCacheFile(isNight: Boolean): File {
+        return remoteCacheDir.getFile(if (isNight) "night.json" else "day.json")
+    }
+
+    private fun readRemoteCache(isNight: Boolean): List<Entry> {
+        val file = remoteCacheFile(isNight)
+        if (!file.exists()) return emptyList()
+        return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList())
+            .filter { it.isNightMode == isNight }
+            .mapNotNull { cache ->
+                val dirName = cache.dirName.ifBlank { cache.name.normalizeFileName() }
+                    .ifBlank { return@mapNotNull null }
+                Entry(
+                    Config(
+                        name = cache.name.ifBlank { dirName },
+                        isNightMode = cache.isNightMode,
+                        updatedAt = cache.updatedAt
+                    ),
+                    Source.REMOTE,
+                    dirName,
+                    remoteUpdatedAt = cache.updatedAt
+                )
+            }
+    }
+
+    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>) {
+        val cache = entries.map {
+            RemoteCache(
+                name = it.config.name,
+                dirName = it.dirName,
+                isNightMode = it.config.isNightMode,
+                updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.config.updatedAt
+            )
+        }
+        remoteCacheFile(isNight).writeText(GSON.toJson(cache))
     }
 
     private fun readEntry(dir: File): Entry? {

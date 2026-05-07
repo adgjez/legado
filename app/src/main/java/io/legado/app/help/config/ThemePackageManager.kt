@@ -7,6 +7,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
@@ -29,7 +30,7 @@ object ThemePackageManager {
     suspend fun load(isNightTheme: Boolean): List<Entry> = withContext(IO) {
         val local = loadLocal(isNightTheme).associateBy { it.dirName }
         val remote = if (AppConfig.syncThemePackages) {
-            loadRemote(isNightTheme).associateBy { it.dirName }
+            loadRemoteOrCache(isNightTheme).associateBy { it.dirName }
         } else {
             emptyMap()
         }
@@ -94,7 +95,7 @@ object ThemePackageManager {
         if (!AppConfig.syncThemePackages) {
             return@withContext false
         }
-        loadRemote(isNightTheme).any {
+        loadRemoteOrCache(isNightTheme).any {
             it.dirName == normalizedDirName && it.dirName != excludeDirName
         }
     }
@@ -223,8 +224,8 @@ object ThemePackageManager {
 
     private fun sortEntries(entries: List<Entry>): List<Entry> {
         return entries.sortedWith(
-            compareByDescending<Entry> { maxOf(it.packageInfo.updatedAt, it.remoteUpdatedAt) }
-                .thenByDescending { it.packageInfo.updatedAt }
+            compareBy<Entry> { it.source == Source.REMOTE }
+                .thenByDescending { if (it.source == Source.REMOTE) it.remoteUpdatedAt else it.packageInfo.updatedAt }
                 .thenBy { it.packageInfo.name }
                 .thenBy { it.dirName }
         )
@@ -245,6 +246,38 @@ object ThemePackageManager {
                 remoteUpdatedAt = remoteDir.lastModify
             )
         }
+    }
+
+    private suspend fun loadRemoteOrCache(isNightTheme: Boolean): List<Entry> {
+        return runCatching {
+            loadRemote(isNightTheme).also { writeRemoteCache(isNightTheme, it) }
+        }.getOrElse {
+            readRemoteCache(isNightTheme)
+        }
+    }
+
+    private fun remoteCacheFile(isNightTheme: Boolean): File {
+        return remoteCacheDir.getFile(if (isNightTheme) "night.json" else "day.json")
+    }
+
+    private fun readRemoteCache(isNightTheme: Boolean): List<Entry> {
+        val file = remoteCacheFile(isNightTheme)
+        if (!file.exists()) return emptyList()
+        return GSON.fromJsonArray<Package>(file.readText()).getOrDefault(emptyList())
+            .filter { it.isNightTheme == isNightTheme }
+            .map { pkg ->
+                Entry(pkg.copy(config = null), Source.REMOTE, remoteUpdatedAt = pkg.updatedAt)
+            }
+    }
+
+    private fun writeRemoteCache(isNightTheme: Boolean, entries: List<Entry>) {
+        val packages = entries.map {
+            it.packageInfo.copy(
+                config = null,
+                updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.packageInfo.updatedAt
+            )
+        }
+        remoteCacheFile(isNightTheme).writeText(GSON.toJson(packages))
     }
 
     private fun readPackage(dir: File): Package? {
@@ -374,6 +407,11 @@ object ThemePackageManager {
 
     private val tempDir: File
         get() = rootDir.getFile("temp").apply {
+            if (!exists()) mkdirs()
+        }
+
+    private val remoteCacheDir: File
+        get() = rootDir.getFile("remote_cache").apply {
             if (!exists()) mkdirs()
         }
 

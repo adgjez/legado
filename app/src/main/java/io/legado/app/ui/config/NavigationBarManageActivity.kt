@@ -35,7 +35,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -92,20 +91,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private val exportPackage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            val url = uri.toString()
-            if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                alert(R.string.advanced_title_upload_success) {
-                    setMessage(url)
-                    positiveButton(R.string.copy_text) {
-                        sendToClip(url)
-                        toastOnUi(R.string.copy_complete)
-                    }
-                    negativeButton(R.string.cancel)
-                }
-            } else {
-                toastOnUi(R.string.export_success)
-            }
+        it.uri?.let {
+            toastOnUi(R.string.export_success)
         }
     }
 
@@ -140,7 +127,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             UiCorner.actionRadius(this@NavigationBarManageActivity)
         )
         btnAdd.setOnClickListener {
-            showEditDialog(null)
+            showAddDialog()
         }
         tvSummary.text = getString(R.string.navigation_bar_package_summary)
         recyclerView.layoutManager = LinearLayoutManager(this@NavigationBarManageActivity)
@@ -168,6 +155,22 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 allowExtensions = arrayOf("zip")
             }
             true
+        }
+    }
+
+    private fun showAddDialog() {
+        selector(
+            getString(R.string.theme_add),
+            listOf(getString(R.string.theme_manual_config), getString(R.string.theme_import_zip))
+        ) { _, index ->
+            when (index) {
+                0 -> showEditDialog(null)
+                1 -> importPackage.launch {
+                    mode = HandleFileContract.FILE
+                    title = getString(R.string.theme_import_zip)
+                    allowExtensions = arrayOf("zip")
+                }
+            }
         }
     }
 
