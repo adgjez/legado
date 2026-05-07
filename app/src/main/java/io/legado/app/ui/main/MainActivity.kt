@@ -6,11 +6,14 @@ import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import androidx.activity.addCallback
@@ -65,9 +68,9 @@ import io.legado.app.utils.isCreated
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.setHuaweiDisplayCutoutShortEdgesCompat
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setStatusBarColorAuto
-import io.legado.app.utils.setStatusBarHiddenCompat
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -148,15 +151,31 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun setupSystemBar() {
         super.setupSystemBar()
-        applyMainStatusBarVisibility()
+        if (AppConfig.isMainTransparentStatusBar) {
+            hideMainStatusBar()
+        } else {
+            showMainStatusBar()
+        }
     }
 
     private fun hideMainStatusBar() {
-        setStatusBarHiddenCompat(true)
+        setHuaweiDisplayCutoutShortEdgesCompat(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.hide(WindowInsets.Type.statusBars())
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
     }
 
     private fun showMainStatusBar() {
-        setStatusBarHiddenCompat(false)
+        setHuaweiDisplayCutoutShortEdgesCompat(false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.show(WindowInsets.Type.statusBars())
+        } else {
+            @Suppress("DEPRECATION")
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
         setStatusBarColorAuto(
             ThemeStore.statusBarColor(this, AppConfig.isTransparentStatusBar),
             AppConfig.isTransparentStatusBar,
@@ -223,23 +242,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onResume() {
         super.onResume()
-        applyMainStatusBarVisibility()
         refreshBottomNavigationConfig()
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            applyMainStatusBarVisibility()
-        }
-    }
-
-    private fun applyMainStatusBarVisibility() {
-        if (AppConfig.isMainTransparentStatusBar) {
-            hideMainStatusBar()
-        } else {
-            showMainStatusBar()
-        }
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {
