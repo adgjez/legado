@@ -19,14 +19,12 @@ object PreferenceItemStyle {
         val hasNext = hasVisibleSibling(parent, preference, forward = true)
         holder.isDividerAllowedAbove = false
         holder.isDividerAllowedBelow = false
+        val itemColor = UiCorner.surfaceColor(
+            ContextCompat.getColor(preference.context, R.color.background_card)
+        )
         holder.itemView.background = PreferenceGroupBackgroundDrawable(
-            normalColor = UiCorner.surfaceColor(
-                ContextCompat.getColor(preference.context, R.color.background_card)
-            ),
-            pressedColor = UiCorner.surfaceColor(
-                ContextCompat.getColor(preference.context, R.color.btn_bg_press_2),
-                pressed = true
-            ),
+            normalColor = itemColor,
+            pressedColor = itemColor,
             dividerColor = ContextCompat.getColor(preference.context, R.color.bg_divider_line),
             radius = UiCorner.panelRadius(preference.context),
             hasPrev = hasPrev,
