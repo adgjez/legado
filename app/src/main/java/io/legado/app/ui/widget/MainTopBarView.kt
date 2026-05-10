@@ -14,7 +14,11 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.TopBarConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.lib.theme.primaryTextColor
 
 class MainTopBarView @JvmOverloads constructor(
     context: Context,
@@ -34,6 +38,9 @@ class MainTopBarView @JvmOverloads constructor(
     val loginButton = actionButton(R.drawable.ic_bottom_person, R.string.login)
     val selectsBar = RoundedTagBarView(context)
     val tagsBar = RoundedTagBarView(context)
+    private val titleRow = buildTitleRow()
+    private var mode = Mode.BOOKSHELF
+    private var styleSignature: String? = null
 
     init {
         orientation = VERTICAL
@@ -41,7 +48,7 @@ class MainTopBarView @JvmOverloads constructor(
         clipToPadding = false
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         setPadding(horizontal, 0, horizontal, 0)
-        addView(buildTitleRow())
+        addView(titleRow)
         addView(selectsBar, tagLayoutParams().apply {
             topMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_top)
         })
@@ -53,7 +60,13 @@ class MainTopBarView @JvmOverloads constructor(
         setMode(Mode.BOOKSHELF)
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        applyTopBarStyle(force = true)
+    }
+
     fun setMode(mode: Mode) {
+        this.mode = mode
         moreButton.isVisible = mode == Mode.BOOKSHELF
         searchButton.isVisible = mode != Mode.BOOKSHELF
         filterButton.isVisible = mode == Mode.DISCOVERY
@@ -62,7 +75,7 @@ class MainTopBarView @JvmOverloads constructor(
         loginButton.isVisible = mode != Mode.BOOKSHELF
         titleText.textSize = if (mode == Mode.BOOKSHELF) 24f else 20f
         titleText.applyUiTitleTypeface(context)
-        updateIconColors()
+        applyTopBarStyle(force = true)
     }
 
     fun setTitle(text: CharSequence) {
@@ -89,6 +102,61 @@ class MainTopBarView @JvmOverloads constructor(
         star?.let { starButton.isVisible = it }
         refresh?.let { refreshButton.isVisible = it }
         login?.let { loginButton.isVisible = it }
+    }
+
+    private fun applyTopBarStyle(force: Boolean = false) {
+        val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$mode"
+        if (!force && styleSignature == signature) return
+        styleSignature = signature
+        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+        if (config.style == TopBarConfig.STYLE_IMMERSIVE) {
+            applyImmersiveStyle(config)
+        } else {
+            applyDefaultStyle()
+        }
+        updateIconColors()
+    }
+
+    private fun applyDefaultStyle() {
+        val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
+        setPadding(horizontal, 0, horizontal, 0)
+        background = null
+        titleRow.background = null
+        titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
+        titleSelect.background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
+        listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton).forEach {
+            it.background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
+        }
+        titleText.gravity = Gravity.CENTER_VERTICAL
+        titleText.setTextColor(ContextCompat.getColor(context, R.color.primaryText))
+    }
+
+    private fun applyImmersiveStyle(config: TopBarConfig.Config) {
+        val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
+        val vertical = 8.dp
+        val color = config.tagBarColor ?: ContextCompat.getColor(context, R.color.background_menu)
+        setPadding(horizontal, vertical, horizontal, vertical)
+        background = UiCorner.opaqueRounded(
+            TopBarConfig.withOpacity(color, config.tagBarAlpha),
+            UiCorner.panelRadius(context)
+        )
+        titleRow.background = null
+        titleRow.setPadding(0, 0, 0, 0)
+        titleSelect.background = UiCorner.actionSelector(
+            TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 58),
+            TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 82),
+            UiCorner.actionRadius(context)
+        )
+        titleSelect.setPadding(12.dp, 0, 8.dp, 0)
+        listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton).forEach {
+            it.background = UiCorner.actionSelector(
+                TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 42),
+                TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 76),
+                UiCorner.actionRadius(context)
+            )
+        }
+        titleText.gravity = Gravity.CENTER_VERTICAL
+        titleText.setTextColor(context.primaryTextColor)
     }
 
     private fun buildTitleRow(): LinearLayout {

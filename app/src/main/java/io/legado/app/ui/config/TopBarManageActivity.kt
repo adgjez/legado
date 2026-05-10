@@ -198,8 +198,17 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             setPadding(2, 2, 2, 4)
             applyUiBodyTypefaceDeep(this@TopBarManageActivity.uiTypeface())
             addView(PackageManageUi.nameInput(this@TopBarManageActivity, config.name, getString(R.string.top_bar_name)))
-            addView(optionRow(getString(R.string.top_bar_style), getString(R.string.top_bar_style_default)) {
-                toastOnUi(R.string.top_bar_style_default)
+            addView(optionRow(getString(R.string.top_bar_style), styleLabel(config.style)) {
+                selector(
+                    getString(R.string.top_bar_style),
+                    listOf(
+                        getString(R.string.top_bar_style_default),
+                        getString(R.string.top_bar_style_immersive)
+                    )
+                ) { _, index ->
+                    config.style = if (index == 1) TopBarConfig.STYLE_IMMERSIVE else TopBarConfig.STYLE_DEFAULT
+                    refreshEditDialog()
+                }
             })
             addView(optionRow(getString(R.string.top_bar_tag_bar_color), colorLabel(config.tagBarColor)) {
                 showColorPicker(COLOR_TAG_BAR, config.tagBarColor ?: defaultTagBarColor())
@@ -394,6 +403,16 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private fun colorLabel(color: Int?): String {
         return color?.let { "#${Integer.toHexString(it).takeLast(6).uppercase(Locale.ROOT)}" }
             ?: getString(R.string.top_bar_follow_theme)
+    }
+
+    private fun styleLabel(style: String): String {
+        return getString(
+            if (style == TopBarConfig.STYLE_IMMERSIVE) {
+                R.string.top_bar_style_immersive
+            } else {
+                R.string.top_bar_style_default
+            }
+        )
     }
 
     private fun defaultTagBarColor(): Int = ContextCompat.getColor(this, R.color.background_menu)
