@@ -26,6 +26,7 @@ import io.legado.app.databinding.ItemReadRecordRecentBookBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -89,9 +90,6 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private val monthFormatter by lazy {
         DateTimeFormatter.ofPattern(getString(R.string.read_record_month_pattern), Locale.getDefault())
     }
-    private val dateChipFormatter by lazy {
-        DateTimeFormatter.ofPattern("M/d", Locale.getDefault())
-    }
     private val lastOpenFormatter by lazy {
         SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     }
@@ -108,6 +106,8 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private var currentTodayTime: Long = 0L
     private var currentTotalTime: Long = 0L
     private var currentReadBookCount: Int = 0
+    private var currentDashboard: ReadRecordDashboard? = null
+    private var recordDaysExpanded = false
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
     private val selectGoalAvatar = registerForActivityResult(HandleFileContract()) {
@@ -138,7 +138,15 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         binding.scrollView.applyMainBottomBarPadding(withInitialPadding = true)
         binding.llRecordHeader.applyStatusBarPadding(withInitialPadding = true)
         binding.tvRecordDate.setOnClickListener {
-            showDatePicker()
+            if (isImmersiveReadRecordTopBar()) {
+                showYearSelector()
+            } else {
+                showDatePicker()
+            }
+        }
+        binding.ivRecordDayExpand.setOnClickListener {
+            recordDaysExpanded = !recordDaysExpanded
+            currentDashboard?.let(::renderDateTopBar)
         }
         binding.ivComponentMenu.setOnClickListener {
             showComponentConfigDialog()
@@ -308,6 +316,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     }
 
     private fun renderDashboard(dashboard: ReadRecordDashboard) {
+        currentDashboard = dashboard
         currentHeatmapCells = dashboard.heatmapCells
         binding.tvRecordDate.text = dashboard.today.format(headlineFormatter)
         binding.tvRecordDateHint.text = getString(
@@ -361,7 +370,12 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
 
     private fun renderDateTopBar(dashboard: ReadRecordDashboard) {
         val immersive = isImmersiveReadRecordTopBar()
-        binding.hsvRecordDates.isVisible = immersive
+        binding.hsvRecordMonths.isVisible = immersive
+        binding.hsvRecordDates.isVisible = immersive && recordDaysExpanded
+        binding.ivRecordDayExpand.isVisible = immersive
+        binding.ivRecordDayExpand.setImageResource(
+            if (recordDaysExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more
+        )
         binding.llRecordHeader.background = if (immersive) {
             createSurfaceDrawable(
                 ContextCompat.getColor(requireContext(), R.color.background_card),
@@ -378,14 +392,14 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             if (immersive) 12.dpToPx() else 0
         )
         binding.tvRecordDate.textSize = if (immersive) 22f else 28f
-        binding.tvRecordDateHint.text = if (immersive) {
-            getString(
-                R.string.read_record_top_bar_summary,
-                formatDuring(dashboard.todayTime),
-                formatDuring(dashboard.monthTime)
-            )
+        binding.tvRecordDate.text = if (immersive) {
+            getString(R.string.read_record_year_value, dashboard.today.year)
         } else {
-            getString(
+            dashboard.today.format(headlineFormatter)
+        }
+        binding.tvRecordDateHint.isVisible = !immersive
+        if (!immersive) {
+            binding.tvRecordDateHint.text = getString(
                 if (dashboard.hasDailyStats) {
                     R.string.read_record_stats_ready
                 } else {
@@ -394,13 +408,45 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             )
         }
         if (!immersive) return
-        val dates = (-3L..3L).map { dashboard.today.plusDays(it) }
+        binding.llRecordMonths.removeAllViews()
+        (1..12).forEach { month ->
+            binding.llRecordMonths.addView(
+                buildTopBarChip(
+                    label = getString(R.string.read_record_month_value, month),
+                    selected = month == dashboard.today.monthValue,
+                    minWidth = 58.dpToPx()
+                ) {
+                    selectMonth(month)
+                }
+            )
+        }
+        binding.hsvRecordMonths.post {
+            val selected = binding.llRecordMonths.getChildAt(dashboard.today.monthValue - 1) ?: return@post
+            binding.hsvRecordMonths.smoothScrollTo(
+                (selected.left - (binding.hsvRecordMonths.width - selected.width) / 2).coerceAtLeast(0),
+                0
+            )
+        }
         binding.llRecordDates.removeAllViews()
-        dates.forEach { date ->
-            binding.llRecordDates.addView(buildDateChip(date, date == dashboard.today))
+        val month = YearMonth.from(dashboard.today)
+        (1..month.lengthOfMonth()).forEach { day ->
+            val date = month.atDay(day)
+            binding.llRecordDates.addView(
+                buildTopBarChip(
+                    label = day.toString(),
+                    selected = date == dashboard.today,
+                    minWidth = 44.dpToPx()
+                ) {
+                    if (selectedDate != date) {
+                        selectedDate = date
+                        recordDaysExpanded = false
+                        loadData(force = true)
+                    }
+                }
+            )
         }
         binding.hsvRecordDates.post {
-            val selected = binding.llRecordDates.getChildAt(3) ?: return@post
+            val selected = binding.llRecordDates.getChildAt(dashboard.today.dayOfMonth - 1) ?: return@post
             binding.hsvRecordDates.smoothScrollTo(
                 (selected.left - (binding.hsvRecordDates.width - selected.width) / 2).coerceAtLeast(0),
                 0
@@ -408,19 +454,18 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         }
     }
 
-    private fun buildDateChip(date: LocalDate, selected: Boolean): TextView {
-        val today = LocalDate.now()
-        val label = when (date) {
-            today -> getString(R.string.read_record_today_word)
-            today.minusDays(1) -> getString(R.string.read_record_yesterday_word)
-            else -> date.format(dateChipFormatter)
-        }
+    private fun buildTopBarChip(
+        label: String,
+        selected: Boolean,
+        minWidth: Int,
+        onClick: () -> Unit
+    ): TextView {
         return TextView(requireContext()).apply {
             text = label
             gravity = Gravity.CENTER
             includeFontPadding = false
             textSize = 13f
-            minWidth = 58.dpToPx()
+            this.minWidth = minWidth
             setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
             setTextColor(if (selected) accentColor else primaryTextColor)
             background = createSurfaceDrawable(
@@ -442,12 +487,28 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             ).apply {
                 marginEnd = 8.dpToPx()
             }
-            setOnClickListener {
-                if (selectedDate != date) {
-                    selectedDate = date
-                    loadData(force = true)
-                }
-            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun selectMonth(monthValue: Int) {
+        val targetMonth = YearMonth.of(selectedDate.year, monthValue)
+        selectedDate = targetMonth.atDay(selectedDate.dayOfMonth.coerceAtMost(targetMonth.lengthOfMonth()))
+        recordDaysExpanded = false
+        loadData(force = true)
+    }
+
+    private fun showYearSelector() {
+        val years = ((selectedDate.year - 5)..(selectedDate.year + 1)).toList()
+        requireContext().selector(
+            getString(R.string.read_record_select_year),
+            years.map { getString(R.string.read_record_year_value, it) }
+        ) { _, index ->
+            val targetYear = years[index]
+            val targetMonth = YearMonth.of(targetYear, selectedDate.monthValue)
+            selectedDate = targetMonth.atDay(selectedDate.dayOfMonth.coerceAtMost(targetMonth.lengthOfMonth()))
+            recordDaysExpanded = false
+            loadData(force = true)
         }
     }
 
@@ -750,6 +811,8 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
         binding.ivComponentMenu.background = null
         binding.ivComponentMenu.setColorFilter(primaryTextColor)
+        binding.ivRecordDayExpand.background = null
+        binding.ivRecordDayExpand.setColorFilter(primaryTextColor)
         binding.ivRankMore.background = null
         binding.ivGoalEdit.background = null
         binding.ivRankMore.setColorFilter(secondaryTextColor)

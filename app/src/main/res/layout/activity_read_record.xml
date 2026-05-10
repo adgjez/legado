@@ -65,6 +65,16 @@
                 </LinearLayout>
 
                 <ImageView
+                    android:id="@+id/iv_record_day_expand"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="@string/read_record_select_day"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_expand_more"
+                    android:visibility="gone"
+                    app:tint="@color/primaryText" />
+
+                <ImageView
                     android:id="@+id/iv_component_menu"
                     android:layout_width="40dp"
                     android:layout_height="40dp"
@@ -76,10 +86,29 @@
             </LinearLayout>
 
             <HorizontalScrollView
-                android:id="@+id/hsv_record_dates"
+                android:id="@+id/hsv_record_months"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/ll_record_months"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+
+            </HorizontalScrollView>
+
+            <HorizontalScrollView
+                android:id="@+id/hsv_record_dates"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
                 android:clipToPadding="false"
                 android:overScrollMode="never"
                 android:scrollbars="none"

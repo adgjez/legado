@@ -1819,4 +1819,8 @@
     <string name="top_bar_filter_default_expanded">默认展开</string>
     <string name="top_bar_follow_theme">跟随主题</string>
     <string name="read_record_top_bar_summary">今日 %1$s · 本月 %2$s</string>
+    <string name="read_record_select_year">选择年份</string>
+    <string name="read_record_select_day">选择日期</string>
+    <string name="read_record_year_value">%1$d年</string>
+    <string name="read_record_month_value">%1$d月</string>
 </resources>

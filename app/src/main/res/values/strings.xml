@@ -1875,6 +1875,10 @@
     <string name="top_bar_filter_default_expanded">Expanded by default</string>
     <string name="top_bar_follow_theme">Follow theme</string>
     <string name="read_record_top_bar_summary">Today %1$s · This month %2$s</string>
+    <string name="read_record_select_year">Select year</string>
+    <string name="read_record_select_day">Select day</string>
+    <string name="read_record_year_value">%1$d</string>
+    <string name="read_record_month_value">%1$d</string>
     <string name="read_rank_widget_description">Reading rank widget</string>
     <string name="color_format_error">Invalid color format</string>
     <string name="unknown">Unknown</string>
