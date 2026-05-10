@@ -274,6 +274,9 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
             binding.topBar.tagsBar.setSelectedIndex(index)
             renderCurrentSort()
         }
+        binding.topBar.setOnHeightChangedListener {
+            updateModernRssTopBarOverlay()
+        }
     }
 
     private fun updateModernRssTopBarOverlay() {
@@ -473,7 +476,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
                 listOf(Pair("", source.sourceUrl))
             }
         currentSorts.clear()
-        currentSorts.addAll(sorts)
+        currentSorts.addAll(sorts.filter { it.first.isNotBlank() }.ifEmpty { sorts })
         val visibleTags = currentSorts.filter { it.first.isNotBlank() }
         if (visibleTags.size > 1 || (currentSorts.size == 1 && currentSorts.first().first.isNotBlank())) {
             binding.topBar.showTags(true)

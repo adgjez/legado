@@ -310,6 +310,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val item = discoverSelectItems.getOrNull(index) ?: return@setOnTagClickListener
             showDiscoverSelectDialog(item)
         }
+        binding.topBar.setOnHeightChangedListener {
+            updateModernTopBarOverlay()
+        }
         applyDiscoverBookLayout(force = true)
         binding.rvDiscoverBooks.setEdgeEffectColor(primaryColor)
         binding.rvDiscoverBooks.addOnScrollListener(object : RecyclerView.OnScrollListener() {

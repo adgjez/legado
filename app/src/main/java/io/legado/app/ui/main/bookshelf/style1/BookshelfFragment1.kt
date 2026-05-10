@@ -91,6 +91,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.topBar.searchEntry.setOnClickListener {
             startActivity(android.content.Intent(requireContext(), SearchActivity::class.java))
         }
+        binding.topBar.setOnHeightChangedListener {
+            updateTopBarOverlay()
+        }
         binding.topBar.titleSelect.setOnClickListener {
             showGroupSwitchMenu(it)
         }
@@ -189,6 +192,13 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.topBar.bringToFront()
     }
 
+    private fun scheduleTopBarOverlayUpdate() {
+        if (!isAdded) return
+        binding.topBar.post {
+            updateTopBarOverlay()
+        }
+    }
+
     @Synchronized
     override fun upGroup(data: List<BookGroup>) {
         if (data.isEmpty()) {
@@ -241,6 +251,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             bookGroups.map { RoundedTagBarView.Item(it.groupName) },
             currentGroupIndex.coerceIn(-1, bookGroups.lastIndex)
         )
+        scheduleTopBarOverlayUpdate()
     }
 
     fun onBooksChanged(groupId: Long, books: List<Book>) {
@@ -276,6 +287,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             bookTags.map { RoundedTagBarView.Item(it.ifBlank { allText }) },
             bookTags.indexOf(selectedBookTag).takeIf { it >= 0 } ?: 0
         )
+        scheduleTopBarOverlayUpdate()
     }
 
     private fun showGroupSwitchMenu(anchor: View) {
