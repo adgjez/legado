@@ -26,7 +26,6 @@ import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -78,7 +77,7 @@ class MainTopBarView @JvmOverloads constructor(
 
     init {
         orientation = VERTICAL
-        clipChildren = false
+        clipChildren = true
         clipToPadding = false
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         setPadding(horizontal, paddingTop, horizontal, 0)
@@ -435,14 +434,21 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun updateFilterBarsVisibility() {
         val hasFilters = selectsBarRequested || tagsBarRequested
+        val willCollapse = isImmersiveStyle() && !filtersExpanded
         val oldRowVisible = primaryFilterRow.isVisible
         val oldToggleVisible = filterToggleButton.isVisible
         val oldSelectsVisible = selectsBar.isVisible
         val oldTagsVisible = tagsBar.isVisible
         if (isAttachedToWindow && width > 0 && height > 0) {
-            TransitionManager.beginDelayedTransition(this, AutoTransition().apply {
-                duration = 80L
-            })
+            TransitionManager.endTransitions(this)
+            if (!willCollapse) {
+                TransitionManager.beginDelayedTransition(
+                    this,
+                    androidx.transition.AutoTransition().apply {
+                        duration = 80L
+                    }
+                )
+            }
         }
         if (isImmersiveStyle()) {
             filterToggleButton.isVisible = hasFilters
@@ -461,7 +467,14 @@ class MainTopBarView @JvmOverloads constructor(
             oldSelectsVisible != selectsBar.isVisible ||
             oldTagsVisible != tagsBar.isVisible
         ) {
-            post { onHeightChanged?.invoke() }
+            requestLayout()
+            invalidate()
+            post {
+                onHeightChanged?.invoke()
+                post {
+                    onHeightChanged?.invoke()
+                }
+            }
         }
     }
 
