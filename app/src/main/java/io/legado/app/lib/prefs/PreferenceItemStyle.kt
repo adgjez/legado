@@ -11,6 +11,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.utils.getPrefString
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import kotlin.math.roundToInt
 import androidx.preference.Preference as AndroidPreference
@@ -19,13 +20,32 @@ import androidx.preference.PreferenceCategory as AndroidPreferenceCategory
 object PreferenceItemStyle {
 
     private val itemHeights = WeakHashMap<AndroidPreference, Int>()
+    private val itemViews = WeakHashMap<AndroidPreference, WeakReference<View>>()
+    private val pendingGroupRefresh = WeakHashMap<PreferenceGroup, Boolean>()
 
     fun apply(preference: AndroidPreference, holder: PreferenceViewHolder) {
         val parent = preference.parent ?: return
-        val hasPrev = hasVisibleSibling(parent, preference, forward = false)
-        val hasNext = hasVisibleSibling(parent, preference, forward = true)
         holder.isDividerAllowedAbove = false
         holder.isDividerAllowedBelow = false
+        itemViews[preference] = WeakReference(holder.itemView)
+        holder.itemView.recordHeightIfReady(preference, parent)
+        applyBackground(preference, holder.itemView, parent)
+        holder.itemView.post {
+            val height = holder.itemView.realHeight()
+            if (height > 0 && itemHeights[preference] != height) {
+                itemHeights[preference] = height
+                scheduleGroupRefresh(holder.itemView, parent)
+            }
+        }
+    }
+
+    private fun applyBackground(
+        preference: AndroidPreference,
+        itemView: View,
+        parent: PreferenceGroup
+    ) {
+        val hasPrev = hasVisibleSibling(parent, preference, forward = false)
+        val hasNext = hasVisibleSibling(parent, preference, forward = true)
         val itemColor = UiCorner.surfaceColor(
             ContextCompat.getColor(preference.context, R.color.background_card)
         )
@@ -35,12 +55,12 @@ object PreferenceItemStyle {
         )
         val dividerColor = ContextCompat.getColor(preference.context, R.color.bg_divider_line)
         val radius = UiCorner.panelRadius(preference.context)
-        val dividerInset = holder.itemView.dp(16).toFloat()
+        val dividerInset = itemView.dp(16).toFloat()
+        val panel = buildPanelImage(itemView, preference, parent, radius)
         val imageKey = panelImageKey(preference)
-        val groupHeight = estimateGroupHeight(holder.itemView, parent)
-        val offsetY = estimateOffsetY(holder.itemView, preference, parent)
-        val panelImage = buildPanelImage(holder.itemView, preference, parent, radius, groupHeight, offsetY)
-        val current = holder.itemView.background as? PreferenceGroupBackgroundDrawable
+        val groupHeight = panel?.groupHeight ?: 0
+        val offsetY = panel?.offsetY ?: 0
+        val current = itemView.background as? PreferenceGroupBackgroundDrawable
         if (current == null || !current.hasSameConfig(
                 normalColor = itemColor,
                 pressedColor = pressedColor,
@@ -54,7 +74,7 @@ object PreferenceItemStyle {
                 offsetY = offsetY
             )
         ) {
-            holder.itemView.background = PreferenceGroupBackgroundDrawable(
+            itemView.background = PreferenceGroupBackgroundDrawable(
                 normalColor = itemColor,
                 pressedColor = pressedColor,
                 dividerColor = dividerColor,
@@ -62,21 +82,13 @@ object PreferenceItemStyle {
                 hasPrev = hasPrev,
                 hasNext = hasNext,
                 dividerInset = dividerInset,
-                panelImage = panelImage,
+                panelImage = panel?.drawable,
                 panelImageKey = imageKey,
                 groupHeight = groupHeight,
                 offsetY = offsetY
             )
         }
-        holder.itemView.updateGroupMargins(!hasPrev, !hasNext, parent)
-        holder.itemView.post {
-            val height = holder.itemView.height
-            if (height > 0 && itemHeights[preference] != height) {
-                itemHeights[preference] = height
-                holder.itemView.background = null
-                apply(preference, holder)
-            }
-        }
+        itemView.updateGroupMargins(!hasPrev, !hasNext, parent)
     }
 
     private fun hasVisibleSibling(
@@ -107,6 +119,34 @@ object PreferenceItemStyle {
         return -1
     }
 
+    private fun visibleGroupMembers(
+        parent: PreferenceGroup,
+        preference: AndroidPreference
+    ): List<AndroidPreference> {
+        val index = parent.indexOf(preference)
+        if (index == -1) return emptyList()
+        var start = index
+        while (start > 0) {
+            val prev = parent.getPreference(start - 1)
+            if (prev.isVisible && prev is AndroidPreferenceCategory) break
+            start--
+        }
+        var end = index
+        while (end + 1 < parent.preferenceCount) {
+            val next = parent.getPreference(end + 1)
+            if (next.isVisible && next is AndroidPreferenceCategory) break
+            end++
+        }
+        val result = ArrayList<AndroidPreference>()
+        for (i in start..end) {
+            val sibling = parent.getPreference(i)
+            if (sibling.isVisible && sibling !is AndroidPreferenceCategory) {
+                result.add(sibling)
+            }
+        }
+        return result
+    }
+
     private fun View.updateGroupMargins(
         isFirst: Boolean,
         isLast: Boolean,
@@ -132,6 +172,39 @@ object PreferenceItemStyle {
         return (resources.displayMetrics.density * value).roundToInt()
     }
 
+    private fun View.realHeight(): Int {
+        return height.coerceAtLeast(measuredHeight)
+    }
+
+    private fun View.recordHeightIfReady(
+        preference: AndroidPreference,
+        parent: PreferenceGroup
+    ) {
+        val height = realHeight()
+        if (height > 0 && itemHeights[preference] != height) {
+            itemHeights[preference] = height
+            scheduleGroupRefresh(this, parent)
+        }
+    }
+
+    private fun scheduleGroupRefresh(anchor: View, parent: PreferenceGroup) {
+        if (pendingGroupRefresh[parent] == true) return
+        pendingGroupRefresh[parent] = true
+        anchor.post {
+            pendingGroupRefresh.remove(parent)
+            refreshVisibleGroup(parent)
+        }
+    }
+
+    private fun refreshVisibleGroup(parent: PreferenceGroup) {
+        for (i in 0 until parent.preferenceCount) {
+            val preference = parent.getPreference(i)
+            if (!preference.isVisible || preference is AndroidPreferenceCategory) continue
+            val view = itemViews[preference]?.get() ?: continue
+            applyBackground(preference, view, parent)
+        }
+    }
+
     private fun panelImageKey(preference: AndroidPreference): String {
         val path = preference.context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage
@@ -146,57 +219,53 @@ object PreferenceItemStyle {
         itemView: View,
         preference: AndroidPreference,
         parent: PreferenceGroup,
-        radius: Float,
-        groupHeight: Int,
-        offsetY: Int
-    ): android.graphics.drawable.Drawable? {
+        radius: Float
+    ): PanelImage? {
         val path = preference.context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage
         )
         val bitmap = UiCorner.loadPanelBitmap(path) ?: return null
         val mode = preference.context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgScaleTypeN else PreferKey.panelBgScaleType
-        )
-        return GroupPanelImageDrawable(
-            bitmap = bitmap,
-            mode = mode ?: ThemeConfig.PANEL_BG_CROP,
+        ) ?: ThemeConfig.PANEL_BG_CROP
+        val members = visibleGroupMembers(parent, preference)
+        if (members.isEmpty()) return null
+        var groupHeight = 0
+        var offsetY = 0
+        var reachedCurrent = false
+        val fallbackHeight = itemView.dp(60)
+        for (member in members) {
+            val height = itemHeights[member]
+                ?: if (member == preference) {
+                    itemView.realHeight().takeIf { it > 0 } ?: return null
+                } else {
+                    fallbackHeight
+                }
+            if (member == preference) {
+                reachedCurrent = true
+            } else if (!reachedCurrent) {
+                offsetY += height
+            }
+            groupHeight += height
+        }
+        if (groupHeight <= 0) return null
+        return PanelImage(
+            drawable = GroupPanelImageDrawable(
+                bitmap = bitmap,
+                mode = mode,
+                groupHeight = groupHeight,
+                offsetY = offsetY,
+                topRadius = if (hasVisibleSibling(parent, preference, forward = false)) 0f else radius,
+                bottomRadius = if (hasVisibleSibling(parent, preference, forward = true)) 0f else radius
+            ),
             groupHeight = groupHeight,
-            offsetY = offsetY,
-            topRadius = if (hasVisibleSibling(parent, preference, forward = false)) 0f else radius,
-            bottomRadius = if (hasVisibleSibling(parent, preference, forward = true)) 0f else radius
+            offsetY = offsetY
         )
     }
 
-    private fun estimateGroupHeight(itemView: View, parent: PreferenceGroup): Int {
-        var height = 0
-        val fallback = itemView.height
-            .coerceAtLeast(itemView.measuredHeight)
-            .coerceAtLeast(itemView.dp(60))
-        for (i in 0 until parent.preferenceCount) {
-            val sibling = parent.getPreference(i)
-            if (!sibling.isVisible || sibling is AndroidPreferenceCategory) continue
-            height += itemHeights[sibling]?.takeIf { it > 0 } ?: fallback
-        }
-        return height.coerceAtLeast(fallback)
-    }
-
-    private fun estimateOffsetY(
-        itemView: View,
-        preference: AndroidPreference,
-        parent: PreferenceGroup
-    ): Int {
-        var offset = 0
-        val fallback = itemView.height
-            .coerceAtLeast(itemView.measuredHeight)
-            .coerceAtLeast(itemView.dp(60))
-        for (i in 0 until parent.preferenceCount) {
-            val sibling = parent.getPreference(i)
-            if (!sibling.isVisible) continue
-            if (sibling is AndroidPreferenceCategory) continue
-            if (sibling == preference) break
-            offset += itemHeights[sibling]?.takeIf { it > 0 } ?: fallback
-        }
-        return offset
-    }
-
+    private data class PanelImage(
+        val drawable: android.graphics.drawable.Drawable,
+        val groupHeight: Int,
+        val offsetY: Int
+    )
 }
