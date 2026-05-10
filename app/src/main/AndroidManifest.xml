@@ -310,6 +310,9 @@
         <activity
             android:name=".ui.rss.article.RssSortActivity"
             android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.rss.article.RssSearchActivity"
+            android:launchMode="singleTop" />
         <!-- RSS阅读 -->
         <activity
             android:name=".ui.rss.read.ReadRssActivity"

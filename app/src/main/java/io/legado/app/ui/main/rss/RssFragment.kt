@@ -37,7 +37,7 @@ import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.rss.article.ReadRecordDialog
 import io.legado.app.ui.rss.article.RssArticlesFragment
-import io.legado.app.ui.rss.article.RssSortActivity
+import io.legado.app.ui.rss.article.RssSearchActivity
 import io.legado.app.ui.rss.article.RssSortViewModel
 import io.legado.app.ui.rss.favorites.RssFavoritesActivity
 import io.legado.app.ui.rss.read.ReadRssActivity
@@ -278,11 +278,11 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     private fun updateModernRssTopBarOverlay() {
         if (!usingModernRss || view == null) return
-        val topSpace = binding.topBar.height + 10.dpToPx()
+        val topSpace = binding.topBar.height
         val overlay = binding.topBar.isOverlayMode()
         rssTopOverlaySpace = topSpace
         rssTopOverlayEnabled = overlay
-        binding.recyclerView.clipToPadding = !overlay
+        binding.recyclerView.clipToPadding = true
         binding.recyclerView.setPadding(
             binding.recyclerView.paddingLeft,
             topSpace,
@@ -290,7 +290,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
             binding.recyclerView.paddingBottom
         )
         rssWebView?.let { webView ->
-            webView.clipToPadding = !overlay
+            webView.clipToPadding = true
             webView.setPadding(webView.paddingLeft, topSpace, webView.paddingRight, webView.paddingBottom)
         }
         (childFragmentManager.findFragmentById(R.id.rss_fragment_container) as? RssArticlesFragment)
@@ -672,7 +672,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     private fun openRssSearch() {
         val source = selectedRssSource ?: return
         if (source.searchUrl.isNullOrBlank()) return
-        RssSortActivity.start(requireContext(), null, source.sourceUrl, focusSearch = true, pureSearch = true)
+        RssSearchActivity.start(requireContext(), source.sourceUrl)
     }
 
     private fun openRssLogin(rssSource: RssSource) {

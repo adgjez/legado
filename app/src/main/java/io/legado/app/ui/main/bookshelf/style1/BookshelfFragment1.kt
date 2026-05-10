@@ -156,7 +156,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         if (!isAdded) return
         val overlay = binding.topBar.isOverlayMode()
         val contentMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_content_margin_top)
-        val newSpace = if (overlay) binding.topBar.height + contentMargin else 0
+        val newSpace = if (overlay) binding.topBar.height else 0
         if (topOverlayEnabled != overlay) {
             ConstraintSet().apply {
                 clone(binding.root)

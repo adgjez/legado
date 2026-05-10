@@ -325,9 +325,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun updateModernTopBarOverlay() {
         if (!usingModernDiscovery || view == null) return
-        val topSpace = binding.topBar.height + 10.dpToPx()
-        val overlay = binding.topBar.isOverlayMode()
-        binding.rvDiscoverBooks.clipToPadding = !overlay
+        val topSpace = binding.topBar.height
+        binding.rvDiscoverBooks.clipToPadding = true
         binding.rvDiscoverBooks.setPadding(
             binding.rvDiscoverBooks.paddingLeft,
             topSpace,

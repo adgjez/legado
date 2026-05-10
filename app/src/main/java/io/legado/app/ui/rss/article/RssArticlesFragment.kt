@@ -181,7 +181,7 @@ class RssArticlesFragment() : VMBaseFragment<RssArticlesViewModel>(R.layout.frag
 
     private fun applyTopOverlaySpace() {
         if (view == null || !embeddedInModernRss) return
-        binding.recyclerView.clipToPadding = !topOverlayEnabled
+        binding.recyclerView.clipToPadding = true
         binding.recyclerView.setPadding(
             binding.recyclerView.paddingLeft,
             topOverlaySpace,

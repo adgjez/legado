@@ -206,7 +206,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun applyTopOverlaySpace() {
         if (view == null) return
-        binding.rvBookshelf.clipToPadding = !topOverlayEnabled
+        binding.rvBookshelf.clipToPadding = true
         if (topOverlayEnabled) {
             binding.refreshLayout.setProgressViewOffset(
                 true,

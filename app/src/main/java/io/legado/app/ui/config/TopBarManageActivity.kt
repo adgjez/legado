@@ -14,6 +14,8 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.bumptech.glide.Glide
+import com.bumptech.glide.signature.ObjectKey
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
@@ -23,6 +25,7 @@ import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -638,7 +641,21 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                         UiCorner.actionRadius(this@TopBarManageActivity)
                     )
                 }
-                cardPreview.visibility = View.GONE
+                cardPreview.visibility = View.VISIBLE
+                cardPreview.radius = TopBarConfig.cornerRadius(this@TopBarManageActivity, entry.config)
+                cardPreview.setCardBackgroundColor(TopBarConfig.resolveBackgroundColor(entry.config))
+                ivPreview.alpha = (entry.config.wallpaperAlpha.coerceIn(0, 100) / 100f)
+                val wallpaper = previewWallpaperFile(entry)
+                if (wallpaper != null) {
+                    ImageLoader.load(ivPreview.context, wallpaper.absolutePath)
+                        .centerCrop()
+                        .signature(ObjectKey("${wallpaper.absolutePath}:${wallpaper.lastModified()}"))
+                        .into(ivPreview)
+                } else {
+                    Glide.with(ivPreview.context).clear(ivPreview)
+                    ivPreview.setImageDrawable(null)
+                    ivPreview.alpha = 1f
+                }
                 btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.text = getString(R.string.edit)
                 btnEdit.visibility = View.VISIBLE
@@ -651,6 +668,17 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 root.setOnClickListener { showActions(entry) }
             }
         }
+    }
+
+    private fun previewWallpaperFile(entry: TopBarConfig.Entry): File? {
+        val path = entry.config.wallpaperPath?.takeIf { it.isNotBlank() } ?: return null
+        val file = File(path)
+        val resolved = if (file.isAbsolute) {
+            file
+        } else {
+            File(entry.localDir ?: return null, path)
+        }
+        return resolved.takeIf { it.exists() && it.isFile }
     }
 
     private companion object {
