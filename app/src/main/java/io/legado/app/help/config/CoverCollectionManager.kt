@@ -32,6 +32,7 @@ object CoverCollectionManager {
     private var dayCache: List<Collection>? = null
     @Volatile
     private var nightCache: List<Collection>? = null
+    private val assignmentCache = hashMapOf<String, MutableList<Assignment>>()
 
     val rootDir: File
         get() = appCtx.externalFiles.getFile("coverCollections")
@@ -181,21 +182,34 @@ object CoverCollectionManager {
         return rootDir.getFile("assignments").apply { mkdirs() }.getFile("$collectionId.json")
     }
 
+    @Synchronized
     private fun assignSequential(collection: Collection, bookUrl: String): String {
-        val file = assignmentsFile(collection.id)
-        val assignments = GSON.fromJsonArray<Assignment>(
-            file.takeIf { it.exists() }?.readText()
-        ).getOrDefault(emptyList()).toMutableList()
+        val assignments = assignmentCache.getOrPut(collection.id) {
+            readAssignments(collection.id).toMutableList()
+        }
         assignments.firstOrNull { it.bookUrl == bookUrl }?.let {
             return collection.images.getOrNull(it.index % collection.images.size) ?: collection.images.first()
         }
         val index = assignments.size % collection.images.size
         assignments.add(Assignment(bookUrl, index))
-        file.writeText(GSON.toJson(assignments))
+        saveAssignments(collection.id, assignments)
         return collection.images[index]
     }
 
+    private fun readAssignments(collectionId: String): List<Assignment> {
+        val file = assignmentsFile(collectionId)
+        return GSON.fromJsonArray<Assignment>(
+            file.takeIf { it.exists() }?.readText()
+        ).getOrDefault(emptyList())
+    }
+
+    private fun saveAssignments(collectionId: String, assignments: List<Assignment>) {
+        assignmentsFile(collectionId).writeText(GSON.toJson(assignments))
+    }
+
+    @Synchronized
     private fun clearAssignments(collectionId: String) {
+        assignmentCache.remove(collectionId)
         assignmentsFile(collectionId).delete()
     }
 

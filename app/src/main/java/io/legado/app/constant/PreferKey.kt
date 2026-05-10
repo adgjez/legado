@@ -130,6 +130,8 @@ object PreferKey {
     const val bottomBarEffectMode = "bottomBarEffectMode"
     const val bottomBarLayoutMode = "bottomBarLayoutMode"
     const val bottomBarSidebarGravity = "bottomBarSidebarGravity"
+    const val navigationBarPackageDay = "navigationBarPackageDay"
+    const val navigationBarPackageNight = "navigationBarPackageNight"
     const val liquidGlassLevel = "liquidGlassLevel"
     const val frostedGlassLevel = "frostedGlassLevel"
     const val uiCornerScale = "uiCornerScale"

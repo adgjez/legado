@@ -52,8 +52,8 @@ object NavigationBarIconConfig {
     const val STATE_SELECTED = "selected"
     const val DEFAULT_DIR_NAME = "default"
     private const val packageFileName = "navigation.json"
-    private const val activeDayKey = "navigationBarPackageDay"
-    private const val activeNightKey = "navigationBarPackageNight"
+    private const val activeDayKey = PreferKey.navigationBarPackageDay
+    private const val activeNightKey = PreferKey.navigationBarPackageNight
     private const val legacyMigratedDayKey = "navigationBarLegacyMigratedDay"
     private const val legacyMigratedNightKey = "navigationBarLegacyMigratedNight"
     private const val maxIconBitmapCacheSize = 24

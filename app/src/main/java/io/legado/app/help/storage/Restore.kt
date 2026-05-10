@@ -631,8 +631,8 @@ object Restore {
             PreferKey.bookInfoBgImage,
             PreferKey.bgImageN,
             PreferKey.bookInfoBgImageN,
-            "navigationBarPackageDay",
-            "navigationBarPackageNight"
+            PreferKey.navigationBarPackageDay,
+            PreferKey.navigationBarPackageNight
         )
         val all = appCtx.defaultSharedPreferences.all
         val edit = appCtx.defaultSharedPreferences.edit()

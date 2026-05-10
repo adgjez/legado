@@ -134,9 +134,13 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         remoteIndex: List<CacheCloudIndexItem>
     ): List<CacheBookItem> {
         val localByKey = localItems.associateBy { it.cacheKey }
+        val remoteByKey = remoteIndex
+            .asSequence()
+            .filter { it.mode == mode.name }
+            .associateBy { it.cacheKey }
         val merged = arrayListOf<CacheBookItem>()
         localItems.forEach { item ->
-            val remote = remoteIndex.firstOrNull { it.cacheKey == item.cacheKey }
+            val remote = remoteByKey[item.cacheKey]
             merged += if (remote != null) {
                 item.copy(
                     remoteAvailable = true,
@@ -378,8 +382,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             }
             val chapters = CacheManifestHelper.toChapters(manifest, targetBook.bookUrl)
             if (chapters.isNotEmpty()) {
-                appDb.bookChapterDao.delByBook(targetBook.bookUrl)
-                appDb.bookChapterDao.insert(*chapters.toTypedArray())
+                replaceBookChapters(targetBook.bookUrl, chapters)
             }
             true
         }
@@ -829,23 +832,12 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
     private fun restoreChapterCachePackage(book: Book, unzipDir: File) {
         val payloadDir = resolveCachePayloadDir(unzipDir, CacheManifestHelper.MANIFEST_FILE_NAME)
         val cacheDir = BookHelp.getCacheDir(book)
-        if (cacheDir.exists()) {
-            cacheDir.deleteRecursively()
-        }
-        cacheDir.mkdirs()
-        payloadDir.listFiles()?.forEach { file ->
-            val target = File(cacheDir, file.name)
-            if (file.isDirectory) {
-                file.copyRecursively(target, overwrite = true)
-            } else {
-                file.copyTo(target, overwrite = true)
-            }
-        }
+        val stagingDir = copyPayloadToStaging(payloadDir, cacheDir)
+        replaceDirectory(cacheDir, stagingDir)
         CacheManifestHelper.read(book)?.let { manifest ->
             val chapters = CacheManifestHelper.toChapters(manifest, book.bookUrl)
             if (chapters.isNotEmpty() && appDb.bookDao.has(book.bookUrl)) {
-                appDb.bookChapterDao.delByBook(book.bookUrl)
-                appDb.bookChapterDao.insert(*chapters.toTypedArray())
+                replaceBookChapters(book.bookUrl, chapters)
             }
         }
     }
@@ -855,10 +847,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         val chapterCacheDir = File(payloadDir, "chapter_cache")
         if (chapterCacheDir.exists()) {
             val cacheDir = BookHelp.getCacheDir(book)
-            if (cacheDir.exists()) {
-                cacheDir.deleteRecursively()
-            }
-            chapterCacheDir.copyRecursively(cacheDir, overwrite = true)
+            val stagingDir = copyPayloadToStaging(chapterCacheDir, cacheDir)
+            replaceDirectory(cacheDir, stagingDir)
         }
         val manifestFile = File(payloadDir, "manifest.json")
         if (!manifestFile.isFile) return
@@ -877,11 +867,72 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         audioManifest.chapters.forEach { chapter ->
             val resourceUrl = chapter.resourceUrl ?: return@forEach
             val sourceDir = File(audioDir, chapter.index.toString())
+            if (!sourceDir.exists()) return@forEach
             ExoPlayerHelper.importMediaCache(resourceUrl, sourceDir)
         }
         if (chapters.isNotEmpty() && appDb.bookDao.has(book.bookUrl)) {
-            appDb.bookChapterDao.delByBook(book.bookUrl)
+            replaceBookChapters(book.bookUrl, chapters)
+        }
+    }
+
+    private fun replaceBookChapters(bookUrl: String, chapters: List<BookChapter>) {
+        appDb.runInTransaction {
+            appDb.bookChapterDao.delByBook(bookUrl)
             appDb.bookChapterDao.insert(*chapters.toTypedArray())
+        }
+    }
+
+    private fun copyPayloadToStaging(payloadDir: File, targetDir: File): File {
+        require(payloadDir.exists() && payloadDir.isDirectory) {
+            context.getString(R.string.cache_manage_download_failed_simple)
+        }
+        val parent = targetDir.parentFile
+            ?: throw IllegalStateException(context.getString(R.string.cache_manage_download_failed_simple))
+        parent.mkdirs()
+        val stagingDir = File(parent, "${targetDir.name}.restore_${System.currentTimeMillis()}")
+        if (stagingDir.exists()) {
+            stagingDir.deleteRecursively()
+        }
+        stagingDir.mkdirs()
+        payloadDir.listFiles()?.forEach { file ->
+            val target = File(stagingDir, file.name)
+            if (file.isDirectory) {
+                file.copyRecursively(target, overwrite = true)
+            } else {
+                file.copyTo(target, overwrite = true)
+            }
+        }
+        if (stagingDir.listFiles().isNullOrEmpty()) {
+            stagingDir.deleteRecursively()
+            throw IllegalStateException(context.getString(R.string.cache_manage_no_cache))
+        }
+        return stagingDir
+    }
+
+    private fun replaceDirectory(targetDir: File, replacementDir: File) {
+        val parent = targetDir.parentFile
+            ?: throw IllegalStateException(context.getString(R.string.cache_manage_download_failed_simple))
+        parent.mkdirs()
+        val backupDir = File(parent, "${targetDir.name}.backup_${System.currentTimeMillis()}")
+        val hadOld = targetDir.exists()
+        if (hadOld && !targetDir.renameTo(backupDir)) {
+            replacementDir.deleteRecursively()
+            throw IllegalStateException(context.getString(R.string.cache_manage_download_failed_simple))
+        }
+        try {
+            if (!replacementDir.renameTo(targetDir)) {
+                replacementDir.copyRecursively(targetDir, overwrite = true)
+                replacementDir.deleteRecursively()
+            }
+            if (hadOld) {
+                backupDir.deleteRecursively()
+            }
+        } catch (e: Throwable) {
+            targetDir.deleteRecursively()
+            if (hadOld && backupDir.exists()) {
+                backupDir.renameTo(targetDir)
+            }
+            throw e
         }
     }
 
