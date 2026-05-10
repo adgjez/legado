@@ -29,6 +29,7 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
+import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
@@ -199,20 +200,15 @@ class MainTopBarView @JvmOverloads constructor(
     private fun applyImmersiveStyle(config: TopBarConfig.Config) {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 8.dp
-        val color = android.graphics.Color.TRANSPARENT
         setPadding(horizontal, paddingTop.coerceAtLeast(vertical), horizontal, vertical)
-        background = immersiveBackground(config, TopBarConfig.withOpacity(color, 0))
+        background = immersiveBackground(config)
         titleRow.background = null
         titleRow.setPadding(0, 0, 0, 0)
         titleSelect.isVisible = !searchEntryRequested
         searchEntry.isVisible = searchEntryRequested
         titleSpacer.isVisible = !searchEntryRequested
         titleSelect.background = null
-        searchEntry.background = UiCorner.actionSelector(
-            TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 42),
-            TopBarConfig.withOpacity(ContextCompat.getColor(context, R.color.background_card), 66),
-            UiCorner.searchRadius(18f)
-        )
+        searchEntry.background = TopBarSearchStyle.actionBackground(context)
         searchEntry.setPadding(14.dp, 0, 14.dp, 0)
         titleSelect.setPadding(12.dp, 0, 8.dp, 0)
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton).forEach {
@@ -341,8 +337,7 @@ class MainTopBarView @JvmOverloads constructor(
         primaryBar.isVisible = isImmersiveStyle() && primaryBarRequested
     }
 
-    private fun bottomRoundedBackground(color: Int): GradientDrawable {
-        val radius = UiCorner.panelRadius(context)
+    private fun bottomRoundedBackground(color: Int, radius: Float): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             setColor(color)
@@ -355,9 +350,10 @@ class MainTopBarView @JvmOverloads constructor(
         }
     }
 
-    private fun immersiveBackground(config: TopBarConfig.Config, fallbackColor: Int): Drawable {
-        val base = bottomRoundedBackground(fallbackColor)
-        val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme) ?: return base
+    private fun immersiveBackground(config: TopBarConfig.Config): Drawable {
+        val radius = TopBarConfig.cornerRadius(context, config)
+        val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+            ?: return bottomRoundedBackground(TopBarConfig.resolveBackgroundColor(config), radius)
         val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}"
         val bitmap = wallpaperBitmap?.takeIf { wallpaperBitmapKey == key && !it.isRecycled }
             ?: kotlin.runCatching {
@@ -370,11 +366,11 @@ class MainTopBarView @JvmOverloads constructor(
                 wallpaperBitmapKey = key
                 wallpaperBitmap = it
             }
-            ?: return base
+            ?: return bottomRoundedBackground(TopBarConfig.resolveBackgroundColor(config), radius)
         return LayerDrawable(
             arrayOf(
-                base,
-                BottomRoundedBitmapDrawable(bitmap, UiCorner.panelRadius(context), config.wallpaperAlpha)
+                bottomRoundedBackground(android.graphics.Color.TRANSPARENT, radius),
+                BottomRoundedBitmapDrawable(bitmap, radius, config.wallpaperAlpha)
             )
         )
     }

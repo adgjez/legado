@@ -226,6 +226,12 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 ) { _, index ->
                     config.style = if (index == 1) TopBarConfig.STYLE_IMMERSIVE else TopBarConfig.STYLE_DEFAULT
                     if (config.style == TopBarConfig.STYLE_IMMERSIVE) {
+                        if (config.backgroundColor == null) {
+                            config.backgroundColor = TopBarConfig.defaultBackgroundColor(config.isNightMode)
+                        }
+                        if (config.cornerScale == null) {
+                            config.cornerScale = 1f
+                        }
                         if (config.tagBarColor == null) {
                             config.tagBarColor = Color.WHITE
                         }
@@ -237,6 +243,14 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 }
             })
             if (config.style == TopBarConfig.STYLE_IMMERSIVE) {
+                addView(optionRow(getString(R.string.top_bar_corner_scale), cornerScaleLabel(config.cornerScale)) {
+                    showCornerScalePicker(config.cornerScale ?: 1f) {
+                        config.cornerScale = it
+                    }
+                })
+                addView(optionRow(getString(R.string.top_bar_background_color), colorLabel(config.backgroundColor ?: TopBarConfig.defaultBackgroundColor(config.isNightMode))) {
+                    showColorPicker(COLOR_BACKGROUND, config.backgroundColor ?: TopBarConfig.defaultBackgroundColor(config.isNightMode))
+                })
                 addView(optionRow(getString(R.string.top_bar_wallpaper), wallpaperLabel(config.wallpaperPath)) {
                     showWallpaperSelector()
                 })
@@ -335,6 +349,18 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }
     }
 
+    private fun showCornerScalePicker(value: Float, apply: (Float) -> Unit) {
+        NumberPickerDialog(this, isDecimalMode = true)
+            .setTitle(getString(R.string.top_bar_corner_scale))
+            .setMinValue(0)
+            .setMaxValue(30)
+            .setValue((value.coerceIn(0f, 3f) * 10).toInt())
+            .show {
+                apply((it / 10f).coerceIn(0f, 3f))
+                refreshEditDialog()
+            }
+    }
+
     private fun showColorPicker(target: Int, color: Int) {
         pendingColorTarget = target
         ColorPickerDialog.newBuilder()
@@ -348,6 +374,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     override fun onColorSelected(dialogId: Int, color: Int) {
         val config = pendingConfig ?: return
         when (dialogId) {
+            COLOR_BACKGROUND -> config.backgroundColor = color
             COLOR_TAG_BAR -> config.tagBarColor = color
             COLOR_TAG_SELECTED -> config.tagSelectedColor = color
         }
@@ -495,6 +522,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             ?: getString(R.string.top_bar_follow_theme)
     }
 
+    private fun cornerScaleLabel(value: Float?): String {
+        return String.format(Locale.ROOT, "%.1f", (value ?: 1f).coerceIn(0f, 3f))
+    }
+
     private fun wallpaperLabel(path: String?): String {
         return if (path.isNullOrBlank()) {
             getString(R.string.theme_image_value_unselected)
@@ -626,5 +657,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         const val COLOR_TAG_BAR = 5101
         const val COLOR_TAG_SELECTED = 5102
         const val REQUEST_WALLPAPER = 5103
+        const val COLOR_BACKGROUND = 5104
     }
 }

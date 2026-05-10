@@ -49,6 +49,8 @@ object TopBarConfig {
         var tagSelectedAlpha: Int = 100,
         var wallpaperPath: String? = null,
         var wallpaperAlpha: Int = 100,
+        var backgroundColor: Int? = null,
+        var cornerScale: Float? = null,
         var updatedAt: Long = System.currentTimeMillis()
     )
 
@@ -76,6 +78,8 @@ object TopBarConfig {
             isNightMode = isNight,
             tagBarColor = ContextCompat.getColor(context, R.color.background_menu),
             tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
+            backgroundColor = defaultBackgroundColor(isNight),
+            cornerScale = 1f,
             updatedAt = 0L
         )
     }
@@ -229,6 +233,22 @@ object TopBarConfig {
         return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
     }
 
+    fun defaultBackgroundColor(isNight: Boolean): Int {
+        return if (isNight) Color.BLACK else Color.WHITE
+    }
+
+    fun resolveBackgroundColor(config: Config): Int {
+        return config.backgroundColor ?: defaultBackgroundColor(config.isNightMode)
+    }
+
+    fun resolveCornerScale(config: Config): Float {
+        return config.cornerScale ?: 1f
+    }
+
+    fun cornerRadius(context: Context, config: Config): Float {
+        return context.resources.getDimension(R.dimen.ui_panel_radius) * resolveCornerScale(config).coerceIn(0f, 3f)
+    }
+
     private fun defaultEntry(context: Context, isNight: Boolean): Entry {
         return Entry(defaultConfig(context, isNight), Source.BUILTIN, DEFAULT_DIR_NAME)
     }
@@ -336,6 +356,7 @@ object TopBarConfig {
         config.tagSelectedAlpha = config.tagSelectedAlpha.coerceIn(0, 100)
         config.wallpaperAlpha = config.wallpaperAlpha.coerceIn(0, 100)
         config.wallpaperPath = config.wallpaperPath?.takeIf { it.isNotBlank() }
+        config.cornerScale = config.cornerScale?.coerceIn(0f, 3f)
         return config
     }
 
