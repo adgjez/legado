@@ -13,6 +13,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchWaterfallBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.WaterfallCardMetrics
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -25,6 +27,7 @@ class ExploreShowWaterfallAdapter(
 
     override fun getViewBinding(parent: ViewGroup): ItemSearchWaterfallBinding {
         return ItemSearchWaterfallBinding.inflate(inflater, parent, false).apply {
+            root.applyUiBodyTypefaceDeep(context.uiTypeface())
             val metrics = WaterfallCardMetrics.resolve(parent, columns)
             root.layoutParams = (root.layoutParams ?: ViewGroup.MarginLayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,

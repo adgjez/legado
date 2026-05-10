@@ -9,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Picture
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.text.Spanned
 import android.text.style.ImageSpan
@@ -41,6 +42,7 @@ import androidx.viewpager.widget.ViewPager
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
 import splitties.systemservices.inputMethodManager
@@ -174,6 +176,7 @@ fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
         }
         val c = canvas ?: Canvas()
         c.setBitmap(screenshot)
+        c.drawColor(resolveScreenshotBackgroundColor())
         c.withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
             this@screenshot.draw(this)
         }
@@ -188,6 +191,7 @@ fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
 fun View.screenshot(picture: Picture) {
     if (width > 0 && height > 0) {
         picture.record(width, height) {
+            drawColor(resolveScreenshotBackgroundColor())
             withTranslation(-scrollX.toFloat(), -scrollY.toFloat()) {
                 draw(this)
             }
@@ -198,9 +202,19 @@ fun View.screenshot(picture: Picture) {
 fun View.screenshot(canvasRecorder: CanvasRecorder) {
     if (width > 0 && height > 0) {
         canvasRecorder.record(width, height) {
+            drawColor(resolveScreenshotBackgroundColor())
             draw(this)
         }
     }
+}
+
+private fun View.resolveScreenshotBackgroundColor(): Int {
+    var target: View? = this
+    while (target != null) {
+        (target.background as? ColorDrawable)?.let { return it.color }
+        target = target.parent as? View
+    }
+    return runCatching { context.backgroundColor }.getOrDefault(Color.WHITE)
 }
 
 fun View.setPaddingBottom(bottom: Int) {

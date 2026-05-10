@@ -348,13 +348,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.topBar.bringToFront()
     }
 
-    private fun scheduleModernTopBarOverlayUpdate() {
-        if (!usingModernDiscovery || view == null) return
-        binding.topBar.post {
-            updateModernTopBarOverlay()
-        }
-    }
-
     private fun applyDiscoverBookLayout(force: Boolean = false) {
         val columns = if (AppConfig.discoveryPageLayout == 2) 2 else 1
         if (!force && discoverBookLayoutMode == columns && discoverBookAdapter != null) return
@@ -602,7 +595,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.topBar.setSearchHint(name)
         renderDiscoverSourceSelector()
         binding.topBar.post(::updateDiscoverSourceNameWidth)
-        scheduleModernTopBarOverlayUpdate()
     }
 
     private fun renderDiscoverSourceSelector() {
@@ -896,7 +888,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             selectedDiscoverTagIndex = -1
             selectedDiscoverUrlIndex = -1
             binding.topBar.tagsBar.submitItems(emptyList(), -1)
-            scheduleModernTopBarOverlayUpdate()
             return
         }
         binding.topBar.showTags(true)
@@ -910,7 +901,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             items.map { RoundedTagBarView.Item(it.text, if (it.isButton) 0.9f else 1f) },
             selectedDiscoverTagIndex
         )
-        scheduleModernTopBarOverlayUpdate()
     }
 
     private fun renderDiscoverSelects(items: List<DiscoverTagItem>) {
@@ -919,7 +909,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         if (items.isEmpty()) {
             binding.topBar.showSelects(false)
             binding.topBar.selectsBar.submitItems(emptyList(), -1)
-            scheduleModernTopBarOverlayUpdate()
             return
         }
         binding.topBar.showSelects(true)
@@ -930,7 +919,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             },
             -1
         )
-        scheduleModernTopBarOverlayUpdate()
     }
 
     private fun currentDiscoverSelectValue(item: DiscoverTagItem): String {

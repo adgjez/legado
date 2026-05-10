@@ -26,7 +26,6 @@ import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import androidx.transition.TransitionManager
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
@@ -73,10 +72,6 @@ class MainTopBarView @JvmOverloads constructor(
     private var wallpaperBitmap: Bitmap? = null
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
-    private var lastReportedHeight = -1
-    private val heightReportRunnable = Runnable {
-        reportHeightChanged()
-    }
 
     init {
         orientation = VERTICAL
@@ -108,13 +103,6 @@ class MainTopBarView @JvmOverloads constructor(
             filtersExpanded = !filtersExpanded
             updateFilterBarsVisibility()
             onFilterExpandedChanged?.invoke(filtersExpanded)
-        }
-        addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
-            val newHeight = bottom - top
-            val oldHeight = oldBottom - oldTop
-            if (newHeight != oldHeight) {
-                scheduleHeightChanged(90L)
-            }
         }
         setMode(Mode.BOOKSHELF)
     }
@@ -171,7 +159,7 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun setOnHeightChangedListener(listener: (() -> Unit)?) {
         onHeightChanged = listener
-        scheduleHeightChanged()
+        post { onHeightChanged?.invoke() }
     }
 
     fun setOnFilterExpandedChangedListener(listener: ((Boolean) -> Unit)?) {
@@ -430,22 +418,10 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun updateFilterBarsVisibility() {
         val hasFilters = selectsBarRequested || tagsBarRequested
-        val willCollapse = isImmersiveStyle() && !filtersExpanded
         val oldRowVisible = primaryFilterRow.isVisible
         val oldToggleVisible = filterToggleButton.isVisible
         val oldSelectsVisible = selectsBar.isVisible
         val oldTagsVisible = tagsBar.isVisible
-        if (isAttachedToWindow && width > 0 && height > 0) {
-            TransitionManager.endTransitions(this)
-            if (!willCollapse) {
-                TransitionManager.beginDelayedTransition(
-                    this,
-                    androidx.transition.AutoTransition().apply {
-                        duration = 80L
-                    }
-                )
-            }
-        }
         if (isImmersiveStyle()) {
             filterToggleButton.isVisible = hasFilters
             filterToggleButton.setImageResource(if (filtersExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more)
@@ -465,24 +441,8 @@ class MainTopBarView @JvmOverloads constructor(
         ) {
             requestLayout()
             invalidate()
-            scheduleHeightChanged(if (willCollapse) 0L else 90L)
+            post { onHeightChanged?.invoke() }
         }
-    }
-
-    private fun scheduleHeightChanged(delayMillis: Long = 0L) {
-        removeCallbacks(heightReportRunnable)
-        if (delayMillis > 0L) {
-            postDelayed(heightReportRunnable, delayMillis)
-        } else {
-            post(heightReportRunnable)
-        }
-    }
-
-    private fun reportHeightChanged() {
-        val currentHeight = height
-        if (currentHeight == lastReportedHeight) return
-        lastReportedHeight = currentHeight
-        onHeightChanged?.invoke()
     }
 
     private fun bottomRoundedBackground(color: Int, radius: Float): GradientDrawable {
