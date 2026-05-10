@@ -27,7 +27,6 @@ import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiInputStyle
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
@@ -306,18 +305,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             orientation = LinearLayout.VERTICAL
             setPadding(2, 2, 2, 4)
             applyUiBodyTypefaceDeep(this@NavigationBarManageActivity.uiTypeface())
-            val name = EditText(this@NavigationBarManageActivity).apply {
-                tag = "name"
-                setText(config.name)
-                hint = getString(R.string.navigation_bar_name)
-                applyUiInputStyle(this@NavigationBarManageActivity)
-                background = UiCorner.opaqueRounded(
-                    ContextCompat.getColor(context, R.color.background_card),
-                    UiCorner.actionRadius(context)
-                )
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44.dp)
-            }
-            addView(name)
+            addView(PackageManageUi.nameInput(this@NavigationBarManageActivity, config.name, getString(R.string.navigation_bar_name)))
             addView(optionRow(getString(R.string.bottom_bar_layout_mode), layoutModeLabel(config.layoutMode)) {
                 selector(
                     getString(R.string.bottom_bar_layout_mode),
@@ -424,32 +412,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun optionRow(title: String, value: String, onClick: () -> Unit): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(14.dp, 0, 14.dp, 0)
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
-                UiCorner.actionRadius(context)
-            )
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 46.dp).apply {
-                topMargin = 8.dp
-            }
-            addView(TextView(context).apply {
-                text = title
-                textSize = 15f
-                setTextColor(primaryTextColor)
-                typeface = this@NavigationBarManageActivity.uiTypeface()
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(TextView(context).apply {
-                text = value
-                textSize = 13f
-                setTextColor(secondaryTextColor)
-                typeface = this@NavigationBarManageActivity.uiTypeface()
-            })
-            setOnClickListener { onClick() }
-        }
+        return PackageManageUi.optionRow(this, title, value, onClick)
     }
 
     private fun iconRow(item: NavigationBarIconConfig.NavItem): View {

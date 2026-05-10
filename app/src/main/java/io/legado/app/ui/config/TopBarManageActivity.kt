@@ -3,15 +3,12 @@ package io.legado.app.ui.config
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -175,6 +172,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             TopBarConfig.Source.LOCAL,
             ""
         )
+        if (base.dirName == TopBarConfig.DEFAULT_DIR_NAME) {
+            toastOnUi(R.string.navigation_bar_default_readonly)
+            return
+        }
         if (base.localDir == null && entry != null && base.source == TopBarConfig.Source.REMOTE) {
             toastOnUi(R.string.navigation_bar_download_first)
             return
@@ -196,17 +197,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             orientation = LinearLayout.VERTICAL
             setPadding(2, 2, 2, 4)
             applyUiBodyTypefaceDeep(this@TopBarManageActivity.uiTypeface())
-            addView(EditText(this@TopBarManageActivity).apply {
-                tag = "name"
-                setText(config.name)
-                hint = getString(R.string.top_bar_name)
-                setTextColor(primaryTextColor)
-                background = UiCorner.opaqueRounded(
-                    ContextCompat.getColor(context, R.color.background_card),
-                    UiCorner.actionRadius(context)
-                )
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44.dp)
-            })
+            addView(PackageManageUi.nameInput(this@TopBarManageActivity, config.name, getString(R.string.top_bar_name)))
             addView(optionRow(getString(R.string.top_bar_style), getString(R.string.top_bar_style_default)) {
                 toastOnUi(R.string.top_bar_style_default)
             })
@@ -230,32 +221,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     }
 
     private fun optionRow(title: String, value: String, onClick: () -> Unit): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(14.dp, 0, 14.dp, 0)
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
-                UiCorner.actionRadius(context)
-            )
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 46.dp).apply {
-                topMargin = 8.dp
-            }
-            addView(TextView(context).apply {
-                text = title
-                textSize = 15f
-                setTextColor(primaryTextColor)
-                typeface = this@TopBarManageActivity.uiTypeface()
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(TextView(context).apply {
-                text = value
-                textSize = 13f
-                setTextColor(secondaryTextColor)
-                typeface = this@TopBarManageActivity.uiTypeface()
-            })
-            setOnClickListener { onClick() }
-        }
+        return PackageManageUi.optionRow(this, title, value, onClick)
     }
 
     private fun showAlphaPicker(title: String, value: Int, apply: (Int) -> Unit) {
@@ -329,8 +295,8 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private fun showActions(entry: TopBarConfig.Entry) {
         val actions = buildList {
             add(Action.APPLY)
-            add(Action.EDIT)
             if (entry.dirName != TopBarConfig.DEFAULT_DIR_NAME) {
+                add(Action.EDIT)
                 add(Action.EXPORT)
                 if (AppConfig.syncThemePackages) add(Action.UPLOAD)
                 if (entry.source != TopBarConfig.Source.LOCAL) add(Action.DOWNLOAD)
@@ -533,6 +499,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 cardPreview.visibility = View.GONE
                 btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.text = getString(R.string.edit)
+                btnEdit.visibility = if (entry.dirName == TopBarConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
                 btnApply.setOnClickListener { applyPackage(entry) }
                 btnEdit.setOnClickListener { showEditDialog(entry) }
                 btnMore.setOnClickListener { showActions(entry) }
@@ -540,8 +507,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }
         }
     }
-
-    private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 
     private companion object {
         const val COLOR_TAG_BAR = 5101
