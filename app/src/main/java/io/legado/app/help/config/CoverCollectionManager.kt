@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.annotation.Keep
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.externalFiles
@@ -20,7 +21,6 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
-import kotlin.math.abs
 
 object CoverCollectionManager {
 
@@ -117,6 +117,18 @@ object CoverCollectionManager {
     }
 
     fun selectedCollectionCover(book: Book): String? {
+        return selectedCollectionCover(book.bookUrl.ifBlank {
+            "${book.origin}|${book.name}|${book.author}"
+        })
+    }
+
+    fun selectedCollectionCover(searchBook: SearchBook): String? {
+        return selectedCollectionCover(searchBook.bookUrl.ifBlank {
+            "${searchBook.origin}|${searchBook.name}|${searchBook.author}"
+        })
+    }
+
+    private fun selectedCollectionCover(bookKey: String): String? {
         val isNight = AppConfig.isNightTheme
         val collectionId = appCtx.getPrefString(
             if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay
@@ -128,8 +140,8 @@ object CoverCollectionManager {
             MODE_RANDOM
         ) ?: MODE_RANDOM
         val path = when (mode) {
-            MODE_SEQUENCE -> assignSequential(collection, book.bookUrl)
-            else -> collection.images[abs(book.bookUrl.hashCode()) % collection.images.size]
+            MODE_SEQUENCE -> assignSequential(collection, bookKey)
+            else -> collection.images[stableImageIndex(bookKey, collection.images.size)]
         }
         return path.takeIf { File(it).exists() }
     }
@@ -180,6 +192,10 @@ object CoverCollectionManager {
 
     private fun assignmentsFile(collectionId: String): File {
         return rootDir.getFile("assignments").apply { mkdirs() }.getFile("$collectionId.json")
+    }
+
+    private fun stableImageIndex(bookKey: String, imageCount: Int): Int {
+        return (bookKey.hashCode() and Int.MAX_VALUE) % imageCount
     }
 
     @Synchronized

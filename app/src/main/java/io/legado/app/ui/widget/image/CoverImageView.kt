@@ -275,7 +275,17 @@ class CoverImageView @JvmOverloads constructor(
         fragment: Fragment? = null,
         lifecycle: Lifecycle? = null
     ) {
-        load(searchBook.coverUrl, searchBook.name, searchBook.author, loadOnlyWifi, searchBook.origin, fragment, lifecycle)
+        val collectionCover = CoverCollectionManager.selectedCollectionCover(searchBook)
+        load(
+            collectionCover ?: searchBook.coverUrl,
+            searchBook.name,
+            searchBook.author,
+            loadOnlyWifi,
+            searchBook.origin,
+            fragment,
+            lifecycle,
+            forcePath = collectionCover != null
+        )
     }
 
     fun load(
