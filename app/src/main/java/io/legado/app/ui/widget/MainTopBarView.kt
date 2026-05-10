@@ -74,6 +74,9 @@ class MainTopBarView @JvmOverloads constructor(
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var lastReportedHeight = -1
+    private val heightReportRunnable = Runnable {
+        reportHeightChanged()
+    }
 
     init {
         orientation = VERTICAL
@@ -109,9 +112,8 @@ class MainTopBarView @JvmOverloads constructor(
         addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
             val newHeight = bottom - top
             val oldHeight = oldBottom - oldTop
-            if (newHeight != oldHeight && newHeight != lastReportedHeight) {
-                lastReportedHeight = newHeight
-                onHeightChanged?.invoke()
+            if (newHeight != oldHeight) {
+                scheduleHeightChanged(90L)
             }
         }
         setMode(Mode.BOOKSHELF)
@@ -169,13 +171,7 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun setOnHeightChangedListener(listener: (() -> Unit)?) {
         onHeightChanged = listener
-        post {
-            val currentHeight = height
-            if (currentHeight != lastReportedHeight) {
-                lastReportedHeight = currentHeight
-                onHeightChanged?.invoke()
-            }
-        }
+        scheduleHeightChanged()
     }
 
     fun setOnFilterExpandedChangedListener(listener: ((Boolean) -> Unit)?) {
@@ -469,13 +465,24 @@ class MainTopBarView @JvmOverloads constructor(
         ) {
             requestLayout()
             invalidate()
-            post {
-                onHeightChanged?.invoke()
-                post {
-                    onHeightChanged?.invoke()
-                }
-            }
+            scheduleHeightChanged(if (willCollapse) 0L else 90L)
         }
+    }
+
+    private fun scheduleHeightChanged(delayMillis: Long = 0L) {
+        removeCallbacks(heightReportRunnable)
+        if (delayMillis > 0L) {
+            postDelayed(heightReportRunnable, delayMillis)
+        } else {
+            post(heightReportRunnable)
+        }
+    }
+
+    private fun reportHeightChanged() {
+        val currentHeight = height
+        if (currentHeight == lastReportedHeight) return
+        lastReportedHeight = currentHeight
+        onHeightChanged?.invoke()
     }
 
     private fun bottomRoundedBackground(color: Int, radius: Float): GradientDrawable {

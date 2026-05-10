@@ -143,6 +143,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var discoverRequestVersion = 0L
     private var discoverSourceVersion = 0L
     private var discoveryModeLoaded = false
+    private var modernTopOverlaySpace = -1
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -329,18 +330,21 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun updateModernTopBarOverlay() {
         if (!usingModernDiscovery || view == null) return
         val topSpace = binding.topBar.height
-        binding.rvDiscoverBooks.clipToPadding = true
-        binding.rvDiscoverBooks.setPadding(
-            binding.rvDiscoverBooks.paddingLeft,
-            topSpace,
-            binding.rvDiscoverBooks.paddingRight,
-            binding.rvDiscoverBooks.paddingBottom
-        )
-        binding.swipeRefreshLayout.setProgressViewOffset(
-            true,
-            (topSpace - 28.dpToPx()).coerceAtLeast(0),
-            topSpace + 56.dpToPx()
-        )
+        if (modernTopOverlaySpace != topSpace) {
+            modernTopOverlaySpace = topSpace
+            binding.rvDiscoverBooks.clipToPadding = true
+            binding.rvDiscoverBooks.setPadding(
+                binding.rvDiscoverBooks.paddingLeft,
+                topSpace,
+                binding.rvDiscoverBooks.paddingRight,
+                binding.rvDiscoverBooks.paddingBottom
+            )
+            binding.swipeRefreshLayout.setProgressViewOffset(
+                true,
+                (topSpace - 28.dpToPx()).coerceAtLeast(0),
+                topSpace + 56.dpToPx()
+            )
+        }
         binding.topBar.bringToFront()
     }
 
