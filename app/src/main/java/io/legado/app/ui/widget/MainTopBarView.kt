@@ -74,6 +74,7 @@ class MainTopBarView @JvmOverloads constructor(
     private var wallpaperBitmap: Bitmap? = null
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
+    private var lastReportedHeight = -1
 
     init {
         orientation = VERTICAL
@@ -105,6 +106,14 @@ class MainTopBarView @JvmOverloads constructor(
             filtersExpanded = !filtersExpanded
             updateFilterBarsVisibility()
             onFilterExpandedChanged?.invoke(filtersExpanded)
+        }
+        addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            val newHeight = bottom - top
+            val oldHeight = oldBottom - oldTop
+            if (newHeight != oldHeight && newHeight != lastReportedHeight) {
+                lastReportedHeight = newHeight
+                onHeightChanged?.invoke()
+            }
         }
         setMode(Mode.BOOKSHELF)
     }
@@ -161,6 +170,13 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun setOnHeightChangedListener(listener: (() -> Unit)?) {
         onHeightChanged = listener
+        post {
+            val currentHeight = height
+            if (currentHeight != lastReportedHeight) {
+                lastReportedHeight = currentHeight
+                onHeightChanged?.invoke()
+            }
+        }
     }
 
     fun setOnFilterExpandedChangedListener(listener: ((Boolean) -> Unit)?) {
