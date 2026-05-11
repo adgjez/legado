@@ -603,16 +603,7 @@ class PageView(context: Context) : FrameLayout(context) {
         }
 
         fun resolveTitleViewSize(block: TextPage.EpubEmbeddedBlock): Pair<Int, Int> {
-            val scale = advancedTitleScale()
-            val blockWidth = block.width.toInt().coerceAtLeast(1)
-            val blockHeight = block.height.toInt().coerceAtLeast(1)
-            val maxWidth = (block.width * 0.86f).toInt().coerceIn(1, blockWidth)
-            val minWidth = minOf(160.dpToPx(), maxWidth)
-            val targetWidth = (maxWidth * scale).toInt().coerceIn(minWidth, maxWidth)
-            val minHeight = minOf((targetWidth * 120f / 720f).toInt().coerceAtLeast(1), blockHeight)
-            val preferredHeight = (block.height * scale.coerceAtMost(1f)).toInt()
-            val targetHeight = preferredHeight.coerceIn(minHeight, blockHeight)
-            return targetWidth to targetHeight
+            return block.width.toInt().coerceAtLeast(1) to block.height.toInt().coerceAtLeast(1)
         }
 
         fun resolveTitleTranslationY(block: TextPage.EpubEmbeddedBlock, targetHeight: Int): Float {
@@ -660,7 +651,7 @@ class PageView(context: Context) : FrameLayout(context) {
             params.height = targetHeight
             lottieView.layoutParams = params
         }
-        lottieView.scaleType = ImageView.ScaleType.FIT_CENTER
+        lottieView.scaleType = ImageView.ScaleType.FIT_XY
         lottieView.translationY = resolveTitleTranslationY(block, targetHeight)
         lottieView.repeatCount = LottieDrawable.INFINITE
         lottieView.setFontAssetDelegate(defaultFontAssetDelegate)

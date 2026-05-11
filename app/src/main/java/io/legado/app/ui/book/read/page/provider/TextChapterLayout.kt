@@ -80,6 +80,7 @@ import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider.reviewChar
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -746,7 +747,7 @@ class TextChapterLayout(
         if (pageAnim == PageAnim.scrollPageAnim) return false
         currentCoroutineContext().ensureActive()
         val lottieJson = AdvancedTitleConfig.renderValidLottieJson(book, title) ?: return false
-        val layout = resolveAdvancedTitleLayout() ?: return false
+        val layout = resolveAdvancedTitleLayout(lottieJson) ?: return false
         var startY = durY + titleTopSpacing
         if (startY + layout.requiredHeight > visibleHeight) {
             prepareNextPageIfNeed()
@@ -755,9 +756,9 @@ class TextChapterLayout(
         if (startY + layout.requiredHeight > visibleHeight) return false
         pendingTextPage.epubEmbeddedBlocks.add(
             TextPage.EpubEmbeddedBlock(
-                offsetX = paddingLeft.toFloat(),
+                offsetX = paddingLeft + (visibleWidth - layout.blockWidth) / 2f,
                 offsetY = paddingTop + startY,
-                width = visibleWidth.toFloat(),
+                width = layout.blockWidth,
                 height = layout.blockHeight,
                 commands = emptyList(),
                 role = AdvancedTitleConfig.LOTTIE_BLOCK_ROLE,
@@ -771,20 +772,42 @@ class TextChapterLayout(
         return true
     }
 
-    private fun resolveAdvancedTitleLayout(): AdvancedTitleLayout? {
+    private fun resolveAdvancedTitleLayout(lottieJson: String): AdvancedTitleLayout? {
         if (visibleWidth <= 0 || visibleHeight <= 0) return null
-        val textLineHeight = contentPaintTextHeight.coerceAtLeast(1f)
-        val minBodyLines = if (viewWidth > viewHeight) 1 else 2
-        val minBodyHeight = textLineHeight * minBodyLines + lineSpacingExtra * textLineHeight
-        val maxBlockHeight = visibleHeight - titleTopSpacing - titleBottomSpacing - minBodyHeight
-        if (maxBlockHeight < textLineHeight) return null
-        val requestedHeight = visibleHeight * (AdvancedTitleConfig.heightFactor / 100f)
-        val minTitleHeight = max(textLineHeight * 1.6f, 48f.dpToPx())
+        val titleTop = titleTopSpacing.toFloat()
+        val titleBottom = titleBottomSpacing.toFloat()
+        val maxBlockHeight = visibleHeight - titleTop - titleBottom
+        if (maxBlockHeight <= 0f) return null
+
+        val titleScale = advancedTitleScale()
+        val heightScale = AdvancedTitleConfig.heightFactor / AdvancedTitleConfig.DEFAULT_HEIGHT_FACTOR.toFloat()
+        val baseWidth = visibleWidth * ADVANCED_TITLE_WIDTH_FACTOR
+        val aspectRatio = resolveAdvancedTitleAspectRatio(lottieJson)
+        val requestedWidth = baseWidth * titleScale * heightScale
+        val requestedHeight = baseWidth * aspectRatio * titleScale * heightScale
+        val minTitleHeight = max(contentPaintTextHeight * 1.2f, 32f.dpToPx())
+        val blockWidth = requestedWidth.coerceIn(1f, visibleWidth.toFloat())
         val blockHeight = requestedHeight
             .coerceAtLeast(minTitleHeight)
             .coerceAtMost(maxBlockHeight)
-        val requiredHeight = blockHeight + titleBottomSpacing
-        return AdvancedTitleLayout(blockHeight, requiredHeight)
+        val requiredHeight = blockHeight + titleBottom
+        return AdvancedTitleLayout(blockWidth, blockHeight, requiredHeight)
+    }
+
+    private fun advancedTitleScale(): Float {
+        return with(ReadBookConfig) {
+            ((textSize + titleSize * ADVANCED_TITLE_SIZE_FACTOR) / textSize.coerceAtLeast(1))
+                .coerceIn(0.6f, 2.5f)
+        }
+    }
+
+    private fun resolveAdvancedTitleAspectRatio(lottieJson: String): Float {
+        return runCatching {
+            val root = JSONObject(lottieJson)
+            val width = root.optDouble("w", DEFAULT_LOTTIE_WIDTH.toDouble()).toFloat()
+            val height = root.optDouble("h", DEFAULT_LOTTIE_HEIGHT.toDouble()).toFloat()
+            if (width > 0f && height > 0f) height / width else DEFAULT_LOTTIE_HEIGHT / DEFAULT_LOTTIE_WIDTH
+        }.getOrDefault(DEFAULT_LOTTIE_HEIGHT / DEFAULT_LOTTIE_WIDTH)
     }
 
     private suspend fun setTypeNativeEpubLayout(layout: EpubLayoutDocument) {
@@ -2321,9 +2344,17 @@ class TextChapterLayout(
     }
 
     private data class AdvancedTitleLayout(
+        val blockWidth: Float,
         val blockHeight: Float,
         val requiredHeight: Float
     )
+
+    private companion object {
+        const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
+        const val ADVANCED_TITLE_WIDTH_FACTOR = 0.86f
+        const val DEFAULT_LOTTIE_WIDTH = 720f
+        const val DEFAULT_LOTTIE_HEIGHT = 112f
+    }
 
     private fun allocateFloatArray(size: Int): FloatArray {
         if (size > floatArray.size) {
