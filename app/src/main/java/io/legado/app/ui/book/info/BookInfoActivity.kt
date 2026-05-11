@@ -280,7 +280,7 @@ class BookInfoActivity :
         binding.refreshLayout?.setColorSchemeColors(accentColor)
         binding.arcView?.setBgColor(backgroundColor)
         binding.llInfo.setBackgroundResource(R.color.transparent)
-        binding.ivCoverC.setCardBackgroundColor(backgroundColor)
+        binding.ivCoverC.setCardBackgroundColor(Color.TRANSPARENT)
         applyUiCorners()
         applyBookInfoTypography()
         applyBookInfoComponents()
