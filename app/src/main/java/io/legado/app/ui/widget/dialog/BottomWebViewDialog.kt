@@ -101,9 +101,7 @@ import androidx.core.graphics.createBitmap
 class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view), WebJsExtensions.Callback {
 
     private companion object {
-        const val FIRST_PAGE_REVEAL_TIMEOUT = 1500L
-        const val FIRST_PAGE_REVEAL_DURATION = 180L
-        const val FIRST_PAGE_REVEAL_TRANSLATION_DP = 6f
+        const val FIRST_PAGE_REVEAL_TIMEOUT = 650L
         const val SHEET_INTRO_DURATION = 220L
         const val SCRIM_REVEAL_DELAY = 60L
         const val SCRIM_REVEAL_DURATION = 140L
@@ -164,7 +162,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var sheetIntroStarted = false
     private var sheetIntroDone = false
     private var scrimTargetAlpha = DEFAULT_SCRIM_ALPHA
-    private val firstPageRevealInterpolator by lazy { DecelerateInterpolator(1.35f) }
     private val sheetIntroInterpolator by lazy { DecelerateInterpolator(1.25f) }
 
     private data class PendingWebContent(
@@ -745,22 +742,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     private fun revealWebViewAfterVisualState() {
         if (!waitingFirstPageVisible) return
-        val webView = currentWebView ?: return
-        val token = firstPageVisibleToken
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            webView.postVisualStateCallback(
-                System.nanoTime(),
-                object : WebView.VisualStateCallback() {
-                    override fun onComplete(requestId: Long) {
-                        revealWebViewIfWaiting(token)
-                    }
-                }
-            )
-        } else {
-            webView.post {
-                revealWebViewIfWaiting(token)
-            }
-        }
+        revealWebViewIfWaiting(firstPageVisibleToken)
     }
 
     private fun revealWebViewIfWaiting(token: Int) {
@@ -816,7 +798,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             }
         }
         binding.nativeSheetSurface.background = shapeDrawable
-        binding.webViewPlaceholder.setBackgroundColor(surfaceColor)
+        binding.webViewPlaceholder.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(surfaceColor)
+        }
         binding.nativeSheetSurface.clipToOutline = radius > 0f
     }
 
@@ -825,11 +810,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         webView.animate().cancel()
         webView.setBackgroundColor(Color.TRANSPARENT)
         webView.alpha = 0f
-        webView.translationY = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            FIRST_PAGE_REVEAL_TRANSLATION_DP,
-            displayMetrics
-        )
+        webView.translationY = 0f
         webView.visible()
     }
 
@@ -837,24 +818,14 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val webView = currentWebView ?: return
         if (webView.parent == null) return
         webView.animate().cancel()
-        webView.visible()
         binding.webViewPlaceholder.animate().cancel()
         binding.nativeSheetSurface.animate().cancel()
         binding.webViewScrim.animate().cancel()
-        binding.webViewPlaceholder.animate()
-            .alpha(0f)
-            .setDuration(FIRST_PAGE_REVEAL_DURATION)
-            .withEndAction {
-                binding.webViewPlaceholder.invisible()
-                binding.webViewPlaceholder.alpha = 1f
-            }
-            .start()
-        webView.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(FIRST_PAGE_REVEAL_DURATION)
-            .setInterpolator(firstPageRevealInterpolator)
-            .start()
+        binding.webViewPlaceholder.invisible()
+        binding.webViewPlaceholder.alpha = 1f
+        webView.alpha = 1f
+        webView.translationY = 0f
+        webView.visible()
     }
 
     private fun cancelFirstPageReveal() {
