@@ -3,16 +3,53 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <FrameLayout
-        android:id="@+id/web_view_container"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <FrameLayout
-        android:id="@+id/web_view_placeholder"
+    <View
+        android:id="@+id/web_view_scrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@android:color/transparent" />
+        android:alpha="0"
+        android:background="#66000000"
+        android:visibility="invisible" />
+
+    <FrameLayout
+        android:id="@+id/native_sheet_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="bottom"
+        android:background="@color/dialog_surface"
+        android:clickable="true"
+        android:focusable="true">
+
+        <FrameLayout
+            android:id="@+id/web_view_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:id="@+id/web_view_placeholder"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/dialog_surface"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <io.legado.app.lib.theme.view.ThemeProgressBar
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:indeterminateBehavior="repeat"
+                android:indeterminateOnly="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/loading"
+                android:textColor="@color/primaryText"
+                android:textSize="14sp" />
+
+        </LinearLayout>
+
+    </FrameLayout>
 
     <FrameLayout
         android:id="@+id/custom_web_view"
