@@ -1172,12 +1172,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var bottomBarLayoutMode: String
         get() = appCtx.getPrefString(PreferKey.bottomBarLayoutMode, "floating")
-            ?.takeIf { it in setOf("floating", "sidebar") }
+            ?.takeIf { it in setOf("floating", "sidebar", "standard") }
             ?: "floating"
         set(value) {
             appCtx.putPrefString(
                 PreferKey.bottomBarLayoutMode,
-                value.takeIf { it in setOf("floating", "sidebar") } ?: "floating"
+                value.takeIf { it in setOf("floating", "sidebar", "standard") } ?: "floating"
             )
         }
 

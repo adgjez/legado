@@ -39,11 +39,16 @@ class RssArticlesAdapter3(context: Context, callBack: CallBack) :
                 height = metrics.coverHeight
             }
             root.setCardBackgroundColor(Color.TRANSPARENT)
-            root.getChildAt(0)?.background = UiCorner.panelRounded(
-                root.context,
-                ContextCompat.getColor(root.context, R.color.background_card),
-                UiCorner.panelRadius(root.context)
-            )
+            root.getChildAt(0)?.let { content ->
+                content.layoutParams = content.layoutParams.apply {
+                    height = metrics.cardHeight
+                }
+                content.background = UiCorner.panelRounded(
+                    root.context,
+                    ContextCompat.getColor(root.context, R.color.background_card),
+                    UiCorner.panelRadius(root.context)
+                )
+            }
         }
     }
 

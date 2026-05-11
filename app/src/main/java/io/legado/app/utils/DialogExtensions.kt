@@ -19,6 +19,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import splitties.systemservices.windowManager
 
@@ -38,9 +40,12 @@ fun AlertDialog.applyTint(): AlertDialog {
         getButton(AlertDialog.BUTTON_NEUTRAL).setTextColor(colorStateList)
     }
     applyMaxWidthIfFloating()
+    window?.decorView?.applyUiBodyTypefaceDeep(context.uiTypeface())
     window?.decorView?.post {
+        window?.decorView?.applyUiBodyTypefaceDeep(context.uiTypeface())
         listView?.forEach {
             it.applyTint(context.accentColor)
+            it.applyUiBodyTypefaceDeep(context.uiTypeface())
         }
     }
     return this

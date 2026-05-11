@@ -85,7 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 发现界面
+ * 鍙戠幇鐣岄潰
  */
 class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_explore),
     MainFragmentInterface,
@@ -431,7 +431,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun updateDiscoverSearchButtonState() {
         val canSearch = !selectedDiscoverSource?.searchUrl.isNullOrBlank()
-        binding.topBar.searchButton.isVisible = canSearch && !binding.topBar.isImmersiveStyle()
+        binding.topBar.searchButton.isVisible = canSearch && !binding.topBar.isRegularStyle()
         binding.topBar.searchButton.isEnabled = canSearch
         binding.topBar.searchButton.alpha = if (canSearch) 1f else 0.45f
         binding.topBar.searchEntry.isEnabled = canSearch
@@ -591,7 +591,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun updateDiscoverSourceTitle() {
         val name = selectedDiscoverSourcePart?.bookSourceName
             ?: getString(R.string.discovery)
-        binding.topBar.setTitle(if (binding.topBar.isImmersiveStyle()) getString(R.string.discovery) else name)
+        binding.topBar.setTitle(if (binding.topBar.isRegularStyle()) getString(R.string.discovery) else name)
         binding.topBar.setSearchHint(name)
         renderDiscoverSourceSelector()
         binding.topBar.post(::updateDiscoverSourceNameWidth)
@@ -645,7 +645,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
 
             val action = kind.action?.takeIf { it.isNotBlank() }
-            val url = kind.url?.takeIf { it.isNotBlank() }
+            val url = kind.normalizedDiscoverUrl()
             val isSelect = kind.type == ExploreKind.Type.select
             val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
 
@@ -731,16 +731,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun discoverKindWidth(kind: ExploreKind): Float {
-        val width = kind.style().layout_flexBasisPercent
+        val style = kind.style()
+        val width = style.layout_flexBasisPercent
         return when {
-            width > 0f -> width
-            width >= 0.95f -> 1f
+            width > 0f -> width.coerceAtMost(1f)
+            style.layout_flexGrow > 0f -> 1f
             else -> 1f
         }
     }
 
     private fun isDiscoverMajorGroupKind(kind: ExploreKind): Boolean {
-        if (!kind.url.isNullOrBlank()) return false
+        if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
         val style = kind.style()
         val isFullWidth = style.layout_flexBasisPercent >= 0.95f ||
             (style.layout_flexGrow >= 1f && style.layout_flexBasisPercent < 0f)
@@ -751,7 +752,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverSelectGroupKind(kind: ExploreKind): Boolean {
         if (kind.type != ExploreKind.Type.select) return false
-        if (!kind.url.isNullOrBlank()) return false
+        if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
         val style = kind.style()
         return style.layout_flexBasisPercent >= 0.95f
     }
@@ -764,9 +765,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val raw = resolveDiscoverTagText(kind).trim()
         if (raw.isBlank()) return getString(R.string.discovery)
         val normalized = raw
-            .replace("🟣", " ")
-            .replace("🟪", " ")
-            .replace("•", " ")
+            .replace(Regex("[\\p{So}\\p{Sk}\\uFE0F]+"), " ")
+            .replace(Regex("[\\uFF1A:|/\\\\]+"), " ")
             .replace(Regex("\\s{2,}"), " ")
             .trim()
         return normalized.ifBlank { raw }
@@ -782,6 +782,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             return viewName.substring(1, viewName.length - 1)
         }
         return kind.title.ifBlank { kind.type }
+    }
+
+    private fun ExploreKind.normalizedDiscoverUrl(): String? {
+        return url?.trim()?.takeIf {
+            it.isNotBlank() && !it.equals("null", ignoreCase = true)
+        }
     }
 
     private fun applyDiscoverTagFilterAndSelect(preferredUrl: String?) {
@@ -865,7 +871,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverMajorGroups.forEach { group ->
                 add(
                     ModernActionPopup.Action(
-                        (if (group == current) "✓ " else "") + group.limitDiscoverText(10)
+                        (if (group == current) "> " else "") + group.limitDiscoverText(10)
                     ) {
                         selectedDiscoverMajorGroup = group
                         applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
@@ -915,7 +921,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.topBar.selectsBar.submitItems(
             items.map {
                 val value = currentDiscoverSelectValue(it)
-                RoundedTagBarView.Item("${it.text}：${value}", 1f)
+                RoundedTagBarView.Item("${it.text}: $value", 1f)
             },
             -1
         )
@@ -1052,7 +1058,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
                 applyDiscoverButtonResult(source, action, kinds)
             }.onFailure {
-                AppLog.put("发现标签按钮执行失败", it)
+                AppLog.put("鍙戠幇鏍囩鎸夐挳鎵ц澶辫触", it)
                 context?.toastOnUi(it.localizedMessage ?: getString(R.string.unknown_error))
             }
         }
@@ -1076,7 +1082,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverAllTagItems.addAll(items)
             applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
         }
-        context?.toastOnUi("该按钮未返回可用列表，保留当前标签")
+        context?.toastOnUi(R.string.find_empty)
     }
 
     private fun getDiscoverInfoMap(sourceUrl: String): InfoMap {
@@ -1155,7 +1161,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 if (!isAdded || requestVersion != discoverRequestVersion || url != discoverCurrentUrl) {
                     return@launch
                 }
-                AppLog.put("新版发现页加载失败", e)
+                AppLog.put("Discovery page load failed", e)
                 if (discoverBooks.isEmpty()) {
                     binding.tvDiscoverEmpty.text = e.localizedMessage ?: getString(R.string.unknown_error)
                     binding.tvDiscoverEmpty.visible()
@@ -1225,7 +1231,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 Lifecycle.State.RESUMED,
                 AppDatabase.BOOK_SOURCE_TABLE_NAME
             ).catch {
-                AppLog.put("发现界面更新数据出错", it)
+                AppLog.put("鍙戠幇鐣岄潰鏇存柊鏁版嵁鍑洪敊", it)
             }.conflate().flowOn(IO).collect {
                 binding.swipeRefreshLayout.isRefreshing = false
                 binding.tvEmptyMsg.isGone = it.isNotEmpty() || (searchView?.query?.isNotEmpty() == true)
@@ -1363,5 +1369,5 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 }
 
 private fun String.limitDiscoverText(max: Int): String {
-    return if (length <= max) this else "${take(max.coerceAtLeast(2) - 1)}…"
+    return if (length <= max) this else "${take(max.coerceAtLeast(2) - 1)}..."
 }

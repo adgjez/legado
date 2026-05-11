@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <!--App-->
     <string name="app_name">阅读Archive</string>
     <string name="app_name_a">阅读Archive·A</string>
@@ -731,6 +731,11 @@
     <string name="ui_corner_scale_invalid">请输入 0 到 3 之间的数字</string>
     <string name="ui_layout_alpha">界面布局透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
+    <string name="theme_panel_border_color">圆角卡片边框色</string>
+    <string name="theme_panel_border_alpha">圆角卡片边框不透明度</string>
+    <string name="bottom_bar_border_color">底栏边框色</string>
+    <string name="top_bar_border_color">顶栏边框色</string>
+    <string name="select_color">选择颜色</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
     <string name="ui_corner_reply_follow">回复栏跟随圆角</string>
@@ -1805,7 +1810,7 @@
     <string name="top_bar_config_missing">缺少顶栏配置</string>
     <string name="top_bar_style">顶栏样式</string>
     <string name="top_bar_style_default">默认</string>
-    <string name="top_bar_style_immersive">沉浸顶栏</string>
+    <string name="top_bar_style_regular">常规顶栏</string>
     <string name="top_bar_corner_scale">顶栏圆角倍率</string>
     <string name="top_bar_background_color">顶栏背景色</string>
     <string name="top_bar_tag_bar_color">标签栏背景色</string>

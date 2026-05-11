@@ -39,6 +39,9 @@ class RoundedTagBarView @JvmOverloads constructor(
         itemAnimator = null
         clipToPadding = false
         isHorizontalScrollBarEnabled = false
+        isHorizontalFadingEdgeEnabled = false
+        isVerticalFadingEdgeEnabled = false
+        setFadingEdgeLength(0)
         val verticalPadding = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
         setPadding(0, verticalPadding, 0, verticalPadding)
     }
@@ -49,6 +52,7 @@ class RoundedTagBarView @JvmOverloads constructor(
     private var styleSignature: String? = null
     private var selectedBackgroundVisible = true
     private var displayMode = DisplayMode.CHIP
+    private var backgroundOverrideColor: Int? = null
 
     init {
         clipToOutline = true
@@ -68,12 +72,12 @@ class RoundedTagBarView @JvmOverloads constructor(
     }
 
     fun applyTopBarStyle(force: Boolean = false) {
-        val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$displayMode"
+        val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$displayMode|$backgroundOverrideColor"
         if (!force && styleSignature == signature) return
         styleSignature = signature
         val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
         val tagBarColor = config.tagBarColor
-            ?: if (config.style == TopBarConfig.STYLE_IMMERSIVE) {
+            ?: if (config.style == TopBarConfig.STYLE_REGULAR) {
                 Color.WHITE
             } else {
                 ContextCompat.getColor(context, R.color.background_menu)
@@ -83,7 +87,7 @@ class RoundedTagBarView @JvmOverloads constructor(
         background = when (displayMode) {
             DisplayMode.TEXT -> null
             else -> UiCorner.opaqueRounded(
-                TopBarConfig.withOpacity(tagBarColor, config.tagBarAlpha),
+                backgroundOverrideColor ?: TopBarConfig.withOpacity(tagBarColor, config.tagBarAlpha),
                 UiCorner.panelRadius(context)
             )
         }
@@ -102,6 +106,13 @@ class RoundedTagBarView @JvmOverloads constructor(
     fun setDisplayMode(mode: DisplayMode) {
         if (displayMode == mode) return
         displayMode = mode
+        styleSignature = null
+        applyTopBarStyle(force = true)
+    }
+
+    fun setBackgroundOverrideColor(color: Int?) {
+        if (backgroundOverrideColor == color) return
+        backgroundOverrideColor = color
         styleSignature = null
         applyTopBarStyle(force = true)
     }

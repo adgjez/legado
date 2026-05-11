@@ -24,7 +24,7 @@ object TopBarConfig {
 
     const val DEFAULT_DIR_NAME = "default"
     const val STYLE_DEFAULT = "default"
-    const val STYLE_IMMERSIVE = "immersive"
+    const val STYLE_REGULAR = "regular"
     private const val packageFileName = "top_bar.json"
     private const val activeDayKey = PreferKey.topBarPackageDay
     private const val activeNightKey = PreferKey.topBarPackageNight
@@ -353,8 +353,8 @@ object TopBarConfig {
 
     private fun normalizeConfig(config: Config): Config {
         config.style = when (config.style) {
-            STYLE_DEFAULT, STYLE_IMMERSIVE -> config.style
-            "flow" -> STYLE_IMMERSIVE
+            STYLE_DEFAULT, STYLE_REGULAR -> config.style
+            "immersive", "flow" -> STYLE_REGULAR
             else -> STYLE_DEFAULT
         }
         config.tagBarAlpha = config.tagBarAlpha.coerceIn(0, 100)

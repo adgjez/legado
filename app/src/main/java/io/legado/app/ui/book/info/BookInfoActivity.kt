@@ -2,6 +2,7 @@ package io.legado.app.ui.book.info
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -18,6 +19,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import io.legado.app.ui.widget.text.ScrollTextView
 import android.view.textclassifier.TextClassifier
 import android.webkit.WebResourceRequest
@@ -64,6 +66,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BookInfoComponentConfig
+import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoComponentType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.webView.PooledWebView
@@ -343,12 +346,17 @@ class BookInfoActivity :
     }
 
     private fun applyBookInfoComponents() = binding.run {
-        val componentViews = mapOf(
+        val componentViews = mapOf<BookInfoComponentType, View?>(
             BookInfoComponentType.HEADER to llDetailPanel,
             BookInfoComponentType.META to llInfoPage,
             BookInfoComponentType.DETAIL to llDetailContentPanel
         )
         val orderedComponents = BookInfoComponentConfig.load()
+        if (isLandscapeComponentLayout()) {
+            applyLandscapeBookInfoComponents(orderedComponents, componentViews)
+            updateDetailContentPanelHeight()
+            return@run
+        }
         orderedComponents.forEach { item ->
             val componentView = componentViews[item.type] ?: return@forEach
             componentView.visibility = if (item.enabled) View.VISIBLE else View.GONE
@@ -358,6 +366,57 @@ class BookInfoActivity :
             llInfo.addView(componentView)
         }
         updateDetailContentPanelHeight()
+    }
+
+    private fun isLandscapeComponentLayout(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                findViewById<View>(R.id.ll_info_left) != null &&
+                findViewById<View>(R.id.ll_info_right) != null
+    }
+
+    private fun applyLandscapeBookInfoComponents(
+        orderedComponents: List<BookInfoComponentItem>,
+        componentViews: Map<BookInfoComponentType, View?>
+    ) {
+        val leftColumn = findViewById<LinearLayout>(R.id.ll_info_left) ?: return
+        val rightColumn = findViewById<LinearLayout>(R.id.ll_info_right) ?: return
+        val leftScroll = findViewById<View>(R.id.scroll_view)
+        val divider = findViewById<View>(R.id.book_info_land_divider)
+        val leftItems = orderedComponents.filter { it.type != BookInfoComponentType.DETAIL }
+        val headerVisible = leftItems.any { it.type == BookInfoComponentType.HEADER && it.enabled } &&
+                componentViews[BookInfoComponentType.HEADER] != null
+        findViewById<View>(R.id.iv_cover_c)?.visibility = if (headerVisible) View.VISIBLE else View.GONE
+        leftItems.forEach { item ->
+            val componentView = componentViews[item.type] ?: return@forEach
+            componentView.visibility = if (item.enabled) View.VISIBLE else View.GONE
+            (componentView.parent as? ViewGroup)?.removeView(componentView)
+            leftColumn.addView(componentView)
+        }
+        resetLandscapeComponentMargins(leftColumn)
+        val detailItem = orderedComponents.firstOrNull { it.type == BookInfoComponentType.DETAIL }
+        val detailView = componentViews[BookInfoComponentType.DETAIL]
+        detailView?.visibility = if (detailItem?.enabled != false) View.VISIBLE else View.GONE
+        if (detailView != null && detailView.parent !== rightColumn) {
+            (detailView.parent as? ViewGroup)?.removeView(detailView)
+            rightColumn.addView(detailView, 0)
+        }
+        val hasLeftContent = leftItems.any { it.enabled && componentViews[it.type] != null }
+        leftScroll?.visibility = if (hasLeftContent) View.VISIBLE else View.GONE
+        divider?.visibility = if (hasLeftContent) View.VISIBLE else View.GONE
+        rightColumn.visibility = View.VISIBLE
+    }
+
+    private fun resetLandscapeComponentMargins(leftColumn: LinearLayout) {
+        var visibleIndex = 0
+        for (index in 0 until leftColumn.childCount) {
+            val child = leftColumn.getChildAt(index)
+            child.updateLayoutParams<LinearLayout.LayoutParams> {
+                width = LinearLayout.LayoutParams.MATCH_PARENT
+                height = LinearLayout.LayoutParams.WRAP_CONTENT
+                weight = 0f
+                topMargin = if (child.visibility == View.VISIBLE && visibleIndex++ > 0) 12.dpToPx() else 0
+            }
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -1027,8 +1086,8 @@ class BookInfoActivity :
     }
 
     private fun updateDetailContentPanelHeight() = binding.run {
-        val panel = llDetailContentPanel ?: return@run
-        val action = flAction ?: return@run
+        val panel = llDetailContentPanel
+        val action = flAction
         val panelLoc = IntArray(2)
         val actionLoc = IntArray(2)
         panel.getLocationOnScreen(panelLoc)

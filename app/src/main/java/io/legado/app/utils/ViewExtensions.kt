@@ -42,7 +42,6 @@ import androidx.viewpager.widget.ViewPager
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
 import splitties.systemservices.inputMethodManager
@@ -211,10 +210,12 @@ fun View.screenshot(canvasRecorder: CanvasRecorder) {
 private fun View.resolveScreenshotBackgroundColor(): Int {
     var target: View? = this
     while (target != null) {
-        (target.background as? ColorDrawable)?.let { return it.color }
+        (target.background as? ColorDrawable)?.let {
+            if (it.color != Color.TRANSPARENT) return it.color
+        }
         target = target.parent as? View
     }
-    return runCatching { context.backgroundColor }.getOrDefault(Color.WHITE)
+    return runCatching { context.getCompatColor(R.color.background) }.getOrDefault(Color.WHITE)
 }
 
 fun View.setPaddingBottom(bottom: Int) {
@@ -452,9 +453,17 @@ fun View.applyStatusBarPadding(withInitialPadding: Boolean = false) {
     val initialPadding = if (withInitialPadding) topPadding else 0
     setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
         val insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars())
-        topPadding = initialPadding + insets.top
+        if (this is StatusBarInsetAware) {
+            onStatusBarInsetChanged(insets.top, initialPadding)
+        } else {
+            topPadding = initialPadding + insets.top
+        }
         windowInsets
     }
+}
+
+interface StatusBarInsetAware {
+    fun onStatusBarInsetChanged(insetTop: Int, initialPaddingTop: Int)
 }
 
 fun View.applyNavigationBarPadding(withInitialPadding: Boolean = false) {

@@ -34,11 +34,12 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.StatusBarInsetAware
 
 class MainTopBarView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : LinearLayout(context, attrs) {
+) : LinearLayout(context, attrs), StatusBarInsetAware {
 
     enum class Mode { BOOKSHELF, DISCOVERY, RSS, READ_RECORD }
 
@@ -72,6 +73,7 @@ class MainTopBarView @JvmOverloads constructor(
     private var wallpaperBitmap: Bitmap? = null
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
+    private var statusBarInsetTop: Int = 0
 
     init {
         orientation = VERTICAL
@@ -145,12 +147,12 @@ class MainTopBarView @JvmOverloads constructor(
         updatePrimaryBarVisibility()
     }
 
-    fun isImmersiveStyle(): Boolean {
-        return TopBarConfig.currentConfig(context, AppConfig.isNightTheme).style == TopBarConfig.STYLE_IMMERSIVE
+    fun isRegularStyle(): Boolean {
+        return TopBarConfig.currentConfig(context, AppConfig.isNightTheme).style == TopBarConfig.STYLE_REGULAR
     }
 
     fun isOverlayMode(): Boolean {
-        return isImmersiveStyle()
+        return isRegularStyle()
     }
 
     fun refreshStyle() {
@@ -159,7 +161,7 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun setOnHeightChangedListener(listener: (() -> Unit)?) {
         onHeightChanged = listener
-        post { onHeightChanged?.invoke() }
+        notifyHeightChangedAfterLayout()
     }
 
     fun setOnFilterExpandedChangedListener(listener: ((Boolean) -> Unit)?) {
@@ -205,17 +207,17 @@ class MainTopBarView @JvmOverloads constructor(
         login?.let { loginButton.isVisible = it }
     }
 
-    private fun applyTopBarStyle(force: Boolean = false) {
+    private fun applyTopBarStyle(force: Boolean = false, resetFilters: Boolean = force) {
         val signature = "${TopBarConfig.currentSignature(AppConfig.isNightTheme)}|$mode"
         if (!force && styleSignature == signature) return
         val signatureChanged = styleSignature != signature
         styleSignature = signature
         val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
-        if (force || signatureChanged) {
-            filtersExpanded = config.style == TopBarConfig.STYLE_IMMERSIVE && config.expandFiltersByDefault
+        if (resetFilters && (force || signatureChanged)) {
+            filtersExpanded = config.style == TopBarConfig.STYLE_REGULAR && config.expandFiltersByDefault
         }
-        if (config.style == TopBarConfig.STYLE_IMMERSIVE) {
-            applyImmersiveStyle(config)
+        if (config.style == TopBarConfig.STYLE_REGULAR) {
+            applyRegularStyle(config)
         } else {
             applyDefaultStyle()
         }
@@ -224,6 +226,23 @@ class MainTopBarView @JvmOverloads constructor(
         updateIconColors()
     }
 
+    override fun onStatusBarInsetChanged(insetTop: Int, initialPaddingTop: Int) {
+        if (statusBarInsetTop == insetTop) return
+        statusBarInsetTop = insetTop
+        applyTopBarStyle(force = true, resetFilters = false)
+        notifyHeightChangedAfterLayout()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (h != oldh) {
+            notifyHeightChangedAfterLayout()
+        }
+    }
+
+    private fun notifyHeightChangedAfterLayout() {
+        post { onHeightChanged?.invoke() }
+    }
     private fun updateTitleRowControlHeight(height: Int) {
         searchEntry.layoutParams = (searchEntry.layoutParams as? LayoutParams ?: LayoutParams(0, height, 1f)).apply {
             this.height = height
@@ -235,7 +254,7 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun applyDefaultStyle() {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
-        setPadding(horizontal, 0, horizontal, 0)
+        setPadding(horizontal, statusBarInsetTop, horizontal, 0)
         background = null
         titleRow.background = null
         titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
@@ -268,14 +287,14 @@ class MainTopBarView @JvmOverloads constructor(
         tagsBar.setSelectedBackgroundVisible(true)
     }
 
-    private fun applyImmersiveStyle(config: TopBarConfig.Config) {
+    private fun applyRegularStyle(config: TopBarConfig.Config) {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 5.dp
-        setPadding(horizontal, paddingTop.coerceAtLeast(vertical), horizontal, vertical)
-        background = immersiveBackground(config)
+        setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
+        background = regularBackground(config)
         titleRow.background = null
         titleRow.setPadding(0, 0, 0, 0)
-        updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.top_bar_immersive_action_size))
+        updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size))
         titleSelect.isVisible = !searchEntryRequested
         searchEntry.isVisible = searchEntryRequested
         titleSpacer.isVisible = !searchEntryRequested
@@ -286,8 +305,8 @@ class MainTopBarView @JvmOverloads constructor(
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton, filterToggleButton).forEach {
             it.background = null
             it.layoutParams = (it.layoutParams as LayoutParams).apply {
-                width = resources.getDimensionPixelSize(R.dimen.top_bar_immersive_action_size)
-                height = resources.getDimensionPixelSize(R.dimen.top_bar_immersive_action_size)
+                width = resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size)
+                height = resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size)
                 marginStart = 6.dp
             }
             val padding = 8.dp
@@ -412,7 +431,7 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private fun updatePrimaryBarVisibility() {
-        primaryBar.isVisible = isImmersiveStyle() && primaryBarRequested
+        primaryBar.isVisible = isRegularStyle() && primaryBarRequested
         primaryFilterRow.isVisible = primaryBar.isVisible || filterToggleButton.isVisible
     }
 
@@ -422,7 +441,7 @@ class MainTopBarView @JvmOverloads constructor(
         val oldToggleVisible = filterToggleButton.isVisible
         val oldSelectsVisible = selectsBar.isVisible
         val oldTagsVisible = tagsBar.isVisible
-        if (isImmersiveStyle()) {
+        if (isRegularStyle()) {
             filterToggleButton.isVisible = hasFilters
             filterToggleButton.setImageResource(if (filtersExpanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more)
             selectsBar.isVisible = filtersExpanded && selectsBarRequested
@@ -432,7 +451,7 @@ class MainTopBarView @JvmOverloads constructor(
             selectsBar.isVisible = selectsBarRequested
             tagsBar.isVisible = tagsBarRequested
         }
-        primaryFilterRow.isVisible = (isImmersiveStyle() && primaryBarRequested) || filterToggleButton.isVisible
+        primaryFilterRow.isVisible = (isRegularStyle() && primaryBarRequested) || filterToggleButton.isVisible
         if (
             oldRowVisible != primaryFilterRow.isVisible ||
             oldToggleVisible != filterToggleButton.isVisible ||
@@ -441,7 +460,7 @@ class MainTopBarView @JvmOverloads constructor(
         ) {
             requestLayout()
             invalidate()
-            post { onHeightChanged?.invoke() }
+            notifyHeightChangedAfterLayout()
         }
     }
 
@@ -458,7 +477,7 @@ class MainTopBarView @JvmOverloads constructor(
         }
     }
 
-    private fun immersiveBackground(config: TopBarConfig.Config): Drawable {
+    private fun regularBackground(config: TopBarConfig.Config): Drawable {
         val radius = TopBarConfig.cornerRadius(context, config)
         val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
             ?: return bottomRoundedBackground(TopBarConfig.resolveBackgroundColor(config), radius)

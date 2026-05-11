@@ -163,7 +163,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 state: RecyclerView.State
             ) {
                 val position = parent.getChildAdapterPosition(view)
-                val topExtra = if (topOverlayEnabled) topOverlaySpace else 24
+                val topExtra = if (topOverlayEnabled) {
+                    0
+                } else {
+                    resources.getDimensionPixelSize(R.dimen.bookshelf_content_margin_top)
+                }
                 if (bookshelfLayout >= 2) {
                     val spanCount = bookshelfLayout
                     val rowIndex = position / spanCount
@@ -206,7 +210,18 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun applyTopOverlaySpace() {
         if (view == null) return
+        val topGap = if (topOverlayEnabled) {
+            resources.getDimensionPixelSize(R.dimen.bookshelf_top_overlay_gap)
+        } else {
+            0
+        }
         binding.rvBookshelf.clipToPadding = true
+        binding.rvBookshelf.setPadding(
+            binding.rvBookshelf.paddingLeft,
+            if (topOverlayEnabled) topOverlaySpace + topGap else 0,
+            binding.rvBookshelf.paddingRight,
+            binding.rvBookshelf.paddingBottom
+        )
         if (topOverlayEnabled) {
             binding.refreshLayout.setProgressViewOffset(
                 true,

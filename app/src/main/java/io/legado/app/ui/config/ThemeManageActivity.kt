@@ -97,6 +97,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var pendingBookInfoBackgroundPath: String? = null
     private var pendingPanelBackgroundPath: String? = null
     private var pendingPanelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP
+    private var pendingPanelBorderColor: String? = null
+    private var pendingPanelBorderAlpha = 100
     private var pendingUiCornerScale = 1f
     private var pendingUiLayoutAlpha = 100
     private var pendingFontScale = 0
@@ -355,6 +357,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingBookInfoBackgroundPath = current.bookInfoBackgroundImgPath
         pendingPanelBackgroundPath = current.panelBackgroundImgPath
         pendingPanelBackgroundScaleType = current.panelBackgroundScaleType ?: ThemeConfig.PANEL_BG_CROP
+        pendingPanelBorderColor = current.panelBorderColor
+        pendingPanelBorderAlpha = current.panelBorderAlpha ?: 100
         pendingBlur = current.backgroundImgBlur
         pendingUiCornerScale = current.uiCornerScale ?: AppConfig.uiCornerScale
         pendingUiLayoutAlpha = current.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha
@@ -425,6 +429,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun setupInterfaceRows(binding: DialogThemePackageEditBinding) = binding.run {
         setupCornerScaleRow(rowCornerScale)
         setupLayoutAlphaRow(rowLayoutAlpha)
+        setupPanelBorderColorRow(rowPanelBorderColor)
+        setupPanelBorderAlphaRow(rowPanelBorderAlpha)
         setupFontScaleRow(rowFontScale)
         setupUiFontRow(rowUiFont)
         setupTitleFontRow(rowTitleFont)
@@ -469,6 +475,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             binding.rowPanelBackgroundMode.tvTitle,
             binding.rowCornerScale.tvTitle,
             binding.rowLayoutAlpha.tvTitle,
+            binding.rowPanelBorderColor.tvTitle,
+            binding.rowPanelBorderAlpha.tvTitle,
             binding.rowFontScale.tvTitle,
             binding.rowUiFont.tvTitle,
             binding.rowTitleFont.tvTitle,
@@ -642,6 +650,54 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
+    private fun setupPanelBorderColorRow(row: ItemThemePackageOptionBinding) {
+        applyOptionRowBackground(row)
+        row.tvTitle.text = getString(R.string.theme_panel_border_color)
+        val colorText = pendingPanelBorderColor?.takeIf { it.isNotBlank() }
+        row.viewSwatch.visibility = if (colorText == null) View.INVISIBLE else View.VISIBLE
+        row.tvValue.text = colorText?.uppercase(Locale.ROOT) ?: getString(R.string.disable)
+        colorText?.let { runCatching { updateSwatch(row, normalizeColor(it).toColorInt()) } }
+        row.root.setOnClickListener {
+            selector(
+                getString(R.string.theme_panel_border_color),
+                listOf(getString(R.string.disable), getString(R.string.select_color))
+            ) { _, index ->
+                if (index == 0) {
+                    pendingPanelBorderColor = null
+                    setupPanelBorderColorRow(row)
+                } else {
+                    ColorPickerDialog.newBuilder()
+                        .setColor((pendingPanelBorderColor ?: "#${accentColor.hexString}").toColorInt())
+                        .setShowAlphaSlider(false)
+                        .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
+                        .setDialogId(colorPanelBorder)
+                        .show(this)
+                }
+            }
+        }
+    }
+    private fun setupPanelBorderAlphaRow(row: ItemThemePackageOptionBinding) {
+        applyOptionRowBackground(row)
+        row.tvTitle.text = getString(R.string.theme_panel_border_alpha)
+        row.viewSwatch.visibility = View.INVISIBLE
+        row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingPanelBorderAlpha)
+        row.root.setOnClickListener {
+            NumberPickerDialog(this)
+                .setTitle(getString(R.string.theme_panel_border_alpha))
+                .setMaxValue(100)
+                .setMinValue(0)
+                .setValue(pendingPanelBorderAlpha)
+                .setCustomButton(R.string.btn_default_s) {
+                    pendingPanelBorderAlpha = 100
+                    row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingPanelBorderAlpha)
+                }
+                .show {
+                    pendingPanelBorderAlpha = it.coerceIn(0, 100)
+                    row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingPanelBorderAlpha)
+                }
+        }
+    }
+
     private fun updateImageRow(row: ItemThemePackageOptionBinding, target: ThemeImageTarget) {
         val path = when (target) {
             ThemeImageTarget.MAIN -> pendingMainBackgroundPath
@@ -785,6 +841,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 bookInfoBackgroundImgPath = pendingBookInfoBackgroundPath,
                 panelBackgroundImgPath = pendingPanelBackgroundPath,
                 panelBackgroundScaleType = pendingPanelBackgroundScaleType,
+                panelBorderColor = pendingPanelBorderColor,
+                panelBorderAlpha = pendingPanelBorderAlpha,
                 uiCornerScale = pendingUiCornerScale,
                 uiLayoutAlpha = pendingUiLayoutAlpha,
                 uiCornerSearchFollow = pendingUiCornerSearchFollow,
@@ -881,6 +939,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             panelBackgroundImgPath = getPrefString(if (isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage),
             panelBackgroundScaleType = getPrefString(if (isNightTheme) PreferKey.panelBgScaleTypeN else PreferKey.panelBgScaleType)
                 ?: ThemeConfig.PANEL_BG_CROP,
+            panelBorderColor = getPrefString(if (isNightTheme) PreferKey.panelBorderColorN else PreferKey.panelBorderColor),
+            panelBorderAlpha = getPrefInt(if (isNightTheme) PreferKey.panelBorderAlphaN else PreferKey.panelBorderAlpha, 100),
             uiCornerScale = AppConfig.uiCornerScale,
             uiLayoutAlpha = AppConfig.uiLayoutAlpha,
             uiCornerSearchFollow = AppConfig.uiCornerSearchFollow,
@@ -1305,10 +1365,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 tvInfo.text = buildString {
                     if (isApplied(entry)) {
                         append(getString(R.string.theme_current_applied))
-                        append(" · ")
+                        append(" 路 ")
                     }
                     append(getString(if (pkg.isNightTheme) R.string.theme_night_short else R.string.theme_day_short))
-                    append(" · ")
+                    append(" 路 ")
                     val time = maxOf(pkg.updatedAt, entry.remoteUpdatedAt)
                     append(if (time > 0) dateFormat.format(Date(time)) else getString(R.string.theme_time_unknown))
                 }
@@ -1382,8 +1442,12 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             colorAccent -> binding.rowAccent
             colorBackground -> binding.rowBackground
             colorBottomBackground -> binding.rowBottomBackground
+            colorPanelBorder -> binding.rowPanelBorderColor
             else -> null
         } ?: return
+        if (dialogId == colorPanelBorder) {
+            pendingPanelBorderColor = hex
+        }
         row.tvValue.text = hex
         updateSwatch(row, color)
     }
@@ -1406,6 +1470,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         private const val colorAccent = 402
         private const val colorBackground = 403
         private const val colorBottomBackground = 404
+        private const val colorPanelBorder = 405
     }
 
     private enum class ThemeAction(val titleRes: Int) {

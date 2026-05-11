@@ -16,6 +16,8 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.jaredrummler.android.colorpicker.ColorPickerDialog
+import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
@@ -52,7 +54,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
+class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPickerDialogListener {
 
     override val binding by viewBinding(ActivityThemeManageBinding::inflate)
 
@@ -61,6 +63,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
     private var pendingConfig: NavigationBarIconConfig.Config? = null
+    private var pendingColorTarget = 0
     private var pendingIconRequest: IconRequest? = null
     private var pendingSidebarBackgroundEntry: NavigationBarIconConfig.Entry? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
@@ -311,10 +314,15 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     getString(R.string.bottom_bar_layout_mode),
                     listOf(
                         getString(R.string.bottom_bar_layout_floating),
+                        getString(R.string.bottom_bar_layout_standard),
                         getString(R.string.bottom_bar_layout_sidebar)
                     )
                 ) { _, index ->
-                    config.layoutMode = if (index == 1) "sidebar" else "floating"
+                    config.layoutMode = when (index) {
+                        1 -> "standard"
+                        2 -> "sidebar"
+                        else -> "floating"
+                    }
                     refreshEditDialog()
                 }
             })
@@ -358,6 +366,16 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                             config.opacity = it.coerceIn(0, 100)
                             refreshEditDialog()
                         }
+                })
+                addView(optionRow(
+                    getString(R.string.bottom_bar_border_color),
+                    config.borderColor?.let(::colorLabel) ?: getString(R.string.disable)
+                ) {
+                    showOptionalColorSelector(
+                        getString(R.string.bottom_bar_border_color),
+                        config.borderColor,
+                        COLOR_BORDER
+                    )
                 })
             } else {
                 addView(optionRow(
@@ -413,6 +431,40 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun optionRow(title: String, value: String, onClick: () -> Unit): View {
         return PackageManageUi.optionRow(this, title, value, onClick)
+    }
+
+    private fun showOptionalColorSelector(title: String, color: Int?, target: Int) {
+        selector(title, listOf(getString(R.string.disable), getString(R.string.select_color))) { _, index ->
+            if (index == 0) {
+                if (target == COLOR_BORDER) {
+                    pendingConfig?.borderColor = null
+                }
+                refreshEditDialog()
+            } else {
+                showColorPicker(target, color ?: ContextCompat.getColor(this, R.color.accent))
+            }
+        }
+    }
+
+    private fun showColorPicker(target: Int, color: Int) {
+        pendingColorTarget = target
+        ColorPickerDialog.newBuilder()
+            .setDialogId(target)
+            .setColor(color)
+            .setShowAlphaSlider(false)
+            .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
+            .show(this)
+    }
+
+    override fun onColorSelected(dialogId: Int, color: Int) {
+        if (dialogId == COLOR_BORDER) {
+            pendingConfig?.borderColor = color
+            refreshEditDialog()
+        }
+    }
+
+    override fun onDialogDismissed(dialogId: Int) {
+        pendingColorTarget = 0
     }
 
     private fun iconRow(item: NavigationBarIconConfig.NavItem): View {
@@ -621,8 +673,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun layoutModeLabel(value: String): String {
         return when (value) {
             "sidebar" -> getString(R.string.bottom_bar_layout_sidebar)
+            "standard" -> getString(R.string.bottom_bar_layout_standard)
             else -> getString(R.string.bottom_bar_layout_floating)
         }
+    }
+
+    private fun colorLabel(color: Int): String {
+        return "#${Integer.toHexString(color).takeLast(6).uppercase(Locale.ROOT)}"
     }
 
     private fun nextPackageName(): String {
@@ -645,6 +702,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private companion object {
         const val requestSidebarBackground = 7001
+        const val COLOR_BORDER = 7002
     }
 
     private enum class NavAction(val titleRes: Int) {

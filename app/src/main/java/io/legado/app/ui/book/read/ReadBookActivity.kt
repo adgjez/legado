@@ -226,12 +226,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var modernMenuPopup: PopupWindow? = null
     private var backupJob: Job? = null
     private var tts: TTS? = null
-    val textActionMenu: TextActionMenu by lazy {
+    private val textActionMenuDelegate = lazy {
         TextActionMenu(this, this)
     }
-    private val popupAction: PopupAction by lazy {
+    val textActionMenu: TextActionMenu by textActionMenuDelegate
+    private val popupActionDelegate = lazy {
         PopupAction(this)
     }
+    private val popupAction: PopupAction by popupActionDelegate
     override val isInitFinish: Boolean get() = viewModel.isInitFinish
     override val isScroll: Boolean get() = binding.readView.isScroll
     private val isAutoPage get() = binding.readView.isAutoPage
@@ -1781,8 +1783,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onDestroy() {
         super.onDestroy()
         tts?.clearTts()
-        textActionMenu.dismiss()
-        popupAction.dismiss()
+        if (textActionMenuDelegate.isInitialized()) {
+            textActionMenu.dismiss()
+        }
+        if (popupActionDelegate.isInitialized()) {
+            popupAction.dismiss()
+        }
         binding.readView.onDestroy()
         ReadBook.unregister(this)
         handler.removeCallbacksAndMessages(null) // 清理Handler消息

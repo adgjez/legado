@@ -95,6 +95,7 @@ object NavigationBarIconConfig {
         var opacity: Int = 72,
         var updatedAt: Long = System.currentTimeMillis(),
         var sidebarBackgroundPath: String? = null,
+        var borderColor: Int? = null,
         var icons: MutableMap<String, String> = linkedMapOf()
     )
 
@@ -685,7 +686,7 @@ object NavigationBarIconConfig {
 
     private fun normalizeConfig(config: Config): Config {
         val layoutMode = runCatching { config.layoutMode }.getOrNull()
-            ?.takeIf { it in setOf("floating", "sidebar") }
+            ?.takeIf { it in setOf("floating", "sidebar", "standard") }
             ?: "floating"
         val sidebarGravity = runCatching { config.sidebarGravity }.getOrNull()
             ?.takeIf { it in setOf("start", "end") }

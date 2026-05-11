@@ -605,7 +605,6 @@ object Restore {
             PreferKey.mangaFooterConfig,
             PreferKey.mangaColorFilter,
             PreferKey.contentSelectMenuConfig,
-            PreferKey.contentSelectActions,
             PreferKey.contentSelectDefaultOpen,
             PreferKey.advancedTitleConfig,
             PreferKey.advancedTitleLottieJson,

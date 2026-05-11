@@ -164,7 +164,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             }
         }
         binding.tvRecordDate.setOnClickListener {
-            if (isImmersiveReadRecordTopBar()) {
+            if (isRegularReadRecordTopBar()) {
                 showYearSelector()
             } else {
                 showDatePicker()
@@ -400,10 +400,10 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     }
 
     private fun renderDateTopBar(dashboard: ReadRecordDashboard) {
-        val immersive = isImmersiveReadRecordTopBar()
-        binding.topBar.isVisible = immersive
-        binding.llRecordHeader.isVisible = !immersive
-        if (!immersive) {
+        val regular = isRegularReadRecordTopBar()
+        binding.topBar.isVisible = regular
+        binding.llRecordHeader.isVisible = !regular
+        if (!regular) {
             binding.llRecordHeader.background = null
             binding.tvRecordDate.textSize = 28f
             binding.tvRecordDate.text = dashboard.today.format(headlineFormatter)
@@ -432,7 +432,8 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             dashboard.today.dayOfMonth - 1
         )
         binding.topBar.showTags(true)
-        binding.topBar.setFiltersExpanded(recordDaysExpanded)
+        val defaultExpanded = TopBarConfig.currentConfig(requireContext(), AppConfig.isNightTheme).expandFiltersByDefault
+        binding.topBar.setFiltersExpanded(defaultExpanded || recordDaysExpanded)
     }
 
     private fun selectMonth(monthValue: Int) {
@@ -456,8 +457,8 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         }
     }
 
-    private fun isImmersiveReadRecordTopBar(): Boolean {
-        return TopBarConfig.currentConfig(requireContext(), AppConfig.isNightTheme).style == TopBarConfig.STYLE_IMMERSIVE
+    private fun isRegularReadRecordTopBar(): Boolean {
+        return TopBarConfig.currentConfig(requireContext(), AppConfig.isNightTheme).style == TopBarConfig.STYLE_REGULAR
     }
 
     private fun showComponentConfigDialog() {
@@ -688,7 +689,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
             R.string.read_record_last_open,
             lastOpenFormatter.format(Date(book.durChapterTime))
         )
-        return parts.joinToString(" · ")
+        return parts.joinToString(" 路 ")
     }
 
     private fun buildDaySubtitle(date: LocalDate): String {
@@ -779,13 +780,18 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         strokeColor: Int,
         radiusDp: Float
     ): Drawable {
-        return UiCorner.panelRoundedStroke(
-            requireContext(),
-            fillColor,
-            UiCorner.scaledDp(radiusDp),
-            1.dpToPx(),
-            if (UiCorner.effectMode() == "solid") strokeColor else UiCorner.effectStrokeColor(fillColor)
-        )
+        val borderColor = UiCorner.panelBorderColor(requireContext())
+        return if (borderColor != null) {
+            UiCorner.panelRoundedStroke(
+                requireContext(),
+                fillColor,
+                UiCorner.scaledDp(radiusDp),
+                1.dpToPx(),
+                borderColor
+            )
+        } else {
+            UiCorner.panelRounded(requireContext(), fillColor, UiCorner.scaledDp(radiusDp))
+        }
     }
 
     private fun createFillDrawable(fillColor: Int, radiusDp: Float): GradientDrawable {

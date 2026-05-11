@@ -26,6 +26,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.roundToInt
 
 class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
@@ -94,35 +95,7 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         lifecycleScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
                 kotlin.runCatching {
-                    val metrics = resources.displayMetrics
-                    val expectHeight = (targetWidth * aspectHeight.toFloat() / aspectWidth)
-                        .roundToInt()
-                        .coerceAtLeast(128)
-                    val options = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                    }
-                    contentResolver.openInputStream(uri)?.use {
-                        BitmapFactory.decodeStream(it, null, options)
-                    }
-                    if (options.outWidth <= 0 || options.outHeight <= 0) return@runCatching null
-                    val decodeWidth = maxOf(metrics.widthPixels, targetWidth).coerceAtLeast(128)
-                    val decodeHeight = maxOf(metrics.heightPixels, expectHeight).coerceAtLeast(128)
-                    val sampleSize = ImageProcessUtils.calculateSampleSize(
-                        options.outWidth,
-                        options.outHeight,
-                        decodeWidth,
-                        decodeHeight
-                    )
-                    contentResolver.openInputStream(uri)?.use {
-                        BitmapFactory.decodeStream(
-                            it,
-                            null,
-                            BitmapFactory.Options().apply {
-                                inSampleSize = sampleSize
-                                inPreferredConfig = Bitmap.Config.ARGB_8888
-                            }
-                        )
-                    }
+                    decodeBitmapFromStableFile(uri)
                 }.onFailure {
                     it.printOnDebug()
                 }.getOrNull()
@@ -137,6 +110,49 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
             binding.photoView.post {
                 updatePhotoViewport()
             }
+        }
+    }
+
+    private fun decodeBitmapFromStableFile(uri: Uri): Bitmap? {
+        val tempDir = File(cacheDir, "image_crop_source").apply { mkdirs() }
+        val tempFile = File.createTempFile("source_", ".img", tempDir)
+        try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return null
+            val metrics = resources.displayMetrics
+            val expectHeight = (targetWidth * aspectHeight.toFloat() / aspectWidth)
+                .roundToInt()
+                .coerceAtLeast(128)
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            tempFile.inputStream().use {
+                BitmapFactory.decodeStream(it, null, options)
+            }
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null
+            val decodeWidth = maxOf(metrics.widthPixels, targetWidth).coerceAtLeast(128)
+            val decodeHeight = maxOf(metrics.heightPixels, expectHeight).coerceAtLeast(128)
+            val sampleSize = ImageProcessUtils.calculateSampleSize(
+                options.outWidth,
+                options.outHeight,
+                decodeWidth,
+                decodeHeight
+            )
+            return tempFile.inputStream().use {
+                BitmapFactory.decodeStream(
+                    it,
+                    null,
+                    BitmapFactory.Options().apply {
+                        inSampleSize = sampleSize
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+                )
+            }
+        } finally {
+            tempFile.delete()
         }
     }
 

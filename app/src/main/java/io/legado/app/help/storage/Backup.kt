@@ -215,6 +215,10 @@ object Backup {
                             is Long -> edit.putLong(key, value)
                             is Float -> edit.putFloat(key, value)
                             is String -> edit.putString(key, value)
+                            is Set<*> -> edit.putStringSet(
+                                key,
+                                value.mapNotNull { it?.toString() }.toSet()
+                            )
                         }
                     }
                 }
