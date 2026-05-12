@@ -59,7 +59,6 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.association.OnLineImportActivity
-import io.legado.app.ui.widget.WebLoadingController
 import io.legado.app.utils.invisible
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.longSnackbar
@@ -107,6 +106,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private companion object {
         const val FIRST_PAGE_REVEAL_TIMEOUT = 900L
         const val SHEET_INTRO_DURATION = 220L
+        const val WEB_VIEW_REVEAL_DURATION = 80L
         const val PENDING_BROWSER_TIMEOUT = 8_000L
         const val FIRST_FRAME_STYLE_ID = "legado-first-frame-style"
         const val WEB_VIEW_PRE_ATTACH_DELAY = 96L
@@ -119,8 +119,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         html: String? = null,
         preloadJs: String? = null,
         config: String? = null,
-        webViewSession: CommentWebViewSession? = null,
-        showCommentLoading: Boolean = webViewSession != null
+        webViewSession: CommentWebViewSession? = null
     ) : this() {
         this.webViewSession = webViewSession
         arguments = Bundle().apply {
@@ -131,20 +130,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString("preloadJs", preloadJs)
             putString("config", config)
             putBoolean("commentBrowser", webViewSession != null)
-            putBoolean("commentLoading", showCommentLoading)
         }
     }
 
     constructor(
         webViewSession: CommentWebViewSession?,
-        initialConfig: String? = null,
-        showCommentLoading: Boolean = true
+        initialConfig: String? = null
     ) : this() {
         this.webViewSession = webViewSession
         arguments = Bundle().apply {
             putBoolean("pendingBrowser", true)
             putBoolean("commentBrowser", true)
-            putBoolean("commentLoading", showCommentLoading)
             putString("initialConfig", initialConfig)
         }
     }
@@ -184,17 +180,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var sheetIntroStarted = false
     private var sheetIntroDone = false
     private val sheetIntroInterpolator by lazy { DecelerateInterpolator(1.25f) }
-    private val webLoadingController by lazy {
-        WebLoadingController(binding.webLoadingContainer, binding.rotateLoading)
-    }
     private var pendingBrowserTimeoutRunnable: Runnable? = null
     private var deferredBrowserRequest: BrowserRequest? = null
     private val isPendingBrowser: Boolean
         get() = arguments?.getBoolean("pendingBrowser") == true
     private val isCommentBrowser: Boolean
         get() = webViewSession != null || arguments?.getBoolean("commentBrowser") == true
-    private val isCommentLoadingEnabled: Boolean
-        get() = isCommentBrowser && arguments?.getBoolean("commentLoading", true) != false
 
     private data class BrowserRequest(
         val sourceKey: String,
@@ -559,7 +550,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private fun shouldPreRenderInitialStyle(): Boolean {
         val hasInitialStyle = !arguments?.getString("config").isNullOrBlank()
             || !arguments?.getString("initialConfig").isNullOrBlank()
-        return isCommentBrowser && !isCommentLoadingEnabled && hasInitialStyle
+        return isCommentBrowser && hasInitialStyle
     }
     private fun applyInitialConfig() {
         val configJson = arguments?.getString("config")
@@ -628,7 +619,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (webView.parent == null) {
             binding.webViewContainer.addView(webView)
         }
-        binding.webLoadingContainer.bringToFront()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
         pendingConfig?.let { setConfig(it) } ?: applyDefaultWebViewBehaviorIfNeeded()
@@ -726,7 +716,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private fun loadContentAsync(request: BrowserRequest? = null) {
-        showCommentLoading()
         cancelPendingBrowserTimeout()
         val browserRequest = request ?: arguments?.let { args ->
             val sourceKey = args.getString("sourceKey")
@@ -829,24 +818,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
-
-    private fun showCommentLoading() {
-        if (isCommentLoadingEnabled) {
-            webLoadingController.show()
-        }
-    }
-
-    private fun hideCommentLoading() {
-        if (isCommentLoadingEnabled) {
-            webLoadingController.hide()
-        }
-    }
-
-    private fun cancelCommentLoading() {
-        if (isCommentLoadingEnabled) {
-            webLoadingController.cancel()
-        }
-    }
     private fun dismissOnMain() {
         activity?.runOnUiThread {
             if (isAdded) dismiss()
@@ -888,7 +859,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val token = firstPageVisibleToken
         waitingFirstPageVisible = true
         firstFrameStartTime = SystemClock.uptimeMillis()
-        showCommentLoading()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
         prepareWebViewForFirstFrame()
@@ -1033,16 +1003,19 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         binding.nativeSheetSurface.animate().cancel()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
-        hideCommentLoading()
-        webView.alpha = 1f
         webView.translationY = 0f
         webView.visible()
+        webView.alpha = 0f
+        webView.animate()
+            .alpha(1f)
+            .setDuration(WEB_VIEW_REVEAL_DURATION)
+            .setInterpolator(sheetIntroInterpolator)
+            .start()
     }
 
     private fun cancelFirstPageReveal() {
         waitingFirstPageVisible = false
         firstFrameStartTime = 0L
-        cancelCommentLoading()
         firstPageVisibleToken++
         currentWebView?.let { webView ->
             webView.animate().cancel()

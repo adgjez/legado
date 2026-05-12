@@ -311,8 +311,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     html,
                     preloadJs,
                     cachedConfig,
-                    commentWebViewSession,
-                    showCommentLoading = cachedConfig.isNullOrBlank()
+                    commentWebViewSession
                 )
             )
             if (token != null) {
@@ -337,8 +336,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             pendingCommentBrowser?.dismissAllowingStateLoss()
             pendingCommentBrowser = BottomWebViewDialog(
                 commentWebViewSession,
-                initialConfig,
-                showCommentLoading = cachedConfig.isNullOrBlank()
+                initialConfig
             ).also { dialog ->
                 showPendingCommentBrowser(dialog)
             }
