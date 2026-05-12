@@ -58,6 +58,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.association.OnLineImportActivity
+import io.legado.app.ui.widget.WebLoadingController
 import io.legado.app.utils.invisible
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.longSnackbar
@@ -127,6 +128,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString("html", html)
             putString("preloadJs", preloadJs)
             putString("config", config)
+            putBoolean("commentBrowser", webViewSession != null)
         }
     }
 
@@ -173,10 +175,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var sheetIntroStarted = false
     private var sheetIntroDone = false
     private val sheetIntroInterpolator by lazy { DecelerateInterpolator(1.25f) }
+    private val webLoadingController by lazy {
+        WebLoadingController(binding.webLoadingContainer, binding.rotateLoading)
+    }
     private var pendingBrowserTimeoutRunnable: Runnable? = null
     private var deferredBrowserRequest: BrowserRequest? = null
     private val isPendingBrowser: Boolean
         get() = arguments?.getBoolean("pendingBrowser") == true
+    private val isCommentBrowser: Boolean
+        get() = webViewSession != null || arguments?.getBoolean("commentBrowser") == true
 
     private data class BrowserRequest(
         val sourceKey: String,
@@ -597,6 +604,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (webView.parent == null) {
             binding.webViewContainer.addView(webView)
         }
+        binding.webLoadingContainer.bringToFront()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
         pendingConfig?.let { setConfig(it) } ?: applyDefaultWebViewBehaviorIfNeeded()
@@ -694,6 +702,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private fun loadContentAsync(request: BrowserRequest? = null) {
+        showCommentLoading()
         cancelPendingBrowserTimeout()
         val browserRequest = request ?: arguments?.let { args ->
             val sourceKey = args.getString("sourceKey")
@@ -796,6 +805,24 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+
+    private fun showCommentLoading() {
+        if (isCommentBrowser) {
+            webLoadingController.show()
+        }
+    }
+
+    private fun hideCommentLoading() {
+        if (isCommentBrowser) {
+            webLoadingController.hide()
+        }
+    }
+
+    private fun cancelCommentLoading() {
+        if (isCommentBrowser) {
+            webLoadingController.cancel()
+        }
+    }
     private fun dismissOnMain() {
         activity?.runOnUiThread {
             if (isAdded) dismiss()
@@ -837,6 +864,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         val token = firstPageVisibleToken
         waitingFirstPageVisible = true
         firstFrameStartTime = SystemClock.uptimeMillis()
+        showCommentLoading()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
         prepareWebViewForFirstFrame()
@@ -981,6 +1009,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         binding.nativeSheetSurface.animate().cancel()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
+        hideCommentLoading()
         webView.alpha = 1f
         webView.translationY = 0f
         webView.visible()
@@ -989,6 +1018,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private fun cancelFirstPageReveal() {
         waitingFirstPageVisible = false
         firstFrameStartTime = 0L
+        cancelCommentLoading()
         firstPageVisibleToken++
         currentWebView?.let { webView ->
             webView.animate().cancel()
