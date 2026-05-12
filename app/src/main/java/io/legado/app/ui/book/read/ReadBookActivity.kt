@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
+import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
@@ -229,7 +230,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var modernMenuPopup: PopupWindow? = null
     private var backupJob: Job? = null
     private var tts: TTS? = null
-    private val commentWebViewSession by lazy { CommentWebViewSession() }
+    private val commentWebViewSession by lazy { CommentWebViewSession.shared }
     private var pendingCommentBrowser: BottomWebViewDialog? = null
     private var pendingCommentBrowserToken = 0
     private var pendingCommentBrowserClick: String? = null
@@ -415,7 +416,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             if (!isFinishing && !isDestroyed) {
                 commentWebViewSession.prepare(this@ReadBookActivity)
             }
-        }, 800L)
+        }, 400L)
         onBackPressedDispatcher.addCallback(this) {
             if (binding.readAiPanel.isVisible) {
                 binding.readAiPanel.close()
@@ -1933,7 +1934,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onDestroy() {
         super.onDestroy()
         tts?.clearTts()
-        commentWebViewSession.destroy(releaseToPool = true)
+        if (isChangingConfigurations) {
+            commentWebViewSession.prepare(applicationContext)
+        } else {
+            commentWebViewSession.releaseAfterDelay(releaseToPool = false)
+        }
         if (textActionMenuDelegate.isInitialized()) {
             textActionMenu.dismiss()
         }
@@ -1948,6 +1953,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            commentWebViewSession.trimMemory(level)
         }
     }
 

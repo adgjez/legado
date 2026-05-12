@@ -12,6 +12,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Base64
 import android.util.TypedValue
 import android.view.Gravity
@@ -168,6 +169,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var needClearHistory = true
     private var waitingFirstPageVisible = false
     private var firstPageVisibleToken = 0
+    private var firstFrameStartTime = 0L
     private var sheetIntroStarted = false
     private var sheetIntroDone = false
     private val sheetIntroInterpolator by lazy { DecelerateInterpolator(1.25f) }
@@ -569,7 +571,9 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private fun schedulePreAttachWebView() {
-        val delay = if (isPendingBrowser) WEB_VIEW_PRE_ATTACH_DELAY else 0L
+        val delay = if (isPendingBrowser) {
+            webViewSession?.preAttachDelayMillis() ?: WEB_VIEW_PRE_ATTACH_DELAY
+        } else 0L
         binding.nativeSheetSurface.postDelayed({
             if (!isAdded || view == null || currentWebView != null) return@postDelayed
             preAttachWebViewForFastStart()
@@ -577,10 +581,12 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private fun preAttachWebViewForFastStart() {
+        val startedAt = SystemClock.uptimeMillis()
         val webView = obtainWebView(addToContainer = true) ?: return
         if (webView.parent == null) {
             binding.webViewContainer.addView(webView)
         }
+        webViewSession?.recordAttachDuration(SystemClock.uptimeMillis() - startedAt)
         if (sheetIntroDone) {
             pendingConfig?.let { setConfig(it) } ?: applyDefaultWebViewBehaviorIfNeeded()
         }
@@ -830,6 +836,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         firstPageVisibleToken++
         val token = firstPageVisibleToken
         waitingFirstPageVisible = true
+        firstFrameStartTime = SystemClock.uptimeMillis()
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
         prepareWebViewForFirstFrame()
@@ -916,6 +923,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         if (webView.parent == null) return
         if (!waitingFirstPageVisible || token != firstPageVisibleToken) return
         waitingFirstPageVisible = false
+        firstFrameStartTime.takeIf { it > 0L }?.let {
+            webViewSession?.recordFirstFrameDuration(SystemClock.uptimeMillis() - it)
+        }
+        firstFrameStartTime = 0L
         startWebViewRevealAnimation()
     }
 
@@ -977,6 +988,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     private fun cancelFirstPageReveal() {
         waitingFirstPageVisible = false
+        firstFrameStartTime = 0L
         firstPageVisibleToken++
         currentWebView?.let { webView ->
             webView.animate().cancel()
