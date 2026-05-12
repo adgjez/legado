@@ -13,6 +13,7 @@ enum class BookInfoComponentType(
 ) {
     HEADER(R.string.book_info_component_header, R.string.book_info_component_header_hint),
     META(R.string.book_info_component_meta, R.string.book_info_component_meta_hint),
+    ACTIONS(R.string.reading, R.string.add_to_bookshelf),
     DETAIL(R.string.book_info_component_detail, R.string.book_info_component_detail_hint),
     CATALOG(R.string.book_info_tab_toc, R.string.view_toc);
 
@@ -33,6 +34,7 @@ object BookInfoComponentConfig {
     private val defaultOrder = listOf(
         BookInfoComponentType.HEADER,
         BookInfoComponentType.META,
+        BookInfoComponentType.ACTIONS,
         BookInfoComponentType.DETAIL,
         BookInfoComponentType.CATALOG
     )
@@ -52,7 +54,12 @@ object BookInfoComponentConfig {
             .toMutableList()
         defaultOrder.forEach { type ->
             if (parsed.none { it.type == type }) {
-                parsed += BookInfoComponentItem(type, true)
+                val insertIndex = defaultOrder
+                    .takeWhile { it != type }
+                    .lastOrNull { previous -> parsed.any { it.type == previous } }
+                    ?.let { previous -> parsed.indexOfFirst { it.type == previous } + 1 }
+                    ?: parsed.size
+                parsed.add(insertIndex.coerceIn(0, parsed.size), BookInfoComponentItem(type, true))
             }
         }
         return parsed.distinctBy { it.type }.toMutableList()

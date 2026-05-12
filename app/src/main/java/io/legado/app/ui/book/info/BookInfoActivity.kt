@@ -2,7 +2,6 @@ package io.legado.app.ui.book.info
 
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -27,9 +26,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.Space
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
@@ -162,7 +163,18 @@ class BookInfoActivity :
     private var tocPreviewEnd = 0
     private var isUpdatingTocPreview = false
     private val catalogAdapter by lazy { CatalogPagerAdapter() }
-    private var detailPanelLastHeight = -1
+    private val bookInfoPageAdapter by lazy { BookInfoPageAdapter() }
+    private lateinit var bookInfoPager: ViewPager2
+
+    private data class BookInfoPageItem(
+        val type: BookInfoComponentType,
+        val view: View,
+        val height: Int,
+        val topMargin: Int,
+        val fillBefore: Boolean = false
+    )
+
+    private data class BookInfoPage(val items: List<BookInfoPageItem>)
 
     private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
         it?.let {
@@ -288,8 +300,9 @@ class BookInfoActivity :
         binding.ivCoverC.setCardBackgroundColor(Color.TRANSPARENT)
         applyUiCorners()
         applyBookInfoTypography()
-        applyBookInfoComponents()
         binding.flAction.setBackgroundResource(R.color.transparent)
+        initBookInfoPager()
+        applyBookInfoComponents()
         binding.vwBg.applyNavigationBarPadding()
         binding.tvToc.text = getString(R.string.toc_s, getString(R.string.loading))
         initDetailTabs()
@@ -355,103 +368,170 @@ class BookInfoActivity :
         }
     }
 
-    private fun applyBookInfoComponents() = binding.run {
+    private fun applyBookInfoComponents(): Unit = binding.run {
         val componentViews = mapOf<BookInfoComponentType, View?>(
             BookInfoComponentType.HEADER to llDetailPanel,
             BookInfoComponentType.META to llInfoPage,
+            BookInfoComponentType.ACTIONS to flAction,
             BookInfoComponentType.DETAIL to llDetailContentPanel,
             BookInfoComponentType.CATALOG to llCatalogPanel
         )
-        val orderedComponents = BookInfoComponentConfig.load()
-        if (isLandscapeComponentLayout()) {
-            applyLandscapeBookInfoComponents(orderedComponents, componentViews)
-            updateDetailContentPanelHeight()
+        val orderedComponents: List<BookInfoComponentItem> = BookInfoComponentConfig.load()
+            .filter { item -> item.enabled && componentViews.containsKey(item.type) }
+        if (!::bookInfoPager.isInitialized || bookInfoPager.width <= 0 || bookInfoPager.height <= 0) {
+            if (::bookInfoPager.isInitialized) {
+                bookInfoPager.doOnLayout { applyBookInfoComponents() }
+            }
             return@run
         }
-        orderedComponents.forEach { item ->
-            val componentView = componentViews[item.type] ?: return@forEach
-            componentView.visibility = if (item.enabled) View.VISIBLE else View.GONE
-            if (componentView.parent === llInfo) {
-                llInfo.removeView(componentView)
-            }
-            llInfo.addView(componentView)
+        componentViews.values.filterNotNull().forEach { view ->
+            view.visibility = View.GONE
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
+        val pages = buildBookInfoPages(orderedComponents, componentViews)
+        bookInfoPageAdapter.submitPages(pages)
+        val lastIndex = (pages.size - 1).coerceAtLeast(0)
+        if (bookInfoPager.currentItem > lastIndex) {
+            bookInfoPager.setCurrentItem(lastIndex, false)
         }
         updateDetailContentPanelHeight()
     }
 
-    private fun isLandscapeComponentLayout(): Boolean {
-        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-                findViewById<View>(R.id.ll_info_left) != null &&
-                findViewById<View>(R.id.ll_info_right) != null
+    private fun initBookInfoPager(): Unit = binding.run {
+        configurePagedRefreshLayout()
+        ensureCoverInsideHeader()
+        listOf(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, flAction).forEach {
+            (it.parent as? ViewGroup)?.removeView(it)
+        }
+        llInfo.removeAllViews()
+        llInfo.orientation = LinearLayout.VERTICAL
+        bookInfoPager = ViewPager2(this@BookInfoActivity).apply {
+            adapter = bookInfoPageAdapter
+            offscreenPageLimit = 1
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        llInfo.addView(
+            bookInfoPager,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        var lastWidth = 0
+        var lastHeight = 0
+        bookInfoPager.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            val width = right - left
+            val height = bottom - top
+            if (width > 0 && height > 0 && (width != lastWidth || height != lastHeight)) {
+                lastWidth = width
+                lastHeight = height
+                bookInfoPager.post { applyBookInfoComponents() }
+            }
+        }
+        bookInfoPager.doOnLayout { applyBookInfoComponents() }
     }
 
-    private fun applyLandscapeBookInfoComponents(
+    private fun configurePagedRefreshLayout(): Unit = binding.run {
+        (refreshLayout?.layoutParams as? ConstraintLayout.LayoutParams)?.let { params ->
+            params.bottomToTop = ConstraintLayout.LayoutParams.UNSET
+            params.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            refreshLayout.layoutParams = params
+        }
+    }
+
+    private fun ensureCoverInsideHeader(): Unit = binding.run {
+        if (ivCoverC.parent === llDetailPanel) return@run
+        (ivCoverC.parent as? ViewGroup)?.removeView(ivCoverC)
+        llDetailPanel.addView(ivCoverC, 0)
+        ivCoverC.updateLayoutParams<LinearLayout.LayoutParams> {
+            width = 180.dpToPx()
+            height = 240.dpToPx()
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = 0
+            bottomMargin = 16.dpToPx()
+            marginEnd = 0
+        }
+    }
+
+    private fun buildBookInfoPages(
         orderedComponents: List<BookInfoComponentItem>,
         componentViews: Map<BookInfoComponentType, View?>
-    ) {
-        val leftColumn = findViewById<LinearLayout>(R.id.ll_info_left) ?: return
-        val rightColumn = findViewById<LinearLayout>(R.id.ll_info_right) ?: return
-        val leftScroll = findViewById<View>(R.id.scroll_view)
-        val divider = findViewById<View>(R.id.book_info_land_divider)
-        val actionView = findViewById<View>(R.id.fl_action)
-        val leftItems = orderedComponents.filterNot { isRightBookInfoComponent(it.type) }
-        val rightItems = orderedComponents.filter { isRightBookInfoComponent(it.type) }
-        val headerVisible = leftItems.any { it.type == BookInfoComponentType.HEADER && it.enabled } &&
-                componentViews[BookInfoComponentType.HEADER] != null
-        findViewById<View>(R.id.iv_cover_c)?.visibility = if (headerVisible) View.VISIBLE else View.GONE
-        leftItems.forEach { item ->
-            val componentView = componentViews[item.type] ?: return@forEach
-            componentView.visibility = if (item.enabled) View.VISIBLE else View.GONE
-            (componentView.parent as? ViewGroup)?.removeView(componentView)
-            leftColumn.addView(componentView)
+    ): List<BookInfoPage> {
+        val pageHeight = bookInfoPageContentHeight()
+        val pageWidth = bookInfoPageContentWidth()
+        if (pageHeight <= 0 || pageWidth <= 0) return emptyList()
+        val gap = 14.dpToPx()
+        val pages = mutableListOf<List<BookInfoPageItem>>()
+        val current = mutableListOf<BookInfoPageItem>()
+        var usedHeight = 0
+        orderedComponents.forEach { item ->
+            val view = componentViews[item.type] ?: return@forEach
+            view.visibility = View.VISIBLE
+            val componentHeight = measureBookInfoComponent(item.type, view, pageWidth)
+            val requiredHeight = (if (current.isEmpty()) 0 else gap) + componentHeight
+            if (current.isNotEmpty() && usedHeight + requiredHeight > pageHeight) {
+                pages += allocateBookInfoPage(current, pageHeight)
+                current.clear()
+                usedHeight = 0
+            }
+            val topMargin = if (current.isEmpty()) 0 else gap
+            current += BookInfoPageItem(item.type, view, componentHeight, topMargin)
+            usedHeight += topMargin + componentHeight
         }
-        resetLandscapeComponentMargins(leftColumn)
-        rightItems.forEach { item ->
-            val componentView = componentViews[item.type] ?: return@forEach
-            componentView.visibility = if (item.enabled) View.VISIBLE else View.GONE
-            (componentView.parent as? ViewGroup)?.removeView(componentView)
-            val actionIndex = rightColumn.indexOfChild(actionView).takeIf { it >= 0 } ?: rightColumn.childCount
-            rightColumn.addView(componentView, actionIndex)
+        if (current.isNotEmpty()) {
+            pages += allocateBookInfoPage(current, pageHeight)
         }
-        resetLandscapeRightComponentMargins(rightColumn, actionView)
-        val hasLeftContent = leftItems.any { it.enabled && componentViews[it.type] != null }
-        leftScroll?.visibility = if (hasLeftContent) View.VISIBLE else View.GONE
-        divider?.visibility = if (hasLeftContent) View.VISIBLE else View.GONE
-        rightColumn.visibility = View.VISIBLE
+        return pages.map { BookInfoPage(it) }
     }
 
-    private fun isRightBookInfoComponent(type: BookInfoComponentType): Boolean {
+    private fun allocateBookInfoPage(items: List<BookInfoPageItem>, pageHeight: Int): List<BookInfoPageItem> {
+        val baseHeight = items.sumOf { it.topMargin + it.height }
+        val flexibleItems = items.filter { isFlexibleBookInfoComponent(it.type) }
+        val remaining = (pageHeight - baseHeight).coerceAtLeast(0)
+        val extraHeight = if (flexibleItems.isNotEmpty()) remaining / flexibleItems.size else 0
+        val shouldPushActionsBottom = flexibleItems.isEmpty() && items.lastOrNull()?.type == BookInfoComponentType.ACTIONS
+        return items.map { item ->
+            item.copy(
+                height = if (isFlexibleBookInfoComponent(item.type)) item.height + extraHeight else item.height,
+                fillBefore = shouldPushActionsBottom && item.type == BookInfoComponentType.ACTIONS
+            )
+        }
+    }
+
+    private fun measureBookInfoComponent(type: BookInfoComponentType, view: View, width: Int): Int {
+        val targetHeight = if (isFlexibleBookInfoComponent(type)) flexibleBookInfoComponentMinHeight() else 0
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+        val heightSpec = if (targetHeight > 0) {
+            View.MeasureSpec.makeMeasureSpec(targetHeight, View.MeasureSpec.EXACTLY)
+        } else {
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        }
+        view.measure(widthSpec, heightSpec)
+        return if (targetHeight > 0) targetHeight else view.measuredHeight.coerceAtLeast(1)
+    }
+
+    private fun isFlexibleBookInfoComponent(type: BookInfoComponentType): Boolean {
         return type == BookInfoComponentType.DETAIL || type == BookInfoComponentType.CATALOG
     }
 
-    private fun resetLandscapeComponentMargins(leftColumn: LinearLayout) {
-        var visibleIndex = 0
-        for (index in 0 until leftColumn.childCount) {
-            val child = leftColumn.getChildAt(index)
-            child.updateLayoutParams<LinearLayout.LayoutParams> {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = LinearLayout.LayoutParams.WRAP_CONTENT
-                weight = 0f
-                topMargin = if (child.visibility == View.VISIBLE && visibleIndex++ > 0) 12.dpToPx() else 0
-            }
-        }
+    private fun flexibleBookInfoComponentMinHeight(): Int {
+        return (bookInfoPageContentHeight() * 0.58f).toInt().coerceAtLeast(260.dpToPx())
     }
 
-    private fun resetLandscapeRightComponentMargins(rightColumn: LinearLayout, actionView: View?) {
-        var visibleIndex = 0
-        for (index in 0 until rightColumn.childCount) {
-            val child = rightColumn.getChildAt(index)
-            if (child === actionView) continue
-            if (child.id != R.id.ll_detail_content_panel && child.id != R.id.ll_catalog_panel) continue
-            child.updateLayoutParams<LinearLayout.LayoutParams> {
-                width = LinearLayout.LayoutParams.MATCH_PARENT
-                height = 0
-                weight = if (child.visibility == View.VISIBLE) 1f else 0f
-                topMargin = if (child.visibility == View.VISIBLE && visibleIndex++ > 0) 12.dpToPx() else 0
-            }
-        }
+    private fun bookInfoPageContentWidth(): Int {
+        return bookInfoPager.width.coerceAtLeast(1)
     }
 
+    private fun bookInfoPageContentHeight(): Int {
+        return bookInfoPager.height.coerceAtLeast(1)
+    }
+
+    private fun requestBookInfoPagerDisallowIntercept(disallow: Boolean) {
+        if (::bookInfoPager.isInitialized) {
+            bookInfoPager.requestDisallowInterceptTouchEvent(disallow)
+        }
+        binding.refreshLayout?.requestDisallowInterceptTouchEvent(disallow)
+    }
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_info, menu)
         editMenuItem = menu.findItem(R.id.menu_edit)
@@ -682,6 +762,7 @@ class BookInfoActivity :
         }
     }
 
+
     private fun showBook(book: Book) = binding.run {
         showCover(book)
         tvName.text = book.name
@@ -702,6 +783,7 @@ class BookInfoActivity :
         upGroup(book.group)
         updateDetailContentPanelHeight()
         renderCatalogPager(viewModel.chapterListData.value)
+        root.post { applyBookInfoComponents() }
     }
 
     inner class CustomWebViewClient : WebViewClient() {
@@ -775,9 +857,9 @@ class BookInfoActivity :
             webView.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN,
-                    MotionEvent.ACTION_MOVE -> binding.scrollView?.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_MOVE -> requestBookInfoPagerDisallowIntercept(true)
                     MotionEvent.ACTION_UP,
-                    MotionEvent.ACTION_CANCEL -> binding.scrollView?.requestDisallowInterceptTouchEvent(false)
+                    MotionEvent.ACTION_CANCEL -> requestBookInfoPagerDisallowIntercept(false)
                 }
                 false
             }
@@ -1040,14 +1122,11 @@ class BookInfoActivity :
         tocScrollView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
-                MotionEvent.ACTION_MOVE -> scrollView?.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_MOVE -> requestBookInfoPagerDisallowIntercept(true)
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> scrollView?.requestDisallowInterceptTouchEvent(false)
+                MotionEvent.ACTION_CANCEL -> requestBookInfoPagerDisallowIntercept(false)
             }
             false
-        }
-        scrollView?.setOnTouchListener { _, event ->
-            detailPage == DetailPage.TOC && event.actionMasked == MotionEvent.ACTION_MOVE
         }
         showDetailPage(DetailPage.INTRO)
     }
@@ -1164,33 +1243,6 @@ class BookInfoActivity :
     }
 
     private fun updateDetailContentPanelHeight() = binding.run {
-        if (isLandscapeComponentLayout()) {
-            detailPanelLastHeight = -1
-            tvIntroContainer.post {
-                (tvIntroContainer.getChildAt(0) as? ScrollTextView)?.refreshScrollBounds()
-                renderCatalogPager(viewModel.chapterListData.value)
-            }
-            return@run
-        }
-        val panel = llDetailContentPanel
-        val action = flAction
-        val panelLoc = IntArray(2)
-        val actionLoc = IntArray(2)
-        panel.getLocationOnScreen(panelLoc)
-        action.getLocationOnScreen(actionLoc)
-        val bottomGap = 8.dpToPx()
-        val minHeight = 220.dpToPx()
-        val targetHeight = (actionLoc[1] - panelLoc[1] - bottomGap).coerceAtLeast(minHeight)
-        if (targetHeight == detailPanelLastHeight) return@run
-        detailPanelLastHeight = targetHeight
-        panel.updateLayoutParams<LinearLayout.LayoutParams> {
-            height = targetHeight
-            weight = 0f
-        }
-        llCatalogPanel.updateLayoutParams<LinearLayout.LayoutParams> {
-            height = targetHeight
-            weight = 0f
-        }
         tvIntroContainer.post {
             (tvIntroContainer.getChildAt(0) as? ScrollTextView)?.refreshScrollBounds()
             renderCatalogPager(viewModel.chapterListData.value)
@@ -1238,6 +1290,67 @@ class BookInfoActivity :
         binding.tvCatalogPage.text = if (count <= 0) "0/0" else "${position + 1}/$count"
     }
 
+    private inner class BookInfoPageAdapter : RecyclerView.Adapter<BookInfoPageAdapter.Holder>() {
+        private var pages: List<BookInfoPage> = emptyList()
+
+        fun submitPages(newPages: List<BookInfoPage>) {
+            pages = newPages.ifEmpty { listOf(BookInfoPage(emptyList())) }
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+            val container = LinearLayout(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.MATCH_PARENT
+                )
+                orientation = LinearLayout.VERTICAL
+                clipChildren = false
+                clipToPadding = false
+            }
+            return Holder(container)
+        }
+
+        override fun getItemCount(): Int = pages.size
+
+        override fun onBindViewHolder(holder: Holder, position: Int) {
+            holder.bind(pages[position])
+        }
+
+        inner class Holder(
+            private val container: LinearLayout
+        ) : RecyclerView.ViewHolder(container) {
+
+            fun bind(page: BookInfoPage) {
+                container.removeAllViews()
+                page.items.forEach { item ->
+                    if (item.fillBefore) {
+                        container.addView(
+                            Space(container.context),
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                0,
+                                1f
+                            )
+                        )
+                    }
+                    (item.view.parent as? ViewGroup)?.removeView(item.view)
+                    item.view.visibility = View.VISIBLE
+                    container.addView(
+                        item.view,
+                        LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            item.height
+                        ).apply {
+                            topMargin = item.topMargin
+                            weight = 0f
+                        }
+                    )
+                }
+                container.post { updateDetailContentPanelHeight() }
+            }
+        }
+    }
     private inner class CatalogPagerAdapter : RecyclerView.Adapter<CatalogPagerAdapter.Holder>() {
         private var pages: List<List<BookChapter>> = emptyList()
 
