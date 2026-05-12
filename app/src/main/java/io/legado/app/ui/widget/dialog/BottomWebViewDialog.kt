@@ -35,6 +35,7 @@ import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.doOnPreDraw
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -487,11 +488,19 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         binding.customWebView.setBackgroundColor(Color.TRANSPARENT)
         binding.webViewPlaceholder.invisible()
         binding.webViewPlaceholder.alpha = 1f
-        binding.nativeSheetSurface.alpha = 1f
+        val preRenderInitialStyle = shouldPreRenderInitialStyle()
+        binding.nativeSheetSurface.alpha = if (preRenderInitialStyle) 0f else 1f
         binding.nativeSheetSurface.translationY = displayMetrics.heightPixels.toFloat()
         applySheetSurfaceShape(0f)
         applyInitialConfig()
-        startSheetIntro()
+        if (preRenderInitialStyle) {
+            binding.nativeSheetSurface.doOnPreDraw {
+                if (!isAdded || this@BottomWebViewDialog.view == null) return@doOnPreDraw
+                startSheetIntro()
+            }
+        } else {
+            startSheetIntro()
+        }
         schedulePreAttachWebView()
         val deferredRequest = deferredBrowserRequest
         when {
@@ -547,6 +556,11 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+    private fun shouldPreRenderInitialStyle(): Boolean {
+        val hasInitialStyle = !arguments?.getString("config").isNullOrBlank()
+            || !arguments?.getString("initialConfig").isNullOrBlank()
+        return isCommentBrowser && !isCommentLoadingEnabled && hasInitialStyle
+    }
     private fun applyInitialConfig() {
         val configJson = arguments?.getString("config")
             ?: arguments?.getString("initialConfig")
