@@ -20,39 +20,42 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
-import java.util.Stack
+import java.util.ArrayDeque
 import kotlin.math.max
 import kotlin.random.Random
 
 object WebViewPool {
     const val BLANK_HTML = "about:blank"
     const val DATA_HTML = "data:text/html;charset=utf-8;base64,"
-    // 未使用的、已预初始化的WebView池 (使用栈结构，后进先出，复用缓存)
-    private val idlePool = Stack<PooledWebView>()
-    // 正在使用的WebView集合
+    const val GROUP_DEFAULT = "default"
+    const val GROUP_COMMENT_BROWSER = "commentBrowser"
+
+    private val idlePools = mutableMapOf<String, ArrayDeque<PooledWebView>>()
     private val inUsePool = mutableMapOf<String, PooledWebView>()
 
     private var needInitialize = true
-    private val CACHED_WEB_VIEW_MAX_NUM = max(AppConfig.threadCount / 10, 5) // 池子总容量（闲置+使用）
-    private const val IDLE_TIME_OUT: Long = 5 * 60 * 1000 // 闲置5分钟后销毁
-    private const val IDLE_TIME_OUT_LAST: Long = 30 * 60 * 1000 // 最后一个闲置30分钟后销毁
+    private val CACHED_WEB_VIEW_MAX_NUM = max(AppConfig.threadCount / 10, 5)
+    private const val COMMENT_WEB_VIEW_MAX_NUM = 2
+    private const val IDLE_TIME_OUT: Long = 5 * 60 * 1000
+    private const val IDLE_TIME_OUT_LAST: Long = 30 * 60 * 1000
     private val cleanupScope by lazy { CoroutineScope(Dispatchers.IO + SupervisorJob()) }
     private var cleanupJob: Job? = null
 
-    // 获取一个WebView
     @Synchronized
-    fun acquire(context: Context): PooledWebView {
+    fun acquire(context: Context, group: String = GROUP_DEFAULT): PooledWebView {
+        val normalizedGroup = group.ifBlank { GROUP_DEFAULT }
+        val idlePool = idlePool(normalizedGroup)
         val pooledWebView = if (idlePool.isNotEmpty()) {
-            idlePool.pop() // 复用闲置实例
+            idlePool.removeLast()
         } else {
             if (needInitialize) {
                 needInitialize = false
                 startCleanupTimer()
             }
-            createNewWebView() // 创建新实例
+            createNewWebView(normalizedGroup)
         }
         pooledWebView.upContext(context).apply {
-            realWebView.settings.setDarkeningAllowed(AppConfig.isNightTheme) //设置是否夜间
+            realWebView.settings.setDarkeningAllowed(AppConfig.isNightTheme)
             if (inUsePool.isEmpty()) {
                 realWebView.resumeTimers()
             }
@@ -63,14 +66,12 @@ object WebViewPool {
         return pooledWebView
     }
 
-    // 释放WebView回池
     @Synchronized
     fun release(pooledWebView: PooledWebView) {
         if (inUsePool.remove(pooledWebView.id) == null) {
             pooledWebView.realWebView.destroy()
             return
         }
-        // 重置WebView状态
         pooledWebView.realWebView.run {
             (parent as? ViewGroup)?.removeView(this)
             layoutParams = ViewGroup.LayoutParams(
@@ -78,7 +79,7 @@ object WebViewPool {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             stopLoading()
-            clearFocus() //清除焦点
+            clearFocus()
             setOnLongClickListener(null)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 setOnScrollChangeListener(null)
@@ -91,55 +92,63 @@ object WebViewPool {
             removeJavascriptInterface(WebJsExtensions.nameJava)
             removeJavascriptInterface(WebJsExtensions.nameSource)
             removeJavascriptInterface(WebJsExtensions.nameCache)
-            clearFormData() //清除表单数据
-            clearMatches() //清除查找匹配项
-            clearDisappearingChildren() //清除消失中的子视图
-            clearAnimation() //清除动画
+            clearFormData()
+            clearMatches()
+            clearDisappearingChildren()
+            clearAnimation()
             pooledWebView.upContext(appCtx)
-            if (idlePool.size >= CACHED_WEB_VIEW_MAX_NUM - inUsePool.size) {
-                // 池子已满，直接销毁
+            val idlePool = idlePool(pooledWebView.group)
+            if (idlePool.size >= idleLimit(pooledWebView.group)) {
                 pooledWebView.realWebView.destroy()
                 return
             }
-            webViewClient = object: WebViewClient() {
+            webViewClient = object : WebViewClient() {
                 @SuppressLint("SetJavaScriptEnabled")
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (url != BLANK_HTML) return
-                    view?.let{ webview ->
-                        webview.settings.apply {
+                    view?.let { webView ->
+                        webView.settings.apply {
                             javaScriptEnabled = false
-                            javaScriptEnabled = true // 禁用再启用来重置js环境，注意需要禁用的订阅源需要再次执行
-                            blockNetworkImage = false // 确保允许加载网络图片
-                            cacheMode = WebSettings.LOAD_DEFAULT // 重置缓存模式
-                            useWideViewPort = false // 恢复默认关闭宽视模式
-                            loadWithOverviewMode = false // 恢复默认
+                            javaScriptEnabled = true
+                            blockNetworkImage = false
+                            cacheMode = WebSettings.LOAD_DEFAULT
+                            useWideViewPort = false
+                            loadWithOverviewMode = false
                             textZoom = 100
                         }
                         if (inUsePool.isEmpty()) {
-                            webview.pauseTimers()
+                            webView.pauseTimers()
                         }
-                        webview.onPause()
+                        webView.onPause()
                     }
                     pooledWebView.isInUse = false
                     pooledWebView.lastUseTime = System.currentTimeMillis()
-                    idlePool.push(pooledWebView)
+                    idlePool.addLast(pooledWebView)
+                    startCleanupTimer()
                 }
             }
             loadUrl(BLANK_HTML)
         }
     }
 
-    private fun createNewWebView(): PooledWebView {
+    private fun createNewWebView(group: String): PooledWebView {
         val webView = VisibleWebView(MutableContextWrapper(appCtx))
         preInitWebView(webView)
-        return PooledWebView(webView, generateId())
+        return PooledWebView(webView, generateId(), group)
+    }
+
+    private fun idlePool(group: String): ArrayDeque<PooledWebView> {
+        return idlePools.getOrPut(group.ifBlank { GROUP_DEFAULT }) { ArrayDeque() }
+    }
+
+    private fun idleLimit(group: String): Int {
+        return if (group == GROUP_COMMENT_BROWSER) COMMENT_WEB_VIEW_MAX_NUM else CACHED_WEB_VIEW_MAX_NUM
     }
 
     private fun generateId(): String {
         return "web_${System.currentTimeMillis()}_${Random.nextLong()}"
     }
 
-    // 初始化
     @SuppressLint("SetJavaScriptEnabled")
     private fun preInitWebView(webView: WebView) {
         webView.layoutParams = ViewGroup.LayoutParams(
@@ -159,35 +168,33 @@ object WebViewPool {
         webView.setBackgroundColor(Color.TRANSPARENT)
     }
 
-    // 定时清理闲置过久的WebView
     private fun startCleanupTimer() {
         if (cleanupJob?.isActive == true) return
         cleanupJob = cleanupScope.launch {
             while (true) {
-                delay(30_000) // 每30秒执行一次清理
+                delay(30_000)
                 val now = System.currentTimeMillis()
                 val toRemove = mutableListOf<PooledWebView>()
                 var shouldCancel = false
                 synchronized(this@WebViewPool) {
-                    for ((index, pooled) in idlePool.withIndex()) {
-                        val timeout = if (index == 0) {
-                            IDLE_TIME_OUT_LAST
-                        } else {
-                            IDLE_TIME_OUT
-                        }
-                        if (now - pooled.lastUseTime > timeout) {
-                            toRemove.add(pooled)
+                    idlePools.values.forEach { idlePool ->
+                        idlePool.forEachIndexed { index, pooled ->
+                            val timeout = if (index == 0) IDLE_TIME_OUT_LAST else IDLE_TIME_OUT
+                            if (now - pooled.lastUseTime > timeout) {
+                                toRemove.add(pooled)
+                            }
                         }
                     }
                     toRemove.forEach { pooled ->
-                        idlePool.remove(pooled)
+                        idlePools[pooled.group]?.remove(pooled)
                         try {
                             pooled.realWebView.destroy()
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
-                    if (idlePool.isEmpty()) {
+                    idlePools.entries.removeAll { it.value.isEmpty() }
+                    if (idlePools.isEmpty()) {
                         shouldCancel = true
                     }
                 }
@@ -198,5 +205,4 @@ object WebViewPool {
             }
         }
     }
-
 }

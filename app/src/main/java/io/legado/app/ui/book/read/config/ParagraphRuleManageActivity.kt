@@ -330,6 +330,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         if (bookUrl != ReadBook.book?.bookUrl) return
         ReadBook.clearTextChapter()
         ReadBook.callBack?.upContent(resetPageOffset = false)
+        ReadBook.loadContent(resetPageOffset = false)
     }
 
     private inner class RuleAdapter : RecyclerView.Adapter<RuleAdapter.Holder>() {

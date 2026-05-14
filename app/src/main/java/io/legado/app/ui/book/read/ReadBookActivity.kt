@@ -54,6 +54,7 @@ import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -1452,7 +1453,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                             url,
                             html,
                             preloadJs,
-                            config
+                            config,
+                            WebViewPool.GROUP_COMMENT_BROWSER
                         )
                     )
                 }

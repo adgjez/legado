@@ -34,6 +34,7 @@ import io.legado.app.utils.putPrefString
 import io.legado.app.utils.stackBlur
 import splitties.init.appCtx
 import java.io.File
+import java.io.FileInputStream
 import androidx.core.graphics.drawable.toDrawable
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.newCallResponse
@@ -160,7 +161,7 @@ object ThemeConfig {
                 usableBgImageCacheValue = it
             }
         }
-        return File(path).exists().also {
+        return isReadableThemeFile(path).also {
             usableBgImageCacheKey = cacheKey
             usableBgImageCacheValue = it
         }
@@ -554,12 +555,31 @@ object ThemeConfig {
         if (current != null) {
             if (current.isBlank()) return current
             if (current.startsWith("http", ignoreCase = true)) return current
-            if (File(current).exists()) return current
-            return current
+            if (isReadableThemeFile(current)) return current
         }
         return fallback?.takeIf {
-            it.startsWith("http", ignoreCase = true) || File(it).exists()
+            it.startsWith("http", ignoreCase = true) || isReadableThemeFile(it)
         }
+    }
+
+    private fun isReadableThemeFile(path: String): Boolean {
+        val file = File(path)
+        if (!file.isFile) return false
+        if (isOtherAppExternalDataPath(path)) return false
+        return runCatching {
+            FileInputStream(file).use { true }
+        }.getOrDefault(false)
+    }
+
+    private fun isOtherAppExternalDataPath(path: String): Boolean {
+        val marker = "/Android/data/"
+        val normalized = path.replace('\\', '/')
+        val start = normalized.indexOf(marker, ignoreCase = true)
+        if (start < 0) return false
+        val packageStart = start + marker.length
+        val packageEnd = normalized.indexOf('/', packageStart).takeIf { it >= 0 } ?: normalized.length
+        val ownerPackage = normalized.substring(packageStart, packageEnd)
+        return ownerPackage.isNotBlank() && ownerPackage != appCtx.packageName
     }
 
     private fun Float.toPlainScale(): String {

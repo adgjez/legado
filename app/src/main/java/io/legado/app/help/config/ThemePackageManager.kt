@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
+import java.io.FileInputStream
 
 object ThemePackageManager {
 
@@ -467,14 +468,36 @@ object ThemePackageManager {
         if (path.isNullOrBlank() || path.startsWith("http", ignoreCase = true)) return path
         val file = File(path)
         if (file.isAbsolute) {
-            if (file.exists()) return path
+            if (isReadableOwnFile(file)) return path
             findPackagedAsset(dir, file.name)?.let { return it.absolutePath }
-            return path
+            findPackagedAssetByPrefix(dir, file.name.substringBeforeLast('.', file.name))?.let {
+                return it.absolutePath
+            }
+            return null
         }
         val packagedFile = File(dir, path)
-        if (packagedFile.exists()) return packagedFile.absolutePath
+        if (isReadableOwnFile(packagedFile)) return packagedFile.absolutePath
         findPackagedAsset(dir, file.name)?.let { return it.absolutePath }
         return packagedFile.absolutePath
+    }
+
+    private fun isReadableOwnFile(file: File): Boolean {
+        if (!file.isFile) return false
+        if (isOtherAppExternalDataPath(file.absolutePath)) return false
+        return runCatching {
+            FileInputStream(file).use { true }
+        }.getOrDefault(false)
+    }
+
+    private fun isOtherAppExternalDataPath(path: String): Boolean {
+        val marker = "/Android/data/"
+        val normalized = path.replace('\\', '/')
+        val start = normalized.indexOf(marker, ignoreCase = true)
+        if (start < 0) return false
+        val packageStart = start + marker.length
+        val packageEnd = normalized.indexOf('/', packageStart).takeIf { it >= 0 } ?: normalized.length
+        val ownerPackage = normalized.substring(packageStart, packageEnd)
+        return ownerPackage.isNotBlank() && ownerPackage != appCtx.packageName
     }
 
     private fun findPackagedAsset(dir: File, fileName: String): File? {

@@ -100,7 +100,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         url: String,
         html: String? = null,
         preloadJs: String? = null,
-        config: String? = null
+        config: String? = null,
+        webViewGroup: String = WebViewPool.GROUP_DEFAULT
     ) : this() {
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
@@ -109,6 +110,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             putString("html", html)
             putString("preloadJs", preloadJs)
             putString("config", config)
+            putString("webViewGroup", webViewGroup)
         }
     }
 
@@ -139,7 +141,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
-        pooledWebView = WebViewPool.acquire(context)
+        val group = arguments?.getString("webViewGroup") ?: WebViewPool.GROUP_DEFAULT
+        pooledWebView = WebViewPool.acquire(context, group)
         currentWebView = pooledWebView.realWebView
     }
 
