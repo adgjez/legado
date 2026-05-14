@@ -170,7 +170,7 @@ class CommentWebViewSession {
             }
             loadUrl(BLANK_HTML)
             clearHistory()
-            alpha = 1f
+            alpha = 0f
             visibility = WebView.VISIBLE
             translationY = 0f
             onPause()
