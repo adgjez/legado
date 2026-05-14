@@ -83,6 +83,8 @@ object ReadBook : CoroutineScope by MainScope() {
     private val readRecord = ReadRecord()
     private val chapterLoadingJobs = ConcurrentHashMap<Int, Coroutine<*>>()
     private val chapterLayoutKeys = ConcurrentHashMap<Int, String>()
+    @Volatile
+    private var paragraphRuleLayoutKey: String = ""
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
     private val nextChapterLoadingLock = Mutex()
@@ -118,6 +120,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun resetData(book: Book) {
         releaseAndCancel()
         ReadBook.book = book
+        refreshParagraphRuleLayoutKey()
         readRecord.bookName = book.name
         readRecord.readTime = appDb.readRecordDao.getReadTime(book.name) ?: 0
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
@@ -149,6 +152,7 @@ object ReadBook : CoroutineScope by MainScope() {
     fun upData(book: Book) {
         releaseAndCancel()
         ReadBook.book = book
+        refreshParagraphRuleLayoutKey()
         chapterSize = appDb.bookChapterDao.getChapterCount(book.bookUrl)
         simulatedChapterSize = if (book.readSimulating()) {
             book.simulatedTotalChapterNum()
@@ -249,6 +253,11 @@ object ReadBook : CoroutineScope by MainScope() {
         curTextChapter = null
         nextTextChapter = null
         chapterLayoutKeys.clear()
+    }
+
+    fun invalidateParagraphRuleLayout() {
+        refreshParagraphRuleLayoutKey()
+        clearTextChapter()
     }
 
     fun clearSearchResult() {
@@ -605,6 +614,17 @@ object ReadBook : CoroutineScope by MainScope() {
             append('|').append(ChapterProvider.titlePaintTextHeight)
             append('|').append(ChapterProvider.lineSpacingExtra)
             append('|').append(ChapterProvider.paragraphSpacing)
+            append('|').append(paragraphRuleLayoutKey)
+        }
+    }
+
+    private fun refreshParagraphRuleLayoutKey() {
+        val currentBook = book
+        paragraphRuleLayoutKey = if (currentBook == null || currentBook.isEpub) {
+            ""
+        } else {
+            appDb.paragraphRuleDao.enabledRulesForBook(currentBook.bookUrl)
+                .joinToString("|") { ParagraphRuleProcessor.stableKey(it) }
         }
     }
 
@@ -623,7 +643,7 @@ object ReadBook : CoroutineScope by MainScope() {
     ) {
         val layoutKey = currentChapterLayoutKey()
         val cached = textChapter(index - durChapterIndex)
-        if (book?.isEpub == true && cached?.isCompleted == true && chapterLayoutKeys[index] == layoutKey) {
+        if (cached?.isCompleted == true && chapterLayoutKeys[index] == layoutKey) {
             if (upContent) {
                 callBack?.upContent(index - durChapterIndex, resetPageOffset)
             }
@@ -632,6 +652,7 @@ object ReadBook : CoroutineScope by MainScope() {
         }
         Coroutine.async {
             val book = book!!
+            refreshParagraphRuleLayoutKey()
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
@@ -663,6 +684,7 @@ object ReadBook : CoroutineScope by MainScope() {
         if (addLoading(index)) {
             try {
                 val book = book!!
+                refreshParagraphRuleLayoutKey()
                 val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index)!!
                 val content = BookHelp.getContent(book, chapter) ?: downloadAwait(chapter)
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)

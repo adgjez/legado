@@ -1,4 +1,4 @@
-﻿package io.legado.app.data.entities
+package io.legado.app.data.entities
 
 import androidx.room.Entity
 import androidx.room.ForeignKey

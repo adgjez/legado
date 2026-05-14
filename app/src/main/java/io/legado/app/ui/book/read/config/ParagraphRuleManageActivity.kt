@@ -62,6 +62,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var bookUrl: String? = null
     private var book: Book? = null
     private var enabledIds: Set<Long> = emptySet()
+    private var refreshOnResume = false
 
     private val importDoc = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
@@ -96,6 +97,10 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     override fun onResume() {
         super.onResume()
+        if (refreshOnResume) {
+            refreshOnResume = false
+            refreshReadBookIfNeeded()
+        }
         load()
     }
 
@@ -144,7 +149,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             listOf(getString(R.string.add), getString(R.string.import_str))
         ) { _, index ->
             when (index) {
-                0 -> startActivity<ParagraphRuleEditActivity>()
+                0 -> openEditRule()
                 1 -> importDoc.launch {
                     mode = HandleFileContract.FILE
                     title = getString(R.string.import_str)
@@ -191,11 +196,19 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun login(rule: ParagraphRule) {
+        refreshOnResume = true
         startActivity<SourceLoginActivity> {
             putExtra("bookType", -1)
             putExtra("type", "paragraphRule")
             putExtra("key", rule.id.toString())
             bookUrl?.let { putExtra("bookUrl", it) }
+        }
+    }
+
+    private fun openEditRule(ruleId: Long? = null) {
+        refreshOnResume = true
+        startActivity<ParagraphRuleEditActivity> {
+            ruleId?.let { putExtra("id", it) }
         }
     }
 
@@ -209,7 +222,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         )
         selector(rule.displayName(), actions.map { getString(it.titleRes) }) { _, index ->
             when (actions[index]) {
-                Action.EDIT -> startActivity<ParagraphRuleEditActivity> { putExtra("id", rule.id) }
+                Action.EDIT -> openEditRule(rule.id)
                 Action.EXPORT -> exportRule(rule)
                 Action.COPY -> sendToClip(serializeRule(rule))
                 Action.VARS -> editVars(rule)
@@ -251,6 +264,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 }
             }.onSuccess {
                 toastOnUi(R.string.success)
+                refreshReadBookIfNeeded()
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format))
             }
@@ -322,13 +336,14 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     }
                 }
             }
+            refreshReadBookIfNeeded()
             load()
         }
     }
 
     private fun refreshReadBookIfNeeded() {
         if (bookUrl != ReadBook.book?.bookUrl) return
-        ReadBook.clearTextChapter()
+        ReadBook.invalidateParagraphRuleLayout()
         ReadBook.callBack?.upContent(resetPageOffset = false)
         ReadBook.loadContent(resetPageOffset = false)
     }

@@ -1,4 +1,4 @@
-﻿package io.legado.app.data.entities
+package io.legado.app.data.entities
 
 import android.os.Parcelable
 import androidx.media3.common.C

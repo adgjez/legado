@@ -93,6 +93,7 @@ object ParagraphRuleProcessor {
         val ctx = buildCtx(rule, book, chapter, result, emptyList())
         val scope = buildScope(rule, book, chapter, result, ctx, coroutineContext, browserCallback)
         val script = buildString {
+            append(jsCompatPrelude())
             append(jsCtxPrelude(ctx))
             if (rule.jsLib.isNotBlank()) append(rule.jsLib).append('\n')
             append(js)
@@ -113,6 +114,7 @@ object ParagraphRuleProcessor {
         val ctx = buildCtx(rule, book, chapter, content, paragraphs)
         val scope = buildScope(rule, book, chapter, content, ctx, coroutineContext, null)
         val script = buildString {
+            append(jsCompatPrelude())
             append(jsCtxPrelude(ctx))
             if (rule.jsLib.isNotBlank()) append(rule.jsLib).append('\n')
             append(rule.script).append('\n')
@@ -133,6 +135,52 @@ object ParagraphRuleProcessor {
         val jsResult = RhinoScriptEngine.eval(script, scope, coroutineContext)
         writeVars(rule.id, ctx["vars"])
         return wrapPclicks(rule.id, applyResult(content, paragraphs, jsResult))
+    }
+
+    private fun jsCompatPrelude(): String {
+        return """
+            ;(function(){
+                if (!Array.prototype.forEach) {
+                    Array.prototype.forEach = function(callback, thisArg) {
+                        if (this == null) throw new TypeError('Array.prototype.forEach called on null or undefined');
+                        var object = Object(this);
+                        var length = object.length >>> 0;
+                        for (var i = 0; i < length; i++) {
+                            if (i in object) callback.call(thisArg, object[i], i, object);
+                        }
+                    };
+                }
+                if (!Array.prototype.map) {
+                    Array.prototype.map = function(callback, thisArg) {
+                        if (this == null) throw new TypeError('Array.prototype.map called on null or undefined');
+                        var object = Object(this);
+                        var length = object.length >>> 0;
+                        var result = new Array(length);
+                        for (var i = 0; i < length; i++) {
+                            if (i in object) result[i] = callback.call(thisArg, object[i], i, object);
+                        }
+                        return result;
+                    };
+                }
+                if (!Array.prototype.filter) {
+                    Array.prototype.filter = function(callback, thisArg) {
+                        if (this == null) throw new TypeError('Array.prototype.filter called on null or undefined');
+                        var object = Object(this);
+                        var length = object.length >>> 0;
+                        var result = [];
+                        for (var i = 0; i < length; i++) {
+                            if (i in object && callback.call(thisArg, object[i], i, object)) result.push(object[i]);
+                        }
+                        return result;
+                    };
+                }
+                if (!Array.isArray) {
+                    Array.isArray = function(value) {
+                        return Object.prototype.toString.call(value) === '[object Array]';
+                    };
+                }
+            })();
+        """.trimIndent() + '\n'
     }
 
     private fun buildCtx(

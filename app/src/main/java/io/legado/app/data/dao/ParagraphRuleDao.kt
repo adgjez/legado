@@ -1,4 +1,4 @@
-﻿package io.legado.app.data.dao
+package io.legado.app.data.dao
 
 import androidx.room.Dao
 import androidx.room.Delete
