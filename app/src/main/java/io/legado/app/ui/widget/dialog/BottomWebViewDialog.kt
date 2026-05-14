@@ -14,7 +14,6 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
-import android.view.animation.PathInterpolator
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
@@ -102,9 +101,11 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         html: String? = null,
         preloadJs: String? = null,
         config: String? = null,
-        webViewSession: CommentWebViewSession? = null
+        webViewSession: CommentWebViewSession? = null,
+        onDismiss: (() -> Unit)? = null
     ) : this() {
         this.webViewSession = webViewSession
+        this.onDismissAction = onDismiss
         arguments = Bundle().apply {
             putString("sourceKey", sourceKey)
             putInt("bookType", bookType)
@@ -135,13 +136,14 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private lateinit var pooledWebView: PooledWebView
     private lateinit var currentWebView: WebView
     private var webViewSession: CommentWebViewSession? = null
+    private var onDismissAction: (() -> Unit)? = null
+    private var dismissActionNotified = false
     private var source: BaseSource? = null
     private var preloadJs: String? = null
     private var isFullScreen = false
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
     private var originOrientation: Int? = null
     private var needClearHistory = true
-    private var commentEnterAnimated = false
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -158,9 +160,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         dialog.window?.let { window ->
             window.decorView.systemUiVisibility = activity?.window?.decorView?.systemUiVisibility ?: 0
             window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-            if (isCommentWebViewDialog()) {
-                window.attributes = window.attributes.apply { windowAnimations = 0 }
-            }
         }
         return dialog
     }
@@ -168,47 +167,15 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        playCommentEnterAnimation()
     }
 
-
-    private fun isCommentWebViewDialog(): Boolean {
-        return webViewSession != null || arguments?.getBoolean("useCommentWebViewSession") == true
-    }
-
-    private fun playCommentEnterAnimation() {
-        if (!isCommentWebViewDialog() || commentEnterAnimated) return
-        val sheet = bottomSheet ?: return
-        commentEnterAnimated = true
-        sheet.animate().cancel()
-        sheet.alpha = 0f
-        sheet.translationY = 72f
-        sheet.scaleY = 0.985f
-        sheet.post {
-            if (!isAdded || sheet.height <= 0) return@post
-            val distance = (sheet.height * 0.14f).coerceAtMost(96f).coerceAtLeast(36f)
-            sheet.translationY = distance
-            sheet.pivotY = sheet.height.toFloat()
-            sheet.animate()
-                .alpha(1f)
-                .translationY(0f)
-                .scaleY(1f)
-                .setDuration(COMMENT_ENTER_ANIM_DURATION)
-                .setInterpolator(COMMENT_ENTER_INTERPOLATOR)
-                .withEndAction {
-                    sheet.alpha = 1f
-                    sheet.translationY = 0f
-                    sheet.scaleY = 1f
-                }
-                .start()
-        }
-    }
     override fun show(manager: FragmentManager, tag: String?) {
         kotlin.runCatching {
             manager.beginTransaction().remove(this).commit()
             super.show(manager, tag)
         }.onFailure {
             AppLog.put("显示对话框失败 tag:$tag", it)
+            notifyDismissAction()
         }
     }
 
@@ -693,9 +660,17 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+    private fun notifyDismissAction() {
+        if (dismissActionNotified) return
+        dismissActionNotified = true
+        onDismissAction?.invoke()
+        onDismissAction = null
+    }
+
     override fun onDestroyView() {
         customWebViewCallback?.onCustomViewHidden()
         webViewSession?.detachForReuse(pooledWebView) ?: WebViewPool.release(pooledWebView)
+        notifyDismissAction()
         originOrientation?.let {
             activity?.requestedOrientation = it
         }
@@ -970,11 +945,6 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 return null
             }
         }
-    }
-
-    companion object {
-        private const val COMMENT_ENTER_ANIM_DURATION = 96L
-        private val COMMENT_ENTER_INTERPOLATOR = PathInterpolator(0.2f, 0f, 0f, 1f)
     }
 
 }

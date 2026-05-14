@@ -231,6 +231,10 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var backupJob: Job? = null
     private var tts: TTS? = null
     private var commentWebViewSession: CommentWebViewSession? = null
+    @Volatile
+    private var commentBrowserOpening = false
+    @Volatile
+    private var commentBrowserShowing = false
     val textActionMenu: TextActionMenu by lazy {
         TextActionMenu(this, this)
     }
@@ -1418,7 +1422,9 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     private fun evalParagraphRuleClick(click: String?, src: String): Boolean {
         if (!ParagraphRuleProcessor.isParagraphClick(click)) return false
+        if (commentBrowserOpening || commentBrowserShowing) return true
         val clickValue = click ?: return false
+        commentBrowserOpening = true
         getCommentWebViewSession().prepare(applicationContext)
         Coroutine.async(lifecycleScope, IO) {
             val book = ReadBook.book ?: return@async
@@ -1434,10 +1440,13 @@ class ReadBookActivity : BaseReadBookActivity(),
             )
         }.onError {
             AppLog.put("ParagraphRule pclick error: ${it.localizedMessage}", it, true)
+        }.onFinally {
+            if (!commentBrowserShowing) {
+                commentBrowserOpening = false
+            }
         }
         return true
     }
-
     private fun getCommentWebViewSession(): CommentWebViewSession {
         return commentWebViewSession ?: CommentWebViewSession.shared.also { commentWebViewSession = it }
     }
@@ -1451,7 +1460,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                 config: String?
             ): Boolean {
                 val source = ReadBook.bookSource ?: return false
+                commentBrowserShowing = true
                 runOnUiThread {
+                    if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                        commentBrowserShowing = false
+                        commentBrowserOpening = false
+                        return@runOnUiThread
+                    }
                     showDialogFragment(
                         BottomWebViewDialog(
                             source.getKey(),
@@ -1460,7 +1475,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                             html,
                             preloadJs,
                             config,
-                            getCommentWebViewSession()
+                            getCommentWebViewSession(),
+                            onDismiss = {
+                                commentBrowserShowing = false
+                                commentBrowserOpening = false
+                            }
                         )
                     )
                 }
@@ -1851,7 +1870,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         textActionMenu.dismiss()
         popupAction.dismiss()
         binding.readView.onDestroy()
-        commentWebViewSession?.releaseAfterDelay()
+        commentWebViewSession?.destroy()
+        commentWebViewSession = null
+        commentBrowserOpening = false
+        commentBrowserShowing = false
         ReadBook.unregister(this)
         handler.removeCallbacksAndMessages(null) // 清理Handler消息
         if (!ReadBook.inBookshelf && !isChangingConfigurations) {
