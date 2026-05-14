@@ -1451,6 +1451,17 @@ class ReadBookActivity : BaseReadBookActivity(),
         return commentWebViewSession ?: CommentWebViewSession.shared.also { commentWebViewSession = it }
     }
 
+    private fun ensureCurrentChapterCacheForClick(book: Book, chapter: BookChapter) {
+        val current = ReadBook.curTextChapter
+            ?.takeIf { it.chapter.index == chapter.index }
+            ?.getContent()
+            ?.takeIf { it.isNotBlank() }
+        if (!BookHelp.hasContent(book, chapter) && current != null) {
+            BookHelp.saveText(book, chapter, current)
+        }
+        BookHelp.ensureLegacyContentAlias(book, chapter, current)
+    }
+
     private fun paragraphRuleBrowserCallback(): ParagraphRuleProcessor.BrowserCallback {
         return object : ParagraphRuleProcessor.BrowserCallback {
             override fun showBrowser(
@@ -1501,6 +1512,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     val java = SourceLoginJsExtensions(this@ReadBookActivity, source, BookType.text)
                     val book = ReadBook.book ?: return@async
                     val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: throw Exception("no find chapter")
+                    ensureCurrentChapterCacheForClick(book, chapter)
                     runScriptWithContext {
                         source.evalJS(click) {
                             put("java", java)
@@ -1541,6 +1553,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             val java = SourceLoginJsExtensions(this@ReadBookActivity, source, BookType.text)
             val book = ReadBook.book ?: return@async
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: throw Exception("no find chapter")
+            ensureCurrentChapterCacheForClick(book, chapter)
             runScriptWithContext {
                 source.evalJS(click) {
                     put("java", java)
