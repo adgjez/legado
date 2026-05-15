@@ -5,6 +5,9 @@ import android.app.Dialog
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -15,6 +18,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
@@ -28,6 +32,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.lifecycleScope
@@ -83,6 +88,7 @@ import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.get
+import io.legado.app.utils.isHuaweiSystemDevice
 import io.legado.app.utils.writeBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
@@ -123,14 +129,10 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     }
 
     private val binding by viewBinding(DialogWebViewBinding::bind)
-    private val bottomSheet by lazy {
-        dialog?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
-    }
-    private val behavior by lazy {
-        bottomSheet?.let { sheet ->
-            BottomSheetBehavior.from(sheet)
-        }
-    }
+    private val bottomSheet: View?
+        get() = dialog?.findViewById(com.google.android.material.R.id.design_bottom_sheet)
+    private val behavior: BottomSheetBehavior<View>?
+        get() = bottomSheet?.let { sheet -> BottomSheetBehavior.from(sheet) }
     private val displayMetrics by lazy { resources.displayMetrics }
     private val selectImageDir = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
@@ -149,6 +151,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
     private var originOrientation: Int? = null
     private var needClearHistory = true
+    private var pendingConfig: Config? = null
+    private var pendingConfigFirst = false
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -172,6 +176,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
     override fun onStart() {
         super.onStart()
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        applyPendingConfig()
+        bottomSheet?.post { applyPendingConfig() }
     }
 
     override fun show(manager: FragmentManager, tag: String?) {
@@ -181,6 +187,20 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }.onFailure {
             AppLog.put("显示对话框失败 tag:$tag", it)
             notifyDismissAction()
+        }
+    }
+
+    private fun submitConfig(config: Config, first: Boolean = false) {
+        pendingConfig = config
+        pendingConfigFirst = pendingConfigFirst || first
+        applyPendingConfig()
+    }
+
+    private fun applyPendingConfig() {
+        val config = pendingConfig ?: return
+        setConfig(config, pendingConfigFirst)
+        if (bottomSheet != null) {
+            pendingConfigFirst = false
         }
     }
 
@@ -212,55 +232,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
             val radius = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, it, displayMetrics
             )
-            bottomSheet?.let { sheet ->
-                if (radius > 0) {
-                    sheet.backgroundTintList = null
-                    val shapeDrawable =
-                        android.graphics.drawable.GradientDrawable().apply {
-                            cornerRadius = 0f
-                            cornerRadii = floatArrayOf(
-                                radius, radius,
-                                radius, radius,
-                                0f, 0f,
-                                0f, 0f
-                            )
-                        }
-                    sheet.background = shapeDrawable
-                    sheet.clipToOutline = true
-                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                        currentWebView.outlineProvider =
-                            object : android.view.ViewOutlineProvider() {
-                                override fun getOutline(
-                                    view: View,
-                                    outline: android.graphics.Outline
-                                ) {
-                                    outline.setRoundRect(0, 0, view.width, view.height, radius)
-                                }
-                            }
-                        currentWebView.clipToOutline = true
-                        binding.customWebView.outlineProvider =
-                            object : android.view.ViewOutlineProvider() {
-                                override fun getOutline(
-                                    view: View,
-                                    outline: android.graphics.Outline
-                                ) {
-                                    outline.setRoundRect(0, 0, view.width, view.height, radius)
-                                }
-                            }
-                        binding.customWebView.clipToOutline = true
-                    }
-                } else { //取消圆角
-                    sheet.backgroundTintList = null
-                    sheet.background = null
-                    sheet.clipToOutline = false
-                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                        currentWebView.outlineProvider = null
-                        currentWebView.clipToOutline = false
-                        binding.customWebView.outlineProvider = null
-                        binding.customWebView.clipToOutline = false
-                    }
-                }
-            }
+            applySheetCorners(radius)
         }
 
         dialog?.let { dialog ->
@@ -383,6 +355,83 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
     }
 
+    private fun applySheetCorners(radius: Float) {
+        val hasRadius = radius > 0f
+        val surfaceColor = ContextCompat.getColor(requireContext(), R.color.dialog_surface)
+        bottomSheet?.let { sheet ->
+            sheet.backgroundTintList = null
+            sheet.background = if (hasRadius) topRoundDrawable(Color.TRANSPARENT, radius) else null
+            sheet.clipToOutline = hasRadius
+            setTopRoundOutline(sheet, radius)
+        }
+        binding.nativeSheetSurface.background = if (hasRadius) {
+            topRoundDrawable(surfaceColor, radius)
+        } else {
+            topRoundDrawable(surfaceColor, 0f)
+        }
+        listOf(binding.nativeSheetSurface, binding.webViewContainer, binding.customWebView).forEach { view ->
+            view.clipToPadding = false
+            view.clipToOutline = hasRadius
+            setTopRoundOutline(view, radius)
+        }
+        currentWebView.setBackgroundColor(Color.TRANSPARENT)
+        val clipWebView = isHuaweiSystemDevice && hasRadius
+        currentWebView.clipToOutline = clipWebView
+        setTopRoundOutline(currentWebView, if (clipWebView) radius else 0f)
+        if (clipWebView) {
+            currentWebView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        } else {
+            currentWebView.setLayerType(View.LAYER_TYPE_NONE, null)
+        }
+        logConfigApply(radius)
+    }
+
+    private fun resetWebViewPresentationState() {
+        currentWebView.run {
+            setLayerType(View.LAYER_TYPE_NONE, null)
+            outlineProvider = null
+            clipToOutline = false
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+    }
+
+    private fun topRoundDrawable(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadii = floatArrayOf(
+                radius, radius,
+                radius, radius,
+                0f, 0f,
+                0f, 0f
+            )
+        }
+    }
+
+    private fun setTopRoundOutline(view: View, radius: Float) {
+        if (radius <= 0f) {
+            view.outlineProvider = null
+            return
+        }
+        view.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height + radius.toInt(), radius)
+            }
+        }
+    }
+
+    private fun logConfigApply(radius: Float) {
+        AppLog.putDebug(
+            "BottomWebViewDialog configApply " +
+                "radius=$radius " +
+                "sdk=${Build.VERSION.SDK_INT} " +
+                "manufacturer=${Build.MANUFACTURER} " +
+                "brand=${Build.BRAND} " +
+                "huaweiFallback=$isHuaweiSystemDevice " +
+                "sheetAttached=${bottomSheet != null} " +
+                "webAttached=${currentWebView.parent != null}"
+        )
+    }
+
     private fun setLongClickSaveImg() {
         currentWebView.setOnLongClickListener {
             val hitTestResult = currentWebView.hitTestResult
@@ -418,6 +467,8 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         super.onViewCreated(view, savedInstanceState)
         view.setBackgroundColor(0)
         binding.webViewContainer.addView(currentWebView)
+        binding.webViewContainer.post { applyPendingConfig() }
+        currentWebView.post { applyPendingConfig() }
         lifecycleScope.launch(IO) {
             val args = arguments
             if (args == null) {
@@ -431,7 +482,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                     try {
                         GSON.fromJsonObject<Config>(json).getOrThrow().let { config ->
                             activity?.runOnUiThread {
-                                setConfig(config, true)
+                                submitConfig(config, true)
                             }
                         }
                         true
@@ -487,6 +538,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 if (shouldLoadUrlDirectly(url, argHtml, preloadJs)) {
                     currentWebView.post {
                         currentWebView.onResume()
+                        applyPendingConfig()
                         initWebViewForUrl(analyzeUrl.url, analyzeUrl.headerMap, bookType)
                         currentWebView.clearHistory()
                     }
@@ -514,6 +566,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 }
                 currentWebView.post {
                     currentWebView.onResume() //缓存库拿的需要激活
+                    applyPendingConfig()
                     initWebView(analyzeUrl.url, spliceHtml, analyzeUrl.headerMap, bookType)
                     currentWebView.clearHistory()
                 }
@@ -521,6 +574,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
                 currentWebView.post {
                     currentWebView.resumeTimers()
                     currentWebView.onResume()
+                    applyPendingConfig()
                     currentWebView.loadDataWithBaseURL(
                         url,
                         it.stackTraceToString(),
@@ -691,6 +745,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
 
     override fun onDestroyView() {
         customWebViewCallback?.onCustomViewHidden()
+        resetWebViewPresentationState()
         webViewSession?.detachForReuse(pooledWebView) ?: WebViewPool.release(pooledWebView)
         notifyDismissAction()
         originOrientation?.let {
@@ -703,7 +758,7 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         try {
             lifecycleScope.launch(Dispatchers.Main) {
                 GSON.fromJsonObject<Config>(config).getOrThrow().let { config ->
-                    setConfig(config)
+                    submitConfig(config)
                 }
             }
         } catch (e: Exception) {
