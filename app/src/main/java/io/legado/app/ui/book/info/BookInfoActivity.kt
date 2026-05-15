@@ -415,10 +415,6 @@ class BookInfoActivity :
             return@run
         }
         restoreBookInfoComponentBackgrounds()
-        componentViews.values.filterNotNull().forEach { view ->
-            view.visibility = View.GONE
-            (view.parent as? ViewGroup)?.removeView(view)
-        }
         val pages = if (isBookInfoLandscape()) {
             buildLandscapeBookInfoPages(orderedComponents, componentViews)
         } else {
