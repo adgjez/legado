@@ -8,8 +8,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.lib.cloud.S3CapacityFullException
+import io.legado.app.lib.cloud.S3ContainerManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
@@ -116,7 +118,7 @@ object Backup {
                 mutex.withLock {
                     if (shouldBackup()) {
                         val backupZipFileName = getNowZipFileName()
-                        if (!AppWebDav.hasBackUp(backupZipFileName)) {
+                        if (!AppCloudStorage.hasBackup(backupZipFileName)) {
                             backup(context, AppConfig.backupPath)
                         } else {
                             LocalConfig.lastBackup = System.currentTimeMillis()
@@ -129,15 +131,25 @@ object Backup {
         }
     }
 
-    suspend fun backupLocked(context: Context, path: String?) {
+    suspend fun backupLocked(
+        context: Context,
+        path: String?,
+        uploadCloud: Boolean = true,
+        uploadWebDavFallback: Boolean = false
+    ) {
         mutex.withLock {
             withContext(IO) {
-                backup(context, path)
+                backup(context, path, uploadCloud, uploadWebDavFallback)
             }
         }
     }
 
-    private suspend fun backup(context: Context, path: String?) {
+    private suspend fun backup(
+        context: Context,
+        path: String?,
+        uploadCloud: Boolean = true,
+        uploadWebDavFallback: Boolean = false
+    ) {
         LogUtils.d(TAG, "开始备份 path:$path")
         LocalConfig.lastBackup = System.currentTimeMillis()
         val aes = BackupAES()
@@ -192,10 +204,14 @@ object Backup {
             appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
                 if (BackupConfig.keyIsNotIgnore(key)) {
                     when (key) {
-                        PreferKey.webDavPassword -> {
+                        PreferKey.webDavPassword, PreferKey.s3SecretKey, PreferKey.s3SessionToken -> {
                             edit.putString(key, aes.runCatching {
                                 encryptBase64(value.toString())
                             }.getOrDefault(value.toString()))
+                        }
+
+                        PreferKey.s3Containers -> {
+                            edit.putString(key, S3ContainerManager.toEncryptedBackupJson(aes) ?: value.toString())
                         }
 
                         else -> when (value) {
@@ -255,10 +271,19 @@ object Backup {
                     copyBackup(File(path), backupFileName)
                 }
             }
-            try {
-                AppWebDav.backUpWebDav(zipFileName)
-            } catch (e: Exception) {
-                AppLog.put("上传备份至webdav失败\n$e", e)
+            if (uploadCloud) {
+                try {
+                    if (uploadWebDavFallback) {
+                        AppCloudStorage.backupToWebDav(zipFileName)
+                    } else {
+                        AppCloudStorage.backup(zipFileName)
+                    }
+                } catch (e: S3CapacityFullException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.put("上传备份至云端失败\n$e", e)
+                    if (uploadWebDavFallback) throw e
+                }
             }
         }
         FileUtils.delete(backupPath)
@@ -271,7 +296,7 @@ object Backup {
                 appCtx.externalFiles.getFile("bg", it)
             }
         }.let {
-            AppWebDav.upBgs(it.toTypedArray())
+            AppCloudStorage.upBgs(it.toTypedArray())
         }
     }
 

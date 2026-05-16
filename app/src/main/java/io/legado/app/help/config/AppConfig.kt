@@ -1375,6 +1375,30 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val webDavDir get() = appCtx.getPrefString(PreferKey.webDavDir, "legado")
 
+    val cloudStorageType get() = appCtx.getPrefString(PreferKey.cloudStorageType, "WEBDAV")
+
+    val s3Endpoint get() = appCtx.getPrefString(PreferKey.s3Endpoint)
+
+    val s3Region get() = appCtx.getPrefString(PreferKey.s3Region, "us-east-1")
+
+    val s3Bucket get() = appCtx.getPrefString(PreferKey.s3Bucket)
+
+    val s3Prefix get() = appCtx.getPrefString(PreferKey.s3Prefix, "legado")
+
+    val s3AccessKey get() = appCtx.getPrefString(PreferKey.s3AccessKey)
+
+    val s3SecretKey get() = appCtx.getPrefString(PreferKey.s3SecretKey)
+
+    val s3SessionToken get() = appCtx.getPrefString(PreferKey.s3SessionToken)
+
+    val s3Containers get() = appCtx.getPrefString(PreferKey.s3Containers)
+
+    val s3ContainerSelections get() = appCtx.getPrefString(PreferKey.s3ContainerSelections)
+
+    var autoSwitchS3Container
+        get() = appCtx.getPrefBoolean(PreferKey.autoSwitchS3Container, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.autoSwitchS3Container, value)
+
     val webDavDeviceName get() = appCtx.getPrefString(PreferKey.webDavDeviceName, Build.MODEL)
 
     var syncThemePackages

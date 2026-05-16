@@ -6,6 +6,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -27,6 +29,7 @@ import io.legado.app.databinding.DialogThemePackageEditBinding
 import io.legado.app.databinding.ItemThemePackageOptionBinding
 import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemePackageManager
@@ -35,6 +38,7 @@ import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.ThemeStore
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
@@ -112,6 +116,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var pendingTitleFontPath: String? = null
     private var pendingFontTarget = FontTarget.UI
     private var loadVersion = 0
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
     private val pendingRemoteSyncTasks = linkedMapOf<String, RemoteSyncTask>()
     @Volatile
     private var syncingRemoteTasks = false
@@ -177,6 +183,11 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         observeWebDavTasks()
     }
 
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
+    }
+
     private fun initView() = binding.run {
         tabBar.background = UiCorner.opaqueRounded(
             ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
@@ -214,7 +225,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         binding.tvSummary.setTextColor(secondaryTextColor)
         updateTabs()
     }
-
     private fun updateTabs() = binding.run {
         btnDay.isSelected = !isNightTheme
         btnNight.isSelected = isNightTheme
@@ -222,13 +232,63 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         btnNight.setTextColor(if (isNightTheme) accentColor else primaryTextColor)
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.theme_s3_container_switch).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateContainerButton()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == MENU_CONTAINER) {
+            showContainerSelector()
+            return true
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun updateContainerButton() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            containerMenuItem?.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            ?: containers.firstOrNull()?.id
+        containerMenuItem?.isVisible = true
+        containerMenuItem?.title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+    }
+
+    private fun showContainerSelector() {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) { AppCloudStorage.listContainers().filter { it.enabled } }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
+                val container = containers[index]
+                if (container.id == selected) return@selector
+                AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                cloudContainerId = container.id
+                updateContainerButton()
+                loadThemes()
+            }
+        }
+    }
     private fun loadThemes() {
         val version = ++loadVersion
         val useCloud = AppConfig.syncThemePackages
         binding.tvSummary.text = appendPendingRemoteSummary(getString(R.string.theme_package_summary_default))
         lifecycleScope.launch {
             kotlin.runCatching {
-                ThemePackageManager.load(isNightTheme)
+                ThemePackageManager.load(isNightTheme, cloudContainerId, CLOUD_SCOPE)
             }.onSuccess {
                 if (version != loadVersion) return@onSuccess
                 adapter.items = it
@@ -292,10 +352,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun showEditDialog(entry: ThemePackageManager.Entry) {
+        if (entry.source == ThemePackageManager.Source.BUILTIN) {
+            toastOnUi(R.string.theme_builtin_export_forbidden)
+            return
+        }
         lifecycleScope.launch {
             kotlin.runCatching {
                 if (entry.source == ThemePackageManager.Source.REMOTE) {
-                    ThemePackageManager.download(entry)
+                    ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
                 } else {
                     entry
                 }
@@ -880,7 +944,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             runningMessage = getString(R.string.theme_upload_remote),
             successMessage = getString(R.string.theme_sync_done)
         ) {
-            ThemePackageManager.upload(entry)
+            ThemePackageManager.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
     }
 
@@ -1048,13 +1112,25 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun showActions(entry: ThemePackageManager.Entry) {
         val actions = buildList {
             add(ThemeAction.APPLY)
-            add(ThemeAction.EDIT)
-            if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.EXPORT)
-            if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DOWNLOAD)
-            if (AppConfig.syncThemePackages && entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.UPLOAD)
+            if (entry.source != ThemePackageManager.Source.REMOTE &&
+                entry.source != ThemePackageManager.Source.BUILTIN
+            ) {
+                add(ThemeAction.EDIT)
+                add(ThemeAction.EXPORT)
+            }
+            if (entry.source == ThemePackageManager.Source.REMOTE ||
+                entry.source == ThemePackageManager.Source.BOTH
+            ) add(ThemeAction.DOWNLOAD)
+            if (entry.source != ThemePackageManager.Source.REMOTE &&
+                entry.source != ThemePackageManager.Source.BUILTIN
+            ) add(ThemeAction.UPLOAD)
             if (!isApplied(entry)) {
-                if (entry.source != ThemePackageManager.Source.REMOTE) add(ThemeAction.DELETE_LOCAL)
-                if (entry.source != ThemePackageManager.Source.LOCAL) add(ThemeAction.DELETE_REMOTE)
+                if (entry.source != ThemePackageManager.Source.REMOTE &&
+                    entry.source != ThemePackageManager.Source.BUILTIN
+                ) add(ThemeAction.DELETE_LOCAL)
+                if (entry.source != ThemePackageManager.Source.LOCAL &&
+                    entry.source != ThemePackageManager.Source.BUILTIN
+                ) add(ThemeAction.DELETE_REMOTE)
                 if (entry.source == ThemePackageManager.Source.BOTH) add(ThemeAction.DELETE_BOTH)
             }
         }
@@ -1063,11 +1139,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 ThemeAction.APPLY -> applyTheme(entry)
                 ThemeAction.EDIT -> showEditDialog(entry)
                 ThemeAction.EXPORT -> exportThemeZip(entry)
-                ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) { ThemePackageManager.download(entry) }
-                ThemeAction.UPLOAD -> {
-                    val queued = enqueueUploadIfNeeded(entry)
-                    toastOnUi(if (queued) R.string.theme_sync_queued else R.string.cache_manage_webdav_task_duplicate)
-                }
+                ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) { ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
+                ThemeAction.UPLOAD -> uploadThemeNow(entry)
                 ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(entry, getString(R.string.theme_delete_local_confirm)) {
                     ThemePackageManager.deleteLocal(entry)
                 }
@@ -1079,6 +1152,12 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     enqueueRemoteDelete(entry)
                 }
             }
+        }
+    }
+
+    private fun uploadThemeNow(entry: ThemePackageManager.Entry) {
+        runAction(getString(R.string.theme_sync_done)) {
+            ThemePackageManager.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
     }
 
@@ -1127,7 +1206,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         lifecycleScope.launch {
             kotlin.runCatching {
                 val localEntry = if (entry.source == ThemePackageManager.Source.REMOTE) {
-                    ThemePackageManager.download(entry)
+                    ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
                 } else {
                     entry
                 }
@@ -1357,10 +1436,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 tvInfo.text = buildString {
                     if (isApplied(entry)) {
                         append(getString(R.string.theme_current_applied))
-                        append(" 路 ")
+                        append(" · ")
                     }
                     append(getString(if (pkg.isNightTheme) R.string.theme_night_short else R.string.theme_day_short))
-                    append(" 路 ")
+                    append(" · ")
                     val time = maxOf(pkg.updatedAt, entry.remoteUpdatedAt)
                     append(if (time > 0) dateFormat.format(Date(time)) else getString(R.string.theme_time_unknown))
                 }
@@ -1383,7 +1462,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
                 bindPreview(entry)
                 btnApply.setOnClickListener { applyTheme(entry) }
-                btnEdit.setOnClickListener { showEditDialog(entry) }
+                btnEdit.visibility = if (entry.source == ThemePackageManager.Source.BUILTIN ||
+                    entry.source == ThemePackageManager.Source.REMOTE
+                ) View.GONE else View.VISIBLE
+                btnEdit.setOnClickListener {
+                    if (entry.source != ThemePackageManager.Source.BUILTIN &&
+                        entry.source != ThemePackageManager.Source.REMOTE
+                    ) showEditDialog(entry)
+                }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
             }
@@ -1463,6 +1549,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         private const val colorBackground = 403
         private const val colorBottomBackground = 404
         private const val colorPanelBorder = 405
+        private const val CLOUD_SCOPE = "theme"
+        private const val MENU_CONTAINER = 0x5401
     }
 
     private enum class ThemeAction(val titleRes: Int) {
@@ -1493,6 +1581,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val type: Type,
         val isNightTheme: Boolean,
         val dirName: String,
+        val containerId: String? = null,
+        val scope: String? = null,
         var lastError: String = ""
     ) {
         suspend fun execute() {
@@ -1509,8 +1599,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             )
             runCatching {
                 when (type) {
-                    Type.UPLOAD -> ThemePackageManager.upload(entry)
-                    Type.DELETE -> ThemePackageManager.deleteRemote(entry)
+                    Type.UPLOAD -> ThemePackageManager.upload(entry, containerId, scope)
+                    Type.DELETE -> ThemePackageManager.deleteRemote(entry, containerId, scope)
                 }
             }.onFailure {
                 lastError = it.localizedMessage ?: it.toString()

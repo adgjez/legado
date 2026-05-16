@@ -243,4 +243,15 @@
 		<item>random</item>
 		<item>sequence</item>
 	</string-array>
+
+    <string-array name="cloud_storage_types">
+        <item>WebDAV</item>
+        <item>S3</item>
+    </string-array>
+
+    <string-array name="cloud_storage_type_values">
+        <item>WEBDAV</item>
+        <item>S3</item>
+    </string-array>
+
 </resources>

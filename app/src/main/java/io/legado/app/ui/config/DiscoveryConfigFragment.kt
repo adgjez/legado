@@ -26,12 +26,15 @@ class DiscoveryConfigFragment : PreferenceFragment(),
             ?.getBoolean(PreferKey.modernDiscoveryPage, true) ?: true
         modePref?.value = if (useModern) "modern" else "legacy"
         updateModeSummary(modePref)
+        updateDiscoveryLayoutVisibility(useModern)
         modePref?.setOnPreferenceChangeListener { _, newValue ->
             val useModernMode = newValue == "modern"
+            modePref.value = newValue?.toString().orEmpty()
             preferenceManager.sharedPreferences?.edit()
                 ?.putBoolean(PreferKey.modernDiscoveryPage, useModernMode)
                 ?.apply()
             updateModeSummary(modePref)
+            updateDiscoveryLayoutVisibility(useModernMode)
             postEvent(EventBus.NOTIFY_MAIN, false)
             true
         }
@@ -61,7 +64,12 @@ class DiscoveryConfigFragment : PreferenceFragment(),
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             PreferKey.showDiscovery -> postEvent(EventBus.NOTIFY_MAIN, true)
-            PreferKey.modernDiscoveryPage,
+            PreferKey.modernDiscoveryPage -> {
+                updateDiscoveryLayoutVisibility(
+                    sharedPreferences?.getBoolean(PreferKey.modernDiscoveryPage, true) ?: true
+                )
+                postEvent(EventBus.NOTIFY_MAIN, false)
+            }
             PreferKey.discoveryPageLayout -> postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
@@ -82,6 +90,10 @@ class DiscoveryConfigFragment : PreferenceFragment(),
         val value = modePref.value
         val index = modePref.findIndexOfValue(value)
         modePref.summary = if (index >= 0) modePref.entries[index] else modePref.summary
+    }
+
+    private fun updateDiscoveryLayoutVisibility(useModern: Boolean) {
+        findPreference<Preference>(PreferKey.discoveryPageLayout)?.isVisible = useModern
     }
 
     private fun consumeTargetKey() {

@@ -17,7 +17,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getExportFileName
@@ -265,7 +265,7 @@ class ExportBookService : BaseService() {
         }
         if (AppConfig.exportToWebDav) {
             // 导出到webdav
-            AppWebDav.exportWebDav(bookDoc.uri, filename)
+            AppCloudStorage.export(bookDoc.uri, filename)
         }
     }
 
@@ -372,7 +372,7 @@ class ExportBookService : BaseService() {
 
         if (AppConfig.exportToWebDav) {
             // 导出到webdav
-            AppWebDav.exportWebDav(bookDoc.uri, filename)
+            AppCloudStorage.export(bookDoc.uri, filename)
         }
     }
 
@@ -829,7 +829,7 @@ class ExportBookService : BaseService() {
 
             if (AppConfig.exportToWebDav) {
                 // 导出到webdav
-                AppWebDav.exportWebDav(bookDoc.uri, filename)
+                AppCloudStorage.export(bookDoc.uri, filename)
             }
         }
 

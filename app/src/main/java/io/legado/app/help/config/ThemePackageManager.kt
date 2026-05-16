@@ -7,7 +7,7 @@ import androidx.documentfile.provider.DocumentFile
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.externalFiles
@@ -43,9 +43,9 @@ object ThemePackageManager {
     val rootDir: File
         get() = appCtx.externalFiles.getFile("themePackages")
 
-    suspend fun load(isNightTheme: Boolean): List<Entry> = withContext(IO) {
+    suspend fun load(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<Entry> = withContext(IO) {
         val local = loadLocal(isNightTheme).filterNot(::isBuiltinDuplicate).associateBy { it.dirName }
-        val remote = loadRemoteOrCache(isNightTheme).associateBy { it.dirName }
+        val remote = loadRemoteOrCache(isNightTheme, containerId, scope).associateBy { it.dirName }
         val keys = local.keys + remote.keys
         val mergedEntries = keys.mapNotNull { key ->
             val localEntry = local[key]
@@ -110,19 +110,20 @@ object ThemePackageManager {
         }
     }
 
-    suspend fun upload(entry: Entry) = withContext(IO) {
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
         if (entry.source == Source.BUILTIN) return@withContext
-        if (!AppConfig.syncThemePackages) return@withContext
-        AppWebDav.uploadThemePackage(
+        AppCloudStorage.uploadThemePackage(
             entry.packageInfo.isNightTheme,
             entry.dirName,
-            exportZip(entry)
+            exportZip(entry),
+            containerId,
+            scope
         )
     }
 
-    suspend fun download(entry: Entry): Entry = withContext(IO) {
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry = withContext(IO) {
         val zipFile = tempDir.getFile("${entry.dirName}.zip")
-        AppWebDav.downloadThemePackage(entry.packageInfo.isNightTheme, entry.dirName, zipFile)
+        AppCloudStorage.downloadThemePackage(entry.packageInfo.isNightTheme, entry.dirName, zipFile, containerId, scope)
         importZipInternal(zipFile, entry.remoteUpdatedAt).copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
     }
 
@@ -151,9 +152,9 @@ object ThemePackageManager {
         entry.localDir?.let { FileUtils.delete(it, deleteRootDir = true) }
     }
 
-    suspend fun deleteRemote(entry: Entry) = withContext(IO) {
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
         if (entry.source == Source.BUILTIN) return@withContext
-        AppWebDav.deleteThemePackage(entry.packageInfo.isNightTheme, entry.dirName)
+        AppCloudStorage.deleteThemePackage(entry.packageInfo.isNightTheme, entry.dirName, containerId, scope)
     }
 
     suspend fun apply(context: Context, entry: Entry, switchNightMode: Boolean = true) {
@@ -363,8 +364,8 @@ object ThemePackageManager {
         )
     }
 
-    private suspend fun loadRemote(isNightTheme: Boolean): List<Entry> {
-        return AppWebDav.listThemePackages(isNightTheme).map { remoteDir ->
+    private suspend fun loadRemote(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        return AppCloudStorage.listThemePackages(isNightTheme, containerId, scope).map { remoteDir ->
             val dirName = remoteDir.displayName.trimEnd('/').removeSuffix(".zip")
             Entry(
                 packageInfo = Package(
@@ -380,25 +381,27 @@ object ThemePackageManager {
         }
     }
 
-    private suspend fun loadRemoteOrCache(isNightTheme: Boolean): List<Entry> {
-        val cached = readRemoteCache(isNightTheme)
+    private suspend fun loadRemoteOrCache(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        val cached = readRemoteCache(isNightTheme, containerId)
         return runCatching {
-            loadRemote(isNightTheme)
+            loadRemote(isNightTheme, containerId, scope)
         }.onSuccess { remote ->
             if (remote.isNotEmpty() || cached.isEmpty()) {
-                writeRemoteCache(isNightTheme, remote)
+                writeRemoteCache(isNightTheme, remote, containerId)
             }
         }.getOrElse {
             cached
         }
     }
 
-    private fun remoteCacheFile(isNightTheme: Boolean): File {
-        return remoteCacheDir.getFile(if (isNightTheme) "night.json" else "day.json")
+    private fun remoteCacheFile(isNightTheme: Boolean, containerId: String? = null): File {
+        val mode = if (isNightTheme) "night" else "day"
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("$mode$suffix.json")
     }
 
-    private fun readRemoteCache(isNightTheme: Boolean): List<Entry> {
-        val file = remoteCacheFile(isNightTheme)
+    private fun readRemoteCache(isNightTheme: Boolean, containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(isNightTheme, containerId)
         if (!file.exists()) return emptyList()
         return GSON.fromJsonArray<Package>(file.readText()).getOrDefault(emptyList())
             .filter { it.isNightTheme == isNightTheme }
@@ -407,14 +410,14 @@ object ThemePackageManager {
             }
     }
 
-    private fun writeRemoteCache(isNightTheme: Boolean, entries: List<Entry>) {
+    private fun writeRemoteCache(isNightTheme: Boolean, entries: List<Entry>, containerId: String? = null) {
         val packages = entries.map {
             it.packageInfo.copy(
                 config = null,
                 updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.packageInfo.updatedAt
             )
         }
-        remoteCacheFile(isNightTheme).writeTextIfChanged(GSON.toJson(packages))
+        remoteCacheFile(isNightTheme, containerId).writeTextIfChanged(GSON.toJson(packages))
     }
 
     private fun readPackage(dir: File): Package? {

@@ -55,7 +55,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityMainBinding
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
@@ -1869,7 +1869,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         lifecycleScope.launch {
             val lastBackupFile =
-                withContext(IO) { AppWebDav.lastBackUp().getOrNull() } ?: return@launch
+                withContext(IO) { AppCloudStorage.lastBackup().getOrNull() } ?: return@launch
             if (lastBackupFile.lastModify - LocalConfig.lastBackup > DateUtils.MINUTE_IN_MILLIS) {
                 LocalConfig.lastBackup = lastBackupFile.lastModify
                 alert(R.string.restore, R.string.webdav_after_local_restore_confirm) {
@@ -1944,6 +1944,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     onUpBooksBadgeView = null
                 }
                 upBottomMenu()
+                updateAiFloatingBall()
                 if (it) {
                     pagePosition = resolveHomePagePosition().coerceIn(0, bottomMenuCount - 1)
                     viewPagerMain.setCurrentItem(pagePosition, false)

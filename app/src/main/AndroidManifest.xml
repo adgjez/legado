@@ -251,6 +251,9 @@
             android:name=".ui.config.BookInfoManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.config.S3ContainerManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.config.CoverCollectionManageActivity"
             android:launchMode="standard" />
         <activity

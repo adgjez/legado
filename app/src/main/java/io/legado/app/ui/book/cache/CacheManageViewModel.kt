@@ -10,7 +10,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.CacheManager
 import io.legado.app.help.book.CacheCloudIndex
 import io.legado.app.help.book.CacheCloudIndexItem
@@ -96,8 +96,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 ensureActive()
                 val mirrorItems = mergeRemoteItems(localItems, CacheCloudIndexStore.readLocal())
                 postItems(mirrorItems, mode)
-                if (AppWebDav.isOk && NetworkUtils.isAvailable()) {
-                    val remoteIndex = AppWebDav.downloadCacheIndex().items
+                if (AppCloudStorage.isOk && NetworkUtils.isAvailable()) {
+                    val remoteIndex = AppCloudStorage.downloadCacheIndex().items
                     val mergedIndex = CacheCloudIndexStore.mergeRemote(remoteIndex)
                     ensureActive()
                     postItems(mergeRemoteItems(localItems, mergedIndex), mode)
@@ -256,7 +256,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         }
         if (target.deleteRemote && item.hasRemoteCache()) {
             item.remoteZipFileName?.takeIf { it.isNotBlank() }?.let { zipFileName ->
-                runCatching { AppWebDav.deleteCachePackage(zipFileName) }
+                runCatching { AppCloudStorage.deleteCachePackage(zipFileName) }
             }
             CacheCloudIndexStore.removeLocal(item.cacheKey)
             if (reloadRemoteIndex) {
@@ -275,8 +275,8 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
 
     private suspend fun refreshRemoteCacheIndexAfterDelete(cacheKeys: Set<String>) {
         if (cacheKeys.isEmpty()) return
-        val remoteItems = AppWebDav.downloadCacheIndex().items.filterNot { it.cacheKey in cacheKeys }
-        AppWebDav.uploadCacheIndex(CacheCloudIndex(items = remoteItems))
+        val remoteItems = AppCloudStorage.downloadCacheIndex().items.filterNot { it.cacheKey in cacheKeys }
+        AppCloudStorage.uploadCacheIndex(CacheCloudIndex(items = remoteItems))
         cacheKeys.forEach(CacheCloudIndexStore::removeLocal)
     }
 
@@ -489,13 +489,13 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 freshItem,
                 cachedCountOverride = if (strategy == CacheSyncStrategy.MERGE) readPackageCachedCount(zipFile, item.mode) else null
             )
-            AppWebDav.uploadCachePackage(indexItem.zipFileName, zipFile)
-            val remoteIndex = AppWebDav.downloadCacheIndex().items
+            AppCloudStorage.uploadCachePackage(indexItem.zipFileName, zipFile)
+            val remoteIndex = AppCloudStorage.downloadCacheIndex().items
             val merged = linkedMapOf<String, CacheCloudIndexItem>()
             remoteIndex.forEach { merged[it.cacheKey] = it }
             merged[indexItem.cacheKey] = indexItem
             val finalItems = merged.values.sortedByDescending { it.updatedAt }
-            AppWebDav.uploadCacheIndex(CacheCloudIndex(items = finalItems))
+            AppCloudStorage.uploadCacheIndex(CacheCloudIndex(items = finalItems))
             CacheCloudIndexStore.upsertLocal(indexItem)
         }
     }
@@ -515,7 +515,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 mkdirs()
             }
             try {
-                AppWebDav.downloadCachePackage(zipFileName, zipFile)
+                AppCloudStorage.downloadCachePackage(zipFileName, zipFile)
                 ZipUtils.unZipToPath(zipFile, unzipDir)
                 if (item.mode == CacheManageMode.AUDIO) {
                     restoreAudioCachePackage(item.book, unzipDir, strategy)
@@ -960,7 +960,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                 if (exists()) delete()
             }
             try {
-                AppWebDav.downloadCachePackage(zipFileName, remoteZip)
+                AppCloudStorage.downloadCachePackage(zipFileName, remoteZip)
                 ZipUtils.unZipToPath(remoteZip, remoteDir)
                 if (item.mode == CacheManageMode.AUDIO) {
                     val remotePayload = resolveCachePayloadDir(remoteDir, "manifest.json")

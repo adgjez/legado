@@ -2,6 +2,8 @@ package io.legado.app.ui.book.cache
 
 import android.os.Bundle
 import android.graphics.Color
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -13,6 +15,9 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityCacheManageBinding
+import io.legado.app.help.AppCloudStorage
+import io.legado.app.lib.cloud.CloudStorageType
+import io.legado.app.lib.cloud.S3ContainerScope
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -43,12 +48,19 @@ class CacheManageActivity :
     private var audioTaskReloadJob: Job? = null
     private var lastMissingTaskReloadAt = 0L
     private val handledTerminalTaskReloads = hashSetOf<String>()
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
         observeData()
         observeTasks()
         viewModel.load(CacheManageMode.BOOK)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
     }
 
     private fun initView() = binding.run {
@@ -72,6 +84,60 @@ class CacheManageActivity :
         btnUploadAll.setOnClickListener { uploadAll() }
         btnDeleteAll.setOnClickListener { deleteAll() }
         updateTabs(CacheManageMode.BOOK)
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == MENU_CONTAINER) {
+            showContainerSelector()
+            return true
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun updateContainerMenu() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        val item = containerMenuItem ?: return
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(S3ContainerScope.CACHE)?.id
+            ?: containers.firstOrNull()?.id
+        item.isVisible = true
+        item.title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+    }
+
+    private fun showContainerSelector() {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) {
+                AppCloudStorage.listContainers().filter { it.enabled }
+            }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(S3ContainerScope.CACHE)?.id
+            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
+                val container = containers.getOrNull(index) ?: return@selector
+                if (container.id == selected) return@selector
+                AppCloudStorage.selectContainer(S3ContainerScope.CACHE, container.id)
+                cloudContainerId = container.id
+                updateContainerMenu()
+                viewModel.load()
+            }
+        }
     }
 
     private fun observeData() {
@@ -418,6 +484,7 @@ private fun WebDavTaskStatus.isTerminalForListRefresh(): Boolean {
 private const val MISSING_TASK_RELOAD_INTERVAL_MS = 2500L
 private const val MISSING_TASK_RELOAD_DELAY_MS = 250L
 private const val TERMINAL_TASK_RELOAD_DELAY_MS = 600L
+private const val MENU_CONTAINER = 0x5401
 
 private fun CacheBookItem.hasLockedCacheTask(): Boolean {
     if (AudioCacheTaskManager.snapshot(book.bookUrl).locksCacheActions()) return true

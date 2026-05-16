@@ -7,7 +7,7 @@ import androidx.annotation.Keep
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
@@ -51,11 +51,11 @@ object CoverCollectionManager {
         loadIndex(isNight).sortedByDescending { it.updatedAt }
     }
 
-    suspend fun loadEntries(isNight: Boolean): List<Entry> = withContext(IO) {
+    suspend fun loadEntries(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> = withContext(IO) {
         val local = loadIndex(isNight)
             .map { Entry(it, Source.LOCAL, collectionDir(it)) }
             .associateBy { it.dirName }
-        val remote = loadRemoteOrCache(isNight).associateBy { it.dirName }
+        val remote = loadRemoteOrCache(isNight, containerId, scope).associateBy { it.dirName }
         val keys = local.keys + remote.keys
         keys.mapNotNull { key ->
             val localEntry = local[key]
@@ -154,19 +154,19 @@ object CoverCollectionManager {
         clearSelectedIfNeeded(collection)
     }
 
-    suspend fun upload(entry: Entry) = withContext(IO) {
-        AppWebDav.uploadCoverCollectionPackage(entry.collection.isNight, entry.dirName, exportZip(entry))
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
+        AppCloudStorage.uploadCoverCollectionPackage(entry.collection.isNight, entry.dirName, exportZip(entry), containerId, scope)
     }
 
-    suspend fun download(entry: Entry): Entry = withContext(IO) {
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry = withContext(IO) {
         val zipFile = tempDir.getFile("${entry.dirName}.zip")
-        AppWebDav.downloadCoverCollectionPackage(entry.collection.isNight, entry.dirName, zipFile)
+        AppCloudStorage.downloadCoverCollectionPackage(entry.collection.isNight, entry.dirName, zipFile, containerId, scope)
         importZipInternal(zipFile, entry.collection.isNight, overwrite = true, remoteUpdatedAt = entry.remoteUpdatedAt)
             .copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
     }
 
-    suspend fun deleteRemote(entry: Entry) = withContext(IO) {
-        AppWebDav.deleteCoverCollectionPackage(entry.collection.isNight, entry.dirName)
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
+        AppCloudStorage.deleteCoverCollectionPackage(entry.collection.isNight, entry.dirName, containerId, scope)
     }
 
     suspend fun exportZip(entry: Entry): File = withContext(IO) {
@@ -302,8 +302,8 @@ object CoverCollectionManager {
         }
     }
 
-    private suspend fun loadRemote(isNight: Boolean): List<Entry> {
-        return AppWebDav.listCoverCollectionPackages(isNight).map { file ->
+    private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        return AppCloudStorage.listCoverCollectionPackages(isNight, containerId, scope).map { file ->
             val dirName = file.displayName.trimEnd('/').removeSuffix(".zip")
             Entry(
                 collection = Collection(
@@ -319,20 +319,22 @@ object CoverCollectionManager {
         }
     }
 
-    private suspend fun loadRemoteOrCache(isNight: Boolean): List<Entry> {
+    private suspend fun loadRemoteOrCache(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         return runCatching {
-            loadRemote(isNight).also { writeRemoteCache(isNight, it) }
+            loadRemote(isNight, containerId, scope).also { writeRemoteCache(isNight, it, containerId) }
         }.getOrElse {
-            readRemoteCache(isNight)
+            readRemoteCache(isNight, containerId)
         }
     }
 
-    private fun remoteCacheFile(isNight: Boolean): File {
-        return remoteCacheDir.getFile(if (isNight) "night.json" else "day.json")
+    private fun remoteCacheFile(isNight: Boolean, containerId: String? = null): File {
+        val mode = if (isNight) "night" else "day"
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("$mode$suffix.json")
     }
 
-    private fun readRemoteCache(isNight: Boolean): List<Entry> {
-        val file = remoteCacheFile(isNight)
+    private fun readRemoteCache(isNight: Boolean, containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(isNight, containerId)
         if (!file.exists()) return emptyList()
         return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList())
             .filter { it.isNight == isNight }
@@ -351,8 +353,8 @@ object CoverCollectionManager {
             }
     }
 
-    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>) {
-        remoteCacheFile(isNight).writeText(GSON.toJson(entries.map {
+    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>, containerId: String? = null) {
+        remoteCacheFile(isNight, containerId).writeText(GSON.toJson(entries.map {
             RemoteCache(
                 name = it.collection.name,
                 dirName = it.dirName,

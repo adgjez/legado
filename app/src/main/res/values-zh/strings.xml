@@ -1614,6 +1614,7 @@
     <string name="theme_export_zip">导出 ZIP</string>
     <string name="theme_download_local">下载到本地</string>
     <string name="theme_upload_remote">上传到云端</string>
+    <string name="theme_s3_container_switch">切换 S3 容器</string>
     <string name="theme_delete_local">删除本地</string>
     <string name="theme_delete_remote">删除云端</string>
     <string name="theme_delete_both">同时删除</string>
@@ -1993,4 +1994,8 @@
     <string name="cache_manage_manifest_missing">&#32531;&#23384;&#28165;&#21333;&#32570;&#22833;</string>
     <string name="cache_manage_legacy_manifest_missing">&#26087;&#29256;&#32531;&#23384;&#21253;&#32570;&#23569;&#30446;&#24405;&#28165;&#21333;&#65292;&#35831;&#20808;&#25171;&#24320;&#20070;&#31821;&#29983;&#25104;&#30446;&#24405;&#65292;&#25110;&#22312;&#26377;&#30446;&#24405;&#30340;&#35774;&#22791;&#19978;&#37325;&#26032;&#19978;&#20256;&#12290;</string>
     <string name="top_bar_style_immersive">&#24120;&#35268;&#39030;&#26639;</string>
+    <string name="webdav_account_manage">WebDAV 账号配置</string>
+    <string name="webdav_account_manage_summary">配置服务器地址、账号和密钥</string>
+    <string name="sync_theme_packages">同步云端主题</string>
+    <string name="sync_theme_packages_summary">开启后主题管理会后台同步云端主题包</string>
 </resources>

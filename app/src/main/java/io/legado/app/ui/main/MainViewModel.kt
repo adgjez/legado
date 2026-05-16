@@ -13,7 +13,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DefaultData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
@@ -288,7 +288,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
 
     fun restoreWebDav(name: String) {
         execute {
-            AppWebDav.restoreWebDav(name)
+            AppCloudStorage.restore(name)
         }
     }
 

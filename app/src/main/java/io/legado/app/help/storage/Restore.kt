@@ -30,8 +30,9 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.data.entities.BaseSource
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.lib.cloud.S3ContainerManager
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
@@ -280,25 +281,27 @@ object Restore {
         restoreTopBarPackages(path)
         restoreCoverCollections(path)
         restoreSourceRuntime(path)
-        //AppWebDav.downBgs()
+        //AppCloudStorage.downBgs()
         appCtx.getSharedPreferences(path, "config")?.all?.let { map ->
             val edit = appCtx.defaultSharedPreferences.edit()
 
             map.forEach { (key, value) ->
                 if (BackupConfig.keyIsNotIgnore(key)) {
                     when (key) {
-                        PreferKey.webDavPassword -> {
+                        PreferKey.webDavPassword, PreferKey.s3SecretKey, PreferKey.s3SessionToken -> {
                             kotlin.runCatching {
                                 aes.decryptStr(value.toString())
                             }.getOrNull()?.let {
                                 edit.putString(key, it)
                             } ?: let {
-                                if (appCtx.getPrefString(PreferKey.webDavPassword)
-                                        .isNullOrBlank()
-                                ) {
+                                if (appCtx.getPrefString(key).isNullOrBlank()) {
                                     edit.putString(key, value.toString())
                                 }
                             }
+                        }
+
+                        PreferKey.s3Containers -> {
+                            edit.putString(key, S3ContainerManager.restoreEncryptedBackupJson(value.toString(), aes))
                         }
 
                         else -> when (value) {
@@ -527,7 +530,7 @@ object Restore {
 
     private suspend fun refreshWebDavAfterRestore() {
         kotlin.runCatching {
-            AppWebDav.upConfig()
+            AppCloudStorage.upConfig()
         }.onFailure {
             AppLog.put("refresh WebDAV after restore failed\n${it.localizedMessage}", it)
         }
@@ -628,6 +631,16 @@ object Restore {
             PreferKey.webDavAccount,
             PreferKey.webDavPassword,
             PreferKey.webDavDir,
+            PreferKey.cloudStorageType,
+            PreferKey.s3Endpoint,
+            PreferKey.s3Region,
+            PreferKey.s3Bucket,
+            PreferKey.s3Prefix,
+            PreferKey.s3AccessKey,
+            PreferKey.s3SecretKey,
+            PreferKey.s3SessionToken,
+            PreferKey.s3Containers,
+            PreferKey.s3ContainerSelections,
             PreferKey.exportType,
             PreferKey.chineseConverterType,
             PreferKey.launcherIcon,

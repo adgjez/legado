@@ -29,6 +29,9 @@ object AiToolRegistry {
         "update_book_source",
         "fetch_source_html",
         "debug_book_source",
+        "reading_ajax",
+        "reading_webview",
+        "capture_web_requests",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -48,6 +51,9 @@ object AiToolRegistry {
         "update_book_source" to "书源",
         "fetch_source_html" to "书源",
         "debug_book_source" to "书源",
+        "reading_ajax" to "阅读网络",
+        "reading_webview" to "阅读网络",
+        "capture_web_requests" to "阅读网络",
         "list_book_chapters" to "阅读",
         "read_book_chapter_content" to "阅读",
         "search_web_tavily" to "联网搜索",
@@ -64,6 +70,7 @@ object AiToolRegistry {
         tools += AiLibraryTool.resolvedTools()
         tools += AiTavilyTool.resolvedTools()
         tools += AiBookSourceTool.resolvedTools()
+        tools += AiReadingNetworkTool.resolvedTools()
         tools += AiSettingsTool.resolvedTools()
         return tools.distinctBy { it.name }
     }

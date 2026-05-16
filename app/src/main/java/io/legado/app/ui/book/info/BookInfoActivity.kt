@@ -254,6 +254,7 @@ class BookInfoActivity :
     private var introRawText: CharSequence = ""
     private var detailIntroOnly = false
     private var blockRefreshForIntroTouch = false
+    private var allowRefreshForIntroTouch = false
     private var pageTouchDownX = 0f
     private var pageTouchDownY = 0f
     private var pageTouchDirection = 0
@@ -269,7 +270,9 @@ class BookInfoActivity :
         val inflater = LayoutInflater.from(this)
         val view = inflater.inflate(R.layout.view_book_intro, binding.tvIntroContainer, false) as ScrollTextView
         view.onScrollInterceptChange = { disallow ->
-            requestBookInfoPagerDisallowIntercept(disallow || blockRefreshForIntroTouch)
+            requestBookInfoPagerDisallowIntercept(
+                disallow || (blockRefreshForIntroTouch && !allowRefreshForIntroTouch)
+            )
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             view.revealOnFocusHint = false
@@ -896,7 +899,8 @@ class BookInfoActivity :
                     refreshEnabledBeforeTouch = binding.refreshLayout.isEnabled
                     if (blockRefreshArea) {
                         blockRefreshForIntroTouch = true
-                        binding.refreshLayout.isEnabled = true
+                        allowRefreshForIntroTouch = false
+                        binding.refreshLayout.isEnabled = false
                     }
                     requestBookInfoPagerDisallowIntercept(scrollView.canScrollVertically(-1) || scrollView.canScrollVertically(1))
                 }
@@ -915,13 +919,10 @@ class BookInfoActivity :
                         requestBookInfoPagerDisallowIntercept(false)
                     } else if (direction == 2) {
                         val dragDown = event.y > lastY
-                        val canChildScroll = if (dragDown) {
-                            scrollView.canScrollVertically(-1)
-                        } else {
-                            scrollView.canScrollVertically(1)
-                        }
-                        requestBookInfoPagerDisallowIntercept(true)
-                        binding.refreshLayout.isEnabled = !canChildScroll
+                        val allowRefresh = blockRefreshArea && dragDown && !scrollView.canScrollVertically(-1)
+                        allowRefreshForIntroTouch = allowRefresh
+                        requestBookInfoPagerDisallowIntercept(!allowRefresh)
+                        binding.refreshLayout.isEnabled = allowRefresh
                     }
                     lastY = event.y
                 }
@@ -929,6 +930,7 @@ class BookInfoActivity :
                 MotionEvent.ACTION_CANCEL -> {
                     direction = 0
                     blockRefreshForIntroTouch = false
+                    allowRefreshForIntroTouch = false
                     binding.refreshLayout.isEnabled = refreshEnabledBeforeTouch
                     requestBookInfoPagerDisallowIntercept(false)
                 }
@@ -937,6 +939,7 @@ class BookInfoActivity :
         }
     }
     private fun requestBookInfoPagerDisallowIntercept(disallow: Boolean) {
+        binding.scrollView.requestDisallowInterceptTouchEvent(disallow)
         if (::bookInfoPager.isInitialized) {
             bookInfoPager.requestDisallowInterceptTouchEvent(disallow)
         }

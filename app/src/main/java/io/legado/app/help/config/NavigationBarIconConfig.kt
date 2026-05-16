@@ -20,7 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getSecondaryTextColor
@@ -138,11 +138,11 @@ object NavigationBarIconConfig {
             ?: DEFAULT_DIR_NAME
     }
 
-    suspend fun loadEntries(isNight: Boolean, includeRemote: Boolean): List<Entry> {
+    suspend fun loadEntries(isNight: Boolean, includeRemote: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         migrateLegacyIconsIfNeeded(isNight)
         val local = loadLocal(isNight).associateBy { it.dirName }
         val remote = if (includeRemote) {
-            loadRemoteOrCache(isNight).associateBy { it.dirName }
+            loadRemoteOrCache(isNight, containerId, scope).associateBy { it.dirName }
         } else {
             emptyMap()
         }
@@ -286,12 +286,12 @@ object NavigationBarIconConfig {
         resetActiveIfNeeded(entry)
     }
 
-    suspend fun delete(entry: Entry) {
+    suspend fun delete(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
         when (entry.source) {
-            Source.REMOTE -> deleteRemote(entry)
+            Source.REMOTE -> deleteRemote(entry, containerId, scope)
             Source.BOTH -> {
-                val remoteResult = runCatching { deleteRemote(entry) }
+                val remoteResult = runCatching { deleteRemote(entry, containerId, scope) }
                 deleteLocal(entry)
                 remoteResult.getOrThrow()
             }
@@ -314,20 +314,20 @@ object NavigationBarIconConfig {
         return importZipInternal(zipFile)
     }
 
-    suspend fun upload(entry: Entry) {
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.uploadNavigationBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry))
+        AppCloudStorage.uploadNavigationBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry), containerId, scope)
     }
 
-    suspend fun download(entry: Entry): Entry {
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry {
         val zipFile = tempDir.getFile("${entry.dirName}.zip")
-        AppWebDav.downloadNavigationBarPackage(entry.config.isNightMode, entry.dirName, zipFile)
+        AppCloudStorage.downloadNavigationBarPackage(entry.config.isNightMode, entry.dirName, zipFile, containerId, scope)
         return importZipInternal(zipFile, entry.remoteUpdatedAt).copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
     }
 
-    suspend fun deleteRemote(entry: Entry) {
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.deleteNavigationBarPackage(entry.config.isNightMode, entry.dirName)
+        AppCloudStorage.deleteNavigationBarPackage(entry.config.isNightMode, entry.dirName, containerId, scope)
     }
 
     fun saveIconToPackage(
@@ -465,8 +465,8 @@ object NavigationBarIconConfig {
             .orEmpty()
     }
 
-    private suspend fun loadRemote(isNight: Boolean): List<Entry> {
-        return AppWebDav.listNavigationBarPackages(isNight).mapNotNull { file ->
+    private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        return AppCloudStorage.listNavigationBarPackages(isNight, containerId, scope).mapNotNull { file ->
             val name = file.displayName.removeSuffix(".zip")
             Entry(
                 Config(name = name, isNightMode = isNight, updatedAt = file.lastModify),
@@ -477,23 +477,25 @@ object NavigationBarIconConfig {
         }
     }
 
-    private suspend fun loadRemoteOrCache(isNight: Boolean): List<Entry> {
-        val cached = readRemoteCache(isNight)
+    private suspend fun loadRemoteOrCache(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        val cached = readRemoteCache(isNight, containerId)
         return runCatching {
-            loadRemote(isNight)
+            loadRemote(isNight, containerId, scope)
         }.onSuccess { remote ->
-            writeRemoteCache(isNight, remote)
+            writeRemoteCache(isNight, remote, containerId)
         }.getOrElse {
             cached
         }
     }
 
-    private fun remoteCacheFile(isNight: Boolean): File {
-        return remoteCacheDir.getFile(if (isNight) "night.json" else "day.json")
+    private fun remoteCacheFile(isNight: Boolean, containerId: String? = null): File {
+        val mode = if (isNight) "night" else "day"
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("$mode$suffix.json")
     }
 
-    private fun readRemoteCache(isNight: Boolean): List<Entry> {
-        val file = remoteCacheFile(isNight)
+    private fun readRemoteCache(isNight: Boolean, containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(isNight, containerId)
         if (!file.exists()) return emptyList()
         return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList())
             .filter { it.isNightMode == isNight }
@@ -513,7 +515,7 @@ object NavigationBarIconConfig {
             }
     }
 
-    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>) {
+    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>, containerId: String? = null) {
         val cache = entries.map {
             RemoteCache(
                 name = it.config.name,
@@ -522,7 +524,7 @@ object NavigationBarIconConfig {
                 updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.config.updatedAt
             )
         }
-        remoteCacheFile(isNight).writeTextIfChanged(GSON.toJson(cache))
+        remoteCacheFile(isNight, containerId).writeTextIfChanged(GSON.toJson(cache))
     }
 
     private fun readEntry(dir: File): Entry? {

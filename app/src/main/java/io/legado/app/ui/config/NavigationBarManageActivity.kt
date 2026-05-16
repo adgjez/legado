@@ -4,11 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -24,8 +28,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -39,6 +45,7 @@ import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.externalFiles
@@ -71,6 +78,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var pendingIconRequest: IconRequest? = null
     private var pendingSidebarBackgroundEntry: NavigationBarIconConfig.Entry? = null
     private val handledWebDavTasks = mutableSetOf<String>()
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
+    private var containerMenuPopup: PopupWindow? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val selectIcon = registerForActivityResult(HandleFileContract()) { result ->
@@ -174,6 +184,11 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         observeWebDavTasks()
     }
 
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
+    }
+
     override fun observeLiveBus() {
         observeEvent<String>(EventBus.RECREATE) {
             loadPackages()
@@ -220,16 +235,32 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             }
         }
         updateTabs()
-        titleBar.toolbar.menu.add(R.string.import_str).setOnMenuItemClickListener {
-            importPackage.launch {
-                mode = HandleFileContract.FILE
-                title = getString(R.string.import_str)
-                allowExtensions = arrayOf("zip")
-            }
-            true
-        }
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            setActionView(R.layout.view_action_button)
+            actionView?.let { view ->
+                view.contentDescription = title
+                view.findViewById<ImageButton>(R.id.item)?.setImageDrawable(icon)
+                view.setOnClickListener { showContainerSelector(view) }
+            }
+        }
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_CONTAINER -> {
+                showContainerSelector(item.actionView)
+                true
+            }
+            else -> super.onCompatOptionsItemSelected(item)
+        }
+    }
     private fun showAddDialog() {
         selector(
             getString(R.string.theme_add),
@@ -253,11 +284,50 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         btnNight.setTextColor(if (isNightMode) accentColor else primaryTextColor)
     }
 
+    private fun updateContainerMenu() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        val item = containerMenuItem ?: return
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            ?: containers.firstOrNull()?.id
+        item.isVisible = true
+        val title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+        item.title = title
+        item.actionView?.contentDescription = title
+    }
+
+    private fun showContainerSelector(anchor: View? = null) {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) { AppCloudStorage.listContainers().filter { it.enabled } }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            val popupAnchor = anchor ?: containerMenuItem?.actionView ?: binding.titleBar.toolbar
+            val actions = containers.map { container ->
+                ModernActionPopup.Action(AppCloudStorage.containerDisplayLabel(container)) {
+                    if (container.id == selected) return@Action
+                    AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                    cloudContainerId = container.id
+                    updateContainerMenu()
+                    loadPackages()
+                }
+            }
+            containerMenuPopup = ModernActionPopup.show(popupAnchor, actions, containerMenuPopup)
+        }
+    }
     private fun loadPackages() {
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
-                    NavigationBarIconConfig.loadEntries(isNightMode, includeRemote = true)
+                    NavigationBarIconConfig.loadEntries(isNightMode, includeRemote = true, cloudContainerId, CLOUD_SCOPE)
                 }
             }.onSuccess {
                 adapter.submit(it, NavigationBarIconConfig.activeDirName(isNightMode))
@@ -560,7 +630,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) {
                 add(NavAction.EDIT)
                 add(NavAction.EXPORT)
-                if (AppConfig.syncThemePackages) add(NavAction.UPLOAD)
+                if (entry.source != NavigationBarIconConfig.Source.REMOTE) add(NavAction.UPLOAD)
                 if (entry.source != NavigationBarIconConfig.Source.LOCAL) add(NavAction.DOWNLOAD)
                 if (entry.source != NavigationBarIconConfig.Source.REMOTE) add(NavAction.DELETE_LOCAL)
                 if (entry.source != NavigationBarIconConfig.Source.LOCAL) add(NavAction.DELETE_REMOTE)
@@ -573,16 +643,16 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 NavAction.EDIT -> showEditDialog(entry)
                 NavAction.EXPORT -> exportPackage(entry)
                 NavAction.UPLOAD -> enqueueUpload(entry)
-                NavAction.DOWNLOAD -> runAction { NavigationBarIconConfig.download(entry) }
+                NavAction.DOWNLOAD -> runAction { NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) }
                 NavAction.DELETE_LOCAL -> confirmDelete(entry, getString(R.string.navigation_bar_delete_local_confirm)) {
                     NavigationBarIconConfig.deleteLocal(entry)
                     postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
                 }
                 NavAction.DELETE_REMOTE -> confirmDelete(entry, getString(R.string.navigation_bar_delete_remote_confirm)) {
-                    NavigationBarIconConfig.deleteRemote(entry)
+                    NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
                 }
                 NavAction.DELETE_BOTH -> confirmDelete(entry, getString(R.string.navigation_bar_delete_both_confirm)) {
-                    NavigationBarIconConfig.delete(entry)
+                    NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
                     postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
                 }
             }
@@ -605,7 +675,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private fun applyPackage(entry: NavigationBarIconConfig.Entry) {
         lifecycleScope.launch {
             kotlin.runCatching {
-                withContext(Dispatchers.IO) { if (entry.source == NavigationBarIconConfig.Source.REMOTE) NavigationBarIconConfig.download(entry) else entry }
+                withContext(Dispatchers.IO) { if (entry.source == NavigationBarIconConfig.Source.REMOTE) NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) else entry }
             }.onSuccess {
                 NavigationBarIconConfig.apply(it)
                 postEvent(EventBus.NAVIGATION_BAR_CHANGED, it.config.isNightMode)
@@ -623,7 +693,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             type = WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD,
             runningMessage = getString(R.string.navigation_bar_upload)
         ) {
-            NavigationBarIconConfig.upload(entry)
+            NavigationBarIconConfig.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
         toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
     }
@@ -734,6 +804,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     )
 
     private companion object {
+        private const val CLOUD_SCOPE = "navigationBar"
+        private const val MENU_CONTAINER = 0x5401
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
     }
@@ -822,6 +894,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 cardPreview.visibility = View.GONE
                 btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.text = getString(R.string.edit)
+                btnEdit.visibility = if (entry.dirName == NavigationBarIconConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
                 btnApply.setTextColor(accentColor)
                 btnEdit.setTextColor(primaryTextColor)
                 btnMore.setTextColor(primaryTextColor)
@@ -829,7 +902,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     it.typeface = this@NavigationBarManageActivity.uiTypeface()
                 }
                 btnApply.setOnClickListener { applyPackage(entry) }
-                btnEdit.setOnClickListener { showEditDialog(entry) }
+                btnEdit.setOnClickListener {
+                    if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) showEditDialog(entry)
+                }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
             }

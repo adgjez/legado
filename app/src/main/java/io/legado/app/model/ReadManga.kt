@@ -8,7 +8,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.ReadRecordDailyHelper
 import io.legado.app.help.book.BookHelp
@@ -499,7 +499,7 @@ object ReadManga : CoroutineScope by MainScope() {
     fun uploadProgress(successAction: (() -> Unit)? = null) {
         book?.let {
             launch(IO) {
-                AppWebDav.uploadBookProgress(it) {
+                AppCloudStorage.uploadBookProgress(it) {
                     successAction?.invoke()
                 }
                 ensureActive()
@@ -520,7 +520,7 @@ object ReadManga : CoroutineScope by MainScope() {
         if (!AppConfig.syncBookProgress) return
         val book = book ?: return
         Coroutine.async {
-            AppWebDav.getBookProgress(book)
+            AppCloudStorage.getBookProgress(book)
         }.onError {
             AppLog.put("拉取阅读进度失败", it)
         }.onSuccess { progress ->
@@ -530,7 +530,7 @@ object ReadManga : CoroutineScope by MainScope() {
             ) {
                 // 服务器没有进度或者进度比服务器快，上传现有进度
                 Coroutine.async {
-                    AppWebDav.uploadBookProgress(BookProgress(book), uploadSuccessAction)
+                    AppCloudStorage.uploadBookProgress(BookProgress(book), uploadSuccessAction)
                     book.update()
                 }
             } else if (progress.durChapterIndex > book.durChapterIndex ||
