@@ -81,6 +81,9 @@ object AiReadingNetworkTool {
             put("maxRequests", intProp("最多记录请求数，默认 50，最大 200。", 1, 200))
             put("maxBodyChars", intProp("单个响应体最大返回字符数，默认 20000，最大 80000。", 0, 80_000))
             put("replayResponse", booleanProp("是否复放 GET/HEAD 请求获取响应体，默认 true。"))
+            put("replayTimeoutMs", intProp("单个复放请求超时毫秒，默认 8000，最大 30000。", 2_000, 30_000))
+            put("maxReplayRequests", intProp("最大复放请求数，默认 5，最大 20。", 1, 20))
+            put("replayOnlyMatched", booleanProp("是否只复放命中 includeRegex 或疑似接口的请求，默认 true。"))
             put("js", stringProp("可选，页面完成后执行的 JS，用于触发接口请求。"))
         },
         required = JSONArray().put("url")
@@ -171,6 +174,9 @@ object AiReadingNetworkTool {
                     maxRequests = args.optInt("maxRequests", 50).coerceIn(1, 200),
                     maxBodyChars = args.optInt("maxBodyChars", 20_000).coerceIn(0, 80_000),
                     replayResponse = args.optBoolean("replayResponse", true),
+                    replayTimeoutMs = args.optLong("replayTimeoutMs", 8_000L).coerceIn(2_000L, 30_000L),
+                    maxReplayRequests = args.optInt("maxReplayRequests", 5).coerceIn(1, 20),
+                    replayOnlyMatched = args.optBoolean("replayOnlyMatched", true),
                     js = args.optString("js").takeIf { it.isNotBlank() },
                     coroutineContext = coroutineContext
                 )

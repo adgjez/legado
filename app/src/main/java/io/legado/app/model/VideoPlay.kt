@@ -102,7 +102,32 @@ object VideoPlay : CoroutineScope by MainScope(){
             videoPrefs.edit { putBoolean("fullBottomProgressBar", value) }
         }
     /**  弹幕滚动速度  **/
-    var danmakuSpeed = 1.2f
+    var danmakuSpeed
+        get() = videoPrefs.getFloat("danmakuSpeed", 1.2f)
+        set(value) {
+            videoPrefs.edit { putFloat("danmakuSpeed", value.coerceIn(0.5f, 3f)) }
+        }
+    var danmakuBaseUrl
+        get() = videoPrefs.getString("danmakuBaseUrl", "https://api.dandanplay.net")
+            ?: "https://api.dandanplay.net"
+        set(value) {
+            videoPrefs.edit { putString("danmakuBaseUrl", value.trim().ifBlank { "https://api.dandanplay.net" }) }
+        }
+    var danmakuAppId
+        get() = videoPrefs.getString("danmakuAppId", "").orEmpty()
+        set(value) {
+            videoPrefs.edit { putString("danmakuAppId", value.trim()) }
+        }
+    var danmakuAppSecret
+        get() = videoPrefs.getString("danmakuAppSecret", "").orEmpty()
+        set(value) {
+            videoPrefs.edit { putString("danmakuAppSecret", value.trim()) }
+        }
+    var danmakuCompatibleUrl
+        get() = videoPrefs.getString("danmakuCompatibleUrl", "").orEmpty()
+        set(value) {
+            videoPrefs.edit { putString("danmakuCompatibleUrl", value.trim()) }
+        }
     /**  锁屏  **/
     var lockCurScreen = false
     /**  竖屏视频  **/

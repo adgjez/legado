@@ -16,12 +16,15 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.utils.get
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
@@ -38,17 +41,22 @@ object HttpCaptureHelper {
         val maxRequests: Int = 50,
         val maxBodyChars: Int = 20_000,
         val replayResponse: Boolean = true,
+        val replayTimeoutMs: Long = 8_000L,
+        val maxReplayRequests: Int = 5,
+        val replayOnlyMatched: Boolean = true,
         val js: String? = null,
         val coroutineContext: CoroutineContext = EmptyCoroutineContext
     )
 
     private data class CapturedRequest(
+        val sequence: Int,
         val url: String,
         val method: String,
         val headers: Map<String, String>,
         val isForMainFrame: Boolean,
         val hasGesture: Boolean,
-        val time: Long
+        val time: Long,
+        val matched: Boolean
     )
 
     suspend fun capture(config: Config): JSONObject {
@@ -58,6 +66,7 @@ object HttpCaptureHelper {
         val include = compileRegex(config.includeRegex)
         val exclude = compileRegex(config.excludeRegex)
         val requests = Collections.synchronizedList(mutableListOf<CapturedRequest>())
+        val sequence = AtomicInteger(0)
         val finished = AtomicBoolean(false)
         val handler = Handler(Looper.getMainLooper())
         var pooledWebView: PooledWebView? = null
@@ -91,7 +100,14 @@ object HttpCaptureHelper {
                                     view: WebView,
                                     request: WebResourceRequest
                                 ): android.webkit.WebResourceResponse? {
-                                    recordRequest(request, include, exclude, config.maxRequests, requests)
+                                    recordRequest(
+                                        request = request,
+                                        include = include,
+                                        exclude = exclude,
+                                        maxRequests = config.maxRequests,
+                                        requests = requests,
+                                        sequence = sequence
+                                    )
                                     return super.shouldInterceptRequest(view, request)
                                 }
 
@@ -108,6 +124,7 @@ object HttpCaptureHelper {
                                                 put("url", config.url)
                                                 put("finalUrl", view.url.orEmpty())
                                                 put("requestCount", requests.size)
+                                                put("captureStatus", "captured")
                                                 put("captureMode", "request_log_replay")
                                             }
                                             continuation.resume(result)
@@ -129,10 +146,18 @@ object HttpCaptureHelper {
                 }
                 val array = JSONArray()
                 val snapshot = requests.toList()
+                val replayCandidates = pickReplayCandidates(snapshot, config)
                 snapshot.forEach { item ->
-                    array.put(buildRequestJson(item, config))
+                    array.put(buildRequestJson(item, config, replayCandidates.contains(item.sequence)))
                 }
                 loadResult.put("requests", array)
+                loadResult.put("matchedRequestCount", snapshot.count { it.matched })
+                loadResult.put("replayedRequestCount", replayCandidates.size)
+                if (snapshot.isEmpty()) {
+                    loadResult.put("emptyReason", "no_requests_captured")
+                } else if (config.replayResponse && replayCandidates.isEmpty()) {
+                    loadResult.put("emptyReason", "no_matched_request")
+                }
                 loadResult
             }
         } finally {
@@ -149,16 +174,19 @@ object HttpCaptureHelper {
         include: Regex?,
         exclude: Regex?,
         maxRequests: Int,
-        requests: MutableList<CapturedRequest>
+        requests: MutableList<CapturedRequest>,
+        sequence: AtomicInteger
     ) {
         val url = request.url.toString()
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
-        if (include != null && !include.containsMatchIn(url)) return
+        val matched = include?.containsMatchIn(url) ?: isLikelyApiRequest(url, request)
+        if (include != null && !matched) return
         if (exclude != null && exclude.containsMatchIn(url)) return
         synchronized(requests) {
             if (requests.any { it.url == url && it.method == request.method }) return
             if (requests.size >= maxRequests.coerceIn(1, 200)) return
             requests += CapturedRequest(
+                sequence = sequence.incrementAndGet(),
                 url = url,
                 method = request.method.orEmpty().ifBlank { "GET" },
                 headers = request.requestHeaders.orEmpty(),
@@ -168,44 +196,178 @@ object HttpCaptureHelper {
                 } else {
                     false
                 },
-                time = System.currentTimeMillis()
+                time = System.currentTimeMillis(),
+                matched = matched
             )
         }
     }
 
-    private suspend fun buildRequestJson(item: CapturedRequest, config: Config): JSONObject {
+    private fun pickReplayCandidates(
+        requests: List<CapturedRequest>,
+        config: Config
+    ): Set<Int> {
+        if (!config.replayResponse) return emptySet()
+        val limit = config.maxReplayRequests.coerceIn(1, 20)
+        val replayable = requests.filter { it.method.equals("GET", true) || it.method.equals("HEAD", true) }
+        val matched = replayable.filter { it.matched }
+        val candidates = if (config.replayOnlyMatched) matched else matched.ifEmpty { replayable }
+        return candidates.take(limit).map { it.sequence }.toSet()
+    }
+
+    private suspend fun buildRequestJson(
+        item: CapturedRequest,
+        config: Config,
+        shouldReplay: Boolean
+    ): JSONObject {
         val json = JSONObject().apply {
+            put("sequence", item.sequence)
             put("url", item.url)
             put("method", item.method)
             put("headers", JSONObject(item.headers))
             put("isForMainFrame", item.isForMainFrame)
             put("hasGesture", item.hasGesture)
             put("time", item.time)
+            put("matched", item.matched)
         }
-        if (!config.replayResponse || item.method.uppercase() != "GET") {
+        if (!config.replayResponse) {
             json.put("replayed", false)
-            if (item.method.uppercase() != "GET") {
-                json.put("replaySkipReason", "only GET requests are replayed")
-            }
+            json.put("replayStatus", "not_requested")
+            json.put("emptyReason", "replay_disabled")
             return json
         }
-        runCatching {
-            val response = okHttpClient.newCallStrResponse {
-                url(item.url)
-                addHeaders(item.headers)
+        if (!item.method.equals("GET", true) && !item.method.equals("HEAD", true)) {
+            json.put("replayed", false)
+            json.put("replayStatus", "skipped_method")
+            json.put("emptyReason", "method_not_replayable")
+            json.put("replaySkipReason", "only GET/HEAD requests are replayed")
+            return json
+        }
+        if (!shouldReplay) {
+            json.put("replayed", false)
+            json.put("replayStatus", if (config.replayOnlyMatched) "skipped_not_matched" else "not_requested")
+            json.put("emptyReason", "no_matched_request")
+            return json
+        }
+        val replayTimeout = config.replayTimeoutMs.coerceIn(2_000L, 30_000L)
+        val replayResult = withTimeoutOrNull(replayTimeout) {
+            runCatching {
+                val headers = buildReplayHeaders(item, config)
+                json.put("effectiveHeaders", JSONObject(headers.first))
+                json.put("headerSources", JSONObject(headers.second))
+                val client = okHttpClient.newBuilder()
+                    .callTimeout(replayTimeout, TimeUnit.MILLISECONDS)
+                    .readTimeout(replayTimeout, TimeUnit.MILLISECONDS)
+                    .build()
+                val response = client.newCallStrResponse {
+                    url(item.url)
+                    addHeaders(headers.first)
+                    if (item.method.equals("HEAD", true)) {
+                        head()
+                    }
+                }
+                val body = response.body.orEmpty()
+                json.put("replayed", true)
+                json.put("statusCode", response.code())
+                json.put("message", response.message())
+                json.put("finalUrl", response.url)
+                json.put("contentType", response.raw.header("Content-Type").orEmpty())
+                json.put("contentLength", response.raw.body.contentLength())
+                json.put("bodyLength", body.length)
+                json.put("truncated", body.length > config.maxBodyChars)
+                json.put("body", body.take(config.maxBodyChars.coerceIn(0, 80_000)))
+                json.put("replayStatus", replayStatus(response.code(), body))
+                emptyReason(response.code(), body, response.raw.header("Content-Type")).let {
+                    if (it != null) json.put("emptyReason", it)
+                }
             }
-            val body = response.body.orEmpty()
+        }
+        if (replayResult == null) {
             json.put("replayed", true)
-            json.put("statusCode", response.code())
-            json.put("message", response.message())
-            json.put("finalUrl", response.url)
-            json.put("bodyLength", body.length)
-            json.put("truncated", body.length > config.maxBodyChars)
-            json.put("body", body.take(config.maxBodyChars.coerceIn(0, 80_000)))
-        }.onFailure {
-            json.put("error", it.localizedMessage ?: it.javaClass.simpleName)
+            json.put("replayStatus", "timeout")
+            json.put("emptyReason", "request_timeout")
+        } else {
+            replayResult.onFailure {
+                json.put("replayed", true)
+                json.put("replayStatus", "network_error")
+                json.put("emptyReason", "response_body_read_error")
+                json.put("error", it.localizedMessage ?: it.javaClass.simpleName)
+            }
         }
         return json
+    }
+
+    private fun buildReplayHeaders(
+        item: CapturedRequest,
+        config: Config
+    ): Pair<Map<String, String>, Map<String, String>> {
+        val headers = linkedMapOf<String, String>()
+        val sources = linkedMapOf<String, String>()
+        item.headers.forEach { (key, value) ->
+            if (key.isNotBlank() && value.isNotBlank()) {
+                headers[key] = value
+            }
+        }
+        if (headers.none { it.key.equals(AppConst.UA_NAME, true) }) {
+            headers[AppConst.UA_NAME] = config.source?.getHeaderMap(true)?.get(AppConst.UA_NAME, true)
+                ?: AppConfig.userAgent
+            sources["ua"] = "source_or_app"
+        } else {
+            sources["ua"] = "captured"
+        }
+        if (headers.none { it.key.equals("Referer", true) }) {
+            headers["Referer"] = config.url
+            sources["referer"] = "page_url"
+        } else {
+            sources["referer"] = "captured"
+        }
+        val capturedCookie = headers.entries.firstOrNull { it.key.equals("Cookie", true) }?.value
+        val webViewCookie = android.webkit.CookieManager.getInstance().getCookie(item.url)
+        val storeCookie = CookieStore.getCookie(item.url)
+        val cookie = CookieManager.mergeCookies(capturedCookie, webViewCookie, storeCookie)
+        if (!cookie.isNullOrBlank()) {
+            headers.keys.firstOrNull { it.equals("Cookie", true) }?.let { headers.remove(it) }
+            headers["Cookie"] = cookie
+            sources["cookie"] = when {
+                !webViewCookie.isNullOrBlank() -> "webview"
+                !storeCookie.isNullOrBlank() -> "store"
+                !capturedCookie.isNullOrBlank() -> "captured"
+                else -> "none"
+            }
+        } else {
+            sources["cookie"] = "none"
+        }
+        return headers to sources
+    }
+
+    private fun replayStatus(code: Int, body: String): String {
+        return when {
+            code == 204 || code == 304 || body.isEmpty() -> "empty_body"
+            code in 200..299 -> "success"
+            else -> "http_error"
+        }
+    }
+
+    private fun emptyReason(code: Int, body: String, contentType: String?): String? {
+        return when {
+            code == 204 || code == 304 -> "http_204_304"
+            body.isEmpty() -> "zero_length_body"
+            contentType != null && !contentType.contains("text", true)
+                    && !contentType.contains("json", true)
+                    && !contentType.contains("xml", true)
+                    && !contentType.contains("javascript", true) -> "non_text_response"
+            else -> null
+        }
+    }
+
+    private fun isLikelyApiRequest(url: String, request: WebResourceRequest): Boolean {
+        if (request.isForMainFrame) return false
+        val lower = url.lowercase()
+        return lower.contains("/api/") ||
+                lower.contains("ajax") ||
+                lower.contains("json") ||
+                lower.endsWith(".m3u8") ||
+                lower.endsWith(".mpd") ||
+                !lower.matches(Regex(""".*\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?)(\?.*)?$"""))
     }
 
     private fun compileRegex(pattern: String?): Regex? {

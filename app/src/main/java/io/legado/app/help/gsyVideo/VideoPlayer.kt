@@ -41,8 +41,13 @@ class VideoPlayer: StandardGSYVideoPlayer {
     private var playSpeed: Float = 1.0f
     private var btnNext: ImageView? = null
     private var tipView: TextView? = null
+    private var topTitle: TextView? = null
+    private var topMore: ImageView? = null
     private var isChanging = false
     private var isLongPressSpeed = false
+    private var topTitleText: CharSequence? = null
+    private var topBackClick: (() -> Unit)? = null
+    private var topMoreClick: ((View) -> Unit)? = null
 
     private var mParser: BaseDanmakuParser? = null //解析器对象
     private var mDanmakuView: DanmakuView? = null //弹幕view
@@ -236,6 +241,17 @@ class VideoPlayer: StandardGSYVideoPlayer {
             }
         }
         tipView = findViewById(R.id.tip_view)
+        topTitle = findViewById<TextView?>(R.id.title)?.also {
+            it.text = topTitleText ?: VideoPlay.videoTitle.orEmpty()
+        }
+        findViewById<View?>(R.id.back)?.setOnClickListener {
+            topBackClick?.invoke() ?: backFromFull(context)
+        }
+        topMore = findViewById<ImageView?>(R.id.more)?.also { more ->
+            more.setOnClickListener {
+                topMoreClick?.invoke(it)
+            }
+        }
         if (mIfCurrentIsFullscreen && !VideoPlay.fullBottomProgressBar) {
             mBottomProgressBar = null
         }
@@ -259,8 +275,25 @@ class VideoPlayer: StandardGSYVideoPlayer {
 
 
     override fun setUp(url: String?, cacheWithPlay: Boolean, cachePath: File?, title: String?): Boolean {
+        setTopTitle(title)
         initDanmaku()
         return super.setUp(url, cacheWithPlay, cachePath, title)
+    }
+
+    fun setTopTitle(title: CharSequence?) {
+        topTitleText = title
+        topTitle?.text = title ?: ""
+        getFullWindowPlayer()?.setTopTitle(title)
+    }
+
+    fun setTopBackClickListener(listener: (() -> Unit)?) {
+        topBackClick = listener
+        getFullWindowPlayer()?.setTopBackClickListener(listener)
+    }
+
+    fun setTopMoreClickListener(listener: ((View) -> Unit)?) {
+        topMoreClick = listener
+        getFullWindowPlayer()?.setTopMoreClickListener(listener)
     }
 
     private fun initDanmaku() {
@@ -464,6 +497,9 @@ class VideoPlayer: StandardGSYVideoPlayer {
             //对弹幕设置偏移记录
 //            gsyVideoPlayer.mDanmakuView = this.mDanmakuView
             gsyVideoPlayer.mDanmakuStartSeekPosition = this.getCurrentPositionWhenPlaying()
+            gsyVideoPlayer.setTopTitle(topTitleText)
+            gsyVideoPlayer.setTopBackClickListener(topBackClick)
+            gsyVideoPlayer.setTopMoreClickListener(topMoreClick)
             onPrepareDanmaku(gsyVideoPlayer)
         }
         return gsyBaseVideoPlayer
