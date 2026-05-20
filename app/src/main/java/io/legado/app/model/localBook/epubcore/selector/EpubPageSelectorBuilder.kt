@@ -20,8 +20,11 @@ object EpubPageSelectorBuilder {
         collectTextFragments(page.paintFragments, 0f, 0f, fragments)
         val blocks = fragments
             .groupBy { it.nodePath }
-            .toSortedMap(compareBy { it })
-            .values
+            .toList()
+            .sortedWith(compareBy<Pair<String, List<AbsoluteTextFragment>>> { pair ->
+                pair.second.minOfOrNull { it.nodeOrder } ?: Int.MAX_VALUE
+            }.thenBy { it.first })
+            .map { it.second }
             .mapIndexedNotNull { index, group -> buildBlock(index, group) }
         return EpubSelectablePage(page.pageKey(), blocks)
     }
@@ -55,6 +58,35 @@ object EpubPageSelectorBuilder {
     private fun AbsoluteTextFragment.toLines(blockId: String, fragmentTextStart: Int): List<EpubSelectableLine> {
         val textFragment = fragment as? EpubTextFragment
         val layout = textFragment?.staticLayout
+        if (textFragment != null && layout != null) {
+            val startLine = textFragment.startLine.coerceIn(0, layout.lineCount)
+            val endLine = textFragment.endLineExclusive.coerceIn(startLine, layout.lineCount)
+            return (startLine until endLine).mapNotNull { lineIndex ->
+                val sourceStart = layout.getLineStart(lineIndex).coerceIn(0, layout.text.length)
+                val sourceEnd = layout.getLineEnd(lineIndex).coerceIn(sourceStart, layout.text.length)
+                val lineText = layout.text.subSequence(sourceStart, sourceEnd).toString()
+                if (lineText.isBlank()) return@mapNotNull null
+                val localStart = fragmentTextStart + (sourceStart - sourceOffset).coerceAtLeast(0)
+                val localEnd = (localStart + lineText.length).coerceAtMost(fragmentTextStart + text.length)
+                val top = frame.top - textFragment.lineTopOffsetPx + layout.getLineTop(lineIndex)
+                val bottom = frame.top - textFragment.lineTopOffsetPx + layout.getLineBottom(lineIndex)
+                val left = frame.left + layout.getLineLeft(lineIndex)
+                val right = frame.left + layout.getLineRight(lineIndex)
+                EpubSelectableLine(
+                    blockId = blockId,
+                    textStart = localStart,
+                    textEnd = localEnd,
+                    sourceStart = sourceStart,
+                    sourceEnd = sourceEnd,
+                    lineIndex = lineIndex - startLine,
+                    rect = RectF(left, top, right.coerceAtLeast(left + 1f), bottom.coerceAtLeast(top + 1f)),
+                    textOriginX = frame.left,
+                    baselinePx = frame.top - textFragment.lineTopOffsetPx + layout.getLineBaseline(lineIndex),
+                    layoutLineIndex = lineIndex,
+                    layout = layout
+                )
+            }
+        }
         if (textFragment != null && layout != null && textFragment.lineBoxes.isNotEmpty()) {
             return textFragment.lineBoxes.mapNotNull { lineBox ->
                 val sourceStart = lineBox.textStart.coerceIn(0, layout.text.length)
@@ -75,7 +107,8 @@ object EpubPageSelectorBuilder {
                     rect = rect,
                     textOriginX = frame.left,
                     baselinePx = frame.top + lineBox.baselinePx,
-                    layoutLineIndex = lineBox.lineIndex
+                    layoutLineIndex = lineBox.lineIndex,
+                    layout = layout
                 )
             }
         }
@@ -89,8 +122,9 @@ object EpubPageSelectorBuilder {
                 lineIndex = 0,
                 rect = RectF(frame),
                 textOriginX = frame.left,
-                baselinePx = frame.bottom,
-                layoutLineIndex = null
+                    baselinePx = frame.bottom,
+                    layoutLineIndex = null,
+                    layout = null
             )
         )
     }
@@ -105,12 +139,13 @@ object EpubPageSelectorBuilder {
             when (fragment) {
                 is EpubTextFragment -> out += AbsoluteTextFragment(
                     fragment = fragment,
-                    text = fragment.staticLayout?.text?.toString() ?: fragment.text.toString(),
+                    text = fragment.visibleText(),
                     frame = fragment.frame.offsetBy(offsetX, offsetY),
                     nodePath = fragment.source?.start?.nodePath ?: "text:${out.size}",
                     blockKey = fragment.source?.start?.nodePath ?: "text:${out.size}",
                     sourceAnchor = fragment.source?.start,
-                    sourceOffset = fragment.source?.startOffset ?: fragment.startLineOffset()
+                    sourceOffset = fragment.startLineOffset(),
+                    nodeOrder = fragment.source?.start?.blockIndex ?: out.size
                 )
                 is EpubMeasuredTextFragment -> out += AbsoluteTextFragment(
                     fragment = fragment,
@@ -119,7 +154,8 @@ object EpubPageSelectorBuilder {
                     nodePath = fragment.source?.start?.nodePath ?: "measured:${out.size}",
                     blockKey = fragment.source?.start?.nodePath ?: "measured:${out.size}",
                     sourceAnchor = fragment.source?.start,
-                    sourceOffset = fragment.source?.startOffset ?: 0
+                    sourceOffset = fragment.source?.startOffset ?: 0,
+                    nodeOrder = fragment.source?.start?.blockIndex ?: out.size
                 )
                 is EpubContainerFragment -> collectTextFragments(fragment.children, offsetX + fragment.frame.left, offsetY + fragment.frame.top, out)
                 is EpubTableFragment -> collectTextFragments(fragment.children, offsetX + fragment.frame.left, offsetY + fragment.frame.top, out)
@@ -209,6 +245,15 @@ object EpubPageSelectorBuilder {
 
     private fun offsetForLine(block: EpubSelectableBlock, line: EpubSelectableLine, x: Float): Int {
         if (line.textEnd <= line.textStart) return line.textStart
+        val layout = line.layout
+        val layoutLineIndex = line.layoutLineIndex
+        if (layout != null && layoutLineIndex != null) {
+            val sourceOffset = layout.getOffsetForHorizontal(
+                layoutLineIndex,
+                x - line.textOriginX
+            ).coerceIn(line.sourceStart, line.sourceEnd)
+            return (line.textStart + sourceOffset - line.sourceStart).coerceIn(line.textStart, line.textEnd)
+        }
         val width = line.rect.width().coerceAtLeast(1f)
         val ratio = ((x - line.rect.left) / width).coerceIn(0f, 1f)
         val length = line.textEnd - line.textStart
@@ -217,6 +262,12 @@ object EpubPageSelectorBuilder {
 
     private fun xForOffset(block: EpubSelectableBlock, line: EpubSelectableLine, offset: Int): Float {
         if (line.textEnd <= line.textStart) return line.rect.left
+        val layout = line.layout
+        val layoutLineIndex = line.layoutLineIndex
+        if (layout != null && layoutLineIndex != null) {
+            val sourceOffset = (line.sourceStart + offset - line.textStart).coerceIn(line.sourceStart, line.sourceEnd)
+            return line.textOriginX + layout.getPrimaryHorizontal(sourceOffset)
+        }
         val length = line.textEnd - line.textStart
         val ratio = (offset - line.textStart).toFloat().coerceIn(0f, length.toFloat()) / length.toFloat()
         return line.rect.left + line.rect.width() * ratio
@@ -229,7 +280,8 @@ object EpubPageSelectorBuilder {
         val nodePath: String,
         val blockKey: String,
         val sourceAnchor: io.legado.app.model.localBook.epubcore.model.SourceAnchor?,
-        val sourceOffset: Int
+        val sourceOffset: Int,
+        val nodeOrder: Int
     )
 
     private fun RectF.offsetBy(x: Float, y: Float): RectF = RectF(this).apply { offset(x, y) }
@@ -241,5 +293,16 @@ object EpubPageSelectorBuilder {
         } else {
             0
         }
+    }
+
+    private fun EpubTextFragment.visibleText(): String {
+        val layout = staticLayout ?: return text.toString()
+        if (layout.lineCount <= 0) return ""
+        val startLine = startLine.coerceIn(0, layout.lineCount)
+        val endLine = endLineExclusive.coerceIn(startLine, layout.lineCount)
+        if (endLine <= startLine) return ""
+        val start = layout.getLineStart(startLine)
+        val end = layout.getLineEnd(endLine - 1)
+        return layout.text.subSequence(start, end).toString()
     }
 }

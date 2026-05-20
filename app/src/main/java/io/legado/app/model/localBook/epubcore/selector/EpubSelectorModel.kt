@@ -1,6 +1,7 @@
 package io.legado.app.model.localBook.epubcore.selector
 
 import android.graphics.RectF
+import android.text.Layout
 import io.legado.app.model.localBook.epubcore.model.SourceAnchor
 
 data class EpubSelectablePage(
@@ -26,7 +27,8 @@ data class EpubSelectableLine(
     val rect: RectF,
     val textOriginX: Float,
     val baselinePx: Float,
-    val layoutLineIndex: Int? = null
+    val layoutLineIndex: Int? = null,
+    val layout: Layout? = null
 )
 
 data class EpubTextHit(
