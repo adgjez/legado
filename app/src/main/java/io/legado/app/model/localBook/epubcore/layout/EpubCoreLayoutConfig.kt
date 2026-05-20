@@ -21,7 +21,8 @@ data class EpubCoreLayoutConfig(
     val readerFontPath: String? = null,
     val alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
     val lineSpacingMultiplier: Float = 1.0f,
-    val lineSpacingExtraPx: Float = 0f
+    val lineSpacingExtraPx: Float = 0f,
+    val scrollMode: Boolean = false
 ) {
     val horizontalPaddingPx: Int
         get() = paddingLeftPx + paddingRightPx

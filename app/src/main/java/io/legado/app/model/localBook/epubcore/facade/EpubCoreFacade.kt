@@ -223,6 +223,7 @@ class EpubCoreFacade private constructor(
             append('|').append(chapter.endFragmentId.orEmpty())
             append('|').append(continuationHrefs(chapter).joinToString(","))
             append("|webLayout:v13-reader-page-inset")
+            append('|').append(if (config.scrollMode) "scroll" else "paged")
             append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
             append('|').append(config.paddingLeftPx).append(',').append(config.paddingTopPx)
             append(',').append(config.paddingRightPx).append(',').append(config.paddingBottomPx)
@@ -248,6 +249,7 @@ class EpubCoreFacade private constructor(
             append('|').append(chapter.endFragmentId.orEmpty())
             append('|').append(continuationHrefs(chapter).joinToString(","))
             append("|nativeTranslate:v1")
+            append('|').append(if (config.scrollMode) "scroll" else "paged")
             append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
             append('|').append(config.paddingLeftPx).append(',').append(config.paddingTopPx)
             append(',').append(config.paddingRightPx).append(',').append(config.paddingBottomPx)
@@ -269,6 +271,7 @@ class EpubCoreFacade private constructor(
         val key = buildString {
             append(model.chapterHref)
             append("|domMeasure:v2")
+            append('|').append(if (config.scrollMode) "scroll" else "paged")
             append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
             append('|').append(config.horizontalPaddingPx).append('x').append(config.verticalPaddingPx)
             append('|').append(config.readerPaddingLeftPx).append(',').append(config.readerPaddingTopPx)

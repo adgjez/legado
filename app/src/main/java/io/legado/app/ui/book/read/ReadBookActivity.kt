@@ -1888,7 +1888,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             textPaint.typeface?.style == other.textPaint.typeface?.style &&
             readerFontFamily == other.readerFontFamily &&
             readerFontUrl == other.readerFontUrl &&
-            readerFontPath == other.readerFontPath
+            readerFontPath == other.readerFontPath &&
+            scrollMode == other.scrollMode
     }
 
     private fun prefetchAdjacentEpubCoreChapters(
@@ -1917,6 +1918,17 @@ class ReadBookActivity : BaseReadBookActivity(),
                     if (cachedPages != null) {
                         epubCoreEstimatedPages[index] = cachedPages.size.coerceAtLeast(1)
                         AppLog.putDebug("EPUB core prefetch skip cache: index=$index")
+                        if (config.scrollMode) {
+                            withContext(Main.immediate) {
+                                mergeEpubCoreScrollPrefetch(
+                                    book = book,
+                                    requestSeq = requestSeq,
+                                    mode = mode,
+                                    chapterIndex = index,
+                                    pages = cachedPages
+                                )
+                            }
+                        }
                         return@forEach
                     }
                     runCatching {
@@ -1940,11 +1952,44 @@ class ReadBookActivity : BaseReadBookActivity(),
                             }
                             epubCoreEstimatedPages[index] = pages.size.coerceAtLeast(1)
                             AppLog.putDebug("EPUB core prefetch ready: index=$index, pages=${pages.size}")
+                            if (config.scrollMode) {
+                                mergeEpubCoreScrollPrefetch(
+                                    book = book,
+                                    requestSeq = requestSeq,
+                                    mode = mode,
+                                    chapterIndex = index,
+                                    pages = pages
+                                )
+                            }
                         }
                     }
                 }
             }
             epubCorePrefetchJobs += job
+        }
+    }
+
+    private fun mergeEpubCoreScrollPrefetch(
+        book: Book,
+        requestSeq: Long,
+        mode: EpubCoreScheduleMode,
+        chapterIndex: Int,
+        pages: List<EpubCorePage>
+    ) {
+        val currentBook = ReadBook.book
+        if (requestSeq != epubCoreRequestSeq ||
+            currentBook?.bookUrl != book.bookUrl ||
+            currentBook?.isEpub != true ||
+            !epubCoreActive ||
+            epubCoreLoading ||
+            epubCorePendingNavigation != null ||
+            currentEpubCoreSchedule().key != mode.key ||
+            ReadBook.pageAnim() != PageAnim.scrollPageAnim
+        ) {
+            return
+        }
+        if (binding.epubReadView.mergeAdjacentPages(pages)) {
+            AppLog.putDebug("EPUB core scroll prefetch merged: index=$chapterIndex, pages=${pages.size}")
         }
     }
 
@@ -2083,7 +2128,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             readerFontFamily = readerFontName,
             readerFontUrl = epubCoreReaderFontUrl(),
             readerFontPath = ReadBookConfig.textFont.takeIf { it.isNotBlank() },
-            lineSpacingExtraPx = ReadBookConfig.lineSpacingExtra.toFloat()
+            lineSpacingExtraPx = ReadBookConfig.lineSpacingExtra.toFloat(),
+            scrollMode = scrollMode
         )
     }
 
