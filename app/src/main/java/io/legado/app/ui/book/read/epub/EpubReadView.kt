@@ -22,6 +22,7 @@ import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.Scroller
 import io.legado.app.constant.PageAnim
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
@@ -509,6 +510,11 @@ class EpubReadView @JvmOverloads constructor(
         val page = currentPage() ?: return null
         if (payload.chapterIndex != page.chapterIndex || payload.pageIndex != pageIndex) return null
         val rects = normalizeWebSelectionRects(payload.rects.map { RectF(it.rect) })
+        if (payload.rects.isNotEmpty() && rects.isEmpty()) {
+            AppLog.putDebug(
+                "EPUB Web selection rects filtered: chapter=${payload.chapterIndex} page=${payload.pageIndex} raw=${payload.rects.size}"
+            )
+        }
         if (payload.selectedText.isBlank() || rects.isEmpty()) return null
         selectedText = payload.selectedText
         webSelectionActive = true

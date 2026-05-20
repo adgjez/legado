@@ -514,6 +514,12 @@ class ReadBookActivity : BaseReadBookActivity(),
                     return@withContext
                 }
                 val anchor = payload?.let { binding.epubReadView.applyWebSelectionPayload(it) }
+                if (payload != null) {
+                    AppLog.putDebug(
+                        "EPUB Web selection apply: action=$action chapter=$chapterIndex page=$pageIndex " +
+                            "generation=$generation text=${payload.selectedText.length} rects=${payload.rects.size} applied=${anchor != null}"
+                    )
+                }
                 if (anchor != null) {
                     binding.epubReadView.deferOrShowSelectionMenu(anchor)
                 } else if (action == EpubWebSelectionAction.SelectWord) {
