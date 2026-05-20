@@ -55,6 +55,7 @@ import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
+import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
@@ -2667,6 +2668,24 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun upSystemUiVisibility() {
         upSystemUiVisibility(isInMultiWindow, !menuLayoutIsVisible, bottomDialog > 0)
         upNavigationBarColor()
+    }
+
+    override fun onNightThemeChanged() = binding.run {
+        ThemeConfig.applyTheme(this@ReadBookActivity)
+        if (epubReadView.width > 0 && epubReadView.height > 0) {
+            ReadBookConfig.upBg(epubReadView.width, epubReadView.height)
+        } else if (readView.width > 0 && readView.height > 0) {
+            ReadBookConfig.upBg(readView.width, readView.height)
+        }
+        readMenu.reset()
+        if (epubCoreActive) {
+            epubReadView.clearSelection()
+            applyEpubRendererStyleOnly()
+        } else {
+            readView.upBg()
+            readView.upStyle()
+        }
+        upSystemUiVisibility()
     }
 
     // 退出全文搜索

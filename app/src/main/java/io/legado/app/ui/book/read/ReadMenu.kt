@@ -631,6 +631,7 @@ class ReadMenu @JvmOverloads constructor(
         fabNightTheme.setOnClickListener {
             AppConfig.isNightTheme = !AppConfig.isNightTheme
             ThemeConfig.applyDayNight(context)
+            callBack.onNightThemeChanged()
         }
 
         //上一章
@@ -808,6 +809,7 @@ class ReadMenu @JvmOverloads constructor(
         fun epubCoreChapterUrl(): String? = null
         fun openPreviousEpubCoreChapter() = Unit
         fun openNextEpubCoreChapter() = Unit
+        fun onNightThemeChanged() = Unit
     }
 
 }
