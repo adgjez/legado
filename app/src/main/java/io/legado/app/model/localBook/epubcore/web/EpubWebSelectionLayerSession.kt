@@ -39,7 +39,8 @@ enum class EpubWebSelectionAction {
 }
 
 data class EpubWebSelectionRect(
-    val rect: RectF
+    val rect: RectF,
+    val source: String? = null
 )
 
 data class EpubWebSelectionPayload(
@@ -207,7 +208,11 @@ class EpubWebSelectionLayerSession(
               var START_ID = ${request.startFragmentId?.let { JSONObject.quote(it) } ?: "null"};
               var END_ID = ${request.endFragmentId?.let { JSONObject.quote(it) } ?: "null"};
               var READER_PAD_LEFT = ${request.readerPaddingLeftPx.coerceAtLeast(0)};
+              var READER_PAD_TOP = ${request.readerPaddingTopPx.coerceAtLeast(0)};
               var READER_PAD_RIGHT = ${request.readerPaddingRightPx.coerceAtLeast(0)};
+              var READER_PAD_BOTTOM = ${request.readerPaddingBottomPx.coerceAtLeast(0)};
+              var PAGE_H = Math.max(1, ${request.viewportHeightPx.coerceAtLeast(1)} - READER_PAD_TOP - READER_PAD_BOTTOM);
+              var rootBounds = { left: 0, top: 0 };
               function selectionText(value) {
                 return String(value || '').replace(/[\t\r\n ]+/g, ' ').replace(/^[ ]+|[ ]+$/g, '');
               }
@@ -294,7 +299,72 @@ class EpubWebSelectionLayerSession(
               }
               var root = sliceRootByFragments(document.body || document.documentElement);
               applySelectionInsets(root);
+              rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : { left: 0, top: 0 };
               window.scrollTo(PAGE_INDEX * PAGE_W, 0);
+              rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : rootBounds;
+              function rectPage(rect) {
+                var left = rect.left - rootBounds.left;
+                return Math.floor(Math.max(0, left + 0.5) / PAGE_W);
+              }
+              function localRect(rect, source) {
+                if (!rect || rect.width <= 0.5 || rect.height <= 0.5) return null;
+                var page = rectPage(rect);
+                if (page !== PAGE_INDEX) return null;
+                var left = rect.left - rootBounds.left - page * PAGE_W;
+                var right = rect.right - rootBounds.left - page * PAGE_W;
+                var top = rect.top - rootBounds.top;
+                var bottom = rect.bottom - rootBounds.top;
+                left = Math.max(0, Math.min(PAGE_W, left));
+                right = Math.max(0, Math.min(PAGE_W, right));
+                top = Math.max(0, Math.min(PAGE_H, top));
+                bottom = Math.max(0, Math.min(PAGE_H, bottom));
+                if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+                return {
+                  left: left,
+                  top: top + READER_PAD_TOP,
+                  right: right,
+                  bottom: bottom + READER_PAD_TOP,
+                  width: right - left,
+                  height: bottom - top,
+                  source: source || 'range'
+                };
+              }
+              function rectsOverlapLine(a, b) {
+                var top = Math.max(a.top, b.top);
+                var bottom = Math.min(a.bottom, b.bottom);
+                var overlap = Math.max(0, bottom - top);
+                var minHeight = Math.max(1, Math.min(a.height, b.height));
+                return overlap >= minHeight * 0.55 || Math.abs(a.top - b.top) <= Math.max(2, minHeight * 0.35);
+              }
+              function normalizeRects(rawRects) {
+                var rects = [];
+                for (var i = 0; i < rawRects.length; i++) {
+                  var local = localRect(rawRects[i], 'range');
+                  if (!local) continue;
+                  if (local.width >= PAGE_W * 0.92 && local.height <= PAGE_H * 0.12) continue;
+                  rects.push(local);
+                }
+                rects.sort(function(a, b) {
+                  if (Math.abs(a.top - b.top) > 1) return a.top - b.top;
+                  return a.left - b.left;
+                });
+                var merged = [];
+                for (var j = 0; j < rects.length; j++) {
+                  var current = rects[j];
+                  var last = merged.length ? merged[merged.length - 1] : null;
+                  if (last && rectsOverlapLine(last, current) && current.left <= last.right + 3) {
+                    last.left = Math.min(last.left, current.left);
+                    last.top = Math.min(last.top, current.top);
+                    last.right = Math.max(last.right, current.right);
+                    last.bottom = Math.max(last.bottom, current.bottom);
+                    last.width = last.right - last.left;
+                    last.height = last.bottom - last.top;
+                  } else {
+                    merged.push(current);
+                  }
+                }
+                return merged;
+              }
               function caretRange(x, y) {
                 var range = null;
                 if (document.caretRangeFromPoint) {
@@ -392,21 +462,14 @@ class EpubWebSelectionLayerSession(
               }
               selection.removeAllRanges();
               selection.addRange(nextRange);
-              var rects = Array.prototype.slice.call(nextRange.getClientRects ? nextRange.getClientRects() : [])
-                .map(function(rect) {
-                  return {
-                    left: Math.max(0, Math.min(PAGE_W, rect.left)),
-                    top: Math.max(0, rect.top),
-                    right: Math.max(0, Math.min(PAGE_W, rect.right)),
-                    bottom: Math.max(0, rect.bottom)
-                  };
-                })
-                .filter(function(rect) {
-                  return rect.right > rect.left && rect.bottom > rect.top;
-                });
+              var rects = normalizeRects(Array.prototype.slice.call(nextRange.getClientRects ? nextRange.getClientRects() : []));
               return JSON.stringify({
                 text: selection.toString(),
-                rects: rects
+                rects: rects,
+                scrollX: window.scrollX || window.pageXOffset || 0,
+                scrollY: window.scrollY || window.pageYOffset || 0,
+                pageIndex: PAGE_INDEX,
+                pageWidth: PAGE_W
               });
             })();
         """.trimIndent()
@@ -431,7 +494,7 @@ class EpubWebSelectionLayerSession(
                 item.optDouble("bottom").toFloat()
             )
             if (rect.width() > 0f && rect.height() > 0f) {
-                rects += EpubWebSelectionRect(rect)
+                rects += EpubWebSelectionRect(rect, item.optString("source").takeIf { it.isNotBlank() })
             }
         }
         if (rects.isEmpty()) return null

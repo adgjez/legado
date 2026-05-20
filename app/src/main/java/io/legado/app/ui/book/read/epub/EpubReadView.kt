@@ -504,8 +504,7 @@ class EpubReadView @JvmOverloads constructor(
     fun applyWebSelectionPayload(payload: EpubWebSelectionPayload): SelectionAnchor? {
         val page = currentPage() ?: return null
         if (payload.chapterIndex != page.chapterIndex || payload.pageIndex != pageIndex) return null
-        val rects = payload.rects.map { RectF(it.rect) }
-            .filter { it.width() > 0f && it.height() > 0f }
+        val rects = normalizeWebSelectionRects(payload.rects.map { RectF(it.rect) })
         if (payload.selectedText.isBlank() || rects.isEmpty()) return null
         selectedText = payload.selectedText
         webSelectionActive = true
@@ -526,6 +525,41 @@ class EpubReadView @JvmOverloads constructor(
         selectionHighlight = SelectionHighlight(rects, emptyList(), selectionAnchor!!)
         invalidate()
         return selectionAnchor
+    }
+
+    private fun normalizeWebSelectionRects(rawRects: List<RectF>): List<RectF> {
+        if (rawRects.isEmpty()) return emptyList()
+        val pageWidth = width.toFloat().takeIf { it > 0f } ?: (layoutConfig?.pageWidthPx?.toFloat() ?: 0f)
+        val pageHeight = height.toFloat().takeIf { it > 0f } ?: (layoutConfig?.pageHeightPx?.toFloat() ?: 0f)
+        if (pageWidth <= 0f || pageHeight <= 0f) return rawRects.filter { it.width() > 0f && it.height() > 0f }
+        val filtered = rawRects.mapNotNull { source ->
+            val rect = RectF(
+                source.left.coerceIn(0f, pageWidth),
+                source.top.coerceIn(0f, pageHeight),
+                source.right.coerceIn(0f, pageWidth),
+                source.bottom.coerceIn(0f, pageHeight)
+            )
+            if (rect.width() <= 0.5f || rect.height() <= 0.5f) return@mapNotNull null
+            if (rect.width() >= pageWidth * 0.92f && rect.height() <= pageHeight * 0.12f) return@mapNotNull null
+            rect
+        }.sortedWith(compareBy<RectF> { it.top }.thenBy { it.left })
+        if (filtered.isEmpty()) return emptyList()
+        val merged = ArrayList<RectF>(filtered.size)
+        filtered.forEach { rect ->
+            val last = merged.lastOrNull()
+            if (last != null && sameSelectionLine(last, rect) && rect.left <= last.right + 3f) {
+                last.union(rect)
+            } else {
+                merged += RectF(rect)
+            }
+        }
+        return merged
+    }
+
+    private fun sameSelectionLine(a: RectF, b: RectF): Boolean {
+        val overlap = (minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)).coerceAtLeast(0f)
+        val minHeight = minOf(a.height(), b.height()).coerceAtLeast(1f)
+        return overlap >= minHeight * 0.55f || abs(a.top - b.top) <= maxOf(2f, minHeight * 0.35f)
     }
 
     fun clearSelection() {
