@@ -135,6 +135,10 @@ class EpubReadView @JvmOverloads constructor(
         color = 0xFFFFFFFF.toInt()
         textAlign = Paint.Align.CENTER
     }
+    private val loadingBadgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x99000000.toInt()
+        style = Paint.Style.FILL
+    }
     private val simulationPath0 = Path()
     private val simulationPath1 = Path()
     private val simulationBezierStart1 = PointF()
@@ -1900,11 +1904,29 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun drawLoadingOverlay(canvas: Canvas) {
         val message = loadingMessage ?: return
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), loadingOverlayPaint)
         loadingTextPaint.color = renderer.textColor
         loadingTextPaint.textSize = renderer.textPaint.textSize
-        val centerY = height / 2f - (loadingTextPaint.descent() + loadingTextPaint.ascent()) / 2f
-        canvas.drawText(message, width / 2f, centerY, loadingTextPaint)
+        if (currentPage() == null) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), loadingOverlayPaint)
+            val centerY = height / 2f - (loadingTextPaint.descent() + loadingTextPaint.ascent()) / 2f
+            canvas.drawText(message, width / 2f, centerY, loadingTextPaint)
+            return
+        }
+        val textSize = (renderer.textPaint.textSize * 0.75f).coerceAtLeast(24f)
+        loadingTextPaint.textSize = textSize
+        loadingTextPaint.color = 0xFFFFFFFF.toInt()
+        val horizontalPadding = textSize
+        val verticalPadding = textSize * 0.45f
+        val textWidth = loadingTextPaint.measureText(message)
+        val left = (width - textWidth) / 2f - horizontalPadding
+        val top = height - (layoutConfig?.paddingBottomPx ?: 0) - textSize * 3f
+        val right = left + textWidth + horizontalPadding * 2f
+        val bottom = top + textSize + verticalPadding * 2f
+        if (right > left && bottom > top) {
+            canvas.drawRoundRect(left, top, right, bottom, textSize * 0.5f, textSize * 0.5f, loadingBadgePaint)
+            val baseline = top + verticalPadding + textSize - loadingTextPaint.descent()
+            canvas.drawText(message, width / 2f, baseline, loadingTextPaint)
+        }
     }
 
     private fun recordSnapshot(index: Int): EpubPageBitmapSnapshot? {
