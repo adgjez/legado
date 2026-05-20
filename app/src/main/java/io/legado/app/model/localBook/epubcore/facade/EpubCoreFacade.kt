@@ -149,24 +149,6 @@ class EpubCoreFacade private constructor(
         val href = EpubPath.stripFragment(resolvedChapter.url)
         val paint = config.textPaint
         val key = pageCacheKey(resolvedChapter, config)
-        val nativeKey = nativePageCacheKey(resolvedChapter, config)
-        cache.getPages(nativeKey)?.let {
-            AppLog.putDebug("EPUB native translation cache hit: chapter=${chapter.index}, href=$href, pages=${it.size}")
-            return it
-        }
-        runCatching {
-            val model = readChapter(resolvedChapter, config)
-            nativeTranslationPipeline.paginate(model, config)
-        }.onFailure {
-            AppLog.putDebug("EPUB native translation failed, fallback to Web layout: chapter=${chapter.index}, href=$href, error=${it.localizedMessage}", it)
-        }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { pages ->
-            cache.putPages(nativeKey, pages)
-            AppLog.putDebug(
-                "EPUB native translation summary: chapter=${chapter.index}:${chapter.title}, " +
-                    "href=$href, pages=${pages.size}, fragments=${pages.sumOf { it.fragments.size }}"
-            )
-            return pages
-        }
         cache.getPages(key)?.let {
             AppLog.putDebug("EPUB Web layout cache hit: chapter=${chapter.index}, href=$href, pages=${it.size}")
             return it
