@@ -1101,15 +1101,26 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 取消文字选择
      */
     override fun onCancelSelect() = binding.run {
-        cursorLeft.invisible()
-        cursorRight.invisible()
-        textActionMenu.dismiss()
+        if (epubCoreActive) {
+            clearEpubSelectionUi()
+        } else {
+            cursorLeft.invisible()
+            cursorRight.invisible()
+            textActionMenu.dismiss()
+        }
     }
 
     private fun hideEpubSelectionUi() = binding.run {
         cursorLeft.invisible()
         cursorRight.invisible()
         textActionMenu.dismiss()
+    }
+
+    private fun clearEpubSelectionUi() = binding.run {
+        textActionMenu.dismiss()
+        cursorLeft.invisible()
+        cursorRight.invisible()
+        epubReadView.clearSelection(notify = false)
     }
 
     override fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean {
@@ -1292,10 +1303,10 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 文本选择菜单操作完成
      */
     override fun onMenuActionFinally() = binding.run {
-        textActionMenu.dismiss()
         if (epubCoreActive) {
-            epubReadView.clearSelection()
+            clearEpubSelectionUi()
         } else {
+            textActionMenu.dismiss()
             readView.cancelSelect()
         }
     }
