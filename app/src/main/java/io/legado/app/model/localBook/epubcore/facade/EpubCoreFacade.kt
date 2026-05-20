@@ -19,6 +19,7 @@ import io.legado.app.model.localBook.epubcore.pkg.EpubPackage
 import io.legado.app.model.localBook.epubcore.pkg.EpubPackageParser
 import io.legado.app.model.localBook.epubcore.toc.EpubTocParser
 import io.legado.app.model.localBook.epubcore.toc.TocItem
+import io.legado.app.model.localBook.epubcore.translate.EpubNativeTranslationPipeline
 import io.legado.app.model.localBook.epubcore.web.EpubDomMeasureSession
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutAdapter
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutJsonParser
@@ -44,6 +45,7 @@ class EpubCoreFacade private constructor(
 
     private val imageResolver = EpubImageResolver(archive)
     private val paginator = EpubCorePaginator(imageResolver)
+    private val nativeTranslationPipeline = EpubNativeTranslationPipeline()
     private val webLayoutAdapter = EpubWebLayoutAdapter()
     private var domMeasureSession: EpubDomMeasureSession? = null
     private val webLayoutSessionLock = Any()
@@ -253,6 +255,10 @@ class EpubCoreFacade private constructor(
         cache.getPages(key)?.let { return it }
         val measuredModel = model.withMeasuredDom(config)
         return paginator.paginate(measuredModel, config).also { cache.putPages(key, it) }
+    }
+
+    fun paginateNativeTranslated(model: ReaderModel, config: EpubCoreLayoutConfig): List<EpubCorePage> {
+        return nativeTranslationPipeline.paginate(model, config)
     }
 
     fun imageResolver(): EpubImageResolver = imageResolver
