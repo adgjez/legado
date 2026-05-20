@@ -85,7 +85,8 @@ class EpubReadView @JvmOverloads constructor(
         val pageAnim: Int,
         val fromSnapshot: EpubPageBitmapSnapshot?,
         val toSnapshot: EpubPageBitmapSnapshot?,
-        var toPageKey: String? = null
+        var toPageKey: String? = null,
+        var pageCommitted: Boolean = false
     ) {
         fun recycle() {
             fromSnapshot?.recycle()
@@ -853,13 +854,17 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun beginHorizontalTurn(direction: Int): Boolean {
         if (width <= 0 || height <= 0) return false
+        if (horizontalDirection != 0 || horizontalAnimating) {
+            abortAnimation(resetSlots = true, commitHorizontal = true)
+        } else {
+            abortScrollerOnly()
+        }
         val rawTargetIndex = pageIndex + direction
         if (rawTargetIndex !in pages.indices) {
             requestPageBoundary(direction)
             return false
         }
         val targetIndex = rawTargetIndex
-        abortScrollerOnly()
         bindIdleSlots()
         animationGeneration++
         horizontalDirection = direction
@@ -971,6 +976,7 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun completeHorizontalTurn() {
         if (horizontalDirection == 0 || horizontalTargetIndex !in pages.indices || horizontalSession == null) return
+        commitHorizontalTurnPage()
         if (horizontalPageAnim == PageAnim.simulationPageAnim) {
             horizontalAnimating = true
             horizontalCancelling = false
@@ -1049,20 +1055,28 @@ class EpubReadView @JvmOverloads constructor(
     }
 
     private fun finishHorizontalTurn() {
+        horizontalAnimating = false
+        horizontalCancelling = false
+        commitHorizontalTurnPage()
+        clearHorizontalTurn()
+        bindIdleSlots()
+    }
+
+    private fun commitHorizontalTurnPage() {
+        val session = horizontalSession ?: return
+        if (session.pageCommitted) return
         val targetIndex = horizontalSession?.toPageKey
             ?.let { key -> pages.indexOfFirst { it.pageKey() == key } }
             ?.takeIf { it >= 0 }
             ?: horizontalSession?.toIndex
             ?: horizontalTargetIndex
-        horizontalAnimating = false
         if (targetIndex in pages.indices) {
             pageIndex = targetIndex
             scrollOffsetY = 0f
             boundaryRequestDirection = 0
             notifyPageChanged()
         }
-        clearHorizontalTurn()
-        bindIdleSlots()
+        session.pageCommitted = true
     }
 
     private fun finishHorizontalCancel() {
@@ -1809,7 +1823,8 @@ class EpubReadView @JvmOverloads constructor(
         val interruptedSession = horizontalSession
         val interruptedTargetIndex = interruptedSession?.toIndex
         val shouldCommitHorizontal = commitHorizontal &&
-            horizontalAnimating &&
+            (horizontalAnimating || interruptedSession != null) &&
+            interruptedSession?.pageCommitted != true &&
             interruptedTargetIndex != null &&
             interruptedTargetIndex in pages.indices
         abortScrollerOnly()
