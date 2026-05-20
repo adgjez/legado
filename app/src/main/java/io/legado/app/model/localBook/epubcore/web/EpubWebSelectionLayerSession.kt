@@ -366,6 +366,41 @@ class EpubWebSelectionLayerSession(
                 root.setAttribute('data-legado-selection-sliced', '1');
                 return root;
               }
+              function mark(element, path) {
+                if (!element || element.nodeType !== 1 || element.getAttribute('data-epub-node-path')) return;
+                element.setAttribute('data-epub-node-path', path);
+                var elementIndex = 0;
+                var children = element.childNodes || [];
+                for (var i = 0; i < children.length; i++) {
+                  var child = children[i];
+                  if (child.nodeType === 1) {
+                    var tag = String(child.tagName || '').toLowerCase();
+                    mark(child, path + '/' + tag + '/' + (elementIndex++));
+                  }
+                }
+              }
+              function elementByNodePath(path) {
+                if (!path) return null;
+                if (path === 'body') return document.body || document.documentElement;
+                return document.querySelector('[data-epub-node-path="' + cssEscape(path) + '"]');
+              }
+              function cssEscape(value) {
+                if (window.CSS && CSS.escape) return CSS.escape(value);
+                return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+              }
+              function pageForAnchor(path) {
+                var el = elementByNodePath(path);
+                if (!el || !el.getBoundingClientRect) return -1;
+                var rects = Array.prototype.slice.call(el.getClientRects ? el.getClientRects() : []);
+                if (!rects.length) rects = [el.getBoundingClientRect()];
+                for (var i = 0; i < rects.length; i++) {
+                  var rect = rects[i];
+                  if (!rect || rect.width <= 0.5 || rect.height <= 0.5) continue;
+                  var page = rectPage(rect);
+                  if (page >= 0) return page;
+                }
+                return -1;
+              }
               function number(value) {
                 var parsed = parseFloat(value);
                 return isFinite(parsed) ? parsed : null;
@@ -419,8 +454,13 @@ class EpubWebSelectionLayerSession(
                 }
               }
               var root = sliceRootByFragments(document.body || document.documentElement);
+              mark(root, 'body');
               applySelectionInsets(root);
               rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : { left: 0, top: 0 };
+              var resolvedPageIndex = pageForAnchor(PAGE_START_PATH);
+              if (resolvedPageIndex >= 0 && Math.abs(resolvedPageIndex - PAGE_INDEX) <= 3) {
+                PAGE_INDEX = resolvedPageIndex;
+              }
               window.scrollTo(PAGE_INDEX * PAGE_W, 0);
               rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : rootBounds;
               function rectPage(rect) {
@@ -609,6 +649,7 @@ class EpubWebSelectionLayerSession(
                 pageStartOffset: PAGE_START_OFFSET,
                 pageEndPath: PAGE_END_PATH,
                 pageEndOffset: PAGE_END_OFFSET,
+                resolvedPageIndex: PAGE_INDEX,
                 scrollWidth: Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
                 pageCount: Math.max(1, Math.ceil(Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0) / PAGE_W)),
                 scrollX: window.scrollX || window.pageXOffset || 0,
@@ -651,6 +692,7 @@ class EpubWebSelectionLayerSession(
             "EPUB Web selection result: chapter=${request.chapterIndex} page=$pageIndex " +
                 "key=${pageContext?.pageKey.orEmpty()} selected=${selectedPreview.take(40)} " +
                 "page=${pagePreview.take(40)} belongs=$belongsToPage " +
+                "resolvedPage=${obj.optInt("resolvedPageIndex", pageIndex)} " +
                 "scrollWidth=${obj.optDouble("scrollWidth")} pageCount=${obj.optInt("pageCount")} " +
                 "start=${obj.optString("pageStartPath")}:${obj.optInt("pageStartOffset")} " +
                 "end=${obj.optString("pageEndPath")}:${obj.optInt("pageEndOffset")}"
