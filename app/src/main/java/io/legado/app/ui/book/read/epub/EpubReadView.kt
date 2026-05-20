@@ -50,6 +50,7 @@ class EpubReadView @JvmOverloads constructor(
         fun onPageChanged(pageIndex: Int, pageCount: Int) = Unit
         fun onPageBoundary(direction: Int) = Unit
         fun onTextSelected(startX: Float, topY: Float, endX: Float, bottomY: Float, startBottomY: Float = bottomY, endBottomY: Float = bottomY) = Unit
+        fun onSelectionCleared() = Unit
         fun onWebTextSelectionRequested(
             page: EpubCorePage,
             pageIndex: Int,
@@ -572,7 +573,7 @@ class EpubReadView @JvmOverloads constructor(
         return overlap >= minHeight * 0.55f || abs(a.top - b.top) <= maxOf(2f, minHeight * 0.35f)
     }
 
-    fun clearSelection() {
+    fun clearSelection(notify: Boolean = true) {
         nextSelectionGeneration()
         selectedText = ""
         selectionAnchor = null
@@ -584,6 +585,9 @@ class EpubReadView @JvmOverloads constructor(
         selectionStartOffset = 0
         selectionEndOffset = 0
         invalidate()
+        if (notify) {
+            listener?.onSelectionCleared()
+        }
     }
 
     private fun nextSelectionGeneration(): Long {

@@ -399,6 +399,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 showEpubTextActionMenu(startX, topY, endX, bottomY, startBottomY, endBottomY)
             }
 
+            override fun onSelectionCleared() {
+                hideEpubSelectionUi()
+            }
+
             override fun onWebTextSelectionRequested(
                 page: EpubCorePage,
                 pageIndex: Int,
@@ -1097,6 +1101,12 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 取消文字选择
      */
     override fun onCancelSelect() = binding.run {
+        cursorLeft.invisible()
+        cursorRight.invisible()
+        textActionMenu.dismiss()
+    }
+
+    private fun hideEpubSelectionUi() = binding.run {
         cursorLeft.invisible()
         cursorRight.invisible()
         textActionMenu.dismiss()
