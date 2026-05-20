@@ -530,20 +530,28 @@ class EpubPageRenderer {
 
     private fun isViewportSizedBackground(rect: RectF): Boolean {
         if (rect.isEmpty) return false
-        val pageWidth = layoutConfig?.pageWidthPx?.toFloat()?.takeIf { it > 0f }
+        val config = layoutConfig
+        val pageWidth = config?.pageWidthPx?.toFloat()?.takeIf { it > 0f }
             ?: contentBounds.width().takeIf { it > 0f }
             ?: return false
-        val pageHeight = layoutConfig?.pageHeightPx?.toFloat()?.takeIf { it > 0f }
+        val pageHeight = config?.pageHeightPx?.toFloat()?.takeIf { it > 0f }
             ?: contentBounds.height().takeIf { it > 0f }
             ?: return false
+        val readerFlowHeight = (pageHeight -
+            (config?.readerPaddingTopPx ?: 0) -
+            (config?.readerPaddingBottomPx ?: 0)
+        ).coerceAtLeast(pageHeight * 0.5f)
         val viewportArea = pageWidth * pageHeight
         val contentArea = contentBounds.width().coerceAtLeast(1f) * contentBounds.height().coerceAtLeast(1f)
         val rectArea = rect.width() * rect.height()
         val coversViewport = rect.width() >= pageWidth * 0.82f && rect.height() >= pageHeight * 0.82f
+        val coversReaderFlow = rect.width() >= pageWidth * 0.82f &&
+            rect.height() >= readerFlowHeight * 0.92f &&
+            rect.top <= pageHeight * 0.18f
         val coversContent = rect.width() >= contentBounds.width() * 0.92f &&
             rect.height() >= contentBounds.height() * 0.92f &&
             rectArea >= contentArea * 0.85f
-        return coversViewport || coversContent || rectArea >= viewportArea * 0.82f
+        return coversViewport || coversReaderFlow || coversContent || rectArea >= viewportArea * 0.82f
     }
 
     private fun drawChildren(canvas: Canvas, children: List<EpubPageFragment>, offsetX: Float, offsetY: Float) {

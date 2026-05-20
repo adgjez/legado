@@ -1139,9 +1139,9 @@ class EpubWebLayoutSession(
                         left: 0,
                         top: 0,
                         right: PAGE_W,
-                        bottom: PAGE_H,
+                        bottom: VIEWPORT_H,
                         width: PAGE_W,
-                        height: PAGE_H
+                        height: VIEWPORT_H
                       },
                       backgroundColor: bg,
                       backgroundImage: bgImage,

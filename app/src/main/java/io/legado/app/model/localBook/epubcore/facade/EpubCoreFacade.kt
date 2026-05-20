@@ -222,7 +222,7 @@ class EpubCoreFacade private constructor(
             append('|').append(chapter.startFragmentId.orEmpty())
             append('|').append(chapter.endFragmentId.orEmpty())
             append('|').append(continuationHrefs(chapter).joinToString(","))
-            append("|webLayout:v14-text-overflow")
+            append("|webLayout:v15-background-cover")
             append('|').append(if (config.scrollMode) "scroll" else "paged")
             append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
             append('|').append(config.paddingLeftPx).append(',').append(config.paddingTopPx)
