@@ -404,9 +404,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 pageIndex: Int,
                 action: EpubWebSelectionAction,
                 x: Float,
-                y: Float
+                y: Float,
+                generation: Long,
+                pageKey: String
             ): Boolean {
-                requestEpubWebSelection(page, pageIndex, action, x, y)
+                requestEpubWebSelection(page, pageIndex, action, x, y, generation, pageKey)
                 return true
             }
         })
@@ -481,7 +483,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         pageIndex: Int,
         action: EpubWebSelectionAction,
         x: Float,
-        y: Float
+        y: Float,
+        generation: Long,
+        pageKey: String
     ) {
         val book = ReadBook.book?.takeIf { it.isEpub } ?: return
         val config = binding.epubReadView.layoutConfig ?: return
@@ -503,27 +507,19 @@ class ReadBookActivity : BaseReadBookActivity(),
             }.getOrNull()
             withContext(Main.immediate) {
                 if (requestSeq != epubCoreRequestSeq || !epubCoreActive) return@withContext
+                if (!binding.epubReadView.isSelectionRequestCurrent(generation, pageKey, chapterIndex, pageIndex)) {
+                    AppLog.putDebug(
+                        "EPUB Web selection stale: action=$action chapter=$chapterIndex page=$pageIndex generation=$generation"
+                    )
+                    return@withContext
+                }
                 val anchor = payload?.let { binding.epubReadView.applyWebSelectionPayload(it) }
                 if (anchor != null) {
-                    showEpubTextActionMenu(
-                        anchor.startX,
-                        anchor.topY,
-                        anchor.endX,
-                        anchor.bottomY,
-                        anchor.startBottomY,
-                        anchor.endBottomY
-                    )
+                    binding.epubReadView.deferOrShowSelectionMenu(anchor)
                 } else if (action == EpubWebSelectionAction.SelectWord) {
                     AppLog.putDebug("EPUB Web selection empty: chapter=$chapterIndex page=$pageIndex")
                     binding.epubReadView.selectTextAtCanvasFallback(x, y)?.let { fallbackAnchor ->
-                        showEpubTextActionMenu(
-                            fallbackAnchor.startX,
-                            fallbackAnchor.topY,
-                            fallbackAnchor.endX,
-                            fallbackAnchor.bottomY,
-                            fallbackAnchor.startBottomY,
-                            fallbackAnchor.endBottomY
-                        )
+                        binding.epubReadView.deferOrShowSelectionMenu(fallbackAnchor)
                     }
                 }
             }
@@ -1011,7 +1007,12 @@ class ReadBookActivity : BaseReadBookActivity(),
             return false
         }
         when (event.action) {
-            MotionEvent.ACTION_DOWN -> textActionMenu.dismiss()
+            MotionEvent.ACTION_DOWN -> {
+                textActionMenu.dismiss()
+                if (epubCoreActive) {
+                    binding.epubReadView.beginSelectionHandleDrag()
+                }
+            }
             MotionEvent.ACTION_MOVE -> {
                 when (v.id) {
                     R.id.cursor_left -> {
@@ -1050,7 +1051,17 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             MotionEvent.ACTION_UP -> {
                 readView.curPage.resetReverseCursor()
-                showTextActionMenu()
+                if (epubCoreActive) {
+                    binding.epubReadView.endSelectionHandleDrag()
+                } else {
+                    showTextActionMenu()
+                }
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                if (epubCoreActive) {
+                    binding.epubReadView.endSelectionHandleDrag()
+                }
             }
         }
         return true

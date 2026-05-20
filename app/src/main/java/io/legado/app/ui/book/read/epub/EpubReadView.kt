@@ -54,7 +54,9 @@ class EpubReadView @JvmOverloads constructor(
             pageIndex: Int,
             action: EpubWebSelectionAction,
             x: Float,
-            y: Float
+            y: Float,
+            generation: Long,
+            pageKey: String
         ): Boolean = false
     }
 
@@ -213,12 +215,16 @@ class EpubReadView @JvmOverloads constructor(
     private var selectionAnchor: SelectionAnchor? = null
     private var selectionHighlight: SelectionHighlight? = null
     private var webSelectionActive = false
+    private var selectionGeneration = 0L
+    private var primaryTouchActive = false
+    private var selectionHandleDragActive = false
+    private var selectionMenuPending = false
     private var lastDownAt = 0L
     private var longPressTriggered = false
     private val longPressRunnable = Runnable {
         longPressTriggered = true
         selectTextAt(downX, downY)?.let { anchor ->
-            listener?.onTextSelected(anchor.startX, anchor.topY, anchor.endX, anchor.bottomY, anchor.startBottomY, anchor.endBottomY)
+            deferOrShowSelectionMenu(anchor)
         }
     }
 
@@ -362,7 +368,17 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectTextAt(x: Float, y: Float): SelectionAnchor? {
         val page = currentPage() ?: return null
-        if (listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.SelectWord, x, y) == true) {
+        val generation = nextSelectionGeneration()
+        if (listener?.onWebTextSelectionRequested(
+                page,
+                pageIndex,
+                EpubWebSelectionAction.SelectWord,
+                x,
+                y,
+                generation,
+                page.pageKey()
+            ) == true
+        ) {
             return null
         }
         return selectTextAtCanvasFallback(x, y)
@@ -383,8 +399,17 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectStartMove(x: Float, y: Float) {
         val page = currentPage() ?: return
+        val generation = nextSelectionGeneration()
         if (webSelectionActive &&
-            listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.MoveStart, x, y) == true
+            listener?.onWebTextSelectionRequested(
+                page,
+                pageIndex,
+                EpubWebSelectionAction.MoveStart,
+                x,
+                y,
+                generation,
+                page.pageKey()
+            ) == true
         ) {
             return
         }
@@ -404,8 +429,17 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectEndMove(x: Float, y: Float) {
         val page = currentPage() ?: return
+        val generation = nextSelectionGeneration()
         if (webSelectionActive &&
-            listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.MoveEnd, x, y) == true
+            listener?.onWebTextSelectionRequested(
+                page,
+                pageIndex,
+                EpubWebSelectionAction.MoveEnd,
+                x,
+                y,
+                generation,
+                page.pageKey()
+            ) == true
         ) {
             return
         }
@@ -435,6 +469,38 @@ class EpubReadView @JvmOverloads constructor(
 
     fun getSelectedText(): String = selectedText
 
+    fun isSelectionRequestCurrent(
+        generation: Long,
+        pageKey: String,
+        chapterIndex: Int,
+        requestPageIndex: Int
+    ): Boolean {
+        val page = currentPage() ?: return false
+        return generation == selectionGeneration &&
+            page.pageKey() == pageKey &&
+            page.chapterIndex == chapterIndex &&
+            pageIndex == requestPageIndex
+    }
+
+    fun beginSelectionHandleDrag() {
+        selectionHandleDragActive = true
+        selectionMenuPending = false
+    }
+
+    fun endSelectionHandleDrag() {
+        selectionHandleDragActive = false
+        selectionAnchor?.let {
+            selectionMenuPending = true
+            notifySelectionMenuIfReady()
+        }
+    }
+
+    fun deferOrShowSelectionMenu(anchor: SelectionAnchor) {
+        selectionMenuPending = true
+        selectionAnchor = anchor
+        notifySelectionMenuIfReady()
+    }
+
     fun applyWebSelectionPayload(payload: EpubWebSelectionPayload): SelectionAnchor? {
         val page = currentPage() ?: return null
         if (payload.chapterIndex != page.chapterIndex || payload.pageIndex != pageIndex) return null
@@ -463,15 +529,36 @@ class EpubReadView @JvmOverloads constructor(
     }
 
     fun clearSelection() {
+        nextSelectionGeneration()
         selectedText = ""
         selectionAnchor = null
         selectionHighlight = null
         webSelectionActive = false
+        selectionMenuPending = false
         selectionStartBlock = null
         selectionEndBlock = null
         selectionStartOffset = 0
         selectionEndOffset = 0
         invalidate()
+    }
+
+    private fun nextSelectionGeneration(): Long {
+        selectionGeneration += 1
+        return selectionGeneration
+    }
+
+    private fun notifySelectionMenuIfReady() {
+        val anchor = selectionAnchor ?: return
+        if (!selectionMenuPending || primaryTouchActive || selectionHandleDragActive) return
+        selectionMenuPending = false
+        listener?.onTextSelected(
+            anchor.startX,
+            anchor.topY,
+            anchor.endX,
+            anchor.bottomY,
+            anchor.startBottomY,
+            anchor.endBottomY
+        )
     }
 
     fun cancelSelect(clearSearchResult: Boolean = false) {
@@ -590,6 +677,7 @@ class EpubReadView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
+                primaryTouchActive = true
                 downX = event.x
                 downY = event.y
                 lastX = event.x
@@ -637,6 +725,7 @@ class EpubReadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_UP -> {
                 removeCallbacks(longPressRunnable)
+                primaryTouchActive = false
                 velocityTracker.addMovement(event)
                 velocityTracker.computeCurrentVelocity(1000)
                 val velocityX = velocityTracker.xVelocity
@@ -672,11 +761,14 @@ class EpubReadView @JvmOverloads constructor(
                 }
                 gestureMode = GestureMode.None
                 velocityTracker.clear()
+                notifySelectionMenuIfReady()
                 return true
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 removeCallbacks(longPressRunnable)
+                primaryTouchActive = false
+                selectionMenuPending = false
                 velocityTracker.clear()
                 if (horizontalDirection != 0) {
                     cancelHorizontalTurn()
