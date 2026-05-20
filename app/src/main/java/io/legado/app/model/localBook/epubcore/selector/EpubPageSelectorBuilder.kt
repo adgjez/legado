@@ -1,5 +1,6 @@
 package io.legado.app.model.localBook.epubcore.selector
 
+import android.graphics.Path
 import android.graphics.RectF
 import android.text.Layout
 import io.legado.app.model.localBook.epubcore.layout.EpubContainerFragment
@@ -200,6 +201,7 @@ object EpubPageSelectorBuilder {
         val firstOffset = if (forward) startOffset else endOffset
         val lastOffset = if (forward) endOffset else startOffset
         val rects = mutableListOf<RectF>()
+        val paths = mutableListOf<Path>()
         val text = StringBuilder()
         var anchorStart: RectF? = null
         var anchorEnd: RectF? = null
@@ -224,6 +226,9 @@ object EpubPageSelectorBuilder {
                 )
                 if (rect.width() > 0f && rect.height() > 0f) {
                     rects += rect
+                    paths += line.selectionPath(lineFrom, lineTo, offsetX, offsetY) ?: Path().apply {
+                        addRect(rect, Path.Direction.CW)
+                    }
                     if (anchorStart == null) anchorStart = rect
                     anchorEnd = rect
                 }
@@ -234,6 +239,7 @@ object EpubPageSelectorBuilder {
         return EpubSelectionGeometry(
             selectedText = text.toString(),
             rects = rects,
+            paths = paths,
             anchorStartX = firstRect.left,
             anchorTopY = firstRect.top,
             anchorEndX = lastRect.right,
@@ -271,6 +277,24 @@ object EpubPageSelectorBuilder {
         val length = line.textEnd - line.textStart
         val ratio = (offset - line.textStart).toFloat().coerceIn(0f, length.toFloat()) / length.toFloat()
         return line.rect.left + line.rect.width() * ratio
+    }
+
+    private fun EpubSelectableLine.selectionPath(
+        lineFrom: Int,
+        lineTo: Int,
+        offsetX: Float,
+        offsetY: Float
+    ): Path? {
+        val layout = layout ?: return null
+        val layoutLineIndex = layoutLineIndex ?: return null
+        val sourceFrom = (sourceStart + lineFrom - textStart).coerceIn(sourceStart, sourceEnd)
+        val sourceTo = (sourceStart + lineTo - textStart).coerceIn(sourceFrom, sourceEnd)
+        if (sourceTo <= sourceFrom) return null
+        val path = Path()
+        layout.getSelectionPath(sourceFrom, sourceTo, path)
+        val originY = rect.top - layout.getLineTop(layoutLineIndex)
+        path.offset(textOriginX + offsetX, originY + offsetY)
+        return path
     }
 
     private data class AbsoluteTextFragment(

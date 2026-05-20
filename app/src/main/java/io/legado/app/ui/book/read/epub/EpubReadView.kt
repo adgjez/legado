@@ -82,6 +82,7 @@ class EpubReadView @JvmOverloads constructor(
 
     private data class SelectionHighlight(
         val rects: List<RectF>,
+        val paths: List<Path>,
         val anchor: SelectionAnchor
     )
 
@@ -352,11 +353,11 @@ class EpubReadView @JvmOverloads constructor(
     fun selectTextAt(x: Float, y: Float): SelectionAnchor? {
         val page = currentPage() ?: return null
         val selectablePage = ensureSelectablePage(page)
-        val hit = EpubPageSelectorBuilder.hitTest(selectablePage, x, y, strict = false) ?: return null
+        val hit = hitTestSelection(selectablePage, x, y) ?: return null
         selectionStartBlock = hit.block
-        selectionStartOffset = hit.textOffset
+        selectionStartOffset = hit.expandedStartOffset()
         selectionEndBlock = hit.block
-        selectionEndOffset = hit.textOffset
+        selectionEndOffset = hit.expandedEndOffset()
         updateSelection(selectablePage)
         return selectionAnchor
     }
@@ -364,7 +365,7 @@ class EpubReadView @JvmOverloads constructor(
     fun selectStartMove(x: Float, y: Float) {
         val page = currentPage() ?: return
         val selectablePage = ensureSelectablePage(page)
-        val hit = EpubPageSelectorBuilder.hitTest(selectablePage, x, y, strict = false) ?: return
+        val hit = hitTestSelection(selectablePage, x, y) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
             selectionStartBlock = hit.block
             selectionStartOffset = hit.textOffset
@@ -380,7 +381,7 @@ class EpubReadView @JvmOverloads constructor(
     fun selectEndMove(x: Float, y: Float) {
         val page = currentPage() ?: return
         val selectablePage = ensureSelectablePage(page)
-        val hit = EpubPageSelectorBuilder.hitTest(selectablePage, x, y, strict = false) ?: return
+        val hit = hitTestSelection(selectablePage, x, y) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
             selectionStartBlock = hit.block
             selectionStartOffset = hit.textOffset
@@ -391,6 +392,16 @@ class EpubReadView @JvmOverloads constructor(
             selectionEndOffset = hit.textOffset
         }
         updateSelection(selectablePage)
+    }
+
+    fun selectStartMoveOnScreen(rawX: Float, rawY: Float) {
+        val local = screenToLocal(rawX, rawY)
+        selectStartMove(local.x, local.y)
+    }
+
+    fun selectEndMoveOnScreen(rawX: Float, rawY: Float) {
+        val local = screenToLocal(rawX, rawY)
+        selectEndMove(local.x, local.y)
     }
 
     fun getSelectedText(): String = selectedText
@@ -1613,16 +1624,18 @@ class EpubReadView @JvmOverloads constructor(
     private fun updateSelection(page: EpubSelectablePage) {
         val startBlock = selectionStartBlock ?: return clearSelection()
         val endBlock = selectionEndBlock ?: return clearSelection()
+        val contentOffsetX = contentOffsetX()
+        val contentOffsetY = contentOffsetY()
         val geometry = EpubPageSelectorBuilder.selectionGeometry(
             page = page,
             startBlock = startBlock,
             startOffset = selectionStartOffset,
             endBlock = endBlock,
             endOffset = selectionEndOffset,
-            offsetX = 0f,
-            offsetY = 0f,
-            leftLimit = 0f,
-            rightLimit = width.toFloat().coerceAtLeast(1f)
+            offsetX = contentOffsetX,
+            offsetY = contentOffsetY,
+            leftLimit = contentOffsetX,
+            rightLimit = contentRightX().coerceAtLeast(contentOffsetX + 1f)
         )
         if (geometry.rects.isEmpty() || geometry.selectedText.isBlank()) {
             selectedText = ""
@@ -1640,7 +1653,7 @@ class EpubReadView @JvmOverloads constructor(
             startBottomY = geometry.anchorStartBottomY,
             endBottomY = geometry.anchorEndBottomY
         )
-        selectionHighlight = SelectionHighlight(geometry.rects, selectionAnchor!!)
+        selectionHighlight = SelectionHighlight(geometry.rects, geometry.paths, selectionAnchor!!)
         invalidate()
     }
 
@@ -1662,9 +1675,44 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun drawSelectionOverlay(canvas: Canvas) {
         val highlight = selectionHighlight ?: return
-        highlight.rects.forEach { rect ->
-            canvas.drawRect(rect, selectionPaint)
+        if (highlight.paths.isNotEmpty()) {
+            highlight.paths.forEach { path ->
+                canvas.drawPath(path, selectionPaint)
+            }
+        } else {
+            highlight.rects.forEach { rect ->
+                canvas.drawRect(rect, selectionPaint)
+            }
         }
+    }
+
+    private fun hitTestSelection(page: EpubSelectablePage, x: Float, y: Float): EpubTextHit? {
+        return EpubPageSelectorBuilder.hitTest(
+            page = page,
+            x = x - contentOffsetX(),
+            y = y - contentOffsetY(),
+            strict = false
+        )
+    }
+
+    private fun screenToLocal(rawX: Float, rawY: Float): PointF {
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        return PointF(rawX - location[0], rawY - location[1])
+    }
+
+    private fun contentOffsetX(): Float = (layoutConfig?.paddingLeftPx ?: 0).toFloat()
+
+    private fun contentOffsetY(): Float = (layoutConfig?.paddingTopPx ?: 0).toFloat()
+
+    private fun contentRightX(): Float = (width - (layoutConfig?.paddingRightPx ?: 0)).toFloat()
+
+    private fun EpubTextHit.expandedStartOffset(): Int {
+        return (textOffset - 1).coerceAtLeast(line.textStart)
+    }
+
+    private fun EpubTextHit.expandedEndOffset(): Int {
+        return (textOffset + 1).coerceAtMost(line.textEnd)
     }
 
     private fun drawLoadingOverlay(canvas: Canvas) {

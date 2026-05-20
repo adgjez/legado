@@ -950,7 +950,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 when (v.id) {
                     R.id.cursor_left -> {
                         if (epubCoreActive) {
-                            binding.epubReadView.selectStartMove(event.rawX, event.rawY - cursorLeft.height / 2f)
+                            binding.epubReadView.selectStartMoveOnScreen(event.rawX, event.rawY - cursorLeft.height / 2f)
                         } else if (!readView.curPage.getReverseStartCursor()) {
                             readView.curPage.selectStartMove(
                                 event.rawX + cursorLeft.width,
@@ -966,7 +966,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
                     R.id.cursor_right -> {
                         if (epubCoreActive) {
-                            binding.epubReadView.selectEndMove(event.rawX, event.rawY - cursorRight.height / 2f)
+                            binding.epubReadView.selectEndMoveOnScreen(event.rawX, event.rawY - cursorRight.height / 2f)
                         } else if (readView.curPage.getReverseEndCursor()) {
                             readView.curPage.selectStartMove(
                                 event.rawX + cursorLeft.width,

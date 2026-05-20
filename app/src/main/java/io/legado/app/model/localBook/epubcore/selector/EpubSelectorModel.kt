@@ -1,5 +1,6 @@
 package io.legado.app.model.localBook.epubcore.selector
 
+import android.graphics.Path
 import android.graphics.RectF
 import android.text.Layout
 import io.legado.app.model.localBook.epubcore.model.SourceAnchor
@@ -40,6 +41,7 @@ data class EpubTextHit(
 data class EpubSelectionGeometry(
     val selectedText: String,
     val rects: List<RectF>,
+    val paths: List<Path> = emptyList(),
     val anchorStartX: Float,
     val anchorTopY: Float,
     val anchorEndX: Float,
