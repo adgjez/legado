@@ -216,6 +216,56 @@ class EpubWebSelectionLayerSession(
               function selectionText(value) {
                 return String(value || '').replace(/[\t\r\n ]+/g, ' ').replace(/^[ ]+|[ ]+$/g, '');
               }
+              function nodePath(node) {
+                var path = [];
+                var current = node;
+                while (current && current !== document) {
+                  var parent = current.parentNode;
+                  if (!parent) break;
+                  var index = 0;
+                  var siblings = parent.childNodes || [];
+                  for (var i = 0; i < siblings.length; i++) {
+                    if (siblings[i] === current) break;
+                    if (siblings[i].nodeType === current.nodeType && siblings[i].nodeName === current.nodeName) index++;
+                  }
+                  path.push({ name: current.nodeName, type: current.nodeType, index: index });
+                  current = parent;
+                }
+                return path;
+              }
+              function resolvePath(path) {
+                var current = document;
+                for (var i = path.length - 1; i >= 0; i--) {
+                  var item = path[i];
+                  var seen = 0;
+                  var found = null;
+                  var children = current.childNodes || [];
+                  for (var j = 0; j < children.length; j++) {
+                    var child = children[j];
+                    if (child.nodeType === item.type && child.nodeName === item.name) {
+                      if (seen === item.index) {
+                        found = child;
+                        break;
+                      }
+                      seen++;
+                    }
+                  }
+                  if (!found) return null;
+                  current = found;
+                }
+                return current && current.nodeType === Node.TEXT_NODE ? current : null;
+              }
+              function selectionPoint(range, end) {
+                var container = end ? range.endContainer : range.startContainer;
+                var offset = end ? range.endOffset : range.startOffset;
+                return { path: nodePath(container), offset: Math.max(0, offset || 0) };
+              }
+              function restorePoint(value) {
+                if (!value || !value.path) return null;
+                var node = resolvePath(value.path);
+                if (!node) return null;
+                return point(node, Math.max(0, Math.min(value.offset || 0, textOf(node).length)));
+              }
               function sliceRootByFragments(root) {
                 if (!root || root.getAttribute('data-legado-selection-sliced') === '1') return root;
                 if (!START_ID && !END_ID) {
@@ -444,6 +494,7 @@ class EpubWebSelectionLayerSession(
               var selection = window.getSelection();
               if (ACTION === 'Clear') {
                 if (selection) selection.removeAllRanges();
+                window.__legadoSelectionPoints = null;
                 return JSON.stringify({ text: '', rects: [] });
               }
               var target = caretRange(X, Y);
@@ -452,16 +503,27 @@ class EpubWebSelectionLayerSession(
               if (ACTION === 'SelectWord' || !selection || selection.rangeCount === 0) {
                 nextRange = expandRange(target);
               } else {
-                var current = selection.getRangeAt(0);
                 var targetPoint = point(target.startContainer, target.startOffset);
-                if (ACTION === 'MoveStart') {
-                  nextRange = orderedRange(targetPoint, point(current.endContainer, current.endOffset));
+                var saved = window.__legadoSelectionPoints || null;
+                var savedStart = restorePoint(saved && saved.start);
+                var savedEnd = restorePoint(saved && saved.end);
+                var current = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+                if (!savedStart && current) savedStart = point(current.startContainer, current.startOffset);
+                if (!savedEnd && current) savedEnd = point(current.endContainer, current.endOffset);
+                if (!savedStart || !savedEnd) {
+                  nextRange = expandRange(target);
+                } else if (ACTION === 'MoveStart') {
+                  nextRange = orderedRange(targetPoint, savedEnd);
                 } else {
-                  nextRange = orderedRange(point(current.startContainer, current.startOffset), targetPoint);
+                  nextRange = orderedRange(savedStart, targetPoint);
                 }
               }
               selection.removeAllRanges();
               selection.addRange(nextRange);
+              window.__legadoSelectionPoints = {
+                start: selectionPoint(nextRange, false),
+                end: selectionPoint(nextRange, true)
+              };
               var rects = normalizeRects(Array.prototype.slice.call(nextRange.getClientRects ? nextRange.getClientRects() : []));
               return JSON.stringify({
                 text: selection.toString(),
