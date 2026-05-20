@@ -241,9 +241,12 @@ class EpubPageRenderer {
             .takeIf { it.isFinite() && it > 0f }
             ?.let { it / 2f }
             ?: 0f
+        val measuredRight = (rect.left + paint.measureText(fragment.text.toString()) + 4f)
+            .takeIf { it.isFinite() }
+            ?: rect.right
         val left = (rect.left - 2f).coerceAtLeast(contentBounds.left)
         val top = minOf(rect.top - verticalPad, glyphTop - 2f).coerceAtLeast(contentBounds.top)
-        val right = (rect.right + 2f).coerceAtMost(contentBounds.right)
+        val right = maxOf(rect.right + 2f, measuredRight).coerceAtMost(contentBounds.right)
         val bottom = maxOf(rect.bottom + verticalPad, glyphBottom + 2f).coerceAtMost(contentBounds.bottom)
         if (right > left && bottom > top) {
             textClipRect.set(left, top, right, bottom)

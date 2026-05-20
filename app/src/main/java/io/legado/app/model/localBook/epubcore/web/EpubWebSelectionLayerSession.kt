@@ -1000,6 +1000,10 @@ class EpubWebSelectionLayerSession(
               -webkit-user-select: text;
               user-select: text;
             }
+            p, li, blockquote, div {
+              overflow-wrap: break-word;
+              word-break: break-word;
+            }
             img, svg, video, canvas {
               max-width: 100%;
               height: auto;
