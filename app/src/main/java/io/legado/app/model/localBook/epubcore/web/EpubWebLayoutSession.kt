@@ -634,6 +634,27 @@ class EpubWebLayoutSession(
                   height: bottom - top
                 };
               }
+              function localTextRect(rect) {
+                if (!rect || rect.width <= 0.5 || rect.height <= 0.5) return null;
+                var page = rectPage(rect);
+                var left = rect.left - rootBounds.left - page * PAGE_W;
+                var right = rect.right - rootBounds.left - page * PAGE_W;
+                var top = rect.top - rootBounds.top;
+                var bottom = rect.bottom - rootBounds.top;
+                if (top < -0.5 || bottom > PAGE_H + 0.5) return null;
+                left = Math.max(0, Math.min(PAGE_W, left));
+                right = Math.max(0, Math.min(PAGE_W, right));
+                if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+                return {
+                  page: page,
+                  left: left,
+                  top: top + READER_PAD_TOP,
+                  right: right,
+                  bottom: bottom + READER_PAD_TOP,
+                  width: right - left,
+                  height: bottom - top
+                };
+              }
               function localRects(rect) {
                 if (!rect || rect.width <= 0.5 || rect.height <= 0.5) return [];
                 var startPage = rectPage(rect);
@@ -959,6 +980,10 @@ class EpubWebLayoutSession(
                 var raw = Array.prototype.slice.call(range.getClientRects());
                 return raw.filter(function(rect) { return validRect(rect); });
               }
+              function visibleTextRects(range) {
+                var raw = Array.prototype.slice.call(range.getClientRects());
+                return raw.filter(function(rect) { return localTextRect(rect) != null; });
+              }
               function makeRange(node, start, end) {
                 var range = document.createRange();
                 range.setStart(node, Math.max(0, start));
@@ -967,7 +992,7 @@ class EpubWebLayoutSession(
               }
               function firstVisibleRect(node, start, end) {
                 var range = makeRange(node, start, end);
-                var rects = visibleRects(range);
+                var rects = visibleTextRects(range);
                 range.detach();
                 return rects.length ? rects[0] : null;
               }
@@ -982,10 +1007,14 @@ class EpubWebLayoutSession(
               }
               function rangeFitsLine(node, start, end, baseRect) {
                 var range = makeRange(node, start, end);
-                var rects = visibleRects(range);
+                var rects = Array.prototype.slice.call(range.getClientRects()).filter(function(rect) {
+                  return rect && rect.width > 0.5 && rect.height > 0.5;
+                });
                 range.detach();
+                if (!rects.length) return false;
                 for (var i = 0; i < rects.length; i++) {
                   if (!sameVisualLine(rects[i], baseRect)) return false;
+                  if (localTextRect(rects[i]) == null) return false;
                 }
                 return true;
               }
@@ -1005,7 +1034,7 @@ class EpubWebLayoutSession(
               }
               function lineInfo(node, start, end, baseRect) {
                 var range = makeRange(node, start, end);
-                var rects = visibleRects(range).filter(function(rect) { return sameVisualLine(rect, baseRect); });
+                var rects = visibleTextRects(range).filter(function(rect) { return sameVisualLine(rect, baseRect); });
                 var text = range.toString();
                 range.detach();
                 return { rect: unionRects(rects), text: text };
@@ -1063,19 +1092,44 @@ class EpubWebLayoutSession(
                     var startOffset = cursor;
                     var info = lineInfo(node, cursor, best, baseRect);
                     var lineText = visibleText(info.text);
-                    var local = localRect(info.rect);
+                    var local = localTextRect(info.rect);
                     cursor = Math.max(best, cursor + 1);
                     if (!lineText || !local) continue;
                     var measuredWidth = measuredTextWidth(lineText, style, letterSpacing);
-                    var effectiveScale = measuredWidth ? (local.width / measuredWidth) : textScaleX;
-                    if (!isFinite(effectiveScale) || effectiveScale <= 0) effectiveScale = textScaleX;
+                    if (measuredWidth && measuredWidth > local.width * 1.25 && lineText.length > 1) {
+                      var fitLow = startOffset + 1;
+                      var fitHigh = best;
+                      var fitBest = fitLow;
+                      while (fitLow <= fitHigh) {
+                        var fitMid = Math.floor((fitLow + fitHigh) / 2);
+                        var fitInfo = lineInfo(node, startOffset, fitMid, baseRect);
+                        var fitText = visibleText(fitInfo.text);
+                        var fitLocal = localTextRect(fitInfo.rect);
+                        var fitWidth = fitText ? measuredTextWidth(fitText, style, letterSpacing) : null;
+                        if (fitText && fitLocal && (!fitWidth || fitWidth <= fitLocal.width * 1.08)) {
+                          fitBest = fitMid;
+                          fitLow = fitMid + 1;
+                        } else {
+                          fitHigh = fitMid - 1;
+                        }
+                      }
+                      if (fitBest < best) {
+                        best = fitBest;
+                        info = lineInfo(node, startOffset, best, baseRect);
+                        lineText = visibleText(info.text);
+                        local = localTextRect(info.rect);
+                        measuredWidth = lineText ? measuredTextWidth(lineText, style, letterSpacing) : null;
+                        cursor = Math.max(best, startOffset + 1);
+                        if (!lineText || !local) continue;
+                      }
+                    }
                     pending.push({
                       startOffset: startOffset,
                       endOffset: cursor,
                       lineText: lineText,
                       local: local,
                       measuredWidth: measuredWidth,
-                      textScaleX: effectiveScale
+                      textScaleX: textScaleX
                     });
                     count++;
                   }
