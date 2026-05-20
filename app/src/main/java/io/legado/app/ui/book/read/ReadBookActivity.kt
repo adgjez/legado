@@ -515,6 +515,16 @@ class ReadBookActivity : BaseReadBookActivity(),
                     )
                 } else if (action == EpubWebSelectionAction.SelectWord) {
                     AppLog.putDebug("EPUB Web selection empty: chapter=$chapterIndex page=$pageIndex")
+                    binding.epubReadView.selectTextAtCanvasFallback(x, y)?.let { fallbackAnchor ->
+                        showEpubTextActionMenu(
+                            fallbackAnchor.startX,
+                            fallbackAnchor.topY,
+                            fallbackAnchor.endX,
+                            fallbackAnchor.bottomY,
+                            fallbackAnchor.startBottomY,
+                            fallbackAnchor.endBottomY
+                        )
+                    }
                 }
             }
         }

@@ -365,6 +365,11 @@ class EpubReadView @JvmOverloads constructor(
         if (listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.SelectWord, x, y) == true) {
             return null
         }
+        return selectTextAtCanvasFallback(x, y)
+    }
+
+    fun selectTextAtCanvasFallback(x: Float, y: Float): SelectionAnchor? {
+        val page = currentPage() ?: return null
         val selectablePage = ensureSelectablePage(page)
         val hit = hitTestSelection(selectablePage, x, y) ?: return null
         webSelectionActive = false
