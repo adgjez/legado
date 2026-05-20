@@ -1626,7 +1626,7 @@ class TextChapterLayout(
             val mLineTop = staticLayout.getLineTop(lineIndex).toFloat()
             val mLineBottom = staticLayout.getLineBottom(lineIndex).toFloat()
             val lineHeight = mLineBottom - mLineTop
-            prepareNextPageIfNeed(durY + lineHeight)
+            prepareNextPageIfNeed(fullLineRequestHeight(lineHeight, textPaint.fontMetrics))
             textLine.upTopBottom(durY, lineHeight, textPaint.fontMetrics) //y坐标
 
             val columns = mutableListOf<BaseColumn>()
@@ -1993,7 +1993,7 @@ class TextChapterLayout(
         }
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)
-            prepareNextPageIfNeed(durY + textHeight)
+            prepareNextPageIfNeed(fullLineRequestHeight(textHeight, fontMetrics))
             val lineStart = layout.getLineStart(lineIndex)
             val lineEnd = layout.getLineEnd(lineIndex)
             val lineText = text.substring(lineStart, lineEnd)
@@ -2307,6 +2307,9 @@ class TextChapterLayout(
     private suspend fun prepareNextPageIfNeed(requestHeight: Float = -1f) {
         if (requestHeight > visibleHeight || requestHeight == -1f) {
             val textPage = pendingTextPage
+            if (textPage.lines.isEmpty() && stringBuilder.isEmpty()) {
+                return
+            }
             // 双页的 durY 不正确，可能会小于实际高度
             if (textPage.height < durY) {
                 textPage.height = durY
@@ -2322,6 +2325,12 @@ class TextChapterLayout(
             absStartX = paddingLeft
             durY = 0f
         }
+    }
+
+    private fun fullLineRequestHeight(lineHeight: Float, fontMetrics: Paint.FontMetrics): Float {
+        val descent = fontMetrics.descent.coerceAtLeast(0f)
+        val safety = maxOf(2f.dpToPx(), descent * 0.25f)
+        return durY + lineHeight + safety
     }
 
     private data class AdvancedTitleLayout(

@@ -114,7 +114,7 @@ data class TextHtmlColumn(
             view.drawTextWithPaperInk(canvas, charData, start, y, textPaint, enablePaperInk)
         }
         if (selected) {
-            canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)
+            view.drawSelectedRect(canvas, start, 0f, end, textLine.height)
         }
     }
 

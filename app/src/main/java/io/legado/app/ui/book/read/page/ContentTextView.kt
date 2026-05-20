@@ -56,6 +56,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             style = Paint.Style.FILL
         }
     }
+    private val selectedStrokePaint by lazy {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = context.getCompatColor(R.color.accent)
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f.dpToPx()
+        }
+    }
     private var callBack: CallBack
     private val visibleRect = ChapterProvider.visibleRect
     val selectStart = TextPos(0, -1, -1)
@@ -159,9 +166,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         if (callBack.isScroll) {
             if (!pageFactory.hasNext()) {
-                nativeSelectionRect?.let { rect ->
-                    canvas.drawRect(rect, selectedPaint)
-                }
+                nativeSelectionRect?.let { rect -> drawSelectedRect(canvas, rect) }
                 return
             }
             val textPage1 = relativePage(1)
@@ -175,9 +180,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
             }
         }
-        nativeSelectionRect?.let { rect ->
-            canvas.drawRect(rect, selectedPaint)
-        }
+        nativeSelectionRect?.let { rect -> drawSelectedRect(canvas, rect) }
+    }
+
+    fun drawSelectedRect(canvas: Canvas, rect: RectF) {
+        canvas.drawRect(rect, selectedPaint)
+        canvas.drawRect(rect, selectedStrokePaint)
+    }
+
+    fun drawSelectedRect(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float) {
+        canvas.drawRect(left, top, right, bottom, selectedPaint)
+        canvas.drawRect(left, top, right, bottom, selectedStrokePaint)
     }
 
     private fun drawPageInBounds(
