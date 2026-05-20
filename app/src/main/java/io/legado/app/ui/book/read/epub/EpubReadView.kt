@@ -20,6 +20,7 @@ import android.view.ViewConfiguration
 import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
+import android.widget.Magnifier
 import android.widget.Scroller
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.AppLog
@@ -27,6 +28,11 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
+import io.legado.app.model.localBook.epubcore.layout.EpubContainerFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubFlexFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubPageFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubTableFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubWebFragment
 import io.legado.app.model.localBook.epubcore.layout.pageKey
 import io.legado.app.model.localBook.epubcore.selector.EpubPageSelectorBuilder
 import io.legado.app.model.localBook.epubcore.selector.EpubSelectionGeometry
@@ -229,7 +235,9 @@ class EpubReadView @JvmOverloads constructor(
     private var selectionMenuPending = false
     private var lastDownAt = 0L
     private var longPressTriggered = false
+    private var selectionMagnifier: Magnifier? = null
     private val longPressRunnable = Runnable {
+        if (isVerticalScrollMode()) return@Runnable
         longPressTriggered = true
         selectTextAt(downX, downY)?.let { anchor ->
             deferOrShowSelectionMenu(anchor)
@@ -375,27 +383,35 @@ class EpubReadView @JvmOverloads constructor(
     }
 
     fun selectTextAt(x: Float, y: Float): SelectionAnchor? {
+        if (isVerticalScrollMode()) return null
         val page = currentPage() ?: return null
-        val generation = nextSelectionGeneration()
-        if (listener?.onWebTextSelectionRequested(
-                page,
-                pageIndex,
-                EpubWebSelectionAction.SelectWord,
-                x,
-                y,
-                generation,
-                page.pageKey()
-            ) == true
-        ) {
-            return null
+        selectTextAtCanvasFallback(x, y)?.let { anchor ->
+            showSelectionMagnifier(x, y)
+            return anchor
         }
-        return selectTextAtCanvasFallback(x, y)
+        if (isPointInsideWebFragment(page, x, y)) {
+            val generation = nextSelectionGeneration()
+            if (listener?.onWebTextSelectionRequested(
+                    page,
+                    pageIndex,
+                    EpubWebSelectionAction.SelectWord,
+                    x,
+                    y,
+                    generation,
+                    page.pageKey()
+                ) == true
+            ) {
+                return null
+            }
+        }
+        return null
     }
 
     fun selectTextAtCanvasFallback(x: Float, y: Float): SelectionAnchor? {
+        if (isVerticalScrollMode()) return null
         val page = currentPage() ?: return null
         val selectablePage = ensureSelectablePage(page)
-        val hit = hitTestSelection(selectablePage, x, y) ?: return null
+        val hit = hitTestSelection(selectablePage, x, y, strict = true) ?: return null
         webSelectionActive = false
         selectionStartBlock = hit.block
         selectionStartOffset = hit.expandedStartOffset()
@@ -406,6 +422,7 @@ class EpubReadView @JvmOverloads constructor(
     }
 
     fun selectStartMove(x: Float, y: Float) {
+        if (isVerticalScrollMode()) return
         val page = currentPage() ?: return
         val generation = nextSelectionGeneration()
         if (webSelectionActive &&
@@ -422,7 +439,13 @@ class EpubReadView @JvmOverloads constructor(
             return
         }
         val selectablePage = ensureSelectablePage(page)
-        val hit = hitTestSelection(selectablePage, x, y) ?: return
+        val hit = hitTestSelection(
+            selectablePage,
+            x,
+            y,
+            strict = false,
+            maxDistance = selectionHandleHitDistance()
+        ) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
             selectionStartBlock = hit.block
             selectionStartOffset = hit.textOffset
@@ -433,9 +456,11 @@ class EpubReadView @JvmOverloads constructor(
             selectionStartOffset = hit.textOffset
         }
         updateSelection(selectablePage)
+        showSelectionMagnifier(x, y)
     }
 
     fun selectEndMove(x: Float, y: Float) {
+        if (isVerticalScrollMode()) return
         val page = currentPage() ?: return
         val generation = nextSelectionGeneration()
         if (webSelectionActive &&
@@ -452,7 +477,13 @@ class EpubReadView @JvmOverloads constructor(
             return
         }
         val selectablePage = ensureSelectablePage(page)
-        val hit = hitTestSelection(selectablePage, x, y) ?: return
+        val hit = hitTestSelection(
+            selectablePage,
+            x,
+            y,
+            strict = false,
+            maxDistance = selectionHandleHitDistance()
+        ) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
             selectionStartBlock = hit.block
             selectionStartOffset = hit.textOffset
@@ -463,6 +494,7 @@ class EpubReadView @JvmOverloads constructor(
             selectionEndOffset = hit.textOffset
         }
         updateSelection(selectablePage)
+        showSelectionMagnifier(x, y)
     }
 
     fun selectStartMoveOnScreen(rawX: Float, rawY: Float) {
@@ -497,6 +529,7 @@ class EpubReadView @JvmOverloads constructor(
 
     fun endSelectionHandleDrag() {
         selectionHandleDragActive = false
+        dismissSelectionMagnifier()
         if (selectedText.isNotBlank() && selectionAnchor != null) {
             selectionMenuPending = true
             notifySelectionMenuIfReady()
@@ -506,6 +539,7 @@ class EpubReadView @JvmOverloads constructor(
     fun cancelSelectionHandleDrag() {
         selectionHandleDragActive = false
         selectionMenuPending = false
+        dismissSelectionMagnifier()
     }
 
     fun deferOrShowSelectionMenu(anchor: SelectionAnchor) {
@@ -582,6 +616,7 @@ class EpubReadView @JvmOverloads constructor(
 
     fun clearSelection(notify: Boolean = true) {
         nextSelectionGeneration()
+        dismissSelectionMagnifier()
         selectedText = ""
         selectionAnchor = null
         selectionHighlight = null
@@ -732,6 +767,9 @@ class EpubReadView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
+                if (isVerticalScrollMode() && selectedText.isNotBlank()) {
+                    clearSelection()
+                }
                 primaryTouchActive = true
                 selectionExistedOnDown = selectedText.isNotBlank()
                 downX = event.x
@@ -742,7 +780,7 @@ class EpubReadView @JvmOverloads constructor(
                 longPressTriggered = false
                 velocityTracker.clear()
                 velocityTracker.addMovement(event)
-                if (selectedText.isBlank()) {
+                if (selectedText.isBlank() && !isVerticalScrollMode()) {
                     postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
                 }
                 return true
@@ -795,6 +833,7 @@ class EpubReadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_UP -> {
                 removeCallbacks(longPressRunnable)
+                dismissSelectionMagnifier()
                 primaryTouchActive = false
                 velocityTracker.addMovement(event)
                 velocityTracker.computeCurrentVelocity(1000)
@@ -821,8 +860,7 @@ class EpubReadView @JvmOverloads constructor(
                             if (abs(velocityY) > minFlingVelocity) {
                                 startScrollFling(velocityY)
                             } else {
-                                scrollOffsetY = 0f
-                                bindIdleSlots()
+                                applyVerticalOffsets()
                                 invalidate()
                             }
                         }
@@ -837,6 +875,7 @@ class EpubReadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_CANCEL -> {
                 removeCallbacks(longPressRunnable)
+                dismissSelectionMagnifier()
                 primaryTouchActive = false
                 selectionExistedOnDown = false
                 selectionMenuPending = false
@@ -1852,7 +1891,8 @@ class EpubReadView @JvmOverloads constructor(
     }
 
     private fun ensureSelectablePage(page: EpubCorePage): EpubSelectablePage {
-        return selectableIndex.getOrPut(page.pageKey()) {
+        val key = "${page.pageKey()}:${renderer.renderStateVersion}"
+        return selectableIndex.getOrPut(key) {
             EpubPageSelectorBuilder.build(page)
         }
     }
@@ -1922,13 +1962,57 @@ class EpubReadView @JvmOverloads constructor(
         }
     }
 
-    private fun hitTestSelection(page: EpubSelectablePage, x: Float, y: Float): EpubTextHit? {
+    private fun hitTestSelection(
+        page: EpubSelectablePage,
+        x: Float,
+        y: Float,
+        strict: Boolean,
+        maxDistance: Float? = null
+    ): EpubTextHit? {
         return EpubPageSelectorBuilder.hitTest(
             page = page,
             x = x - contentOffsetX(),
             y = y - contentOffsetY(),
-            strict = false
+            strict = strict,
+            maxDistance = maxDistance
         )
+    }
+
+    private fun isVerticalScrollMode(): Boolean {
+        return !isLandscape && ReadBook.pageAnim() == PageAnim.scrollPageAnim
+    }
+
+    private fun selectionHandleHitDistance(): Float {
+        return maxOf(touchSlop * 8f, 48f)
+    }
+
+    private fun showSelectionMagnifier(x: Float, y: Float) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !isAttachedToWindow) return
+        val safeX = x.coerceIn(0f, width.toFloat())
+        val safeY = y.coerceIn(0f, height.toFloat())
+        (selectionMagnifier ?: Magnifier(this).also { selectionMagnifier = it }).show(safeX, safeY)
+    }
+
+    private fun dismissSelectionMagnifier() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        selectionMagnifier?.dismiss()
+    }
+
+    private fun isPointInsideWebFragment(page: EpubCorePage, x: Float, y: Float): Boolean {
+        val localX = x - contentOffsetX()
+        val localY = y - contentOffsetY()
+        return page.paintFragments.any { it.containsWebFragmentAt(localX, localY, 0f, 0f) }
+    }
+
+    private fun EpubPageFragment.containsWebFragmentAt(x: Float, y: Float, offsetX: Float, offsetY: Float): Boolean {
+        val rect = RectF(frame).apply { offset(offsetX, offsetY) }
+        return when (this) {
+            is EpubWebFragment -> rect.contains(x, y)
+            is EpubContainerFragment -> children.any { it.containsWebFragmentAt(x, y, rect.left, rect.top) }
+            is EpubTableFragment -> children.any { it.containsWebFragmentAt(x, y, rect.left, rect.top) }
+            is EpubFlexFragment -> children.any { it.containsWebFragmentAt(x, y, rect.left, rect.top) }
+            else -> false
+        }
     }
 
     private fun screenToLocal(rawX: Float, rawY: Float): PointF {
