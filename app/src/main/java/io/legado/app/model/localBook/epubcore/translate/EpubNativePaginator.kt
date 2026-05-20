@@ -21,8 +21,7 @@ class EpubNativePaginator(
             chapterIndex = document.source.chapterIndex,
             chapterHref = document.source.chapterHref,
             pageIndex = 0,
-            heightLimit = config.pageHeightPx.toFloat() - config.paddingBottomPx,
-            cursorY = config.paddingTopPx.toFloat()
+            heightLimit = config.contentHeightPx.toFloat()
         )
         fun flushPage() {
             if (current.fragments.isEmpty()) return
@@ -31,8 +30,7 @@ class EpubNativePaginator(
                 chapterIndex = document.source.chapterIndex,
                 chapterHref = document.source.chapterHref,
                 pageIndex = pages.size,
-                heightLimit = config.pageHeightPx.toFloat() - config.paddingBottomPx,
-                cursorY = config.paddingTopPx.toFloat()
+                heightLimit = config.contentHeightPx.toFloat()
             )
         }
         document.blocks.forEach { block ->
@@ -115,9 +113,9 @@ class EpubNativePaginator(
             staticLayout = layout,
             anchors = anchors.map { it.toLayoutAnchor() },
             frame = RectF(
-                config.paddingLeftPx.toFloat(),
+                0f,
                 y,
-                config.paddingLeftPx + contentWidthPx.toFloat(),
+                contentWidthPx.toFloat(),
                 y + height
             ),
             source = block.source.toReaderSourceRange(),
@@ -135,9 +133,9 @@ class EpubNativePaginator(
             href = block.href,
             alt = block.alt,
             frame = RectF(
-                config.paddingLeftPx.toFloat(),
+                0f,
                 y,
-                config.paddingLeftPx + widthPx,
+                widthPx,
                 y + heightPx
             ),
             source = block.source.toReaderSourceRange(),
@@ -149,9 +147,9 @@ class EpubNativePaginator(
     private fun EpubNativeLaidFallbackBlock.toFragment(y: Float): EpubWebFragment {
         return EpubWebFragment(
             frame = RectF(
-                config.paddingLeftPx.toFloat(),
+                0f,
                 y,
-                config.paddingLeftPx + config.contentWidthPx.toFloat(),
+                config.contentWidthPx.toFloat(),
                 y + heightPx
             ),
             source = block.source.toReaderSourceRange(),
