@@ -6,6 +6,7 @@ import android.text.Layout
 import io.legado.app.model.localBook.epubcore.layout.EpubContainerFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
 import io.legado.app.model.localBook.epubcore.layout.EpubFlexFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredTextKind
 import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredTextFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubPageFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubTableFragment
@@ -138,26 +139,38 @@ object EpubPageSelectorBuilder {
     ) {
         fragments.forEach { fragment ->
             when (fragment) {
-                is EpubTextFragment -> out += AbsoluteTextFragment(
-                    fragment = fragment,
-                    text = fragment.visibleText(),
-                    frame = fragment.frame.offsetBy(offsetX, offsetY),
-                    nodePath = fragment.source?.start?.nodePath ?: "text:${out.size}",
-                    blockKey = fragment.source?.start?.nodePath ?: "text:${out.size}",
-                    sourceAnchor = fragment.source?.start,
-                    sourceOffset = fragment.startLineOffset(),
-                    nodeOrder = fragment.source?.start?.blockIndex ?: out.size
-                )
-                is EpubMeasuredTextFragment -> out += AbsoluteTextFragment(
-                    fragment = fragment,
-                    text = fragment.text.toString(),
-                    frame = fragment.frame.offsetBy(offsetX, offsetY),
-                    nodePath = fragment.source?.start?.nodePath ?: "measured:${out.size}",
-                    blockKey = fragment.source?.start?.nodePath ?: "measured:${out.size}",
-                    sourceAnchor = fragment.source?.start,
-                    sourceOffset = fragment.source?.startOffset ?: 0,
-                    nodeOrder = fragment.source?.start?.blockIndex ?: out.size
-                )
+                is EpubTextFragment -> {
+                    val text = fragment.visibleText()
+                    val frame = fragment.frame.offsetBy(offsetX, offsetY)
+                    if (text.isSelectableText() && frame.isSelectableFrame()) {
+                        out += AbsoluteTextFragment(
+                            fragment = fragment,
+                            text = text,
+                            frame = frame,
+                            nodePath = fragment.source?.start?.nodePath ?: "text:${out.size}",
+                            blockKey = fragment.source?.start?.nodePath ?: "text:${out.size}",
+                            sourceAnchor = fragment.source?.start,
+                            sourceOffset = fragment.startLineOffset(),
+                            nodeOrder = fragment.source?.start?.blockIndex ?: out.size
+                        )
+                    }
+                }
+                is EpubMeasuredTextFragment -> {
+                    val text = fragment.text.toString()
+                    val frame = fragment.frame.offsetBy(offsetX, offsetY)
+                    if (fragment.isSelectableMeasuredText() && text.isSelectableText() && frame.isSelectableFrame()) {
+                        out += AbsoluteTextFragment(
+                            fragment = fragment,
+                            text = text,
+                            frame = frame,
+                            nodePath = fragment.source?.start?.nodePath ?: "measured:${out.size}",
+                            blockKey = fragment.source?.start?.nodePath ?: "measured:${out.size}",
+                            sourceAnchor = fragment.source?.start,
+                            sourceOffset = fragment.source?.startOffset ?: 0,
+                            nodeOrder = fragment.source?.start?.blockIndex ?: out.size
+                        )
+                    }
+                }
                 is EpubContainerFragment -> collectTextFragments(fragment.children, offsetX + fragment.frame.left, offsetY + fragment.frame.top, out)
                 is EpubTableFragment -> collectTextFragments(fragment.children, offsetX + fragment.frame.left, offsetY + fragment.frame.top, out)
                 is EpubFlexFragment -> collectTextFragments(fragment.children, offsetX + fragment.frame.left, offsetY + fragment.frame.top, out)
@@ -166,7 +179,7 @@ object EpubPageSelectorBuilder {
         }
     }
 
-    fun hitTest(page: EpubSelectablePage, x: Float, y: Float, strict: Boolean): EpubTextHit? {
+    fun hitTest(page: EpubSelectablePage, x: Float, y: Float, strict: Boolean, maxDistance: Float? = null): EpubTextHit? {
         val candidates = page.blocks.flatMap { block -> block.lines.map { block to it } }
         val hit = candidates.firstOrNull { (_, line) -> line.rect.contains(x, y) }
             ?: if (strict) null else candidates.minByOrNull { (_, line) ->
@@ -175,6 +188,13 @@ object EpubPageSelectorBuilder {
                 val dx = x - cx
                 val dy = y - cy
                 dx * dx + dy * dy
+            }?.takeIf { (_, line) ->
+                val limit = maxDistance ?: return@takeIf true
+                val cx = x.coerceIn(line.rect.left, line.rect.right)
+                val cy = y.coerceIn(line.rect.top, line.rect.bottom)
+                val dx = x - cx
+                val dy = y - cy
+                dx * dx + dy * dy <= limit * limit
             }
         val pair = hit ?: return null
         val offset = offsetForLine(pair.first, pair.second, x)
@@ -309,6 +329,24 @@ object EpubPageSelectorBuilder {
     )
 
     private fun RectF.offsetBy(x: Float, y: Float): RectF = RectF(this).apply { offset(x, y) }
+
+    private fun String.isSelectableText(): Boolean {
+        return any { !it.isWhitespace() && it != '\u200B' && it != '\uFEFF' }
+    }
+
+    private fun RectF.isSelectableFrame(): Boolean {
+        return left.isFinite() && top.isFinite() && right.isFinite() && bottom.isFinite() &&
+            width() >= 1f && height() >= 1f
+    }
+
+    private fun EpubMeasuredTextFragment.isSelectableMeasuredText(): Boolean {
+        if (kind != EpubMeasuredTextKind.Text) return false
+        if (opacity <= 0.05f) return false
+        val tag = tagName.orEmpty().lowercase()
+        if (tag in setOf("ruby", "rt", "rp", "sup", "sub")) return false
+        val path = source?.start?.nodePath.orEmpty().lowercase()
+        return listOf("/ruby", "/rt", "/rp", "/sup", "/sub").none { it in path }
+    }
 
     private fun EpubTextFragment.startLineOffset(): Int {
         val layout = staticLayout ?: return 0
