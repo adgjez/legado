@@ -734,7 +734,9 @@ class EpubReadView @JvmOverloads constructor(
                 longPressTriggered = false
                 velocityTracker.clear()
                 velocityTracker.addMovement(event)
-                postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
+                if (selectedText.isBlank()) {
+                    postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
+                }
                 return true
             }
 
@@ -744,6 +746,15 @@ class EpubReadView @JvmOverloads constructor(
                 val deltaY = event.y - lastY
                 val totalDx = event.x - downX
                 val totalDy = event.y - downY
+                if (selectedText.isNotBlank()) {
+                    if (!moved && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)) {
+                        moved = true
+                        removeCallbacks(longPressRunnable)
+                    }
+                    lastX = event.x
+                    lastY = event.y
+                    return true
+                }
                 if (!moved && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)) {
                     moved = true
                     removeCallbacks(longPressRunnable)
@@ -778,7 +789,9 @@ class EpubReadView @JvmOverloads constructor(
                 velocityTracker.computeCurrentVelocity(1000)
                 val velocityX = velocityTracker.xVelocity
                 val velocityY = velocityTracker.yVelocity
-                if (!moved) {
+                if (selectedText.isNotBlank()) {
+                    clearSelection()
+                } else if (!moved) {
                     handleTap(event.x, event.y)
                 } else {
                     when (gestureMode) {
