@@ -503,6 +503,8 @@ class EpubWebSelectionLayerSession(
               if (!target) return JSON.stringify({ text: '', rects: [] });
               var nextRange = null;
               if (ACTION === 'SelectWord' || !selection || selection.rangeCount === 0) {
+                if (selection) selection.removeAllRanges();
+                window.__legadoSelectionPoints = null;
                 nextRange = expandRange(target);
               } else {
                 var targetPoint = point(target.startContainer, target.startOffset);

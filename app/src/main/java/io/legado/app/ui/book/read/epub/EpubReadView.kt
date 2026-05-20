@@ -223,6 +223,7 @@ class EpubReadView @JvmOverloads constructor(
     private var webSelectionActive = false
     private var selectionGeneration = 0L
     private var primaryTouchActive = false
+    private var selectionExistedOnDown = false
     private var selectionHandleDragActive = false
     private var selectionMenuPending = false
     private var lastDownAt = 0L
@@ -731,6 +732,7 @@ class EpubReadView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 primaryTouchActive = true
+                selectionExistedOnDown = selectedText.isNotBlank()
                 downX = event.x
                 downY = event.y
                 lastX = event.x
@@ -755,6 +757,9 @@ class EpubReadView @JvmOverloads constructor(
                     if (!moved && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)) {
                         moved = true
                         removeCallbacks(longPressRunnable)
+                    }
+                    if (longPressTriggered && !selectionExistedOnDown) {
+                        selectEndMove(event.x, event.y)
                     }
                     lastX = event.x
                     lastY = event.y
@@ -794,8 +799,10 @@ class EpubReadView @JvmOverloads constructor(
                 velocityTracker.computeCurrentVelocity(1000)
                 val velocityX = velocityTracker.xVelocity
                 val velocityY = velocityTracker.yVelocity
-                if (selectedText.isNotBlank()) {
+                if (selectedText.isNotBlank() && selectionExistedOnDown) {
                     clearSelection()
+                } else if (selectedText.isNotBlank()) {
+                    notifySelectionMenuIfReady()
                 } else if (!moved) {
                     handleTap(event.x, event.y)
                 } else {
@@ -834,6 +841,7 @@ class EpubReadView @JvmOverloads constructor(
             MotionEvent.ACTION_CANCEL -> {
                 removeCallbacks(longPressRunnable)
                 primaryTouchActive = false
+                selectionExistedOnDown = false
                 selectionMenuPending = false
                 velocityTracker.clear()
                 if (horizontalDirection != 0) {
