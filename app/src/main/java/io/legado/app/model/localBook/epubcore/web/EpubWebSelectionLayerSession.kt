@@ -136,8 +136,24 @@ class EpubWebSelectionLayerSession(
                         finish(payload)
                     }
                 }
+                fun scheduleSelectionEvaluation(attempt: Int = 0) {
+                    if (token != currentToken) return
+                    view.evaluateJavascript(buildSelectionReadyJs()) { raw ->
+                        if (token != currentToken) return@evaluateJavascript
+                        val ready = raw == "true" || decodeJavascriptString(raw) == "true"
+                        if (ready || attempt >= MaxReadyAttempts) {
+                            evaluateSelection()
+                        } else {
+                            handler.postAtTime(
+                                { scheduleSelectionEvaluation(attempt + 1) },
+                                currentToken,
+                                android.os.SystemClock.uptimeMillis() + ReadyRetryDelayMillis
+                            )
+                        }
+                    }
+                }
                 if (loadedKey == requestKey) {
-                    evaluateSelection()
+                    scheduleSelectionEvaluation()
                 } else {
                     view.webViewClient = object : WebViewClient() {
                         override fun shouldInterceptRequest(view: WebView?, requestWeb: WebResourceRequest?): WebResourceResponse? {
@@ -152,7 +168,24 @@ class EpubWebSelectionLayerSession(
                         override fun onPageFinished(view: WebView, url: String?) {
                             if (url != baseUrl || token != currentToken) return
                             loadedKey = requestKey
-                            handler.postAtTime(::evaluateSelection, currentToken, android.os.SystemClock.uptimeMillis() + 80L)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                view.postVisualStateCallback(
+                                    currentToken,
+                                    object : WebView.VisualStateCallback() {
+                                        override fun onComplete(requestId: Long) {
+                                            if (token == currentToken) {
+                                                scheduleSelectionEvaluation()
+                                            }
+                                        }
+                                    }
+                                )
+                            } else {
+                                handler.postAtTime(
+                                    { scheduleSelectionEvaluation() },
+                                    currentToken,
+                                    android.os.SystemClock.uptimeMillis() + ReadyRetryDelayMillis
+                                )
+                            }
                         }
 
                         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
@@ -543,6 +576,21 @@ class EpubWebSelectionLayerSession(
         """.trimIndent()
     }
 
+    private fun buildSelectionReadyJs(): String {
+        return """
+            (function() {
+              var body = document.body || document.documentElement;
+              if (!body) return false;
+              if (document.readyState !== 'complete') return false;
+              if (document.fonts && document.fonts.status && document.fonts.status !== 'loaded') return false;
+              var width = Math.max(body.scrollWidth || 0, document.documentElement ? document.documentElement.scrollWidth || 0 : 0);
+              var rect = body.getBoundingClientRect ? body.getBoundingClientRect() : null;
+              if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+              return width > 0;
+            })();
+        """.trimIndent()
+    }
+
     private fun parsePayload(
         request: EpubWebLayoutRequest,
         pageIndex: Int,
@@ -781,5 +829,7 @@ class EpubWebSelectionLayerSession(
         private const val Host = "epub.local"
         private const val ReaderFontPath = "__legado_reader_font__"
         private const val WebViewBlank = "about:blank"
+        private const val MaxReadyAttempts = 6
+        private const val ReadyRetryDelayMillis = 80L
     }
 }
