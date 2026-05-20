@@ -204,6 +204,96 @@ class EpubWebSelectionLayerSession(
               var X = $safeX;
               var Y = $safeY;
               var ACTION = '$actionName';
+              var START_ID = ${request.startFragmentId?.let { JSONObject.quote(it) } ?: "null"};
+              var END_ID = ${request.endFragmentId?.let { JSONObject.quote(it) } ?: "null"};
+              var READER_PAD_LEFT = ${request.readerPaddingLeftPx.coerceAtLeast(0)};
+              var READER_PAD_RIGHT = ${request.readerPaddingRightPx.coerceAtLeast(0)};
+              function selectionText(value) {
+                return String(value || '').replace(/[\t\r\n ]+/g, ' ').replace(/^[ ]+|[ ]+$/g, '');
+              }
+              function sliceRootByFragments(root) {
+                if (!root || root.getAttribute('data-legado-selection-sliced') === '1') return root;
+                if (!START_ID && !END_ID) {
+                  root.setAttribute('data-legado-selection-sliced', '1');
+                  return root;
+                }
+                var start = START_ID ? document.getElementById(START_ID) : null;
+                var end = END_ID && END_ID !== START_ID ? document.getElementById(END_ID) : null;
+                if (!start && !end) {
+                  root.setAttribute('data-legado-selection-sliced', '1');
+                  return root;
+                }
+                var range = document.createRange();
+                try {
+                  range.selectNodeContents(root);
+                  if (start) range.setStartBefore(start);
+                  if (end) range.setEndBefore(end);
+                  var wrapper = document.createElement('div');
+                  wrapper.setAttribute('data-epub-fragment-root', 'true');
+                  wrapper.appendChild(range.cloneContents());
+                  while (root.firstChild) root.removeChild(root.firstChild);
+                  root.appendChild(wrapper);
+                } catch (e) {
+                } finally {
+                  range.detach();
+                }
+                root.setAttribute('data-legado-selection-sliced', '1');
+                return root;
+              }
+              function number(value) {
+                var parsed = parseFloat(value);
+                return isFinite(parsed) ? parsed : null;
+              }
+              function addCssPx(value, delta) {
+                var base = number(value) || 0;
+                return Math.max(0, base + delta) + 'px';
+              }
+              function hasDirectVisibleText(element) {
+                var children = element && element.childNodes || [];
+                for (var i = 0; i < children.length; i++) {
+                  if (children[i].nodeType === 3 && selectionText(children[i].nodeValue).length) return true;
+                }
+                return false;
+              }
+              function hasBoxDecoration(style) {
+                if (!style) return false;
+                if (String(style.backgroundImage || '') !== 'none') return true;
+                if (String(style.backgroundColor || '') !== 'rgba(0, 0, 0, 0)' && String(style.backgroundColor || '') !== 'transparent') return true;
+                return (number(style.borderTopWidth) || 0) > 0 ||
+                  (number(style.borderRightWidth) || 0) > 0 ||
+                  (number(style.borderBottomWidth) || 0) > 0 ||
+                  (number(style.borderLeftWidth) || 0) > 0;
+              }
+              function isReaderInsetTarget(element) {
+                if (!element || element.nodeType !== 1) return false;
+                var tag = String(element.tagName || '').toLowerCase();
+                if (tag !== 'p' && tag !== 'li' && tag !== 'blockquote' && tag !== 'div') return false;
+                if (tag === 'div' && !hasDirectVisibleText(element)) return false;
+                if (element.closest && element.closest('figure, table, svg, ruby, h1, h2, h3, h4, h5, h6')) return false;
+                var style = window.getComputedStyle(element);
+                if (!style || style.display === 'none' || style.visibility === 'hidden') return false;
+                var display = String(style.display || '').toLowerCase();
+                if (display.indexOf('table') >= 0 || display.indexOf('flex') >= 0 || display.indexOf('grid') >= 0 || display === 'inline') return false;
+                var position = String(style.position || '').toLowerCase();
+                if (position === 'absolute' || position === 'fixed') return false;
+                if (hasBoxDecoration(style)) return false;
+                return selectionText(element.textContent).length > 0;
+              }
+              function applySelectionInsets(root) {
+                if (!root || root.getAttribute('data-legado-selection-inset') === '1') return;
+                root.setAttribute('data-legado-selection-inset', '1');
+                if (READER_PAD_LEFT <= 0 && READER_PAD_RIGHT <= 0) return;
+                var raw = Array.prototype.slice.call(root.querySelectorAll('p, li, blockquote, div'));
+                for (var i = 0; i < raw.length; i++) {
+                  var el = raw[i];
+                  if (!isReaderInsetTarget(el)) continue;
+                  var style = window.getComputedStyle(el);
+                  if (READER_PAD_LEFT > 0) el.style.marginLeft = addCssPx(style.marginLeft, READER_PAD_LEFT);
+                  if (READER_PAD_RIGHT > 0) el.style.marginRight = addCssPx(style.marginRight, READER_PAD_RIGHT);
+                }
+              }
+              var root = sliceRootByFragments(document.body || document.documentElement);
+              applySelectionInsets(root);
               window.scrollTo(PAGE_INDEX * PAGE_W, 0);
               function caretRange(x, y) {
                 var range = null;
