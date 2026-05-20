@@ -238,6 +238,15 @@ class EpubWebLayoutSession(
         } else {
             ""
         }
+        val justifyCss = if (request.textFullJustify) {
+            """
+              text-align: justify;
+              text-align-last: auto;
+              text-justify: inter-character;
+            """.trimIndent()
+        } else {
+            ""
+        }
         return """
             $readerFontFace
             html {
@@ -264,6 +273,7 @@ class EpubWebLayoutSession(
               font-size: ${request.fontSizePx}px;
               line-height: ${request.lineHeightPx}px;
               letter-spacing: ${request.letterSpacingEm}em;
+              $justifyCss
               -webkit-column-width: ${request.viewportWidthPx}px;
               column-width: ${request.viewportWidthPx}px;
               -webkit-column-gap: 0;
@@ -277,6 +287,7 @@ class EpubWebLayoutSession(
             p, li, blockquote, div {
               overflow-wrap: break-word;
               word-break: break-word;
+              $justifyCss
             }
             img, svg, video, canvas {
               max-width: 100%;

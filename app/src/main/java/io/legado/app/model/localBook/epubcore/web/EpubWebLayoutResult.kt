@@ -22,6 +22,7 @@ data class EpubWebLayoutRequest(
     val readerFontUrl: String? = null,
     val readerFontPath: String? = null,
     val letterSpacingEm: Float = 0f,
+    val textFullJustify: Boolean = false,
     val timeoutMillis: Long = 12_000L
 )
 

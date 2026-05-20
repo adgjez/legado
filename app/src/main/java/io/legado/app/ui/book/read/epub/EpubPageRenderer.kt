@@ -183,7 +183,10 @@ class EpubPageRenderer {
         fallbackTextPaint.isAntiAlias = true
         fallbackTextPaint.color = (fragment.color ?: textColor).withAlpha((fragment.opacity.coerceIn(0f, 1f) * 255).toInt())
         fallbackTextPaint.textSize = fragment.resolvedMeasuredTextSize()
-        fallbackTextPaint.textScaleX = 1f
+        fallbackTextPaint.textScaleX = fragment.textScaleX
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?.coerceIn(0.7f, 1.8f)
+            ?: 1f
         if (fallbackTextPaint.textSize > 0f) {
             fallbackTextPaint.letterSpacing = ((fragment.letterSpacingPx ?: 0f) / fallbackTextPaint.textSize)
                 .takeIf { it.isFinite() }

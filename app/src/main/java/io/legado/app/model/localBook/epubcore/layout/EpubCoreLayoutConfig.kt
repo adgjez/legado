@@ -20,6 +20,7 @@ data class EpubCoreLayoutConfig(
     val readerFontUrl: String? = null,
     val readerFontPath: String? = null,
     val alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
+    val textFullJustify: Boolean = false,
     val lineSpacingMultiplier: Float = 1.0f,
     val lineSpacingExtraPx: Float = 0f,
     val scrollMode: Boolean = false

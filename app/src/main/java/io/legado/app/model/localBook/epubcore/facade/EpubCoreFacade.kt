@@ -7,25 +7,19 @@ import io.legado.app.model.localBook.epubcore.archive.EpubPath
 import io.legado.app.model.localBook.epubcore.archive.ZipEpubArchive
 import io.legado.app.model.localBook.epubcore.cache.EpubCoreMemoryCache
 import io.legado.app.model.localBook.epubcore.cache.EpubCoreDiskCache
-import io.legado.app.model.localBook.epubcore.chapter.EpubChapterLoader
 import io.legado.app.model.localBook.epubcore.font.EpubFontCatalog
 import io.legado.app.model.localBook.epubcore.font.EpubTypefaceResolver
 import io.legado.app.model.localBook.epubcore.image.EpubImageResolver
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
-import io.legado.app.model.localBook.epubcore.layout.EpubCorePaginator
-import io.legado.app.model.localBook.epubcore.model.ReaderModel
 import io.legado.app.model.localBook.epubcore.pkg.EpubPackage
 import io.legado.app.model.localBook.epubcore.pkg.EpubPackageParser
 import io.legado.app.model.localBook.epubcore.toc.EpubTocParser
 import io.legado.app.model.localBook.epubcore.toc.TocItem
-import io.legado.app.model.localBook.epubcore.translate.EpubNativeTranslationPipeline
-import io.legado.app.model.localBook.epubcore.web.EpubDomMeasureSession
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutAdapter
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutJsonParser
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutSession
-import io.legado.app.model.localBook.epubcore.web.EpubDomMeasureRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionLayerSession
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPageContext
@@ -48,10 +42,7 @@ class EpubCoreFacade private constructor(
 ) : Closeable {
 
     private val imageResolver = EpubImageResolver(archive)
-    private val paginator = EpubCorePaginator(imageResolver)
-    private val nativeTranslationPipeline = EpubNativeTranslationPipeline()
     private val webLayoutAdapter = EpubWebLayoutAdapter()
-    private var domMeasureSession: EpubDomMeasureSession? = null
     private var selectionLayerSession: EpubWebSelectionLayerSession? = null
     private val webLayoutSessionLock = Any()
     private var foregroundWebLayoutSession: EpubWebLayoutSession? = null
@@ -69,27 +60,6 @@ class EpubCoreFacade private constructor(
     }
 
     fun chapters(): List<BookChapter> = chapters
-
-    fun readChapter(chapterIndex: Int, config: EpubCoreLayoutConfig? = null): ReaderModel {
-        val chapter = chapters.getOrNull(chapterIndex) ?: error("Chapter index out of range: $chapterIndex")
-        return readChapter(chapter, config)
-    }
-
-    fun readChapter(chapter: BookChapter, config: EpubCoreLayoutConfig? = null): ReaderModel {
-        val resolvedChapter = resolveChapter(chapter)
-        val href = EpubPath.stripFragment(resolvedChapter.url)
-        val key = chapterKey(resolvedChapter, config)
-        cache.getChapter(key)?.let { return it }
-        val textPaint = config?.textPaint
-        val chapterLoader = EpubChapterLoader(
-            archive = archive,
-            baseTextSizePx = textPaint?.textSize ?: 40f,
-            baseTextColor = textPaint?.color ?: android.graphics.Color.rgb(62, 61, 59)
-        )
-        return chapterLoader.load(resolvedChapter, readChapterHtml(resolvedChapter, href)).also {
-            cache.putChapter(key, it)
-        }
-    }
 
     suspend fun paginate(
         chapterIndex: Int,
@@ -197,7 +167,8 @@ class EpubCoreFacade private constructor(
                 readerFontFamily = config.readerFontFamily,
                 readerFontUrl = config.readerFontUrl,
                 readerFontPath = config.readerFontPath,
-                letterSpacingEm = paint.letterSpacing
+                letterSpacingEm = paint.letterSpacing,
+                textFullJustify = config.textFullJustify
             )
         ) ?: error("EPUB Web layout failed")
         val layoutAt = SystemClock.elapsedRealtime()
@@ -231,6 +202,7 @@ class EpubCoreFacade private constructor(
             append(',').append(config.readerPaddingRightPx).append(',').append(config.readerPaddingBottomPx)
             append('|').append(config.paragraphSpacingPx)
             append('|').append(config.alignment)
+            append('|').append(config.textFullJustify)
             append('|').append(config.lineSpacingMultiplier).append('|').append(config.lineSpacingExtraPx)
             append('|').append(paint.textSize)
             append('|').append(paint.letterSpacing).append('|').append(paint.typeface?.style ?: 0)
@@ -238,60 +210,6 @@ class EpubCoreFacade private constructor(
             append('|').append(config.readerFontUrl.orEmpty())
             append('|').append(config.readerFontPath.orEmpty())
         }
-    }
-
-    private fun nativePageCacheKey(chapter: BookChapter, config: EpubCoreLayoutConfig): String {
-        val href = EpubPath.stripFragment(chapter.url)
-        val paint = config.textPaint
-        return buildString {
-            append(href)
-            append('|').append(chapter.startFragmentId.orEmpty())
-            append('|').append(chapter.endFragmentId.orEmpty())
-            append('|').append(continuationHrefs(chapter).joinToString(","))
-            append("|nativeTranslate:v1")
-            append('|').append(if (config.scrollMode) "scroll" else "paged")
-            append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
-            append('|').append(config.paddingLeftPx).append(',').append(config.paddingTopPx)
-            append(',').append(config.paddingRightPx).append(',').append(config.paddingBottomPx)
-            append('|').append(config.readerPaddingLeftPx).append(',').append(config.readerPaddingTopPx)
-            append(',').append(config.readerPaddingRightPx).append(',').append(config.readerPaddingBottomPx)
-            append('|').append(config.paragraphSpacingPx)
-            append('|').append(config.alignment)
-            append('|').append(config.lineSpacingMultiplier).append('|').append(config.lineSpacingExtraPx)
-            append('|').append(paint.textSize).append('|').append(paint.color)
-            append('|').append(paint.letterSpacing).append('|').append(paint.typeface?.style ?: 0)
-            append('|').append(config.readerFontFamily.orEmpty())
-            append('|').append(config.readerFontUrl.orEmpty())
-            append('|').append(config.readerFontPath.orEmpty())
-        }
-    }
-
-    suspend fun paginate(model: ReaderModel, config: EpubCoreLayoutConfig): List<EpubCorePage> {
-        val paint = config.textPaint
-        val key = buildString {
-            append(model.chapterHref)
-            append("|domMeasure:v2")
-            append('|').append(if (config.scrollMode) "scroll" else "paged")
-            append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
-            append('|').append(config.horizontalPaddingPx).append('x').append(config.verticalPaddingPx)
-            append('|').append(config.readerPaddingLeftPx).append(',').append(config.readerPaddingTopPx)
-            append(',').append(config.readerPaddingRightPx).append(',').append(config.readerPaddingBottomPx)
-            append('|').append(config.paragraphSpacingPx)
-            append('|').append(config.alignment)
-            append('|').append(config.lineSpacingMultiplier).append('|').append(config.lineSpacingExtraPx)
-            append('|').append(paint.textSize)
-            append('|').append(paint.letterSpacing).append('|').append(paint.typeface?.style ?: 0)
-            append('|').append(config.readerFontFamily.orEmpty())
-            append('|').append(config.readerFontUrl.orEmpty())
-            append('|').append(config.readerFontPath.orEmpty())
-        }
-        cache.getPages(key)?.let { return it }
-        val measuredModel = model.withMeasuredDom(config)
-        return paginator.paginate(measuredModel, config).also { cache.putPages(key, it) }
-    }
-
-    fun paginateNativeTranslated(model: ReaderModel, config: EpubCoreLayoutConfig): List<EpubCorePage> {
-        return nativeTranslationPipeline.paginate(model, config)
     }
 
     suspend fun selectText(
@@ -328,7 +246,8 @@ class EpubCoreFacade private constructor(
             readerFontFamily = config.readerFontFamily,
             readerFontUrl = config.readerFontUrl,
             readerFontPath = config.readerFontPath,
-            letterSpacingEm = paint.letterSpacing
+            letterSpacingEm = paint.letterSpacing,
+            textFullJustify = config.textFullJustify
         )
         return getSelectionLayerSession().select(
             request = request,
@@ -372,39 +291,11 @@ class EpubCoreFacade private constructor(
         imageResolver.clear()
         typefaceResolver?.clear()
         typefaceResolver = null
-        domMeasureSession?.close()
-        domMeasureSession = null
         selectionLayerSession?.close()
         selectionLayerSession = null
         cancelForegroundLayout()
         closeBackgroundLayoutSessions()
         archive.close()
-    }
-
-    private suspend fun ReaderModel.withMeasuredDom(config: EpubCoreLayoutConfig): ReaderModel {
-        if (measuredDom != null) return this
-        val html = runCatching { archive.readText(chapterHref) }.getOrNull()
-            ?.takeIf { it.isNotBlank() }
-            ?: return this
-        val measurement = runCatching {
-            getDomMeasureSession().measure(
-                EpubDomMeasureRequest(
-                    chapterHref = chapterHref,
-                    html = html,
-                    viewportWidthPx = config.pageWidthPx,
-                    viewportHeightPx = config.pageHeightPx
-                )
-            )
-        }.onFailure {
-            AppLog.putDebug("EPUB DOM measure failed: ${it.localizedMessage}", it)
-        }.getOrNull()
-        return if (measurement == null) this else copy(measuredDom = measurement)
-    }
-
-    private fun getDomMeasureSession(): EpubDomMeasureSession {
-        return domMeasureSession ?: EpubDomMeasureSession(archive).also {
-            domMeasureSession = it
-        }
     }
 
     private fun getSelectionLayerSession(): EpubWebSelectionLayerSession {
@@ -694,19 +585,6 @@ class EpubCoreFacade private constructor(
         }
         items.forEach(::visit)
         return result
-    }
-
-    private fun chapterKey(chapter: BookChapter, config: EpubCoreLayoutConfig?): String {
-        val paint = config?.textPaint
-        return buildString {
-            append(bookUrl).append(':').append(chapter.index).append(':').append(chapter.url)
-            append(':').append(continuationHrefs(chapter).joinToString(","))
-            if (paint != null) {
-                append("|style:")
-                append(paint.textSize).append(':').append(paint.color)
-                append(':').append(config.lineSpacingMultiplier).append(':').append(config.lineSpacingExtraPx)
-            }
-        }
     }
 
     companion object {
