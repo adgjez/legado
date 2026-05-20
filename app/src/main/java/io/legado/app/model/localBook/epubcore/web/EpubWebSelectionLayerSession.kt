@@ -48,7 +48,9 @@ data class EpubWebSelectionPayload(
     val chapterHref: String,
     val pageIndex: Int,
     val selectedText: String,
-    val rects: List<EpubWebSelectionRect>
+    val rects: List<EpubWebSelectionRect>,
+    val hitX: Float? = null,
+    val hitY: Float? = null
 )
 
 class EpubWebSelectionLayerSession(
@@ -528,6 +530,8 @@ class EpubWebSelectionLayerSession(
               return JSON.stringify({
                 text: selection.toString(),
                 rects: rects,
+                hitX: X,
+                hitY: Y,
                 scrollX: window.scrollX || window.pageXOffset || 0,
                 scrollY: window.scrollY || window.pageYOffset || 0,
                 pageIndex: PAGE_INDEX,
@@ -565,7 +569,9 @@ class EpubWebSelectionLayerSession(
             chapterHref = request.chapterHref,
             pageIndex = pageIndex,
             selectedText = text,
-            rects = rects
+            rects = rects,
+            hitX = obj.optDouble("hitX").takeIf { it.isFinite() }?.toFloat(),
+            hitY = obj.optDouble("hitY").takeIf { it.isFinite() }?.toFloat()
         )
     }
 

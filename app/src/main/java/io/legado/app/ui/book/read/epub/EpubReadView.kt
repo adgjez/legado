@@ -495,10 +495,15 @@ class EpubReadView @JvmOverloads constructor(
 
     fun endSelectionHandleDrag() {
         selectionHandleDragActive = false
-        selectionAnchor?.let {
+        if (selectedText.isNotBlank() && selectionAnchor != null) {
             selectionMenuPending = true
             notifySelectionMenuIfReady()
         }
+    }
+
+    fun cancelSelectionHandleDrag() {
+        selectionHandleDragActive = false
+        selectionMenuPending = false
     }
 
     fun deferOrShowSelectionMenu(anchor: SelectionAnchor) {
