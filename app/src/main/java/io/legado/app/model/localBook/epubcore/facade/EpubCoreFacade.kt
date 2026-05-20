@@ -26,6 +26,9 @@ import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutJsonParser
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutSession
 import io.legado.app.model.localBook.epubcore.web.EpubDomMeasureRequest
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionLayerSession
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import android.os.SystemClock
@@ -48,6 +51,7 @@ class EpubCoreFacade private constructor(
     private val nativeTranslationPipeline = EpubNativeTranslationPipeline()
     private val webLayoutAdapter = EpubWebLayoutAdapter()
     private var domMeasureSession: EpubDomMeasureSession? = null
+    private var selectionLayerSession: EpubWebSelectionLayerSession? = null
     private val webLayoutSessionLock = Any()
     private var foregroundWebLayoutSession: EpubWebLayoutSession? = null
     private val backgroundWebLayoutSessions = mutableMapOf<Int, EpubWebLayoutSession>()
@@ -286,6 +290,44 @@ class EpubCoreFacade private constructor(
         return nativeTranslationPipeline.paginate(model, config)
     }
 
+    suspend fun selectText(
+        chapterIndex: Int,
+        pageIndex: Int,
+        config: EpubCoreLayoutConfig,
+        action: EpubWebSelectionAction,
+        x: Float,
+        y: Float
+    ): EpubWebSelectionPayload? {
+        val chapter = chapters.getOrNull(chapterIndex) ?: return null
+        val resolvedChapter = resolveChapter(chapter)
+        val href = EpubPath.stripFragment(resolvedChapter.url)
+        val paint = config.textPaint
+        val lineHeight = (paint.textSize * config.lineSpacingMultiplier + config.lineSpacingExtraPx)
+            .coerceAtLeast(paint.textSize)
+        val request = EpubWebLayoutRequest(
+            chapterIndex = chapter.index,
+            chapterHref = href,
+            title = chapter.title.ifBlank { resolvedChapter.title },
+            html = readChapterHtml(resolvedChapter, href),
+            startFragmentId = resolvedChapter.startFragmentId,
+            endFragmentId = resolvedChapter.endFragmentId,
+            viewportWidthPx = config.pageWidthPx,
+            viewportHeightPx = config.pageHeightPx,
+            fontSizePx = paint.textSize,
+            textColor = paint.color,
+            lineHeightPx = lineHeight,
+            readerPaddingLeftPx = config.readerPaddingLeftPx,
+            readerPaddingTopPx = config.readerPaddingTopPx,
+            readerPaddingRightPx = config.readerPaddingRightPx,
+            readerPaddingBottomPx = config.readerPaddingBottomPx,
+            readerFontFamily = config.readerFontFamily,
+            readerFontUrl = config.readerFontUrl,
+            readerFontPath = config.readerFontPath,
+            letterSpacingEm = paint.letterSpacing
+        )
+        return getSelectionLayerSession().select(request, pageIndex, action, x, y)
+    }
+
     fun imageResolver(): EpubImageResolver = imageResolver
 
     fun typefaceResolver(): EpubTypefaceResolver {
@@ -320,6 +362,8 @@ class EpubCoreFacade private constructor(
         typefaceResolver = null
         domMeasureSession?.close()
         domMeasureSession = null
+        selectionLayerSession?.close()
+        selectionLayerSession = null
         cancelForegroundLayout()
         closeBackgroundLayoutSessions()
         archive.close()
@@ -348,6 +392,12 @@ class EpubCoreFacade private constructor(
     private fun getDomMeasureSession(): EpubDomMeasureSession {
         return domMeasureSession ?: EpubDomMeasureSession(archive).also {
             domMeasureSession = it
+        }
+    }
+
+    private fun getSelectionLayerSession(): EpubWebSelectionLayerSession {
+        return selectionLayerSession ?: EpubWebSelectionLayerSession(archive).also {
+            selectionLayerSession = it
         }
     }
 

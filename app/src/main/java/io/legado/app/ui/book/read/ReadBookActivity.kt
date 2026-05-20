@@ -73,6 +73,7 @@ import io.legado.app.utils.isJsonObject
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.epubcore.facade.EpubCoreProvider
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.receiver.TimeBatteryReceiver
@@ -397,6 +398,17 @@ class ReadBookActivity : BaseReadBookActivity(),
             override fun onTextSelected(startX: Float, topY: Float, endX: Float, bottomY: Float, startBottomY: Float, endBottomY: Float) {
                 showEpubTextActionMenu(startX, topY, endX, bottomY, startBottomY, endBottomY)
             }
+
+            override fun onWebTextSelectionRequested(
+                page: EpubCorePage,
+                pageIndex: Int,
+                action: EpubWebSelectionAction,
+                x: Float,
+                y: Float
+            ): Boolean {
+                requestEpubWebSelection(page, pageIndex, action, x, y)
+                return true
+            }
         })
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
@@ -461,6 +473,50 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
             }
             else -> showActionMenu()
+        }
+    }
+
+    private fun requestEpubWebSelection(
+        page: EpubCorePage,
+        pageIndex: Int,
+        action: EpubWebSelectionAction,
+        x: Float,
+        y: Float
+    ) {
+        val book = ReadBook.book?.takeIf { it.isEpub } ?: return
+        val config = binding.epubReadView.layoutConfig ?: return
+        val requestSeq = epubCoreRequestSeq
+        val chapterIndex = page.chapterIndex
+        lifecycleScope.launch(IO) {
+            val payload = runCatching {
+                EpubCoreProvider.selectText(
+                    book = book,
+                    chapterIndex = chapterIndex,
+                    pageIndex = pageIndex,
+                    config = config,
+                    action = action,
+                    x = x,
+                    y = y
+                )
+            }.onFailure {
+                AppLog.putDebug("EPUB Web selection failed: ${it.localizedMessage}", it)
+            }.getOrNull()
+            withContext(Main.immediate) {
+                if (requestSeq != epubCoreRequestSeq || !epubCoreActive) return@withContext
+                val anchor = payload?.let { binding.epubReadView.applyWebSelectionPayload(it) }
+                if (anchor != null) {
+                    showEpubTextActionMenu(
+                        anchor.startX,
+                        anchor.topY,
+                        anchor.endX,
+                        anchor.bottomY,
+                        anchor.startBottomY,
+                        anchor.endBottomY
+                    )
+                } else if (action == EpubWebSelectionAction.SelectWord) {
+                    AppLog.putDebug("EPUB Web selection empty: chapter=$chapterIndex page=$pageIndex")
+                }
+            }
         }
     }
 

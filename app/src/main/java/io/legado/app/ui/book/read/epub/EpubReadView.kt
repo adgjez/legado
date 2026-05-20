@@ -33,6 +33,8 @@ import io.legado.app.model.localBook.epubcore.selector.EpubSelectableBlock
 import io.legado.app.model.localBook.epubcore.selector.EpubSelectablePage
 import io.legado.app.model.localBook.epubcore.selector.EpubSelectableLine
 import io.legado.app.model.localBook.epubcore.selector.EpubTextHit
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import kotlin.math.*
 
 @Suppress("DEPRECATION")
@@ -47,6 +49,13 @@ class EpubReadView @JvmOverloads constructor(
         fun onPageChanged(pageIndex: Int, pageCount: Int) = Unit
         fun onPageBoundary(direction: Int) = Unit
         fun onTextSelected(startX: Float, topY: Float, endX: Float, bottomY: Float, startBottomY: Float = bottomY, endBottomY: Float = bottomY) = Unit
+        fun onWebTextSelectionRequested(
+            page: EpubCorePage,
+            pageIndex: Int,
+            action: EpubWebSelectionAction,
+            x: Float,
+            y: Float
+        ): Boolean = false
     }
 
     data class SelectionAnchor(
@@ -203,6 +212,7 @@ class EpubReadView @JvmOverloads constructor(
     private var selectedText: String = ""
     private var selectionAnchor: SelectionAnchor? = null
     private var selectionHighlight: SelectionHighlight? = null
+    private var webSelectionActive = false
     private var lastDownAt = 0L
     private var longPressTriggered = false
     private val longPressRunnable = Runnable {
@@ -352,8 +362,12 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectTextAt(x: Float, y: Float): SelectionAnchor? {
         val page = currentPage() ?: return null
+        if (listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.SelectWord, x, y) == true) {
+            return null
+        }
         val selectablePage = ensureSelectablePage(page)
         val hit = hitTestSelection(selectablePage, x, y) ?: return null
+        webSelectionActive = false
         selectionStartBlock = hit.block
         selectionStartOffset = hit.expandedStartOffset()
         selectionEndBlock = hit.block
@@ -364,6 +378,11 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectStartMove(x: Float, y: Float) {
         val page = currentPage() ?: return
+        if (webSelectionActive &&
+            listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.MoveStart, x, y) == true
+        ) {
+            return
+        }
         val selectablePage = ensureSelectablePage(page)
         val hit = hitTestSelection(selectablePage, x, y) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
@@ -380,6 +399,11 @@ class EpubReadView @JvmOverloads constructor(
 
     fun selectEndMove(x: Float, y: Float) {
         val page = currentPage() ?: return
+        if (webSelectionActive &&
+            listener?.onWebTextSelectionRequested(page, pageIndex, EpubWebSelectionAction.MoveEnd, x, y) == true
+        ) {
+            return
+        }
         val selectablePage = ensureSelectablePage(page)
         val hit = hitTestSelection(selectablePage, x, y) ?: return
         if (selectionStartBlock == null || selectionEndBlock == null) {
@@ -406,10 +430,38 @@ class EpubReadView @JvmOverloads constructor(
 
     fun getSelectedText(): String = selectedText
 
+    fun applyWebSelectionPayload(payload: EpubWebSelectionPayload): SelectionAnchor? {
+        val page = currentPage() ?: return null
+        if (payload.chapterIndex != page.chapterIndex || payload.pageIndex != pageIndex) return null
+        val rects = payload.rects.map { RectF(it.rect) }
+            .filter { it.width() > 0f && it.height() > 0f }
+        if (payload.selectedText.isBlank() || rects.isEmpty()) return null
+        selectedText = payload.selectedText
+        webSelectionActive = true
+        selectionStartBlock = null
+        selectionEndBlock = null
+        selectionStartOffset = 0
+        selectionEndOffset = 0
+        val firstRect = rects.first()
+        val lastRect = rects.last()
+        selectionAnchor = SelectionAnchor(
+            startX = firstRect.left,
+            topY = rects.minOf { it.top },
+            endX = lastRect.right,
+            bottomY = rects.maxOf { it.bottom },
+            startBottomY = firstRect.bottom,
+            endBottomY = lastRect.bottom
+        )
+        selectionHighlight = SelectionHighlight(rects, emptyList(), selectionAnchor!!)
+        invalidate()
+        return selectionAnchor
+    }
+
     fun clearSelection() {
         selectedText = ""
         selectionAnchor = null
         selectionHighlight = null
+        webSelectionActive = false
         selectionStartBlock = null
         selectionEndBlock = null
         selectionStartOffset = 0

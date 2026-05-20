@@ -12,6 +12,8 @@ import io.legado.app.model.localBook.epubcore.font.EpubTypefaceResolver
 import io.legado.app.model.localBook.epubcore.image.EpubImageResolver
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isContentScheme
 import splitties.init.appCtx
@@ -73,6 +75,19 @@ object EpubCoreProvider {
         val facade = synchronized(this) { holder?.takeIf { it.bookUrl == book.bookUrl }?.facade }
             ?: return null
         return facade.peekPages(chapter, config)
+    }
+
+    suspend fun selectText(
+        book: Book,
+        chapterIndex: Int,
+        pageIndex: Int,
+        config: EpubCoreLayoutConfig,
+        action: EpubWebSelectionAction,
+        x: Float,
+        y: Float
+    ): EpubWebSelectionPayload? {
+        val facade = synchronized(this) { open(book).facade }
+        return facade.selectText(chapterIndex, pageIndex, config, action, x, y)
     }
 
     @Synchronized
