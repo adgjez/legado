@@ -379,6 +379,58 @@ class EpubWebSelectionLayerSession(
                   }
                 }
               }
+              function prepareRoot(root) {
+                root = root || document.body || document.documentElement;
+                if (root && root.nodeType === 1) {
+                  root.setAttribute('id', 'legado-epub-page-root');
+                  root.style.width = PAGE_W + 'px';
+                  root.style.height = PAGE_H + 'px';
+                  document.documentElement.style.fontSize = '${request.fontSizePx}px';
+                  document.documentElement.style.lineHeight = '${request.lineHeightPx}px';
+                  root.style.fontSize = '${request.fontSizePx}px';
+                  root.style.lineHeight = '${request.lineHeightPx}px';
+                  root.style.webkitColumnWidth = PAGE_W + 'px';
+                  root.style.columnWidth = PAGE_W + 'px';
+                  root.style.webkitColumnGap = '0px';
+                  root.style.columnGap = '0px';
+                  root.style.webkitColumnFill = 'auto';
+                  root.style.columnFill = 'auto';
+                  root.style.overflow = 'visible';
+                }
+                return root;
+              }
+              function visibleText(value) {
+                return String(value || '').replace(/[\t\r\n ]+/g, ' ').replace(/^[ ]+|[ ]+$/g, '');
+              }
+              function hasExplicitFontFamily(element) {
+                var current = element;
+                while (current && current.nodeType === 1) {
+                  if (current.getAttribute && current.getAttribute('data-legado-reader-font') === '1') {
+                    current = current.parentElement;
+                    continue;
+                  }
+                  var inlineStyle = current.getAttribute && current.getAttribute('style');
+                  if (inlineStyle && /(^|;)\s*font-family\s*:/i.test(inlineStyle)) return true;
+                  current = current.parentElement;
+                }
+                return false;
+              }
+              function applyReaderFont(root) {
+                var family = ${request.readerFontFamily?.let { JSONObject.quote(it) } ?: "null"};
+                if (!family || !root || !document.createTreeWalker) return;
+                var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                  acceptNode: function(node) {
+                    return visibleText(node.nodeValue).length ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                  }
+                });
+                var count = 0;
+                while (walker.nextNode() && count++ < 1200) {
+                  var parent = walker.currentNode.parentElement || (walker.currentNode.parentNode && walker.currentNode.parentNode.nodeType === 1 ? walker.currentNode.parentNode : null);
+                  if (!parent || hasExplicitFontFamily(parent)) continue;
+                  parent.setAttribute('data-legado-reader-font', '1');
+                  parent.style.fontFamily = family + ', sans-serif';
+                }
+              }
               function elementByNodePath(path) {
                 if (!path) return null;
                 if (path === 'body') return document.body || document.documentElement;
@@ -454,7 +506,9 @@ class EpubWebSelectionLayerSession(
                 }
               }
               var root = sliceRootByFragments(document.body || document.documentElement);
+              root = prepareRoot(root);
               mark(root, 'body');
+              applyReaderFont(root);
               applySelectionInsets(root);
               rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : { left: 0, top: 0 };
               var resolvedPageIndex = pageForAnchor(PAGE_START_PATH);
