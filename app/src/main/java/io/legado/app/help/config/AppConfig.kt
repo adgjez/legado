@@ -1436,6 +1436,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val doublePageHorizontal: String?
         get() = appCtx.getPrefString(PreferKey.doublePageHorizontal)
 
+    var epubCoreScheduleMode: String
+        get() = appCtx.getPrefString(PreferKey.epubCoreScheduleMode, "normal") ?: "normal"
+        set(value) = appCtx.putPrefString(PreferKey.epubCoreScheduleMode, value)
+
     val progressBarBehavior: String?
         get() = appCtx.getPrefString(PreferKey.progressBarBehavior, "page")
 

@@ -1450,6 +1450,10 @@
     <string name="screen_landscape_reversed">Landscape Reversed</string>
     <string name="del_ruby_tag">Delete ruby tag</string>
     <string name="del_h_tag">Delete h tag</string>
+    <string name="epub_core_schedule_mode">EPUB scheduling mode</string>
+    <string name="epub_core_schedule_mode_light">Light</string>
+    <string name="epub_core_schedule_mode_normal">Normal</string>
+    <string name="epub_core_schedule_mode_performance">Performance</string>
     <string name="adjust_chapter_page">Adjust of chapter page</string>
     <string name="adjust_chapter_index">Adjust of chapter index</string>
     <string name="clear_webview_data_success">Cleared successfully, automatically restarts the application after 3 seconds</string>

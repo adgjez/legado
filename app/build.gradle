@@ -23,7 +23,15 @@ def name = "legado"
 def version = project.hasProperty("VERSION_NAME")
         ? project.property("VERSION_NAME").toString()
         : "3." + releaseTime()
-def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
+def gitCommitsText = ""
+try {
+    def gitRevList = ['git', 'rev-list', 'HEAD', '--count'].execute(null, rootDir)
+    gitRevList.waitFor()
+    gitCommitsText = gitRevList.in.text.trim()
+} catch (Throwable ignored) {
+    gitCommitsText = ""
+}
+def gitCommits = gitCommitsText?.isInteger() ? Integer.parseInt(gitCommitsText) : 0
 def buildVersionCode = project.hasProperty("VERSION_CODE")
         ? project.property("VERSION_CODE").toString().toInteger()
         : 10000 + gitCommits
@@ -69,14 +77,9 @@ android {
             }
         }
 
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += [
-                        "room.incremental"     : "true",
-                        "room.expandProjection": "true",
-                        "room.schemaLocation"  : "$projectDir/schemas".toString()
-                ]
-            }
+        ksp {
+            arg("room.incremental", "true")
+            arg("room.expandProjection", "true")
         }
     }
     buildFeatures {
@@ -150,15 +153,6 @@ android {
     room {
         schemaDirectory "$projectDir/schemas"
     }
-    // 设定Room的KSP参数
-    ksp {
-        arg("room.incremental", "true")
-        arg("room.expandProjection", "true")
-        arg("room.generateKotlin", "false")
-        //arg("room.schemaLocation", "$projectDir/schemas")
-
-    }
-
     compileOptions {
         // Flag to enable support for the new language APIs
         coreLibraryDesugaringEnabled = true

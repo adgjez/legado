@@ -8,8 +8,6 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import android.widget.ScrollView
-import android.widget.TextView
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
@@ -21,6 +19,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.ui.association.OpenUrlConfirmActivity
+import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.book.read.page.delegate.PageDelegate
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -495,20 +494,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     AppLog.put("EPUB Footnote resolve failed: href=$href")
                     context.toastOnUi(R.string.epub_footnote_load_failed)
                 } else {
-                    val textView = TextView(context).apply {
-                        textSize = 15f
-                        setTextColor(context.getCompatColor(R.color.primaryText))
-                        setPadding(20.dpToPx(), 14.dpToPx(), 20.dpToPx(), 14.dpToPx())
-                        setHtml(note.html)
-                    }
-                    val scrollView = ScrollView(context).apply {
-                        addView(textView)
-                        minimumHeight = 96.dpToPx()
-                    }
-                    context.alert(title = note.title) {
-                        customView { scrollView }
-                        okButton()
-                    }
+                    val content = note.html
+                    activity?.showDialogFragment(TextDialog(note.title, content, TextDialog.Mode.HTML))
                 }
             }
         }

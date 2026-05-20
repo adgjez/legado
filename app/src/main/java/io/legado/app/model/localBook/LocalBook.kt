@@ -36,6 +36,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.localBook.epubcore.cache.EpubCoreDiskCache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -416,6 +417,13 @@ object LocalBook {
         appDb.bookChapterDao.insert(*chapterList.toTypedArray())
         appDb.bookDao.update(book)
         onProgress("toc", 1, 1, book.name)
+        kotlin.runCatching {
+            onProgress("index", 0, 1, book.name)
+            EpubCoreDiskCache.writeChapterList(BookHelp.getCacheDir(book), EpubCoreDiskCache.bookSignature(book), chapterList)
+            onProgress("index", 1, 1, book.name)
+        }.onFailure {
+            AppLog.putDebug("EPUB import structure cache failed: ${it.localizedMessage}", it)
+        }
     }
 
     /**

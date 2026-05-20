@@ -1292,6 +1292,10 @@
     <string name="screen_landscape_reversed">反向横屏</string>
     <string name="del_ruby_tag">删除ruby标签</string>
     <string name="del_h_tag">删除h标签</string>
+    <string name="epub_core_schedule_mode">EPUB调度模式</string>
+    <string name="epub_core_schedule_mode_light">轻量</string>
+    <string name="epub_core_schedule_mode_normal">常规</string>
+    <string name="epub_core_schedule_mode_performance">性能</string>
     <string name="adjust_chapter_page">调整本章页数</string>
     <string name="adjust_chapter_index">调整章节位置</string>
     <string name="clear_webview_data_success">清除成功，3秒后自动重启应用</string>

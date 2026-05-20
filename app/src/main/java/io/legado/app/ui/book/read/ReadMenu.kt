@@ -582,7 +582,11 @@ class ReadMenu @JvmOverloads constructor(
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 binding.vwMenuBg.setOnClickListener { runMenuOut() }
                 when (AppConfig.progressBarBehavior) {
-                    "page" -> ReadBook.skipToPage(seekBar.progress)
+                    "page" -> {
+                        if (!callBack.skipToEpubCorePage(seekBar.progress)) {
+                            ReadBook.skipToPage(seekBar.progress)
+                        }
+                    }
                     "chapter" -> {
                         if (confirmSkipToChapter) {
                             callBack.skipToChapter(seekBar.progress)
@@ -630,10 +634,22 @@ class ReadMenu @JvmOverloads constructor(
         }
 
         //上一章
-        tvPre.setOnClickListener { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
+        tvPre.setOnClickListener {
+            if (callBack.isEpubCoreBook()) {
+                callBack.openPreviousEpubCoreChapter()
+            } else {
+                ReadBook.moveToPrevChapter(upContent = true, toLast = false)
+            }
+        }
 
         //下一章
-        tvNext.setOnClickListener { ReadBook.moveToNextChapter(true) }
+        tvNext.setOnClickListener {
+            if (callBack.isEpubCoreBook()) {
+                callBack.openNextEpubCoreChapter()
+            } else {
+                ReadBook.moveToNextChapter(true)
+            }
+        }
 
         //目录
         llCatalog.setOnClickListener {
@@ -675,6 +691,16 @@ class ReadMenu @JvmOverloads constructor(
 
     fun upBookView() {
         binding.titleBar.title = ReadBook.book?.name
+        if (callBack.isEpubCoreBook()) {
+            currentChapterUrl = callBack.epubCoreChapterUrl()
+            binding.tvChapterName.text = callBack.epubCoreChapterTitle().orEmpty()
+            binding.tvChapterName.visible()
+            binding.tvChapterUrl.gone()
+            upSeekBar()
+            binding.tvPre.isEnabled = ReadBook.durChapterIndex != 0
+            binding.tvNext.isEnabled = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
+            return
+        }
         ReadBook.curTextChapter?.let {
             binding.tvChapterName.text = it.title
             binding.tvChapterName.visible()
@@ -716,9 +742,15 @@ class ReadMenu @JvmOverloads constructor(
         binding.seekReadPage.apply {
             when (AppConfig.progressBarBehavior) {
                 "page" -> {
-                    ReadBook.curTextChapter?.let {
-                        max = it.pageSize.minus(1)
-                        progress = ReadBook.durPageIndex
+                    val epubPageCount = callBack.epubCorePageCount()
+                    if (epubPageCount > 0) {
+                        max = epubPageCount - 1
+                        progress = callBack.epubCorePageIndex().coerceIn(0, max)
+                    } else {
+                        ReadBook.curTextChapter?.let {
+                            max = it.pageSize.minus(1)
+                            progress = ReadBook.durPageIndex
+                        }
                     }
                 }
 
@@ -768,6 +800,14 @@ class ReadMenu @JvmOverloads constructor(
         fun skipToChapter(index: Int)
         fun onMenuShow()
         fun onMenuHide()
+        fun epubCorePageCount(): Int = 0
+        fun epubCorePageIndex(): Int = 0
+        fun skipToEpubCorePage(index: Int): Boolean = false
+        fun isEpubCoreBook(): Boolean = false
+        fun epubCoreChapterTitle(): String? = null
+        fun epubCoreChapterUrl(): String? = null
+        fun openPreviousEpubCoreChapter() = Unit
+        fun openNextEpubCoreChapter() = Unit
     }
 
 }

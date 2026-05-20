@@ -60,6 +60,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_click_area_config"
+        android:title="@string/click_regional_config"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_get_progress"
         android:title="@string/get_book_progress"
         android:visible="false"
@@ -123,6 +128,11 @@
             android:checkable="true"
             android:checked="false"
             android:title="@string/del_h_tag"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_epub_schedule_mode"
+            android:title="@string/epub_core_schedule_mode"
             app:showAsAction="never" />
 
     </group>

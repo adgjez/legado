@@ -24,6 +24,7 @@ import io.legado.app.utils.isXml
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.preferredCoverExtension
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
+import io.legado.app.model.localBook.epubcore.facade.EpubCoreProvider
 import me.ag2s.epublib.domain.EpubBook
 import me.ag2s.epublib.domain.Resource
 import me.ag2s.epublib.domain.TOCReference
@@ -100,7 +101,14 @@ class EpubFile(var book: Book) {
 
         @Synchronized
         override fun getChapterList(book: Book): ArrayList<BookChapter> {
-            return getEFile(book).getChapterList()
+            return runCatching {
+                EpubCoreProvider.getChapterList(book).takeIf { it.isNotEmpty() }
+                    ?: error("EPUB core returned empty chapter list")
+            }.onFailure {
+                AppLog.putDebug("EPUB core getChapterList failed: ${it.localizedMessage}", it)
+            }.getOrElse {
+                getEFile(book).getChapterList()
+            }
         }
 
         @Synchronized
@@ -185,6 +193,7 @@ class EpubFile(var book: Book) {
         fun clear() {
             eFile?.close()
             eFile = null
+            EpubCoreProvider.clear()
             synchronized(preloadedNativeLayoutKeys) {
                 preloadedNativeLayoutKeys.clear()
             }

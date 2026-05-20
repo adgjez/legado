@@ -247,6 +247,10 @@ object ReadBook : CoroutineScope by MainScope() {
         }
     }
 
+    fun clearLastBookProgress() {
+        lastBookProgress = null
+    }
+
     fun clearTextChapter() {
         clearExpiredChapterLoadingJob(true)
         prevTextChapter = null
