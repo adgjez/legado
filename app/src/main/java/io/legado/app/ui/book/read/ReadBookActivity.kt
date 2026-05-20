@@ -1875,7 +1875,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (values.any { it == 8 || it == 10 }) {
             ChapterProvider.upStyle()
         }
-        val needsLayout = values.any { it == 2 || it == 5 || it == 6 || it == 8 || it == 10 }
+        val needsLayout = values.any { it == 1 || it == 2 || it == 5 || it == 6 || it == 8 || it == 10 }
         if (needsLayout) {
             ReadBook.book?.takeIf { it.isEpub }?.let { book ->
                 cancelEpubCoreForegroundHard(book)
@@ -1909,6 +1909,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             lineSpacingExtraPx == other.lineSpacingExtraPx &&
             textPaint.textSize == other.textPaint.textSize &&
             textPaint.letterSpacing == other.textPaint.letterSpacing &&
+            textPaint.color == other.textPaint.color &&
             textPaint.typeface?.style == other.textPaint.typeface?.style &&
             readerFontFamily == other.readerFontFamily &&
             readerFontUrl == other.readerFontUrl &&
