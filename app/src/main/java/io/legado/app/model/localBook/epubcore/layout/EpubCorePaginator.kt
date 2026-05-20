@@ -137,9 +137,18 @@ class EpubCorePaginator(
                 availableHeight = current.remainingHeight(config)
             }
 
+            val remainingLines = lineLimit - lineStart
+            if (remainingLines > 1 && current.isNotEmpty()) {
+                val nextLineHeight = (layout.getLineBottom(lineStart) - layout.getLineTop(lineStart)).coerceAtLeast(1)
+                if (availableHeight <= nextLineHeight + config.paragraphSpacingPx) {
+                    commit()
+                    continue
+                }
+            }
+
             var lineEnd = lineStart
             while (lineEnd < lineLimit &&
-                layout.getLineBottom(lineEnd) - layout.getLineTop(lineStart) <= availableHeight
+                layout.getLineBottom(lineEnd) - layout.getLineTop(lineStart) <= (availableHeight - config.paragraphSpacingPx).coerceAtLeast(1f)
             ) {
                 lineEnd++
             }
@@ -354,7 +363,7 @@ class EpubCorePaginator(
                     )
                 )
             )
-            cursorY += height + config.paragraphSpacingPx
+            cursorY += height + config.paragraphSpacingPx.coerceAtMost((config.contentHeightPx * 0.08f).toInt().coerceAtLeast(8))
             end = fragment.lastSource()
         }
 
@@ -375,7 +384,7 @@ class EpubCorePaginator(
                     )
                 )
             )
-            cursorY += height + config.paragraphSpacingPx
+            cursorY += height + config.paragraphSpacingPx.coerceAtMost((config.contentHeightPx * 0.08f).toInt().coerceAtLeast(8))
             end = fragment.lastSource()
         }
 
@@ -395,7 +404,7 @@ class EpubCorePaginator(
                 fragment.offsetToPageY(y, height, config)
             )
             builder.appendPlainText(fragment)
-            cursorY += height + config.paragraphSpacingPx
+            cursorY += height + config.paragraphSpacingPx.coerceAtMost((config.contentHeightPx * 0.08f).toInt().coerceAtLeast(8))
             end = fragment.lastSource()
         }
 

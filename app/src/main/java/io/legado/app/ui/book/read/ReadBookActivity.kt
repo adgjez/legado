@@ -1766,7 +1766,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         epubCorePageCount = page?.totalPagesInChapter ?: pageCount
         if (epubCoreSuppressProgressSync) return
         ReadBook.durChapterIndex = chapterIndex
-        ReadBook.durChapterPos = chapterPageIndex
+        ReadBook.durChapterPos = chapterPageIndex.coerceAtLeast(0)
         ReadBook.saveRead(true)
         if (chapterIndex != oldChapterIndex) {
             upMenuView()
@@ -1830,7 +1830,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             epubCoreEstimatedPages[chapterIndex] = epubCorePageCount
         }
         ReadBook.durChapterIndex = chapterIndex
-        ReadBook.durChapterPos = chapterPageIndex
+        ReadBook.durChapterPos = chapterPageIndex.coerceAtLeast(0)
         epubCoreCommittedChapterIndex = chapterIndex
         ReadBook.saveRead(true)
         binding.readMenu.upBookView()
@@ -2160,7 +2160,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         boundaryTransition: Boolean = false
     ) {
         val chapterIndex = index.coerceIn(0, (ReadBook.chapterSize - 1).coerceAtLeast(0))
-        ReadBook.durChapterPos = if (resetPageOffset) 0 else Int.MAX_VALUE
+        ReadBook.durChapterPos = if (resetPageOffset) 0 else ReadBook.durChapterPos
         loadEpubCoreContent(
             targetChapterIndex = chapterIndex,
             resetPageOffset = resetPageOffset,
@@ -2400,7 +2400,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             epubCoreEstimatedPages[chapterIndex] = epubCorePageCount
         }
         ReadBook.durChapterIndex = chapterIndex
-        ReadBook.durChapterPos = binding.epubReadView.currentChapterPageIndex()
+        ReadBook.durChapterPos = binding.epubReadView.currentChapterPageIndex().coerceAtLeast(0)
         epubCoreCommittedChapterIndex = chapterIndex
         ReadBook.saveRead(true)
         binding.readMenu.upBookView()

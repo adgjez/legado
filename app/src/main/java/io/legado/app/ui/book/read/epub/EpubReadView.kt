@@ -804,7 +804,9 @@ class EpubReadView @JvmOverloads constructor(
                 } else if (selectedText.isNotBlank()) {
                     notifySelectionMenuIfReady()
                 } else if (!moved) {
-                    handleTap(event.x, event.y)
+                    if (!maybeQuickHorizontalTurn(velocityX, velocityY, event.x)) {
+                        handleTap(event.x, event.y)
+                    }
                 } else {
                     when (gestureMode) {
                         GestureMode.Horizontal -> {
@@ -818,15 +820,9 @@ class EpubReadView @JvmOverloads constructor(
                             if (abs(velocityY) > minFlingVelocity) {
                                 startScrollFling(velocityY)
                             } else {
-                                if (scrollOffsetY > height / 3f) {
-                                    startProgrammaticScroll(-1)
-                                } else if (scrollOffsetY < -height / 3f) {
-                                    startProgrammaticScroll(1)
-                                } else {
-                                    scrollOffsetY = 0f
-                                    bindIdleSlots()
-                                    invalidate()
-                                }
+                                scrollOffsetY = 0f
+                                bindIdleSlots()
+                                invalidate()
                             }
                         }
                         else -> Unit
@@ -911,11 +907,22 @@ class EpubReadView @JvmOverloads constructor(
     private fun shouldCompleteHorizontalTurn(velocityX: Float): Boolean {
         if (horizontalDirection == 0 || width <= 0) return false
         val offset = abs(horizontalOffset)
-        val threshold = maxOf(touchSlop.toFloat(), width * 0.05f)
+        val threshold = maxOf(touchSlop.toFloat(), width * 0.03f)
         if (offset <= touchSlop) return false
         if (offset >= threshold) return true
         val turnVelocity = if (horizontalDirection > 0) -velocityX else velocityX
         return turnVelocity > minFlingVelocity
+    }
+
+    private fun maybeQuickHorizontalTurn(velocityX: Float, velocityY: Float, upX: Float): Boolean {
+        if (pages.isEmpty() || horizontalDirection != 0) return false
+        if (abs(velocityX) <= minFlingVelocity * 0.65f) return false
+        if (abs(velocityX) <= abs(velocityY) * 1.35f) return false
+        if (abs(upX - downX) <= touchSlop * 0.25f) return false
+        val direction = if (velocityX < 0f) 1 else -1
+        if (!beginHorizontalTurn(direction)) return false
+        completeHorizontalTurn()
+        return true
     }
 
     private fun applyHorizontalOffset() {
@@ -955,15 +962,9 @@ class EpubReadView @JvmOverloads constructor(
             } else {
                 verticalAnimating = false
                 lastScrollerY = 0f
-                if (scrollOffsetY > height / 2f && pageIndex > 0) {
-                    startProgrammaticScroll(-1)
-                } else if (scrollOffsetY < -height / 2f && pageIndex < pages.lastIndex) {
-                    startProgrammaticScroll(1)
-                } else if (abs(scrollOffsetY) < 1f) {
-                    scrollOffsetY = 0f
-                    bindIdleSlots()
-                    invalidate()
-                }
+                scrollOffsetY = 0f
+                bindIdleSlots()
+                invalidate()
             }
         }
     }
@@ -1620,12 +1621,11 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun normalizeScrollPosition() {
         var changed = false
-        while (scrollOffsetY <= -pageHeight(pageIndex) && pageIndex < pages.lastIndex) {
+        if (scrollOffsetY <= -pageHeight(pageIndex) && pageIndex < pages.lastIndex) {
             scrollOffsetY += pageHeight(pageIndex)
             pageIndex += 1
             changed = true
-        }
-        while (scrollOffsetY > 0f && pageIndex > 0) {
+        } else if (scrollOffsetY > 0f && pageIndex > 0) {
             pageIndex -= 1
             scrollOffsetY -= pageHeight(pageIndex)
             changed = true
@@ -1633,12 +1633,10 @@ class EpubReadView @JvmOverloads constructor(
         if (pageIndex == 0 && scrollOffsetY > 0f) {
             scrollOffsetY = 0f
             if (verticalAnimating) verticalScroller.abortAnimation()
-            requestPageBoundary(-1)
         }
         if (pageIndex == pages.lastIndex && scrollOffsetY < 0f) {
             scrollOffsetY = 0f
             if (verticalAnimating) verticalScroller.abortAnimation()
-            requestPageBoundary(1)
         }
         if (changed) {
             boundaryRequestDirection = 0
@@ -1662,8 +1660,8 @@ class EpubReadView @JvmOverloads constructor(
             velocityY.roundToInt(),
             0,
             0,
-            -10 * height.coerceAtLeast(1),
-            10 * height.coerceAtLeast(1)
+            -height.coerceAtLeast(1),
+            height.coerceAtLeast(1)
         )
         postInvalidateOnAnimation()
     }

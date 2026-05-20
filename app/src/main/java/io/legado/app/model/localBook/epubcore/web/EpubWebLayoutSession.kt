@@ -830,14 +830,21 @@ class EpubWebLayoutSession(
               }
               function applyReaderInsets(root) {
                 var left = ${request.readerPaddingLeftPx.coerceAtLeast(0)};
-                var top = 0;
+                var top = ${request.readerPaddingTopPx.coerceAtLeast(0)};
                 var right = ${request.readerPaddingRightPx.coerceAtLeast(0)};
-                var bottom = 0;
+                var bottom = ${request.readerPaddingBottomPx.coerceAtLeast(0)};
                 if (!root || (left <= 0 && top <= 0 && right <= 0 && bottom <= 0)) return;
                 var raw = Array.prototype.slice.call(root.querySelectorAll('p, li, blockquote, div'));
                 var targets = [];
                 for (var i = 0; i < raw.length; i++) {
                   if (isReaderInsetTarget(raw[i])) targets.push(raw[i]);
+                }
+                var firstBodyIndex = -1;
+                for (var k = 0; k < targets.length; k++) {
+                  if (!isHeadingLike(targets[k])) {
+                    firstBodyIndex = k;
+                    break;
+                  }
                 }
                 for (var j = 0; j < targets.length; j++) {
                   var el = targets[j];
@@ -845,7 +852,7 @@ class EpubWebLayoutSession(
                   el.setAttribute('data-legado-reader-inset', '1');
                   if (left > 0) el.style.marginLeft = addCssPx(style.marginLeft, left);
                   if (right > 0) el.style.marginRight = addCssPx(style.marginRight, right);
-                  if (j === 0 && top > 0) el.style.marginTop = addCssPx(style.marginTop, top);
+                  if (j === firstBodyIndex && top > 0) el.style.marginTop = addCssPx(style.marginTop, top);
                   if (j === targets.length - 1 && bottom > 0) el.style.marginBottom = addCssPx(style.marginBottom, bottom);
                 }
               }
