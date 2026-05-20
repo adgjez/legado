@@ -191,7 +191,7 @@ class EpubCorePaginator(
                 endLineExclusive = lineEnd,
                 lineTopOffsetPx = layout.getLineTop(lineStart).toFloat()
             )
-            current.appendText(fragment, height, config)
+            current.appendText(fragment, height, config, addTrailingSpacing = lineEnd == lineLimit)
             currentUpdater(current)
             lineStart = lineEnd
 
@@ -347,7 +347,12 @@ class EpubCorePaginator(
             return (config.contentHeightPx - cursorY).coerceAtLeast(0f)
         }
 
-        fun appendText(fragment: EpubTextFragment, measuredHeightPx: Int, config: EpubCoreLayoutConfig) {
+        fun appendText(
+            fragment: EpubTextFragment,
+            measuredHeightPx: Int,
+            config: EpubCoreLayoutConfig,
+            addTrailingSpacing: Boolean = true
+        ) {
             if (start == null) start = fragment.firstSource()
             if (builder.isNotEmpty()) builder.append("\n\n")
             builder.append(fragment.text.trim())
@@ -363,7 +368,12 @@ class EpubCorePaginator(
                     )
                 )
             )
-            cursorY += height + config.paragraphSpacingPx.coerceAtMost((config.contentHeightPx * 0.08f).toInt().coerceAtLeast(8))
+            val spacing = if (addTrailingSpacing) {
+                config.paragraphSpacingPx.coerceAtMost((config.contentHeightPx * 0.08f).toInt().coerceAtLeast(8))
+            } else {
+                0
+            }
+            cursorY += height + spacing
             end = fragment.lastSource()
         }
 
