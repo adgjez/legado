@@ -471,6 +471,25 @@ class EpubWebLayoutSession(
                 if (!to.display || to.display === 'none') to.display = 'inline';
                 to.setProperty('position', 'static', 'important');
               }
+              function isHeadingLike(element) {
+                var tag = String(element && element.tagName || '').toLowerCase();
+                if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6' || tag === 'title') return true;
+                var role = String(element && element.getAttribute && (element.getAttribute('role') || '') || '').toLowerCase();
+                if (role === 'heading') return true;
+                var className = String(element && element.className || '');
+                return /(^|\s)(title|chapter-title|heading|headline|subtitle)(\s|$)/i.test(className);
+              }
+              function isolatePseudoLine(element, span) {
+                if (!isHeadingLike(element)) return;
+                span.style.setProperty('display', 'block', 'important');
+                span.style.setProperty('width', '100%', 'important');
+                span.style.setProperty('max-width', '100%', 'important');
+                span.style.setProperty('white-space', 'normal', 'important');
+                span.style.setProperty('clear', 'both', 'important');
+                span.style.setProperty('float', 'none', 'important');
+                span.style.setProperty('position', 'static', 'important');
+                span.style.setProperty('overflow', 'visible', 'important');
+              }
               function addPseudoSuppressionStyle() {
                 if (document.getElementById('legado-epub-pseudo-suppression')) return;
                 var style = document.createElement('style');
@@ -505,6 +524,7 @@ class EpubWebLayoutSession(
                   span.setAttribute('data-epub-generated-pseudo', item.side);
                   span.textContent = item.text;
                   copyPseudoTextStyle(item.style, span.style);
+                  isolatePseudoLine(item.element, span);
                   if (item.side === 'before') {
                     item.element.setAttribute('data-epub-pseudo-before', 'true');
                     item.element.insertBefore(span, item.element.firstChild);

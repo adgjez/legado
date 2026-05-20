@@ -399,6 +399,123 @@ class EpubWebSelectionLayerSession(
                 }
                 return root;
               }
+              function cssContentText(value) {
+                var raw = String(value || '').trim();
+                if (!raw || raw === 'none' || raw === 'normal') return '';
+                var parts = [];
+                var index = 0;
+                function readString(start) {
+                  var quote = raw.charAt(start);
+                  var out = '';
+                  for (var i = start + 1; i < raw.length; i++) {
+                    var ch = raw.charAt(i);
+                    if (ch === '\\' && i + 1 < raw.length) {
+                      i++;
+                      var escaped = raw.charAt(i);
+                      out += (escaped === 'A' || escaped === 'a') ? '\n' : escaped;
+                    } else if (ch === quote) {
+                      return { text: out, end: i + 1 };
+                    } else {
+                      out += ch;
+                    }
+                  }
+                  return { text: out, end: raw.length };
+                }
+                while (index < raw.length) {
+                  while (index < raw.length && /\s/.test(raw.charAt(index))) index++;
+                  var ch = raw.charAt(index);
+                  if (ch === '"' || ch === "'") {
+                    var item = readString(index);
+                    parts.push(item.text);
+                    index = item.end;
+                    continue;
+                  }
+                  var next = index;
+                  while (next < raw.length && !/\s/.test(raw.charAt(next))) next++;
+                  var token = raw.substring(index, next).toLowerCase();
+                  if (token && token !== 'open-quote' && token !== 'close-quote' && token !== 'no-open-quote' && token !== 'no-close-quote' && token.indexOf('url(') !== 0) {
+                    parts.push(raw.substring(index, next));
+                  }
+                  index = next + 1;
+                }
+                return visibleText(parts.join(''));
+              }
+              function copyPseudoTextStyle(from, to) {
+                [
+                  'display', 'white-space', 'font', 'font-family', 'font-size', 'font-weight', 'font-style',
+                  'font-variant', 'line-height', 'letter-spacing', 'color', 'opacity', 'text-decoration',
+                  'vertical-align', 'text-transform', 'direction', 'writing-mode', '-webkit-writing-mode',
+                  'margin', 'padding', 'border', 'border-radius'
+                ].forEach(function(name) {
+                  var value = from.getPropertyValue(name);
+                  if (value) to.setProperty(name, value, from.getPropertyPriority(name));
+                });
+                if (!to.display || to.display === 'none') to.display = 'inline';
+                to.setProperty('position', 'static', 'important');
+              }
+              function isHeadingLike(element) {
+                var tag = String(element && element.tagName || '').toLowerCase();
+                if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6' || tag === 'title') return true;
+                var role = String(element && element.getAttribute && (element.getAttribute('role') || '') || '').toLowerCase();
+                if (role === 'heading') return true;
+                var className = String(element && element.className || '');
+                return /(^|\s)(title|chapter-title|heading|headline|subtitle)(\s|$)/i.test(className);
+              }
+              function isolatePseudoLine(element, span) {
+                if (!isHeadingLike(element)) return;
+                span.style.setProperty('display', 'block', 'important');
+                span.style.setProperty('width', '100%', 'important');
+                span.style.setProperty('max-width', '100%', 'important');
+                span.style.setProperty('white-space', 'normal', 'important');
+                span.style.setProperty('clear', 'both', 'important');
+                span.style.setProperty('float', 'none', 'important');
+                span.style.setProperty('position', 'static', 'important');
+                span.style.setProperty('overflow', 'visible', 'important');
+              }
+              function addPseudoSuppressionStyle() {
+                if (document.getElementById('legado-epub-pseudo-suppression')) return;
+                var style = document.createElement('style');
+                style.id = 'legado-epub-pseudo-suppression';
+                style.textContent = '[data-epub-pseudo-before="true"]::before{content:none !important;}[data-epub-pseudo-after="true"]::after{content:none !important;}';
+                (document.head || document.documentElement).appendChild(style);
+              }
+              function materializePseudoContent(root) {
+                if (!root || !window.getComputedStyle) return;
+                var elements = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+                var additions = [];
+                for (var i = 0; i < elements.length && i < 1200; i++) {
+                  var el = elements[i];
+                  if (!el || el.nodeType !== 1 || el.getAttribute('data-epub-generated-pseudo')) continue;
+                  ['before', 'after'].forEach(function(side) {
+                    var pseudo = null;
+                    try {
+                      pseudo = window.getComputedStyle(el, '::' + side);
+                    } catch (e) {
+                      pseudo = null;
+                    }
+                    if (!pseudo || pseudo.display === 'none' || pseudo.visibility === 'hidden') return;
+                    var text = cssContentText(pseudo.content);
+                    if (!visibleText(text)) return;
+                    additions.push({ element: el, side: side, text: text, style: pseudo });
+                  });
+                }
+                if (!additions.length) return;
+                addPseudoSuppressionStyle();
+                additions.forEach(function(item) {
+                  var span = document.createElement('span');
+                  span.setAttribute('data-epub-generated-pseudo', item.side);
+                  span.textContent = item.text;
+                  copyPseudoTextStyle(item.style, span.style);
+                  isolatePseudoLine(item.element, span);
+                  if (item.side === 'before') {
+                    item.element.setAttribute('data-epub-pseudo-before', 'true');
+                    item.element.insertBefore(span, item.element.firstChild);
+                  } else {
+                    item.element.setAttribute('data-epub-pseudo-after', 'true');
+                    item.element.appendChild(span);
+                  }
+                });
+              }
               function visibleText(value) {
                 return String(value || '').replace(/[\t\r\n ]+/g, ' ').replace(/^[ ]+|[ ]+$/g, '');
               }
@@ -508,6 +625,7 @@ class EpubWebSelectionLayerSession(
               var root = sliceRootByFragments(document.body || document.documentElement);
               root = prepareRoot(root);
               mark(root, 'body');
+              materializePseudoContent(root);
               applyReaderFont(root);
               applySelectionInsets(root);
               rootBounds = root && root.getBoundingClientRect ? root.getBoundingClientRect() : { left: 0, top: 0 };
@@ -596,6 +714,15 @@ class EpubWebSelectionLayerSession(
                 if (!range.startContainer || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
                 return range;
               }
+              function hitTagName(range) {
+                var el = range && range.startContainer && range.startContainer.parentElement;
+                while (el && el.nodeType === 1) {
+                  var tag = String(el.tagName || '').toLowerCase();
+                  if (tag) return tag;
+                  el = el.parentElement;
+                }
+                return '';
+              }
               function textOf(node) {
                 return String(node && node.nodeValue || '');
               }
@@ -664,6 +791,7 @@ class EpubWebSelectionLayerSession(
               }
               var target = caretRange(X, Y);
               if (!target) return JSON.stringify({ text: '', rects: [] });
+              var targetTag = hitTagName(target);
               var nextRange = null;
               if (ACTION === 'SelectWord' || !selection || selection.rangeCount === 0) {
                 if (selection) selection.removeAllRanges();
@@ -704,6 +832,7 @@ class EpubWebSelectionLayerSession(
                 pageEndPath: PAGE_END_PATH,
                 pageEndOffset: PAGE_END_OFFSET,
                 resolvedPageIndex: PAGE_INDEX,
+                targetTag: targetTag,
                 scrollWidth: Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
                 pageCount: Math.max(1, Math.ceil(Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0) / PAGE_W)),
                 scrollX: window.scrollX || window.pageXOffset || 0,
@@ -747,6 +876,7 @@ class EpubWebSelectionLayerSession(
                 "key=${pageContext?.pageKey.orEmpty()} selected=${selectedPreview.take(40)} " +
                 "page=${pagePreview.take(40)} belongs=$belongsToPage " +
                 "resolvedPage=${obj.optInt("resolvedPageIndex", pageIndex)} " +
+                "targetTag=${obj.optString("targetTag")} " +
                 "scrollWidth=${obj.optDouble("scrollWidth")} pageCount=${obj.optInt("pageCount")} " +
                 "start=${obj.optString("pageStartPath")}:${obj.optInt("pageStartOffset")} " +
                 "end=${obj.optString("pageEndPath")}:${obj.optInt("pageEndOffset")}"
