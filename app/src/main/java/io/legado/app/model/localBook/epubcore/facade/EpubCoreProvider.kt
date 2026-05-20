@@ -79,6 +79,7 @@ object EpubCoreProvider {
 
     suspend fun selectText(
         book: Book,
+        page: EpubCorePage,
         chapterIndex: Int,
         pageIndex: Int,
         config: EpubCoreLayoutConfig,
@@ -87,7 +88,7 @@ object EpubCoreProvider {
         y: Float
     ): EpubWebSelectionPayload? {
         val facade = synchronized(this) { open(book).facade }
-        return facade.selectText(chapterIndex, pageIndex, config, action, x, y)
+        return facade.selectText(page, chapterIndex, pageIndex, config, action, x, y)
     }
 
     @Synchronized

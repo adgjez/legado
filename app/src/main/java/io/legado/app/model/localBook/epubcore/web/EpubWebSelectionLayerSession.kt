@@ -17,6 +17,9 @@ import android.webkit.WebViewClient
 import io.legado.app.constant.AppLog
 import io.legado.app.model.localBook.epubcore.archive.EpubArchive
 import io.legado.app.model.localBook.epubcore.archive.EpubPath
+import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
+import io.legado.app.model.localBook.epubcore.layout.pageKey
+import io.legado.app.model.localBook.epubcore.model.SourceRange
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -53,6 +56,24 @@ data class EpubWebSelectionPayload(
     val hitY: Float? = null
 )
 
+data class EpubWebSelectionPageContext(
+    val pageKey: String,
+    val textPreview: String,
+    val start: SourceRange?,
+    val end: SourceRange?
+) {
+    companion object {
+        fun from(page: EpubCorePage): EpubWebSelectionPageContext {
+            return EpubWebSelectionPageContext(
+                pageKey = page.pageKey(),
+                textPreview = normalizeSelectionPreview(page.text),
+                start = page.start,
+                end = page.end
+            )
+        }
+    }
+}
+
 class EpubWebSelectionLayerSession(
     private val archive: EpubArchive
 ) : Closeable {
@@ -67,6 +88,7 @@ class EpubWebSelectionLayerSession(
     suspend fun select(
         request: EpubWebLayoutRequest,
         pageIndex: Int,
+        pageContext: EpubWebSelectionPageContext?,
         action: EpubWebSelectionAction,
         x: Float,
         y: Float
@@ -75,7 +97,7 @@ class EpubWebSelectionLayerSession(
         if (request.viewportWidthPx <= 0 || request.viewportHeightPx <= 0) return null
         return mutex.withLock {
             withTimeoutOrNull(request.timeoutMillis) {
-                selectLocked(request, pageIndex, action, x, y)
+                selectLocked(request, pageIndex, pageContext, action, x, y)
             }
         }
     }
@@ -94,6 +116,7 @@ class EpubWebSelectionLayerSession(
     private suspend fun selectLocked(
         request: EpubWebLayoutRequest,
         pageIndex: Int,
+        pageContext: EpubWebSelectionPageContext?,
         action: EpubWebSelectionAction,
         x: Float,
         y: Float
@@ -126,10 +149,10 @@ class EpubWebSelectionLayerSession(
                         View.MeasureSpec.makeMeasureSpec(request.viewportHeightPx, View.MeasureSpec.EXACTLY)
                     )
                     view.layout(0, 0, request.viewportWidthPx, request.viewportHeightPx)
-                    view.evaluateJavascript(buildSelectionJs(request, pageIndex, action, x, y)) { raw ->
+                    view.evaluateJavascript(buildSelectionJs(request, pageIndex, pageContext, action, x, y)) { raw ->
                         if (token != currentToken) return@evaluateJavascript
                         val payload = runCatching {
-                            parsePayload(request, pageIndex, raw)
+                            parsePayload(request, pageIndex, pageContext, raw)
                         }.onFailure {
                             AppLog.putDebug("EPUB selection layer parse failed: ${it.localizedMessage}", it)
                         }.getOrNull()
@@ -226,6 +249,7 @@ class EpubWebSelectionLayerSession(
     private fun buildSelectionJs(
         request: EpubWebLayoutRequest,
         pageIndex: Int,
+        pageContext: EpubWebSelectionPageContext?,
         action: EpubWebSelectionAction,
         x: Float,
         y: Float
@@ -233,6 +257,12 @@ class EpubWebSelectionLayerSession(
         val actionName = action.name
         val safeX = x.coerceIn(0f, request.viewportWidthPx.toFloat())
         val safeY = y.coerceIn(0f, request.viewportHeightPx.toFloat())
+        val pageKey = JSONObject.quote(pageContext?.pageKey.orEmpty())
+        val pageTextPreview = JSONObject.quote(pageContext?.textPreview.orEmpty())
+        val pageStartPath = JSONObject.quote(pageContext?.start?.start?.nodePath.orEmpty())
+        val pageEndPath = JSONObject.quote(pageContext?.end?.end?.nodePath.orEmpty())
+        val pageStartOffset = pageContext?.start?.startOffset ?: -1
+        val pageEndOffset = pageContext?.end?.endOffset ?: -1
         return """
             (function() {
               var PAGE_INDEX = ${pageIndex.coerceAtLeast(0)};
@@ -240,6 +270,12 @@ class EpubWebSelectionLayerSession(
               var X = $safeX;
               var Y = $safeY;
               var ACTION = '$actionName';
+              var PAGE_KEY = $pageKey;
+              var PAGE_TEXT_PREVIEW = $pageTextPreview;
+              var PAGE_START_PATH = $pageStartPath;
+              var PAGE_END_PATH = $pageEndPath;
+              var PAGE_START_OFFSET = $pageStartOffset;
+              var PAGE_END_OFFSET = $pageEndOffset;
               var START_ID = ${request.startFragmentId?.let { JSONObject.quote(it) } ?: "null"};
               var END_ID = ${request.endFragmentId?.let { JSONObject.quote(it) } ?: "null"};
               var READER_PAD_LEFT = ${request.readerPaddingLeftPx.coerceAtLeast(0)};
@@ -567,6 +603,14 @@ class EpubWebSelectionLayerSession(
                 rects: rects,
                 hitX: X,
                 hitY: Y,
+                pageKey: PAGE_KEY,
+                pageTextPreview: PAGE_TEXT_PREVIEW,
+                pageStartPath: PAGE_START_PATH,
+                pageStartOffset: PAGE_START_OFFSET,
+                pageEndPath: PAGE_END_PATH,
+                pageEndOffset: PAGE_END_OFFSET,
+                scrollWidth: Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
+                pageCount: Math.max(1, Math.ceil(Math.max(root ? root.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0) / PAGE_W)),
                 scrollX: window.scrollX || window.pageXOffset || 0,
                 scrollY: window.scrollY || window.pageYOffset || 0,
                 pageIndex: PAGE_INDEX,
@@ -594,11 +638,30 @@ class EpubWebSelectionLayerSession(
     private fun parsePayload(
         request: EpubWebLayoutRequest,
         pageIndex: Int,
+        pageContext: EpubWebSelectionPageContext?,
         raw: String?
     ): EpubWebSelectionPayload? {
         val json = decodeJavascriptString(raw) ?: return null
         val obj = JSONObject(json)
         val text = obj.optString("text").takeIf { it.isNotBlank() } ?: return null
+        val selectedPreview = normalizeSelectionPreview(text)
+        val pagePreview = pageContext?.textPreview.orEmpty()
+        val belongsToPage = belongsToPage(selectedPreview, pagePreview)
+        AppLog.putDebug(
+            "EPUB Web selection result: chapter=${request.chapterIndex} page=$pageIndex " +
+                "key=${pageContext?.pageKey.orEmpty()} selected=${selectedPreview.take(40)} " +
+                "page=${pagePreview.take(40)} belongs=$belongsToPage " +
+                "scrollWidth=${obj.optDouble("scrollWidth")} pageCount=${obj.optInt("pageCount")} " +
+                "start=${obj.optString("pageStartPath")}:${obj.optInt("pageStartOffset")} " +
+                "end=${obj.optString("pageEndPath")}:${obj.optInt("pageEndOffset")}"
+        )
+        if (!belongsToPage) {
+            AppLog.putDebug(
+                "EPUB Web selection rejected by page ownership: chapter=${request.chapterIndex} page=$pageIndex " +
+                    "selected=${selectedPreview.take(80)} page=${pagePreview.take(80)}"
+            )
+            return null
+        }
         val rectsJson = obj.optJSONArray("rects") ?: JSONArray()
         val rects = ArrayList<EpubWebSelectionRect>(rectsJson.length())
         for (index in 0 until rectsJson.length()) {
@@ -623,6 +686,16 @@ class EpubWebSelectionLayerSession(
             hitX = obj.optDouble("hitX").takeIf { it.isFinite() }?.toFloat(),
             hitY = obj.optDouble("hitY").takeIf { it.isFinite() }?.toFloat()
         )
+    }
+
+    private fun belongsToPage(selectedPreview: String, pagePreview: String): Boolean {
+        if (selectedPreview.isBlank() || pagePreview.isBlank()) return true
+        if (pagePreview.contains(selectedPreview)) return true
+        val selectedCompact = selectedPreview.compactForSelection()
+        val pageCompact = pagePreview.compactForSelection()
+        if (selectedCompact.isBlank() || pageCompact.isBlank()) return true
+        if (pageCompact.contains(selectedCompact)) return true
+        return selectedCompact.length <= 2 && pageCompact.any { selectedCompact.contains(it) }
     }
 
     private fun decodeJavascriptString(value: String?): String? {
@@ -797,6 +870,10 @@ class EpubWebSelectionLayerSession(
         return replace("\\", "\\\\").replace("'", "\\'")
     }
 
+    private fun String.compactForSelection(): String {
+        return replace(Regex("\\s+"), "")
+    }
+
     private fun EpubWebLayoutRequest.selectionKey(): String {
         return buildString {
             append(chapterIndex).append('|').append(chapterHref)
@@ -832,4 +909,11 @@ class EpubWebSelectionLayerSession(
         private const val MaxReadyAttempts = 6
         private const val ReadyRetryDelayMillis = 80L
     }
+}
+
+private fun normalizeSelectionPreview(value: CharSequence, limit: Int = 160): String {
+    return value.toString()
+        .replace(Regex("[\\t\\r\\n ]+"), " ")
+        .trim()
+        .take(limit)
 }

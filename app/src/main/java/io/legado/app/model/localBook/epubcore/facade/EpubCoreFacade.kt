@@ -28,6 +28,7 @@ import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutSession
 import io.legado.app.model.localBook.epubcore.web.EpubDomMeasureRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionLayerSession
+import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPageContext
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -291,6 +292,7 @@ class EpubCoreFacade private constructor(
     }
 
     suspend fun selectText(
+        page: EpubCorePage,
         chapterIndex: Int,
         pageIndex: Int,
         config: EpubCoreLayoutConfig,
@@ -325,7 +327,14 @@ class EpubCoreFacade private constructor(
             readerFontPath = config.readerFontPath,
             letterSpacingEm = paint.letterSpacing
         )
-        return getSelectionLayerSession().select(request, pageIndex, action, x, y)
+        return getSelectionLayerSession().select(
+            request = request,
+            pageIndex = pageIndex,
+            pageContext = EpubWebSelectionPageContext.from(page),
+            action = action,
+            x = x,
+            y = y
+        )
     }
 
     fun imageResolver(): EpubImageResolver = imageResolver

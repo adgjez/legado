@@ -499,6 +499,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             val payload = runCatching {
                 EpubCoreProvider.selectText(
                     book = book,
+                    page = page,
                     chapterIndex = chapterIndex,
                     pageIndex = pageIndex,
                     config = config,
