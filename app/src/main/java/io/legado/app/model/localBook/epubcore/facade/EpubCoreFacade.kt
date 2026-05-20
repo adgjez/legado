@@ -149,6 +149,24 @@ class EpubCoreFacade private constructor(
         val href = EpubPath.stripFragment(resolvedChapter.url)
         val paint = config.textPaint
         val key = pageCacheKey(resolvedChapter, config)
+        val nativeKey = nativePageCacheKey(resolvedChapter, config)
+        cache.getPages(nativeKey)?.let {
+            AppLog.putDebug("EPUB native translation cache hit: chapter=${chapter.index}, href=$href, pages=${it.size}")
+            return it
+        }
+        runCatching {
+            val model = readChapter(resolvedChapter, config)
+            nativeTranslationPipeline.paginate(model, config)
+        }.onFailure {
+            AppLog.putDebug("EPUB native translation failed, fallback to Web layout: chapter=${chapter.index}, href=$href, error=${it.localizedMessage}", it)
+        }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { pages ->
+            cache.putPages(nativeKey, pages)
+            AppLog.putDebug(
+                "EPUB native translation summary: chapter=${chapter.index}:${chapter.title}, " +
+                    "href=$href, pages=${pages.size}, fragments=${pages.sumOf { it.fragments.size }}"
+            )
+            return pages
+        }
         cache.getPages(key)?.let {
             AppLog.putDebug("EPUB Web layout cache hit: chapter=${chapter.index}, href=$href, pages=${it.size}")
             return it
@@ -227,6 +245,31 @@ class EpubCoreFacade private constructor(
             append('|').append(config.alignment)
             append('|').append(config.lineSpacingMultiplier).append('|').append(config.lineSpacingExtraPx)
             append('|').append(paint.textSize)
+            append('|').append(paint.letterSpacing).append('|').append(paint.typeface?.style ?: 0)
+            append('|').append(config.readerFontFamily.orEmpty())
+            append('|').append(config.readerFontUrl.orEmpty())
+            append('|').append(config.readerFontPath.orEmpty())
+        }
+    }
+
+    private fun nativePageCacheKey(chapter: BookChapter, config: EpubCoreLayoutConfig): String {
+        val href = EpubPath.stripFragment(chapter.url)
+        val paint = config.textPaint
+        return buildString {
+            append(href)
+            append('|').append(chapter.startFragmentId.orEmpty())
+            append('|').append(chapter.endFragmentId.orEmpty())
+            append('|').append(continuationHrefs(chapter).joinToString(","))
+            append("|nativeTranslate:v1")
+            append('|').append(config.pageWidthPx).append('x').append(config.pageHeightPx)
+            append('|').append(config.paddingLeftPx).append(',').append(config.paddingTopPx)
+            append(',').append(config.paddingRightPx).append(',').append(config.paddingBottomPx)
+            append('|').append(config.readerPaddingLeftPx).append(',').append(config.readerPaddingTopPx)
+            append(',').append(config.readerPaddingRightPx).append(',').append(config.readerPaddingBottomPx)
+            append('|').append(config.paragraphSpacingPx)
+            append('|').append(config.alignment)
+            append('|').append(config.lineSpacingMultiplier).append('|').append(config.lineSpacingExtraPx)
+            append('|').append(paint.textSize).append('|').append(paint.color)
             append('|').append(paint.letterSpacing).append('|').append(paint.typeface?.style ?: 0)
             append('|').append(config.readerFontFamily.orEmpty())
             append('|').append(config.readerFontUrl.orEmpty())
