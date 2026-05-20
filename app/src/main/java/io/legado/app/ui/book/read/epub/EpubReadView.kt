@@ -210,6 +210,8 @@ class EpubReadView @JvmOverloads constructor(
     private var horizontalCancelling = false
     private var verticalAnimating = false
     private var boundaryRequestDirection = 0
+    private var boundaryLoadingTransactionId = 0L
+    private var boundaryLoadingTargetChapterIndex = -1
     private var animationGeneration = 0
     private var simulationTouchX = 0.1f
     private var simulationTouchY = 0.1f
@@ -287,6 +289,8 @@ class EpubReadView @JvmOverloads constructor(
         clearSelection()
         boundaryLoadingAnchorKey = null
         boundaryRequestDirection = 0
+        boundaryLoadingTransactionId = 0L
+        boundaryLoadingTargetChapterIndex = -1
         this.pages = pages
         selectableIndex.clear()
         pageIndex = initialPageIndex.coerceInPageRange()
@@ -321,6 +325,8 @@ class EpubReadView @JvmOverloads constructor(
             pages.any { it.chapterHref.startsWith(BoundaryLoadingPrefix) }
         boundaryLoadingAnchorKey = null
         boundaryRequestDirection = 0
+        boundaryLoadingTransactionId = 0L
+        boundaryLoadingTargetChapterIndex = -1
         loadingMessage = null
         val currentKey = currentPage()?.pageKey()
         val filtered = pages.filterNot { it.chapterHref.startsWith(BoundaryLoadingPrefix) }
@@ -663,6 +669,7 @@ class EpubReadView @JvmOverloads constructor(
         anchorPage: EpubCorePage? = currentPage()
     ): Boolean {
         if (direction == 0 || anchorPage == null) return false
+        clearBoundaryLoadingTurn()
         val anchorKey = anchorPage.pageKey()
         val loading = EpubCorePage(
             chapterIndex = anchorPage.chapterIndex + direction,
@@ -676,6 +683,8 @@ class EpubReadView @JvmOverloads constructor(
         )
         boundaryLoadingAnchorKey = anchorKey
         boundaryRequestDirection = direction
+        boundaryLoadingTransactionId = transactionId
+        boundaryLoadingTargetChapterIndex = targetChapterIndex
         val insertAt = if (direction > 0) (pageIndex + 1).coerceAtMost(pages.size) else pageIndex.coerceAtLeast(0)
         pages = pages.toMutableList().apply { add(insertAt, loading) }
         pageIndex = insertAt.coerceInPageRange()
@@ -694,6 +703,17 @@ class EpubReadView @JvmOverloads constructor(
         resetPageOffset: Boolean
     ): Boolean {
         if (targetPages.isEmpty()) return false
+        if (transactionId != boundaryLoadingTransactionId ||
+            direction != boundaryRequestDirection ||
+            targetChapterIndex != boundaryLoadingTargetChapterIndex
+        ) {
+            AppLog.putDebug(
+                "EPUB boundary loading stale: tx=$transactionId current=$boundaryLoadingTransactionId " +
+                    "dir=$direction currentDir=$boundaryRequestDirection target=$targetChapterIndex " +
+                    "currentTarget=$boundaryLoadingTargetChapterIndex"
+            )
+            return false
+        }
         val index = pages.indexOfFirst { it.chapterHref.startsWith(BoundaryLoadingPrefix) }
         if (index < 0) return false
         pages = pages.toMutableList().apply {
@@ -703,6 +723,8 @@ class EpubReadView @JvmOverloads constructor(
         pageIndex = if (resetPageOffset) index else (index + targetPages.lastIndex).coerceInPageRange()
         boundaryLoadingAnchorKey = null
         boundaryRequestDirection = 0
+        boundaryLoadingTransactionId = 0L
+        boundaryLoadingTargetChapterIndex = -1
         loadingMessage = null
         selectableIndex.clear()
         bindIdleSlots()
@@ -724,6 +746,8 @@ class EpubReadView @JvmOverloads constructor(
             ?: pageIndex.coerceInPageRange()
         boundaryLoadingAnchorKey = null
         boundaryRequestDirection = 0
+        boundaryLoadingTransactionId = 0L
+        boundaryLoadingTargetChapterIndex = -1
         loadingMessage = null
         selectableIndex.clear()
         bindIdleSlots()

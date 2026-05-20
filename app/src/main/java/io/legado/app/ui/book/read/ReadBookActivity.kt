@@ -1669,7 +1669,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     binding.epubReadView.clearLoading()
                     binding.epubReadView.clearBoundaryLoadingTurn()
                     AppLog.putDebug("EPUB core render failed: ${it.localizedMessage}", it)
-                    EpubCoreProvider.clearBookCache(book)
                     if (keepCurrentPageUntilReady && epubCoreActive) {
                         toastOnUi((it.localizedMessage ?: it.toString()).take(120))
                     } else {
@@ -1700,7 +1699,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 "EPUB core foreground retry: index=$chapterIndex, ${throwable.localizedMessage}",
                 throwable
             )
-            EpubCoreProvider.clearBookCache(book)
+            EpubCoreProvider.cancelForegroundLayout(book)
             loadEpubCorePagesOnce(book, chapterIndex, config)
         }
     }
@@ -1814,6 +1813,29 @@ class ReadBookActivity : BaseReadBookActivity(),
         scheduleEpubCorePrefetchWindow(nextIndex, epubCoreRequestSeq)
     }
 
+    private fun cancelActiveEpubCoreNavigation(
+        clearBoundary: Boolean = true,
+        advanceRequestSeq: Boolean = true
+    ) {
+        if (advanceRequestSeq) {
+            epubCoreRequestSeq++
+        }
+        epubCoreLoadJob?.cancel()
+        epubCoreLoadJob = null
+        epubCoreLoading = false
+        epubCoreLoadingChapterIndex = null
+        epubCorePendingNavigation = null
+        epubCoreBoundaryTransition = false
+        epubCoreForegroundTarget = null
+        epubCoreSuppressProgressSync = false
+        binding.epubReadView.clearLoading()
+        if (clearBoundary) {
+            binding.epubReadView.clearBoundaryLoadingTurn()
+            epubCoreBoundaryDirection = 0
+            epubCoreBoundaryTargetEdge = EpubCorePageEdge.Start
+        }
+    }
+
     private fun commitEpubCoreDisplayedChapter(
         chapterIndex: Int,
         chapterPageIndex: Int = binding.epubReadView.currentChapterPageIndex(),
@@ -1882,6 +1904,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             readerPaddingBottomPx == other.readerPaddingBottomPx &&
             paragraphSpacingPx == other.paragraphSpacingPx &&
             alignment == other.alignment &&
+            textFullJustify == other.textFullJustify &&
             lineSpacingMultiplier == other.lineSpacingMultiplier &&
             lineSpacingExtraPx == other.lineSpacingExtraPx &&
             textPaint.textSize == other.textPaint.textSize &&
@@ -2129,6 +2152,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             readerFontFamily = readerFontName,
             readerFontUrl = epubCoreReaderFontUrl(),
             readerFontPath = ReadBookConfig.textFont.takeIf { it.isNotBlank() },
+            textFullJustify = ReadBookConfig.textFullJustify,
             lineSpacingExtraPx = ReadBookConfig.lineSpacingExtra.toFloat(),
             scrollMode = scrollMode
         )
@@ -2317,13 +2341,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             AppLog.putDebug(
                 "EPUB core navigation preempt: from=${previous?.chapterIndex} to=$chapterIndex reset=$resetPageOffset"
             )
-            epubCoreRequestSeq++
-            epubCoreLoadJob?.cancel()
-            epubCoreLoadJob = null
-            epubCoreLoading = false
-            epubCoreLoadingChapterIndex = null
-            epubCoreForegroundTarget = null
-            binding.epubReadView.clearLoading()
+            cancelActiveEpubCoreNavigation(clearBoundary = !boundaryTransition)
         }
         val book = ReadBook.book?.takeIf { it.isEpub }
         val config = buildEpubCoreLayoutConfig()
