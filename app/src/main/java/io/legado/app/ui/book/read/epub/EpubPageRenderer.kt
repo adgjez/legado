@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Build
 import android.text.TextPaint
 import io.legado.app.model.localBook.epubcore.font.EpubTypefaceResolver
 import io.legado.app.model.localBook.epubcore.image.EpubImageResolver
@@ -174,8 +175,61 @@ class EpubPageRenderer {
         resolveMeasuredTextClip(fragment, fallbackTextPaint, scratchRect, baseline)
         val saveCount = canvas.save()
         canvas.clipRect(textClipRect)
-        canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
+        if (!drawJustifiedMeasuredText(canvas, fragment, scratchRect, baseline)) {
+            canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
+        }
         canvas.restoreToCount(saveCount)
+    }
+
+    private fun drawJustifiedMeasuredText(
+        canvas: Canvas,
+        fragment: EpubMeasuredTextFragment,
+        rect: RectF,
+        baseline: Float
+    ): Boolean {
+        val config = layoutConfig ?: return false
+        if (!config.textFullJustify || !fragment.isJustifiableMeasuredText()) return false
+        val text = fragment.text.toString()
+        if (!text.isJustifiableLineText()) return false
+        val targetWidth = (fragment.rectWidthPx ?: rect.width())
+            .takeIf { it.isFinite() && it > 0f }
+            ?: return false
+        val measuredWidth = (fragment.measuredTextWidthPx ?: fallbackTextPaint.measureText(text))
+            .takeIf { it.isFinite() && it > 0f }
+            ?: return false
+        val residualWidth = targetWidth - measuredWidth
+        if (!residualWidth.isFinite() || residualWidth <= maxOf(1f, fallbackTextPaint.textSize * 0.03f)) {
+            return false
+        }
+        // Paragraph-ending short lines should stay ragged; only stretch almost-full visual lines.
+        if (residualWidth > targetWidth * 0.22f) return false
+        val oldLetterSpacing = fallbackTextPaint.letterSpacing
+        val oldWordSpacing = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            fallbackTextPaint.wordSpacing
+        } else {
+            0f
+        }
+        return try {
+            val spaceCount = text.countJustifiableSpaces()
+            if (spaceCount > 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                fallbackTextPaint.wordSpacing = oldWordSpacing + residualWidth / spaceCount
+                canvas.drawText(text, rect.left, rect.top + baseline, fallbackTextPaint)
+                true
+            } else {
+                val gapCount = text.countJustifiableGaps()
+                if (gapCount <= 0) return false
+                val extraPx = residualWidth / gapCount
+                if (!extraPx.isFinite() || extraPx > fallbackTextPaint.textSize * 0.45f) return false
+                fallbackTextPaint.letterSpacing = oldLetterSpacing + extraPx / fallbackTextPaint.textSize
+                canvas.drawText(text, rect.left, rect.top + baseline, fallbackTextPaint)
+                true
+            }
+        } finally {
+            fallbackTextPaint.letterSpacing = oldLetterSpacing
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                fallbackTextPaint.wordSpacing = oldWordSpacing
+            }
+        }
     }
 
     private fun configureMeasuredTextPaint(fragment: EpubMeasuredTextFragment) {
@@ -552,6 +606,45 @@ class EpubPageRenderer {
             rect.height() >= contentBounds.height() * 0.92f &&
             rectArea >= contentArea * 0.85f
         return coversViewport || coversReaderFlow || coversContent || rectArea >= viewportArea * 0.82f
+    }
+
+    private fun EpubMeasuredTextFragment.isJustifiableMeasuredText(): Boolean {
+        if (kind != EpubMeasuredTextKind.Text) return false
+        val tag = tagName?.lowercase().orEmpty()
+        if (tag in setOf("h1", "h2", "h3", "h4", "h5", "h6", "title", "rt", "rp", "ruby", "sup", "sub")) {
+            return false
+        }
+        if (direction?.contains("rtl", ignoreCase = true) == true) return false
+        val mode = writingMode.orEmpty()
+        if (mode.isNotBlank() && !mode.contains("horizontal", ignoreCase = true)) return false
+        return true
+    }
+
+    private fun String.isJustifiableLineText(): Boolean {
+        if (length < 2 || contains('\n')) return false
+        val trimmed = trim()
+        if (trimmed.length < 2) return false
+        if (trimmed.length < length) return false
+        return true
+    }
+
+    private fun String.countJustifiableSpaces(): Int {
+        var count = 0
+        forEachIndexed { index, char ->
+            if (index < lastIndex && char == ' ') count++
+        }
+        return count
+    }
+
+    private fun String.countJustifiableGaps(): Int {
+        var gaps = 0
+        var previousWasDrawable = false
+        forEach { char ->
+            val drawable = !char.isWhitespace()
+            if (previousWasDrawable && drawable) gaps++
+            previousWasDrawable = drawable
+        }
+        return gaps
     }
 
     private fun drawChildren(canvas: Canvas, children: List<EpubPageFragment>, offsetX: Float, offsetY: Float) {
