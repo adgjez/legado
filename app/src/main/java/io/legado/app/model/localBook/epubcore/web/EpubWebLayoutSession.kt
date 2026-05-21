@@ -736,6 +736,15 @@ class EpubWebLayoutSession(
               function isOversizedDecoration(local) {
                 return local.height > VIEWPORT_H * 0.72 && local.width > VIEWPORT_W * 0.5;
               }
+              function shouldShrinkDecorationBox(element, local, hasBackgroundImage) {
+                if (!element || !local || hasBackgroundImage) return false;
+                if (isReaderRootShell(element)) return false;
+                var tag = String(element.tagName || '').toLowerCase();
+                if (tag === 'html' || tag === 'body') return false;
+                if (isOversizedDecoration(local)) return true;
+                if (local.width > PAGE_W * 0.92 && visibleText(element.textContent).length > 0) return true;
+                return false;
+              }
               function validRect(r) {
                 return localRect(r) != null;
               }
@@ -1259,7 +1268,7 @@ class EpubWebLayoutSession(
                         var locals = localRects(rects[rectIndex]);
                         for (var localIndex = locals.length - 1; localIndex >= 0; localIndex--) {
                           var local = locals[localIndex];
-                          var boxLocal = isOversizedDecoration(local) ? childContentUnionLocal(el, local) : local;
+                          var boxLocal = shouldShrinkDecorationBox(el, local, hasBackgroundImage) ? childContentUnionLocal(el, local) : local;
                           pushPage(pages, boxLocal.page).boxes.push({
                             type: 'box',
                             source: anchor,
