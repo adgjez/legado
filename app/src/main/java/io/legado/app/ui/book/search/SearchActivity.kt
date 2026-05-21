@@ -11,6 +11,7 @@ import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.widget.PopupWindow
 import android.widget.TextView
+import android.widget.LinearLayout
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
@@ -64,6 +65,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -180,6 +182,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             chipPressedColor,
             UiCorner.searchRadius(14f)
         )
+        updateSourceGroupTags()
         binding.btnMenu.setOnClickListener {
             showSearchMenu(it)
         }
@@ -353,6 +356,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initData() {
         viewModel.searchScope.stateLiveData.observe(this) {
+            updateSourceGroupTags()
             if (!binding.llInputHelp.isVisible) {
                 searchView.query?.toString()?.trim()?.let {
                     searchView.setQuery(it, true)
@@ -372,6 +376,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         lifecycleScope.launch {
             appDb.bookSourceDao.flowEnabledGroups().collect {
                 groups = it
+                updateSourceGroupTags()
             }
         }
         lifecycleScope.launch {
@@ -424,9 +429,88 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun visibleInputHelp(visible: Boolean) {
         if (visible) {
             upHistory(searchView.query.toString())
+            updateSourceGroupTags()
             binding.llInputHelp.visibility = VISIBLE
         } else {
             binding.llInputHelp.visibility = GONE
+        }
+    }
+
+    private fun updateSourceGroupTags() {
+        val currentGroups = groups.orEmpty()
+        val container = binding.llSourceGroupTags
+        container.removeAllViews()
+        if (currentGroups.isEmpty()) {
+            binding.hsvSourceGroupBar.gone()
+            return
+        }
+        binding.hsvSourceGroupBar.visible()
+        val selectedNames = if (viewModel.searchScope.isSource()) {
+            emptySet()
+        } else {
+            viewModel.searchScope.toString().splitNotBlank(",").toSet()
+        }
+        container.addView(createSourceGroupChip(getString(R.string.all_source), selectedNames.isEmpty()) {
+            updateSearchScopeFromTag("")
+        })
+        currentGroups.forEach { group ->
+            container.addView(createSourceGroupChip(group, selectedNames.contains(group)) {
+                updateSearchScopeFromTag(group)
+            })
+        }
+    }
+
+    private fun createSourceGroupChip(
+        title: String,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): TextView {
+        val bgColor = if (selected) {
+            ColorUtils.adjustAlpha(accentColor, if (AppConfig.isNightTheme) 0.28f else 0.16f)
+        } else {
+            ContextCompat.getColor(this, R.color.background_menu)
+        }
+        val strokeColor = if (selected) {
+            accentColor
+        } else {
+            TopBarSearchStyle.strokeColor(this)
+        }
+        return TextView(this).apply {
+            text = title
+            isSelected = selected
+            gravity = android.view.Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            minWidth = 52.dpToPx()
+            setTextColor(if (selected) accentColor else primaryTextColor)
+            textSize = 12f
+            includeFontPadding = false
+            setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+            background = UiCorner.opaqueRoundedStroke(
+                bgColor,
+                UiCorner.searchRadius(14f),
+                1.dpToPx(),
+                strokeColor
+            )
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                30.dpToPx()
+            ).apply {
+                setMargins(0, 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
+            }
+        }
+    }
+
+    private fun updateSearchScopeFromTag(group: String) {
+        viewModel.searchScope.update(group)
+        searchView.query?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { key ->
+            isManualStopSearch = false
+            viewModel.stop()
+            viewModel.saveSearchKey(key)
+            viewModel.searchKey = ""
+            viewModel.search(key)
+            visibleInputHelp(false)
         }
     }
 

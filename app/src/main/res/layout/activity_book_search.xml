@@ -91,6 +91,26 @@
             android:paddingEnd="16dp"
             android:paddingBottom="12dp">
 
+            <HorizontalScrollView
+                android:id="@+id/hsv_source_group_bar"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:layout_marginBottom="10dp"
+                android:fadingEdgeLength="24dp"
+                android:overScrollMode="never"
+                android:requiresFadingEdge="horizontal"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/ll_source_group_tags"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+
+            </HorizontalScrollView>
+
             <LinearLayout
                 android:id="@+id/ll_bookshelf_hint_card"
                 android:layout_width="match_parent"
