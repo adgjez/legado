@@ -97,6 +97,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.transaction
 import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.ui.widget.text.AccentTextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -596,8 +597,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val context = context ?: return
         val source = selectedDiscoverSource ?: return
         var dialog: AlertDialog? = null
-        val dialogWidth = 360.dpToPx()
-        val dialogHeight = 480.dpToPx()
+        val screenSize = requireActivity().windowManager.windowSize
+        val dialogWidth = (screenSize.widthPixels * DISCOVER_DIALOG_WIDTH_RATIO).toInt()
+        val dialogHeight = (screenSize.heightPixels * DISCOVER_DIALOG_HEIGHT_RATIO).toInt()
         val itemBinding = ItemFindBookBinding.inflate(layoutInflater, null, false)
         val flexbox = itemBinding.flexbox
         val scrollView = NestedScrollView(context).apply {
@@ -2111,6 +2113,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 binding.rvFind.smoothScrollToPosition(0)
             }
         }
+    }
+
+    private companion object {
+        private const val DISCOVER_DIALOG_WIDTH_RATIO = 0.90f
+        private const val DISCOVER_DIALOG_HEIGHT_RATIO = 0.72f
     }
 
 }
