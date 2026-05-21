@@ -26,6 +26,7 @@ import io.legado.app.model.localBook.epubcore.layout.EpubPageFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubTableFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubTextFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubWebFragment
+import kotlin.math.abs
 
 class EpubPageRenderer {
 
@@ -190,14 +191,21 @@ class EpubPageRenderer {
         if (!config.textFullJustify || !fragment.isJustifiableMeasuredText()) return false
         val text = fragment.text.toString()
         if (!text.isJustifiableLineText()) return false
+        val scaleX = fragment.textScaleX?.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val letterSpacingPx = fragment.letterSpacingPx?.takeIf { it.isFinite() }
         val targetWidth = (fragment.rectWidthPx ?: rect.width())
             .takeIf { it.isFinite() && it > 0f }
             ?: return false
-        val measuredWidth = (fragment.measuredTextWidthPx ?: fallbackTextPaint.measureText(text))
+        val measuredWidth = (fragment.measuredTextWidthPx?.takeIf { it.isFinite() && it > 0f }?.let { measured ->
+            if (abs(scaleX - 1f) > 0.01f) measured * scaleX else measured
+        } ?: fallbackTextPaint.measureText(text))
             .takeIf { it.isFinite() && it > 0f }
             ?: return false
         val residualWidth = targetWidth - measuredWidth
         if (!residualWidth.isFinite() || residualWidth <= maxOf(1f, fallbackTextPaint.textSize * 0.03f)) {
+            return false
+        }
+        if (abs(scaleX - 1f) > 0.01f || (letterSpacingPx != null && abs(letterSpacingPx) > 0.01f)) {
             return false
         }
         // Paragraph-ending short lines should stay ragged; only stretch almost-full visual lines.
