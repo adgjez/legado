@@ -447,9 +447,14 @@ object BookHelp {
             }
             val needRefreshEpubContent = book.isEpub &&
                 AppConfig.adaptSpecialStyle &&
-                (!string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
-                    !string.contains(EpubFile.NATIVE_LAYOUT_FLAG) ||
-                    !string.contains(EpubFile.NATIVE_CONTENT_VERSION_FLAG))
+                if (AppConfig.useExperimentalEpubCore) {
+                    !string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
+                        !string.contains(EpubFile.NATIVE_LAYOUT_FLAG) ||
+                        !string.contains(EpubFile.NATIVE_CONTENT_VERSION_FLAG)
+                } else {
+                    string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
+                        !string.contains(EpubFile.TEXT_CONTENT_VERSION_FLAG)
+                }
             if (needRefreshEpubContent) {
                 val epubContent = LocalBook.getContent(book, bookChapter)
                 if (epubContent != null) {

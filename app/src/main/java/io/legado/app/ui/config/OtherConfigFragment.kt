@@ -75,6 +75,7 @@ class OtherConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.preDownloadNum, AppConfig.preDownloadNum.toString())
         upPreferenceSummary(PreferKey.threadCount, AppConfig.threadCount.toString())
         upPreferenceSummary(PreferKey.webPort, AppConfig.webPort.toString())
+        upPreferenceSummary(PreferKey.epubReadEngine, AppConfig.epubReadEngine)
         AppConfig.defaultBookTreeUri?.let {
             upPreferenceSummary(PreferKey.defaultBookTreeUri, it)
         }
@@ -209,6 +210,10 @@ class OtherConfigFragment : PreferenceFragment(),
                 }
             }
 
+            PreferKey.epubReadEngine -> {
+                upPreferenceSummary(key, AppConfig.epubReadEngine)
+            }
+
             PreferKey.defaultBookTreeUri -> {
                 upPreferenceSummary(key, AppConfig.defaultBookTreeUri)
             }
@@ -270,6 +275,13 @@ class OtherConfigFragment : PreferenceFragment(),
 
             PreferKey.threadCount -> preference.summary = getString(R.string.threads_num, value)
             PreferKey.webPort -> preference.summary = getString(R.string.web_port_summary, value)
+            PreferKey.epubReadEngine -> {
+                val current = when (value) {
+                    "core" -> getString(R.string.epub_read_engine_core)
+                    else -> getString(R.string.epub_read_engine_text)
+                }
+                preference.summary = "${getString(R.string.epub_read_engine_summary)}\n$current"
+            }
             PreferKey.bitmapCacheSize -> preference.summary =
                 getString(R.string.bitmap_cache_size_summary, value)
             PreferKey.imageRetainNum -> preference.summary =

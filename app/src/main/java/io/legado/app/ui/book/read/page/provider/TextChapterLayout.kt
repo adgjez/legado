@@ -366,7 +366,7 @@ class TextChapterLayout(
                     val contentStart = text.indexOf('>')
                     val contentEnd = text.lastIndexOf("<")
                     if (contentStart >= 0 && contentEnd > contentStart) {
-                        if (book.isEpub) {
+                        if (book.isEpub && AppConfig.useExperimentalEpubCore) {
                             setTypeEpubDiagnosticPage("旧 EPUB 缓存仍是 usehtml，请重新打开或刷新章节缓存", text.take(180))
                             return@forEach
                         }

@@ -1436,6 +1436,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val doublePageHorizontal: String?
         get() = appCtx.getPrefString(PreferKey.doublePageHorizontal)
 
+    var epubReadEngine: String
+        get() = appCtx.getPrefString(PreferKey.epubReadEngine, "text") ?: "text"
+        set(value) = appCtx.putPrefString(PreferKey.epubReadEngine, value)
+
+    val useExperimentalEpubCore: Boolean
+        get() = epubReadEngine == "core"
+
     var epubCoreScheduleMode: String
         get() = appCtx.getPrefString(PreferKey.epubCoreScheduleMode, "normal") ?: "normal"
         set(value) = appCtx.putPrefString(PreferKey.epubCoreScheduleMode, value)

@@ -96,6 +96,10 @@
     <string name="web_service">Web service</string>
     <string name="web_service_desc">Web edit source and read book</string>
     <string name="web_edit_source">Edit book sources on the web</string>
+    <string name="epub_read_engine">EPUB read engine</string>
+    <string name="epub_read_engine_summary">Default to plain text conversion; EPUB engine is experimental and may have layout or performance issues.</string>
+    <string name="epub_read_engine_text">Convert to plain text</string>
+    <string name="epub_read_engine_core">EPUB engine (experimental)</string>
     <string name="offline_cache">Offline cache</string>
     <string name="offline_cache_t">Offline cache</string>
     <string name="offline_cache_s">cache the selected chapter(s) to Storage</string>

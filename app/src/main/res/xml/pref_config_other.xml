@@ -72,6 +72,17 @@
             android:title="@string/content_select_menu_config"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="text"
+            android:key="epubReadEngine"
+            android:title="@string/epub_read_engine"
+            android:summary="@string/epub_read_engine_summary"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:entries="@array/epub_read_engine_entries"
+            app:entryValues="@array/epub_read_engine_values"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="localPassword"
             android:summary="@string/set_local_password_summary"

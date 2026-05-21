@@ -254,4 +254,14 @@
         <item>S3</item>
     </string-array>
 
+    <string-array name="epub_read_engine_entries">
+        <item>@string/epub_read_engine_text</item>
+        <item>@string/epub_read_engine_core</item>
+    </string-array>
+
+    <string-array name="epub_read_engine_values">
+        <item>text</item>
+        <item>core</item>
+    </string-array>
+
 </resources>

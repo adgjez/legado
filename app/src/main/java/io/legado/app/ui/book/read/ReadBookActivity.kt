@@ -12,12 +12,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
 import android.widget.PopupWindow
 import android.text.TextPaint
 import androidx.activity.addCallback
@@ -80,7 +74,6 @@ import io.legado.app.utils.isJsonObject
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.epubcore.facade.EpubCoreProvider
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
-import io.legado.app.model.localBook.epubcore.web.EpubWebDebugPayload
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.receiver.NetworkChangedListener
@@ -423,10 +416,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 requestEpubWebSelection(page, pageIndex, action, x, y, generation, pageKey)
                 return true
             }
-
-            override fun onWebDebugRequested() {
-                showEpubWebDebugDialog()
-            }
         })
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
@@ -547,77 +536,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                 }
             }
-        }
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun showEpubWebDebugDialog() {
-        val book = ReadBook.book?.takeIf { it.isEpub } ?: return
-        val page = binding.epubReadView.currentPage() ?: return
-        val config = binding.epubReadView.layoutConfig ?: return
-        val payload = runCatching {
-            EpubCoreProvider.debugWebPayload(book, page.chapterIndex, page.pageIndex, config)
-        }.getOrElse {
-            AppLog.putDebug("EPUB Web debug payload failed: ${it.localizedMessage}", it)
-            toastOnUi("EPUB Web调试页面加载失败")
-            return
-        }
-        val webView = WebView(this).apply {
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = false
-                databaseEnabled = false
-                cacheMode = WebSettings.LOAD_NO_CACHE
-                loadsImagesAutomatically = true
-                blockNetworkImage = false
-                allowFileAccess = false
-                allowContentAccess = false
-                textZoom = 100
-                setSupportZoom(true)
-                builtInZoomControls = true
-                displayZoomControls = false
-                useWideViewPort = true
-                loadWithOverviewMode = false
-            }
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            webViewClient = EpubWebDebugClient(book, payload)
-            loadDataWithBaseURL(payload.baseUrl, payload.html, "text/html", "UTF-8", null)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("EPUB WebView调试")
-            .setView(FrameLayout(this).apply {
-                addView(
-                    webView,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        (resources.displayMetrics.heightPixels * 0.82f).toInt()
-                    )
-                )
-            })
-            .setPositiveButton(android.R.string.ok, null)
-            .setOnDismissListener { webView.destroy() }
-            .show()
-    }
-
-    private class EpubWebDebugClient(
-        private val book: Book,
-        private val payload: EpubWebDebugPayload
-    ) : WebViewClient() {
-
-        override fun onPageFinished(view: WebView, url: String?) {
-            val x = payload.pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx
-            view.post {
-                view.scrollTo(x, 0)
-            }
-        }
-
-        override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-            return EpubCoreProvider.debugWebResource(book, request?.url?.toString(), payload.request)
-        }
-
-        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-        override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
-            return EpubCoreProvider.debugWebResource(book, url, payload.request)
         }
     }
 
@@ -763,8 +681,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                     when (item.itemId) {
                         R.id.menu_del_ruby_tag -> item.isChecked = book.getDelTag(Book.rubyTag)
                         R.id.menu_del_h_tag -> item.isChecked = book.getDelTag(Book.hTag)
-                        R.id.menu_epub_schedule_mode -> item.title =
-                            "${getString(R.string.epub_core_schedule_mode)} (${getString(currentEpubCoreSchedule().titleRes)})"
+                        R.id.menu_epub_schedule_mode -> {
+                            item.isVisible = isEpubCoreMode()
+                            item.title =
+                                "${getString(R.string.epub_core_schedule_mode)} (${getString(currentEpubCoreSchedule().titleRes)})"
+                        }
                     }
                 }
                 else -> when (item.itemId) {
@@ -1589,7 +1510,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun isEpubCoreMode(): Boolean {
-        return ReadBook.book?.isEpub == true
+        return ReadBook.book?.isEpub == true && AppConfig.useExperimentalEpubCore
     }
 
     private fun switchEpubCore(active: Boolean) = binding.run {

@@ -209,6 +209,7 @@ object PreferKey {
     const val advancedTitleLottiePath = "advancedTitleLottiePath"
     const val advancedTitleHeightFactor = "advancedTitleHeightFactor"
     const val doublePageHorizontal = "doubleHorizontalPage"
+    const val epubReadEngine = "epubReadEngine"
     const val epubCoreScheduleMode = "epubCoreScheduleMode"
     const val readUrlOpenInBrowser = "readUrlInBrowser"
     const val defaultBookTreeUri = "defaultBookTreeUri"
