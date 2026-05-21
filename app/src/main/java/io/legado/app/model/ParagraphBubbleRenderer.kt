@@ -1,0 +1,94 @@
+package io.legado.app.model
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.util.Size
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.BubblePackageManager
+import io.legado.app.utils.SvgUtils
+import java.io.ByteArrayInputStream
+
+object ParagraphBubbleRenderer {
+
+    const val SCHEME_PREFIX = "bubble://paragraph"
+
+    fun isBubbleSrc(src: String): Boolean {
+        return src.startsWith(SCHEME_PREFIX)
+    }
+
+    fun getSize(src: String): Size {
+        val scale = BubblePackageManager.currentEntry().config.sizeScale
+            .coerceIn(BubblePackageManager.MIN_SIZE_SCALE, BubblePackageManager.MAX_SIZE_SCALE)
+        val side = (64f * scale).toInt().coerceAtLeast(1)
+        return Size(side, side)
+    }
+
+    fun cacheKey(src: String, width: Int, height: Int?): String {
+        val config = BubblePackageManager.currentEntry().config
+        val color = resolveColor(config, status(src))
+        return buildString {
+            append(src)
+            append("#")
+            append(width)
+            append("x")
+            append(height ?: 0)
+            append("#")
+            append(BubblePackageManager.activeDirName())
+            append("#")
+            append(config.updatedAt)
+            append("#")
+            append(config.sizeScale)
+            append("#")
+            append(if (AppConfig.isNightTheme) "night" else "day")
+            append("#")
+            append(color)
+        }
+    }
+
+    fun render(src: String, width: Int, height: Int?): Bitmap? {
+        val config = BubblePackageManager.currentEntry().config
+        val color = resolveColor(config, status(src))
+        val number = number(src)
+        val scale = config.sizeScale.coerceIn(
+            BubblePackageManager.MIN_SIZE_SCALE,
+            BubblePackageManager.MAX_SIZE_SCALE
+        )
+        val targetWidth = (width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = height?.let { (it * scale).toInt().coerceAtLeast(1) }
+            ?: targetWidth
+        val svg = config.svgTemplate
+            .replace("\${color}", color)
+            .replace("\${num}", number)
+        return SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), targetWidth, targetHeight)
+    }
+
+    private fun resolveColor(config: BubblePackageManager.Config, status: String): String {
+        val value = if (AppConfig.isNightTheme) {
+            if (status.equals("emphasis", true)) config.nightEmphasisColor else config.nightNormalColor
+        } else {
+            if (status.equals("emphasis", true)) config.dayEmphasisColor else config.dayNormalColor
+        }?.takeIf { it.isNotBlank() } ?: BubblePackageManager.DEFAULT_COLOR
+        return runCatching {
+            val normalized = if (value.startsWith("#")) value else "#$value"
+            Color.parseColor(normalized)
+            normalized
+        }.getOrDefault(BubblePackageManager.DEFAULT_COLOR)
+    }
+
+    private fun number(src: String): String {
+        return queryValue(src, "num").ifBlank { "0" }
+    }
+
+    private fun status(src: String): String {
+        return queryValue(src, "status").ifBlank { "normal" }
+    }
+
+    private fun queryValue(src: String, key: String): String {
+        val query = src.substringAfter('?', "")
+        if (query.isBlank()) return ""
+        return query.split('&')
+            .firstOrNull { it.substringBefore('=') == key }
+            ?.substringAfter('=', "")
+            .orEmpty()
+    }
+}
