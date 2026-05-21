@@ -2013,6 +2013,11 @@ class EpubReadView @JvmOverloads constructor(
         val payload = liveWebPayload ?: return
         val targetIndex = index.coerceAtLeast(0)
         liveWebPageIndex = targetIndex
+        liveWebView.measure(
+            View.MeasureSpec.makeMeasureSpec(payload.request.viewportWidthPx, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(payload.request.viewportHeightPx, View.MeasureSpec.EXACTLY)
+        )
+        liveWebView.layout(0, 0, payload.request.viewportWidthPx, payload.request.viewportHeightPx)
         liveWebView.post {
             liveWebView.scrollTo(targetIndex * payload.request.viewportWidthPx, 0)
         }
@@ -2218,13 +2223,15 @@ class EpubReadView @JvmOverloads constructor(
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         }.getOrNull() ?: return null
         val canvas = Canvas(bitmap)
-        renderer.drawPage(
-            canvas = canvas,
-            page = pages.getOrNull(index),
-            pageIndex = index,
-            pageCount = pages.size,
-            viewport = RectF(0f, 0f, width.toFloat(), height.toFloat())
-        )
+        if (!drawWebSnapshot(canvas, index)) {
+            renderer.drawPage(
+                canvas = canvas,
+                page = pages.getOrNull(index),
+                pageIndex = index,
+                pageCount = pages.size,
+                viewport = RectF(0f, 0f, width.toFloat(), height.toFloat())
+            )
+        }
         return EpubPageBitmapSnapshot(
             pageIndex = index,
             width = width,
@@ -2232,6 +2239,35 @@ class EpubReadView @JvmOverloads constructor(
             rendererVersion = renderer.renderStateVersion,
             bitmap = bitmap
         )
+    }
+
+    private fun drawWebSnapshot(canvas: Canvas, index: Int): Boolean {
+        val payload = liveWebPayload ?: return false
+        val page = pages.getOrNull(index) ?: return false
+        if (page.chapterIndex != payload.request.chapterIndex) return false
+        if (payload.request.viewportWidthPx <= 0 || payload.request.viewportHeightPx <= 0) return false
+        val oldScrollX = liveWebView.scrollX
+        val oldScrollY = liveWebView.scrollY
+        val oldVisibility = liveWebView.visibility
+        return runCatching {
+            liveWebView.visibility = View.VISIBLE
+            liveWebView.measure(
+                View.MeasureSpec.makeMeasureSpec(payload.request.viewportWidthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(payload.request.viewportHeightPx, View.MeasureSpec.EXACTLY)
+            )
+            liveWebView.layout(0, 0, payload.request.viewportWidthPx, payload.request.viewportHeightPx)
+            liveWebView.scrollTo(page.pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx, 0)
+            canvas.save()
+            canvas.clipRect(0, 0, width, height)
+            liveWebView.draw(canvas)
+            canvas.restore()
+            true
+        }.getOrElse {
+            false
+        }.also {
+            liveWebView.scrollTo(oldScrollX, oldScrollY)
+            liveWebView.visibility = oldVisibility
+        }
     }
 
     private class EpubPageBitmapSnapshot(
