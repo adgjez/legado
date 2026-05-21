@@ -126,7 +126,8 @@ object EpubPageSelectorBuilder {
                 textOriginX = frame.left,
                     baselinePx = frame.bottom,
                     layoutLineIndex = null,
-                    layout = null
+                    layout = null,
+                    cells = measuredCells(fragmentTextStart)
             )
         )
     }
@@ -271,6 +272,11 @@ object EpubPageSelectorBuilder {
 
     private fun offsetForLine(block: EpubSelectableBlock, line: EpubSelectableLine, x: Float): Int {
         if (line.textEnd <= line.textStart) return line.textStart
+        line.cells.takeIf { it.isNotEmpty() }?.let { cells ->
+            val hit = cells.firstOrNull { x < it.rect.right } ?: cells.last()
+            val midpoint = (hit.rect.left + hit.rect.right) / 2f
+            return if (x < midpoint) hit.textStart else hit.textEnd
+        }
         val layout = line.layout
         val layoutLineIndex = line.layoutLineIndex
         if (layout != null && layoutLineIndex != null) {
@@ -288,6 +294,16 @@ object EpubPageSelectorBuilder {
 
     private fun xForOffset(block: EpubSelectableBlock, line: EpubSelectableLine, offset: Int): Float {
         if (line.textEnd <= line.textStart) return line.rect.left
+        line.cells.takeIf { it.isNotEmpty() }?.let { cells ->
+            val bounded = offset.coerceIn(line.textStart, line.textEnd)
+            if (bounded <= line.textStart) return cells.first().rect.left
+            if (bounded >= line.textEnd) return cells.last().rect.right
+            val nextCell = cells.firstOrNull { bounded <= it.textStart }
+            if (nextCell != null) return nextCell.rect.left
+            val currentCell = cells.firstOrNull { bounded > it.textStart && bounded <= it.textEnd }
+            if (currentCell != null) return currentCell.rect.right
+            return cells.last().rect.right
+        }
         val layout = line.layout
         val layoutLineIndex = line.layoutLineIndex
         if (layout != null && layoutLineIndex != null) {
@@ -309,6 +325,27 @@ object EpubPageSelectorBuilder {
         val sourceOffset: Int,
         val nodeOrder: Int
     )
+
+    private fun AbsoluteTextFragment.measuredCells(fragmentTextStart: Int): List<EpubSelectableCell> {
+        val measured = fragment as? EpubMeasuredTextFragment ?: return emptyList()
+        if (measured.glyphs.isEmpty()) return emptyList()
+        var cursor = fragmentTextStart
+        return measured.glyphs.mapNotNull { glyph ->
+            val textLength = glyph.text.length
+            if (textLength <= 0) return@mapNotNull null
+            val left = frame.left + (glyph.xPx - measured.frame.left)
+            val top = frame.top + (glyph.yPx - measured.frame.top)
+            val right = left + glyph.widthPx.coerceAtLeast(1f)
+            val bottom = top + glyph.heightPx.coerceAtLeast(frame.height())
+            val cell = EpubSelectableCell(
+                textStart = cursor,
+                textEnd = cursor + textLength,
+                rect = RectF(left, top, right, bottom)
+            )
+            cursor += textLength
+            cell
+        }
+    }
 
     private fun RectF.offsetBy(x: Float, y: Float): RectF = RectF(this).apply { offset(x, y) }
 

@@ -191,13 +191,33 @@ class EpubPageRenderer {
         var drew = false
         glyphs.forEach { glyph ->
             if (glyph.text.isEmpty()) return@forEach
-            val x = offsetX + glyph.xPx
+            val cellLeft = offsetX + glyph.xPx
+            val cellWidth = glyph.widthPx.takeIf { it.isFinite() && it > 0f } ?: fallbackTextPaint.textSize
             val y = offsetY + glyph.yPx + (glyph.baselinePx ?: fallbackBaseline)
-            if (!x.isFinite() || !y.isFinite()) return@forEach
-            canvas.drawText(glyph.text, x, y, fallbackTextPaint)
+            if (!cellLeft.isFinite() || !cellWidth.isFinite() || !y.isFinite()) return@forEach
+            drawGlyphInFixedCell(canvas, glyph.text, cellLeft, y, cellWidth)
             drew = true
         }
         return drew
+    }
+
+    private fun drawGlyphInFixedCell(canvas: Canvas, text: String, cellLeft: Float, baseline: Float, cellWidth: Float) {
+        val originalScaleX = fallbackTextPaint.textScaleX
+        val naturalWidth = fallbackTextPaint.measureText(text)
+        if (!naturalWidth.isFinite() || naturalWidth <= 0f) {
+            canvas.drawText(text, cellLeft, baseline, fallbackTextPaint)
+            return
+        }
+        val scale = if (naturalWidth > cellWidth * 1.04f) {
+            (cellWidth / naturalWidth).coerceIn(0.72f, 1f)
+        } else {
+            1f
+        }
+        fallbackTextPaint.textScaleX = originalScaleX * scale
+        val scaledWidth = naturalWidth * scale
+        val drawX = cellLeft + (cellWidth - scaledWidth) / 2f
+        canvas.drawText(text, drawX, baseline, fallbackTextPaint)
+        fallbackTextPaint.textScaleX = originalScaleX
     }
 
     private fun configureMeasuredTextPaint(fragment: EpubMeasuredTextFragment) {
@@ -263,10 +283,20 @@ class EpubPageRenderer {
             .takeIf { it.isFinite() && it > 0f }
             ?.let { it / 2f }
             ?: 0f
-        val measuredRight = (rect.left + paint.measureText(fragment.text.toString()) + 4f)
-            .takeIf { it.isFinite() }
+        val glyphBounds = fragment.glyphs.takeIf { it.isNotEmpty() }?.let { glyphs ->
+            val left = glyphs.minOfOrNull { it.xPx } ?: rect.left
+            val right = glyphs.maxOfOrNull { it.xPx + it.widthPx } ?: rect.right
+            if (left.isFinite() && right.isFinite() && right > left) {
+                RectF(left, rect.top, right, rect.bottom)
+            } else {
+                null
+            }
+        }
+        val measuredRight = glyphBounds?.right
+            ?: (rect.left + paint.measureText(fragment.text.toString()) + 4f)
+                .takeIf { it.isFinite() }
             ?: rect.right
-        val left = (rect.left - 2f).coerceAtLeast(contentBounds.left)
+        val left = ((glyphBounds?.left ?: rect.left) - 2f).coerceAtLeast(contentBounds.left)
         val top = minOf(rect.top - verticalPad, glyphTop - 2f).coerceAtLeast(contentBounds.top)
         val right = maxOf(rect.right + 2f, measuredRight).coerceAtMost(contentBounds.right)
         val bottom = maxOf(rect.bottom + verticalPad, glyphBottom + 2f).coerceAtMost(contentBounds.bottom)

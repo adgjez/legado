@@ -29,7 +29,14 @@ data class EpubSelectableLine(
     val textOriginX: Float,
     val baselinePx: Float,
     val layoutLineIndex: Int? = null,
-    val layout: Layout? = null
+    val layout: Layout? = null,
+    val cells: List<EpubSelectableCell> = emptyList()
+)
+
+data class EpubSelectableCell(
+    val textStart: Int,
+    val textEnd: Int,
+    val rect: RectF
 )
 
 data class EpubTextHit(
