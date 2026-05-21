@@ -2335,10 +2335,12 @@ class TextChapterLayout(
         val renderSrc: String,
         val style: String? = null,
         val width: String? = null,
-        val click: String? = null
+        val click: String? = null,
+        val isParagraphBubble: Boolean = false
     )
 
     private companion object {
+        const val PARAGRAPH_BUBBLE_PREFIX = "dp:"
         const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
         const val ADVANCED_TITLE_WIDTH_FACTOR = 0.86f
         const val DEFAULT_LOTTIE_WIDTH = 720f
@@ -2347,6 +2349,9 @@ class TextChapterLayout(
 
     private suspend fun parseImageInfo(src: String): ImageInfo {
         imageInfoCache[src]?.let { return it }
+        if (src.startsWith(PARAGRAPH_BUBBLE_PREFIX)) {
+            return parseParagraphBubble(src).also { imageInfoCache[src] = it }
+        }
         val urlMatcher = paramPattern.matcher(src)
         if (!urlMatcher.find()) return ImageInfo(src).also { imageInfoCache[src] = it }
         val urlOption = GSON.fromJsonObject<Map<String, String>>(src.substring(urlMatcher.end()))
@@ -2380,6 +2385,34 @@ class TextChapterLayout(
             width = urlOption["width"],
             click = pclick ?: click
         ).also { imageInfoCache[src] = it }
+    }
+
+    private fun parseParagraphBubble(src: String): ImageInfo {
+        val payload = src.removePrefix(PARAGRAPH_BUBBLE_PREFIX).trim()
+        val optionIndex = payload.indexOf(",{")
+        val count = if (optionIndex >= 0) {
+            payload.substring(0, optionIndex)
+        } else {
+            payload
+        }.trim()
+        val option = if (optionIndex >= 0) {
+            GSON.fromJsonObject<Map<String, String>>(payload.substring(optionIndex + 1))
+                .getOrNull()
+                .orEmpty()
+        } else {
+            emptyMap()
+        }
+        val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
+        val pclick = option["pclick"]?.takeIf { it.isNotBlank() }
+        val click = option["click"]
+            ?.takeIf { it.isNotBlank() }
+            ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
+        return ImageInfo(
+            renderSrc = "bubble://paragraph?num=${count}&status=${status}",
+            style = "TEXT",
+            click = pclick ?: click,
+            isParagraphBubble = true
+        )
     }
 
     private fun allocateFloatArray(size: Int): FloatArray {
