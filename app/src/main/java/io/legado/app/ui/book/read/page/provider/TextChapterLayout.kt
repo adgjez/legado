@@ -86,6 +86,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
+import java.util.Locale
 
 class TextChapterLayout(
     scope: CoroutineScope,
@@ -964,8 +965,12 @@ class TextChapterLayout(
         declarations["font-size"]?.toEpubTitleTextSize()?.let { size ->
             paint.textSize = size
         }
-        val forceMiddle = element.attr("align").equals("center", true) ||
-            declarations["text-align"].equals("center", true)
+        paint.typeface = resolveEpubTitleTypeface(
+            declarations = declarations,
+            fallback = titlePaint.typeface
+        )
+        val align = element.attr("align").ifBlank { declarations["text-align"].orEmpty() }
+        val forceMiddle = align.equals("center", true)
         try {
             absStartX = 0
             setTypeText(
@@ -983,6 +988,38 @@ class TextChapterLayout(
         } finally {
             absStartX = oldAbsStartX
         }
+    }
+
+    private fun resolveEpubTitleTypeface(
+        declarations: Map<String, String>,
+        fallback: Typeface?
+    ): Typeface {
+        val bold = declarations["font-weight"].isEpubBoldWeight()
+        val italic = declarations["font-style"].orEmpty().lowercase(Locale.ROOT).contains("italic") ||
+            declarations["font-style"].orEmpty().lowercase(Locale.ROOT).contains("oblique")
+        val style = when {
+            bold && italic -> Typeface.BOLD_ITALIC
+            bold -> Typeface.BOLD
+            italic -> Typeface.ITALIC
+            else -> Typeface.NORMAL
+        }
+        val family = declarations["font-family"]
+            ?.split(',')
+            ?.firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.trim('\'', '"')
+        return if (family.isNullOrBlank()) {
+            Typeface.create(fallback, style)
+        } else {
+            Typeface.create(family, style)
+        }
+    }
+
+    private fun String?.isEpubBoldWeight(): Boolean {
+        val value = this?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        if (value.isBlank()) return false
+        value.toIntOrNull()?.let { return it >= 600 }
+        return value == "bold" || value == "bolder"
     }
 
     private suspend fun prepareEpubPageBackground(body: Element, book: Book) {
