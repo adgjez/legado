@@ -1701,11 +1701,12 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun normalizeScrollPosition() {
         var changed = false
-        if (scrollOffsetY <= -pageHeight(pageIndex) && pageIndex < pages.lastIndex) {
+        while (scrollOffsetY <= -pageHeight(pageIndex) && pageIndex < pages.lastIndex) {
             scrollOffsetY += pageHeight(pageIndex)
             pageIndex += 1
             changed = true
-        } else if (scrollOffsetY > 0f && pageIndex > 0) {
+        }
+        while (scrollOffsetY > 0f && pageIndex > 0) {
             pageIndex -= 1
             scrollOffsetY -= pageHeight(pageIndex)
             changed = true

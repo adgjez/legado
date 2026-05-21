@@ -527,7 +527,7 @@ class BookInfoActivity :
             params.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             refreshLayout.layoutParams = params
         }
-        refreshLayout.isEnabled = false
+        refreshLayout.isEnabled = true
         refreshLayout.setOnTouchListener(null)
         refreshLayout.setOnChildScrollUpCallback(null)
         flAction.visibility = View.GONE
@@ -1949,9 +1949,9 @@ class BookInfoActivity :
             }
             true
         }
-        refreshLayout.isEnabled = false
+        refreshLayout.isEnabled = true
         refreshLayout.setOnRefreshListener {
-            refreshLayout.isRefreshing = false
+            refreshBook()
         }
     }
 
