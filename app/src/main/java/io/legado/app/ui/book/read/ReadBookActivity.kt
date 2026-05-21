@@ -1872,6 +1872,10 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun handleEpubCoreConfigUpdate(values: List<Int>) {
+        if (values.contains(13)) {
+            reloadAfterEpubEngineChanged()
+            return
+        }
         if (values.contains(0)) {
             upSystemUiVisibility()
         }
@@ -1892,6 +1896,74 @@ class ReadBookActivity : BaseReadBookActivity(),
         } else {
             applyEpubRendererStyleOnly()
         }
+    }
+
+    private fun handleReadConfigUpdate(values: List<Int>) = binding.run {
+        if (values.contains(13)) {
+            reloadAfterEpubEngineChanged()
+            return@run
+        }
+        val needSystemUi = values.contains(0)
+        val needBackground = values.contains(1)
+        val needStyle = values.any { it == 2 || it == 8 || it == 10 }
+        val needReload = values.any { it == 5 || it == 6 || it == 8 || it == 10 }
+        val needInvalidate = values.contains(9)
+        val needSubmitRender = values.contains(11)
+        if (needSystemUi) {
+            upSystemUiVisibility()
+        }
+        if (values.contains(4)) {
+            readView.upPageSlopSquare()
+        }
+        if (values.contains(12)) {
+            readView.upPageTouchClick()
+        }
+        if (epubCoreActive) {
+            handleEpubCoreConfigUpdate(values)
+            return@run
+        }
+        if (needBackground) {
+            readView.upBg()
+        }
+        if (values.contains(3)) {
+            readView.upBgAlpha()
+        }
+        if (needStyle) {
+            readView.upStyle()
+        }
+        if (needReload && isInitFinish) {
+            ReadBook.clearTextChapter()
+            ReadBook.loadContent(resetPageOffset = false)
+        } else {
+            if (needInvalidate) {
+                readView.invalidateTextPage()
+            }
+            if (needSubmitRender) {
+                readView.submitRenderTask()
+            }
+        }
+    }
+
+    private fun reloadAfterEpubEngineChanged() {
+        val book = ReadBook.book ?: return
+        if (!book.isEpub) return
+        cancelEpubCoreForegroundHard(book)
+        cancelEpubCorePrefetchHard(book)
+        EpubCoreProvider.clearBookCache(book)
+        EpubFile.clearBook(book)
+        BookHelp.clearCache(book)
+        ReadBook.clearTextChapter()
+        ReadBook.msg = null
+        if (isEpubCoreMode()) {
+            switchEpubCore(true)
+            loadEpubCoreContent(resetPageOffset = false, keepCurrentPageUntilReady = false)
+        } else {
+            switchEpubCore(false)
+            ChapterProvider.upStyle()
+            ReadBook.loadContent(resetPageOffset = false)
+        }
+        binding.readMenu.upBookView()
+        upSeekBarProgress()
     }
 
     private fun EpubCoreLayoutConfig.sameEpubLayoutAs(other: EpubCoreLayoutConfig): Boolean {
@@ -3377,26 +3449,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         observeEvent<ArrayList<Int>>(EventBus.UP_CONFIG) {
-            if (epubCoreActive) {
-                handleEpubCoreConfigUpdate(it)
-                return@observeEvent
-            }
-            it.forEach { value ->
-                when (value) {
-                    0 -> upSystemUiVisibility()
-                    1 -> if (epubCoreActive) upEpubRendererStyle() else readView.upBg()
-                    2 -> if (epubCoreActive) loadEpubCoreContent(resetPageOffset = false) else readView.upStyle()
-                    3 -> if (!epubCoreActive) readView.upBgAlpha()
-                    4 -> readView.upPageSlopSquare()
-                    5 -> if (isInitFinish) ReadBook.loadContent(resetPageOffset = false)
-                    6 -> if (epubCoreActive) loadEpubCoreContent(resetPageOffset = false) else readView.upContent(resetPageOffset = false)
-                    8 -> ChapterProvider.upStyle()
-                    9 -> if (epubCoreActive) epubReadView.invalidate() else readView.invalidateTextPage()
-                    10 -> ChapterProvider.upLayout()
-                    11 -> readView.submitRenderTask()
-                    12 -> readView.upPageTouchClick()
-                }
-            }
+            handleReadConfigUpdate(it)
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
             if (it == Status.STOP || it == Status.PAUSE) {

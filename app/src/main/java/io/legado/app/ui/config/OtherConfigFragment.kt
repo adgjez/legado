@@ -212,6 +212,7 @@ class OtherConfigFragment : PreferenceFragment(),
 
             PreferKey.epubReadEngine -> {
                 upPreferenceSummary(key, AppConfig.epubReadEngine)
+                postEvent(EventBus.UP_CONFIG, arrayListOf(13))
             }
 
             PreferKey.defaultBookTreeUri -> {

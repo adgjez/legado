@@ -122,6 +122,14 @@ class EpubFile(var book: Book) {
         }
 
         @Synchronized
+        fun clearBook(book: Book) {
+            if (eFile?.book?.bookUrl == book.bookUrl) {
+                eFile?.close()
+                eFile = null
+            }
+        }
+
+        @Synchronized
         internal fun getNativeLayout(book: Book, href: String): EpubLayoutDocument? {
             return getEFile(book).getNativeLayout(href, NativeLayoutRequestSource.FOREGROUND)
         }
