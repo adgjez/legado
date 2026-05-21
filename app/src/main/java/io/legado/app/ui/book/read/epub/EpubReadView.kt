@@ -127,9 +127,30 @@ class EpubReadView @JvmOverloads constructor(
     private val nextSlot = EpubPageSlotView(context, renderer)
     private val nextPlusSlot = EpubPageSlotView(context, renderer)
     private val currentSlot = EpubPageSlotView(context, renderer)
-    private val liveWebPrevView = createLiveWebView()
-    private val liveWebCurrentView = createLiveWebView()
-    private val liveWebNextView = createLiveWebView()
+    private val liveWebView = WebView(context).apply {
+        settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = false
+            databaseEnabled = false
+            cacheMode = WebSettings.LOAD_NO_CACHE
+            loadsImagesAutomatically = true
+            blockNetworkImage = false
+            allowFileAccess = false
+            allowContentAccess = false
+            textZoom = 100
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            useWideViewPort = false
+            loadWithOverviewMode = false
+        }
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        visibility = View.INVISIBLE
+        setOnTouchListener { _, event ->
+            this@EpubReadView.onTouchEvent(event)
+            true
+        }
+    }
     private val webDebugButton = TextView(context).apply {
         text = "WEB"
         textSize = 11f
@@ -304,9 +325,7 @@ class EpubReadView @JvmOverloads constructor(
         addView(nextSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPlusSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(currentSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(liveWebPrevView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(liveWebNextView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        addView(liveWebCurrentView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(liveWebView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(
             webDebugButton,
             LayoutParams(dp(52), dp(32), android.view.Gravity.END or android.view.Gravity.TOP).apply {
@@ -319,33 +338,6 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density + 0.5f).toInt()
-    }
-
-    private fun createLiveWebView(): WebView {
-        return WebView(context).apply {
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = false
-                databaseEnabled = false
-                cacheMode = WebSettings.LOAD_NO_CACHE
-                loadsImagesAutomatically = true
-                blockNetworkImage = false
-                allowFileAccess = false
-                allowContentAccess = false
-                textZoom = 100
-                setSupportZoom(false)
-                builtInZoomControls = false
-                displayZoomControls = false
-                useWideViewPort = false
-                loadWithOverviewMode = false
-            }
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            visibility = View.INVISIBLE
-            setOnTouchListener { _, event ->
-                this@EpubReadView.onTouchEvent(event)
-                true
-            }
-        }
     }
 
     fun setListener(listener: Listener?) {
@@ -374,20 +366,17 @@ class EpubReadView @JvmOverloads constructor(
         liveWebPageIndex = payload?.pageIndex ?: -1
         if (payload == null) {
             liveWebPayloadKey = null
-            clearLiveWebViews()
+            liveWebView.visibility = View.INVISIBLE
+            liveWebView.loadUrl("about:blank")
             return
         }
         val key = "${payload.request.chapterIndex}:${payload.request.chapterHref}:${payload.request.viewportWidthPx}x${payload.request.viewportHeightPx}:${payload.request.fontSizePx}:${payload.request.lineHeightPx}:${payload.request.readerFontUrl}:${payload.request.readerFontPath}:${payload.request.textFullJustify}"
-        listOf(liveWebPrevView, liveWebCurrentView, liveWebNextView).forEach {
-            it.webViewClient = LiveWebRenderClient(payload)
-        }
+        liveWebView.webViewClient = LiveWebRenderClient(payload)
         if (liveWebPayloadKey != key) {
             liveWebPayloadKey = key
-            listOf(liveWebPrevView, liveWebCurrentView, liveWebNextView).forEach {
-                it.loadDataWithBaseURL(payload.baseUrl, payload.html, "text/html", "UTF-8", null)
-            }
+            liveWebView.loadDataWithBaseURL(payload.baseUrl, payload.html, "text/html", "UTF-8", null)
         } else {
-            positionLiveWebViews(payload.pageIndex)
+            positionLiveWebView(payload.pageIndex)
         }
         updateLiveWebVisibility()
     }
@@ -1022,14 +1011,13 @@ class EpubReadView @JvmOverloads constructor(
             requestPageBoundary(direction)
             return false
         }
-        hideLiveWebViews()
+        liveWebView.visibility = View.INVISIBLE
         val targetIndex = rawTargetIndex
         bindIdleSlots()
         animationGeneration++
         horizontalDirection = direction
         horizontalTargetIndex = targetIndex
         horizontalPageAnim = ReadBook.pageAnim()
-        positionLiveWebViews(pageIndex)
         horizontalSession = HorizontalSnapshotSession(
             fromIndex = pageIndex,
             toIndex = targetIndex,
@@ -1877,7 +1865,7 @@ class EpubReadView @JvmOverloads constructor(
         } else {
             resetSlotVisibility()
         }
-        positionLiveWebViews(currentPage()?.pageIndex ?: pageIndex)
+        positionLiveWebView(currentPage()?.pageIndex ?: pageIndex)
         updateLiveWebVisibility()
     }
 
@@ -2021,25 +2009,17 @@ class EpubReadView @JvmOverloads constructor(
         }
     }
 
-    private fun positionLiveWebViews(index: Int) {
+    private fun positionLiveWebView(index: Int) {
         val payload = liveWebPayload ?: return
         val targetIndex = index.coerceAtLeast(0)
         liveWebPageIndex = targetIndex
-        positionLiveWebPage(liveWebPrevView, targetIndex - 1)
-        positionLiveWebPage(liveWebCurrentView, targetIndex)
-        positionLiveWebPage(liveWebNextView, targetIndex + 1)
-    }
-
-    private fun positionLiveWebPage(webView: WebView, pageIndex: Int) {
-        val payload = liveWebPayload ?: return
-        webView.measure(
+        liveWebView.measure(
             View.MeasureSpec.makeMeasureSpec(payload.request.viewportWidthPx, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(payload.request.viewportHeightPx, View.MeasureSpec.EXACTLY)
         )
-        webView.layout(0, 0, payload.request.viewportWidthPx, payload.request.viewportHeightPx)
-        webView.scrollTo(pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx, 0)
-        webView.post {
-            webView.scrollTo(pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx, 0)
+        liveWebView.layout(0, 0, payload.request.viewportWidthPx, payload.request.viewportHeightPx)
+        liveWebView.post {
+            liveWebView.scrollTo(targetIndex * payload.request.viewportWidthPx, 0)
         }
     }
 
@@ -2051,31 +2031,11 @@ class EpubReadView @JvmOverloads constructor(
             horizontalSession == null &&
             ReadBook.pageAnim() != PageAnim.scrollPageAnim &&
             currentPage()?.chapterIndex == payload.request.chapterIndex
-        if (visible) {
-            positionLiveWebViews(currentPage()?.pageIndex ?: pageIndex)
-            liveWebPrevView.visibility = View.INVISIBLE
-            liveWebCurrentView.visibility = View.VISIBLE
-            liveWebNextView.visibility = View.INVISIBLE
-        } else {
-            hideLiveWebViews()
-        }
+        liveWebView.visibility = if (visible) View.VISIBLE else View.INVISIBLE
         if (visible) {
             currentSlot.visibility = View.INVISIBLE
         } else if (horizontalSession == null) {
             currentSlot.visibility = if (pages.isEmpty()) View.INVISIBLE else View.VISIBLE
-        }
-    }
-
-    private fun hideLiveWebViews() {
-        liveWebPrevView.visibility = View.INVISIBLE
-        liveWebCurrentView.visibility = View.INVISIBLE
-        liveWebNextView.visibility = View.INVISIBLE
-    }
-
-    private fun clearLiveWebViews() {
-        listOf(liveWebPrevView, liveWebCurrentView, liveWebNextView).forEach {
-            it.visibility = View.INVISIBLE
-            it.loadUrl("about:blank")
         }
     }
 
@@ -2179,7 +2139,7 @@ class EpubReadView @JvmOverloads constructor(
     ) : WebViewClient() {
 
         override fun onPageFinished(view: WebView, url: String?) {
-            positionLiveWebViews(payload.pageIndex)
+            positionLiveWebView(payload.pageIndex)
             updateLiveWebVisibility()
         }
 
@@ -2286,31 +2246,27 @@ class EpubReadView @JvmOverloads constructor(
         val page = pages.getOrNull(index) ?: return false
         if (page.chapterIndex != payload.request.chapterIndex) return false
         if (payload.request.viewportWidthPx <= 0 || payload.request.viewportHeightPx <= 0) return false
-        val source = liveWebViewForPage(index)
-        val oldScrollX = source.scrollX
-        val oldScrollY = source.scrollY
-        val oldVisibility = source.visibility
+        val oldScrollX = liveWebView.scrollX
+        val oldScrollY = liveWebView.scrollY
+        val oldVisibility = liveWebView.visibility
         return runCatching {
-            source.visibility = View.VISIBLE
-            positionLiveWebPage(source, page.pageIndex)
+            liveWebView.visibility = View.VISIBLE
+            liveWebView.measure(
+                View.MeasureSpec.makeMeasureSpec(payload.request.viewportWidthPx, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(payload.request.viewportHeightPx, View.MeasureSpec.EXACTLY)
+            )
+            liveWebView.layout(0, 0, payload.request.viewportWidthPx, payload.request.viewportHeightPx)
+            liveWebView.scrollTo(page.pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx, 0)
             canvas.save()
             canvas.clipRect(0, 0, width, height)
-            source.draw(canvas)
+            liveWebView.draw(canvas)
             canvas.restore()
             true
         }.getOrElse {
             false
         }.also {
-            source.scrollTo(oldScrollX, oldScrollY)
-            source.visibility = oldVisibility
-        }
-    }
-
-    private fun liveWebViewForPage(index: Int): WebView {
-        return when (index) {
-            pageIndex - 1 -> liveWebPrevView
-            pageIndex + 1 -> liveWebNextView
-            else -> liveWebCurrentView
+            liveWebView.scrollTo(oldScrollX, oldScrollY)
+            liveWebView.visibility = oldVisibility
         }
     }
 
