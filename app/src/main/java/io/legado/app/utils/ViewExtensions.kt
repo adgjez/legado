@@ -482,11 +482,39 @@ fun View.applyMainBottomBarPadding(withInitialPadding: Boolean = false) {
         val bottomSpace = windowInsets.navigationBarHeight +
                 resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding)
         if (this is RecyclerView) {
-            bottomPadding = initialPadding + bottomSpace
+            bottomPadding = initialPadding
+            updateMainBottomBarSpaceDecoration(bottomSpace)
         } else {
-            bottomPadding = initialPadding + bottomSpace
+            bottomPadding = initialPadding
         }
         windowInsets
+    }
+}
+
+private fun RecyclerView.updateMainBottomBarSpaceDecoration(bottomSpace: Int) {
+    (getTag(R.id.main_bottom_bar_space_decoration) as? MainBottomBarSpaceDecoration)?.let {
+        if (it.bottomSpace != bottomSpace) {
+            it.bottomSpace = bottomSpace
+            invalidateItemDecorations()
+        }
+        return
+    }
+    val decoration = MainBottomBarSpaceDecoration(bottomSpace)
+    addItemDecoration(decoration)
+    setTag(R.id.main_bottom_bar_space_decoration, decoration)
+}
+
+private class MainBottomBarSpaceDecoration(var bottomSpace: Int) : RecyclerView.ItemDecoration() {
+    override fun getItemOffsets(
+        outRect: Rect,
+        view: View,
+        parent: RecyclerView,
+        state: RecyclerView.State
+    ) {
+        val position = parent.getChildAdapterPosition(view)
+        if (position != RecyclerView.NO_POSITION && position == state.itemCount - 1) {
+            outRect.bottom = bottomSpace
+        }
     }
 }
 
