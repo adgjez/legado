@@ -25,6 +25,7 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.core.widget.NestedScrollView
+import androidx.core.content.ContextCompat
 import com.google.android.flexbox.FlexboxLayout
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
@@ -597,19 +598,40 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         var dialog: AlertDialog? = null
         val itemBinding = ItemFindBookBinding.inflate(layoutInflater, null, false)
         val flexbox = itemBinding.flexbox
+        val dialogContent = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 10.dpToPx())
+            addView(
+                itemBinding.root,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
         itemBinding.apply {
             root.setPadding(0, 0, 0, 0)
+            root.background = null
             llTitle.isClickable = false
+            llTitle.background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_menu),
+                UiCorner.actionRadius(context)
+            )
             tvName.text = source.bookSourceName
             ivStatus.gone()
             flexbox.visible()
             rotateLoading.visible()
         }
         dialog = AlertDialog.Builder(context)
-            .setView(itemBinding.root)
+            .setView(dialogContent)
             .create()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setDimAmount(0.45f)
         viewLifecycleOwner.lifecycleScope.launch {
             val kinds = withContext(IO) {
                 source.exploreKinds()
@@ -687,7 +709,38 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         tv.setOnClickListener {
             val url = kind.normalizedDiscoverUrl()?.takeIf { it.isNotBlank() } ?: return@setOnClickListener
             dialog?.dismiss()
-            openExplore(source.bookSourceUrl, kind.title, url)
+            openDiscoverDialogTagInCurrentPage(source, kind, url)
+        }
+    }
+
+    private fun openDiscoverDialogTagInCurrentPage(
+        source: BookSource,
+        kind: ExploreKind,
+        url: String
+    ) {
+        if (selectedDiscoverSource?.bookSourceUrl != source.bookSourceUrl) {
+            val sourcePart = discoverSources.firstOrNull { it.bookSourceUrl == source.bookSourceUrl }
+            if (sourcePart != null) {
+                selectDiscoverSource(sourcePart)
+            }
+        }
+        val item = discoverAllTagItems.firstOrNull {
+            it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == url
+        } ?: DiscoverTagItem(
+            kind = kind.copy(url = url),
+            text = resolveDiscoverTagText(kind).limitDiscoverText(6),
+            role = DiscoverTagItem.Role.UrlTag,
+            group = null
+        )
+        val index = discoverTagItems.indexOfFirst {
+            it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == url
+        }
+        if (index >= 0) {
+            selectDiscoverTag(index, item, selectTab = true)
+        } else {
+            discoverCurrentUrl = url
+            binding.topBar.tagsBar.setSelectedIndex(-1, smooth = false)
+            loadDiscoverBooks(reset = true)
         }
     }
 
