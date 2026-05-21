@@ -867,7 +867,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         var filtered = if (discoverMajorGroups.isEmpty()) {
             discoverAllTagItems.toList()
         } else {
-            discoverAllTagItems.filter { it.group == selectedDiscoverMajorGroup }
+            discoverAllTagItems.filter {
+                it.group == selectedDiscoverMajorGroup || isDiscoverGlobalControl(it)
+            }
         }
         if (filtered.isEmpty() && discoverMajorGroups.isNotEmpty()) {
             val fallbackGroup = discoverMajorGroups.firstOrNull { group ->
@@ -877,7 +879,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             filtered = if (fallbackGroup.isNullOrBlank()) {
                 discoverAllTagItems.toList()
             } else {
-                discoverAllTagItems.filter { it.group == fallbackGroup }
+                discoverAllTagItems.filter {
+                    it.group == fallbackGroup || isDiscoverGlobalControl(it)
+                }
             }
         }
 
@@ -903,6 +907,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverVisibleGroupItem(item: DiscoverTagItem): Boolean {
         return item.isButton || !item.kind.url.isNullOrBlank()
+    }
+
+    private fun isDiscoverGlobalControl(item: DiscoverTagItem): Boolean {
+        return item.group.isNullOrBlank() && item.role != DiscoverTagItem.Role.UrlTag
     }
 
     private fun updateDiscoverTagFilterButtonState() {

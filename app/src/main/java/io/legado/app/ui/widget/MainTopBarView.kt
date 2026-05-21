@@ -330,7 +330,7 @@ class MainTopBarView @JvmOverloads constructor(
         tagsBar.setBackgroundOverrideColor(null)
         primaryBar.setSelectedBackgroundVisible(true)
         selectsBar.setSelectedBackgroundVisible(true)
-        tagsBar.setSelectedBackgroundVisible(false)
+        tagsBar.setSelectedBackgroundVisible(mode == Mode.DISCOVERY)
     }
 
     private fun buildTitleRow(): LinearLayout {
