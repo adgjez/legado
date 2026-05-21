@@ -6,6 +6,7 @@ enum class S3ContainerScope(val key: String) {
     TOP_BAR("topBar"),
     NAVIGATION_BAR("navigationBar"),
     COVER_COLLECTION("coverCollection"),
+    BUBBLE("bubble"),
     CACHE("cache"),
     MAIN_BACKUP("backup");
 

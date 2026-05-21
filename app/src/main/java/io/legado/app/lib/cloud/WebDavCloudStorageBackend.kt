@@ -85,7 +85,7 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
     }
 
     private suspend fun makeRootDirs(rootUrl: String, auth: Authorization) {
-        listOf("", "bookProgress/", "books/", "background/", "themes/", "navigationBars/", "topBars/", "coverCollections/")
+        listOf("", "bookProgress/", "books/", "background/", "themes/", "navigationBars/", "topBars/", "coverCollections/", "bubbles/")
             .forEach { WebDav(rootUrl + it, auth).makeAsDir() }
     }
 

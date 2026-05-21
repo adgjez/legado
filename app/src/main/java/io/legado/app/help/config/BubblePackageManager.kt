@@ -2,10 +2,12 @@ package io.legado.app.help.config
 
 import androidx.annotation.Keep
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
@@ -31,6 +33,16 @@ object BubblePackageManager {
 
     private val tempDir: File
         get() = rootDir.getFile("temp").apply { mkdirs() }
+
+    private val remoteCacheDir: File
+        get() = rootDir.getFile("remote_cache").apply { mkdirs() }
+
+    @Keep
+    private data class RemoteCache(
+        val name: String,
+        val dirName: String,
+        val updatedAt: Long
+    )
 
     @Keep
     data class Config(
@@ -89,9 +101,25 @@ object BubblePackageManager {
         return readEntry(localDir(dirName)) ?: builtinEntry()
     }
 
-    suspend fun loadEntries(): List<Entry> = withContext(IO) {
-        listOf(builtinEntry()) + loadLocal().sortedWith(
+    suspend fun loadEntries(containerId: String? = null, scope: String? = null): List<Entry> = withContext(IO) {
+        val local = loadLocal().associateBy { it.dirName }
+        val remote = loadRemoteOrCache(containerId, scope).associateBy { it.dirName }
+        val merged = (local.keys + remote.keys).mapNotNull { key ->
+            val localEntry = local[key]
+            val remoteEntry = remote[key]
+            when {
+                localEntry != null && remoteEntry != null -> localEntry.copy(
+                    source = Source.BOTH,
+                    remoteUpdatedAt = remoteEntry.remoteUpdatedAt
+                )
+                localEntry != null -> localEntry
+                remoteEntry != null -> remoteEntry
+                else -> null
+            }
+        }
+        listOf(builtinEntry()) + merged.sortedWith(
             compareByDescending<Entry> { it.config.updatedAt }
+                .thenByDescending { it.remoteUpdatedAt }
                 .thenBy { it.config.name }
                 .thenBy { it.dirName }
         )
@@ -149,6 +177,23 @@ object BubblePackageManager {
         zipFile
     }
 
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
+        if (entry.source == Source.BUILTIN) return@withContext
+        AppCloudStorage.uploadBubblePackage(entry.dirName, exportZip(entry), containerId, scope)
+    }
+
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry = withContext(IO) {
+        val zipFile = tempDir.getFile("${entry.dirName}.zip")
+        AppCloudStorage.downloadBubblePackage(entry.dirName, zipFile, containerId, scope)
+        importZipInternal(zipFile, overwrite = true, remoteUpdatedAt = entry.remoteUpdatedAt)
+            .copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
+    }
+
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
+        if (entry.source == Source.BUILTIN) return@withContext
+        AppCloudStorage.deleteBubblePackage(entry.dirName, containerId, scope)
+    }
+
     suspend fun importZip(zipFile: File): Entry = withContext(IO) {
         importZipInternal(zipFile, overwrite = false, remoteUpdatedAt = 0L)
     }
@@ -188,6 +233,66 @@ object BubblePackageManager {
             ?.filter { it.isDirectory && it.name !in setOf("temp", "remote_cache", BUILTIN_DIR_NAME) }
             ?.mapNotNull(::readEntry)
             .orEmpty()
+    }
+
+    private suspend fun loadRemoteOrCache(containerId: String? = null, scope: String? = null): List<Entry> {
+        val cached = readRemoteCache(containerId)
+        return runCatching {
+            AppCloudStorage.listBubblePackages(containerId, scope).map { remoteFile ->
+                val dirName = remoteFile.displayName.trimEnd('/').removeSuffix(".zip")
+                Entry(
+                    config = Config(
+                        name = dirName,
+                        dirName = dirName,
+                        updatedAt = remoteFile.lastModify,
+                        svgTemplate = defaultSvgTemplate()
+                    ),
+                    source = Source.REMOTE,
+                    dirName = dirName,
+                    remoteUpdatedAt = remoteFile.lastModify
+                )
+            }
+        }.onSuccess { remote ->
+            if (remote.isNotEmpty() || cached.isEmpty()) {
+                writeRemoteCache(remote, containerId)
+            }
+        }.getOrElse {
+            cached
+        }
+    }
+
+    private fun readRemoteCache(containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(containerId)
+        if (!file.exists()) return emptyList()
+        return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList()).map {
+            Entry(
+                config = Config(
+                    name = it.name,
+                    dirName = it.dirName,
+                    updatedAt = it.updatedAt,
+                    svgTemplate = defaultSvgTemplate()
+                ),
+                source = Source.REMOTE,
+                dirName = it.dirName,
+                remoteUpdatedAt = it.updatedAt
+            )
+        }
+    }
+
+    private fun writeRemoteCache(entries: List<Entry>, containerId: String? = null) {
+        val cache = entries.map {
+            RemoteCache(
+                name = it.config.name,
+                dirName = it.dirName,
+                updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.config.updatedAt
+            )
+        }
+        remoteCacheFile(containerId).writeText(GSON.toJson(cache))
+    }
+
+    private fun remoteCacheFile(containerId: String? = null): File {
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("bubble$suffix.json")
     }
 
     private fun readEntry(dir: File): Entry? {

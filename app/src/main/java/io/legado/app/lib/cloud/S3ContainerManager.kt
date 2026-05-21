@@ -18,6 +18,7 @@ object S3ContainerManager {
     const val SCOPE_TOP_BAR = "topBar"
     const val SCOPE_NAVIGATION_BAR = "navigationBar"
     const val SCOPE_COVER_COLLECTION = "coverCollection"
+    const val SCOPE_BUBBLE = "bubble"
     const val SCOPE_CACHE = "cache"
 
     private val lock = Any()

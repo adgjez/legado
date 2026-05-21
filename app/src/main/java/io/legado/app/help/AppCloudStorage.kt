@@ -46,6 +46,7 @@ object AppCloudStorage {
     private const val NAVIGATION_BARS_DIR = "navigationBars/"
     private const val TOP_BARS_DIR = "topBars/"
     private const val COVER_COLLECTIONS_DIR = "coverCollections/"
+    private const val BUBBLES_DIR = "bubbles/"
 
     private val webDavBackend = WebDavCloudStorageBackend()
     private val s3Backend = S3CloudStorageBackend()
@@ -208,6 +209,22 @@ object AppCloudStorage {
 
     suspend fun deleteCoverCollectionPackage(isNightTheme: Boolean, remoteDirName: String, containerId: String? = null, scope: String? = null) {
         deleteZip(getCoverCollectionTypePath(isNightTheme), remoteDirName, scopedBackend(S3ContainerScope.COVER_COLLECTION, containerId, scope))
+    }
+
+    suspend fun listBubblePackages(containerId: String? = null, scope: String? = null): List<CloudStorageFile> {
+        return listZipFiles(BUBBLES_DIR, scopedBackend(S3ContainerScope.BUBBLE, containerId, scope), emptyOnError = true)
+    }
+
+    suspend fun uploadBubblePackage(remoteDirName: String, zipFile: File, containerId: String? = null, scope: String? = null) {
+        uploadZip(BUBBLES_DIR, remoteDirName, zipFile, scopedBackend(S3ContainerScope.BUBBLE, containerId, scope))
+    }
+
+    suspend fun downloadBubblePackage(remoteDirName: String, zipFile: File, containerId: String? = null, scope: String? = null) {
+        downloadZip(BUBBLES_DIR, remoteDirName, zipFile, scopedBackend(S3ContainerScope.BUBBLE, containerId, scope))
+    }
+
+    suspend fun deleteBubblePackage(remoteDirName: String, containerId: String? = null, scope: String? = null) {
+        deleteZip(BUBBLES_DIR, remoteDirName, scopedBackend(S3ContainerScope.BUBBLE, containerId, scope))
     }
     suspend fun uploadCachePackage(fileName: String, zipFile: File) {
         ensureNetwork()
