@@ -23,6 +23,11 @@ import android.widget.TextView
 import android.widget.FrameLayout
 import android.widget.Magnifier
 import android.widget.Scroller
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
@@ -41,6 +46,7 @@ import io.legado.app.model.localBook.epubcore.selector.EpubSelectableBlock
 import io.legado.app.model.localBook.epubcore.selector.EpubSelectablePage
 import io.legado.app.model.localBook.epubcore.selector.EpubSelectableLine
 import io.legado.app.model.localBook.epubcore.selector.EpubTextHit
+import io.legado.app.model.localBook.epubcore.web.EpubWebDebugPayload
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import kotlin.math.*
@@ -68,6 +74,7 @@ class EpubReadView @JvmOverloads constructor(
             pageKey: String
         ): Boolean = false
         fun onWebDebugRequested() = Unit
+        fun onWebRenderResourceRequested(url: String?, payload: EpubWebDebugPayload): WebResourceResponse? = null
     }
 
     data class SelectionAnchor(
@@ -120,6 +127,30 @@ class EpubReadView @JvmOverloads constructor(
     private val nextSlot = EpubPageSlotView(context, renderer)
     private val nextPlusSlot = EpubPageSlotView(context, renderer)
     private val currentSlot = EpubPageSlotView(context, renderer)
+    private val liveWebView = WebView(context).apply {
+        settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = false
+            databaseEnabled = false
+            cacheMode = WebSettings.LOAD_NO_CACHE
+            loadsImagesAutomatically = true
+            blockNetworkImage = false
+            allowFileAccess = false
+            allowContentAccess = false
+            textZoom = 100
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
+            useWideViewPort = false
+            loadWithOverviewMode = false
+        }
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        visibility = View.INVISIBLE
+        setOnTouchListener { _, event ->
+            this@EpubReadView.onTouchEvent(event)
+            true
+        }
+    }
     private val webDebugButton = TextView(context).apply {
         text = "WEB"
         textSize = 11f
@@ -250,6 +281,9 @@ class EpubReadView @JvmOverloads constructor(
     private var selectionExistedOnDown = false
     private var selectionHandleDragActive = false
     private var selectionMenuPending = false
+    private var liveWebPayload: EpubWebDebugPayload? = null
+    private var liveWebPayloadKey: String? = null
+    private var liveWebPageIndex: Int = -1
     private var lastDownAt = 0L
     private var longPressTriggered = false
     private var selectionMagnifier: Magnifier? = null
@@ -291,6 +325,7 @@ class EpubReadView @JvmOverloads constructor(
         addView(nextSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPlusSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(currentSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(liveWebView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(
             webDebugButton,
             LayoutParams(dp(52), dp(32), android.view.Gravity.END or android.view.Gravity.TOP).apply {
@@ -326,19 +361,42 @@ class EpubReadView @JvmOverloads constructor(
         notifyPageChanged()
     }
 
+    fun setWebRenderPayload(payload: EpubWebDebugPayload?) {
+        liveWebPayload = payload
+        liveWebPageIndex = payload?.pageIndex ?: -1
+        if (payload == null) {
+            liveWebPayloadKey = null
+            liveWebView.visibility = View.INVISIBLE
+            liveWebView.loadUrl("about:blank")
+            return
+        }
+        val key = "${payload.request.chapterIndex}:${payload.request.chapterHref}:${payload.request.viewportWidthPx}x${payload.request.viewportHeightPx}:${payload.request.fontSizePx}:${payload.request.lineHeightPx}:${payload.request.readerFontUrl}:${payload.request.readerFontPath}:${payload.request.textFullJustify}"
+        liveWebView.webViewClient = LiveWebRenderClient(payload)
+        if (liveWebPayloadKey != key) {
+            liveWebPayloadKey = key
+            liveWebView.loadDataWithBaseURL(payload.baseUrl, payload.html, "text/html", "UTF-8", null)
+        } else {
+            positionLiveWebView(payload.pageIndex)
+        }
+        updateLiveWebVisibility()
+    }
+
     fun showLoading(chapterIndex: Int, message: String) {
         loadingMessage = message
+        updateLiveWebVisibility()
         invalidate()
     }
 
     fun setError(message: String) {
         loadingMessage = message
+        updateLiveWebVisibility()
         invalidate()
     }
 
     fun clearLoading() {
         if (loadingMessage == null) return
         loadingMessage = null
+        updateLiveWebVisibility()
         invalidate()
     }
 
@@ -953,6 +1011,7 @@ class EpubReadView @JvmOverloads constructor(
             requestPageBoundary(direction)
             return false
         }
+        liveWebView.visibility = View.INVISIBLE
         val targetIndex = rawTargetIndex
         bindIdleSlots()
         animationGeneration++
@@ -1806,6 +1865,8 @@ class EpubReadView @JvmOverloads constructor(
         } else {
             resetSlotVisibility()
         }
+        positionLiveWebView(currentPage()?.pageIndex ?: pageIndex)
+        updateLiveWebVisibility()
     }
 
     private fun bindSlotData() {
@@ -1871,6 +1932,7 @@ class EpubReadView @JvmOverloads constructor(
         currentSlot.translationY = scrollOffsetY.takeIf {
             ReadBook.pageAnim() == PageAnim.scrollPageAnim
         } ?: 0f
+        updateLiveWebVisibility()
     }
 
     private fun invalidateSlotDisplayLists() {
@@ -1919,6 +1981,7 @@ class EpubReadView @JvmOverloads constructor(
         horizontalAnimating = false
         horizontalCancelling = false
         verticalAnimating = false
+        updateLiveWebVisibility()
         if (shouldCommitHorizontal) {
             pageIndex = interruptedTargetIndex
             scrollOffsetY = 0f
@@ -1943,6 +2006,31 @@ class EpubReadView @JvmOverloads constructor(
         val key = "${page.pageKey()}:${renderer.renderStateVersion}"
         return selectableIndex.getOrPut(key) {
             EpubPageSelectorBuilder.build(page)
+        }
+    }
+
+    private fun positionLiveWebView(index: Int) {
+        val payload = liveWebPayload ?: return
+        val targetIndex = index.coerceAtLeast(0)
+        liveWebPageIndex = targetIndex
+        liveWebView.post {
+            liveWebView.scrollTo(targetIndex * payload.request.viewportWidthPx, 0)
+        }
+    }
+
+    private fun updateLiveWebVisibility() {
+        val payload = liveWebPayload
+        val visible = payload != null &&
+            loadingMessage == null &&
+            !horizontalAnimating &&
+            horizontalSession == null &&
+            ReadBook.pageAnim() != PageAnim.scrollPageAnim &&
+            currentPage()?.chapterIndex == payload.request.chapterIndex
+        liveWebView.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+        if (visible) {
+            currentSlot.visibility = View.INVISIBLE
+        } else if (horizontalSession == null) {
+            currentSlot.visibility = if (pages.isEmpty()) View.INVISIBLE else View.VISIBLE
         }
     }
 
@@ -2039,6 +2127,25 @@ class EpubReadView @JvmOverloads constructor(
     private fun dismissSelectionMagnifier() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         selectionMagnifier?.dismiss()
+    }
+
+    private inner class LiveWebRenderClient(
+        private val payload: EpubWebDebugPayload
+    ) : WebViewClient() {
+
+        override fun onPageFinished(view: WebView, url: String?) {
+            positionLiveWebView(payload.pageIndex)
+            updateLiveWebVisibility()
+        }
+
+        override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+            return listener?.onWebRenderResourceRequested(request?.url?.toString(), payload)
+        }
+
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+        override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
+            return listener?.onWebRenderResourceRequested(url, payload)
+        }
     }
 
     private fun isPointInsideWebFragment(page: EpubCorePage, x: Float, y: Float): Boolean {

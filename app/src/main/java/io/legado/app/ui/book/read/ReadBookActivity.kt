@@ -387,6 +387,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                     return
                 }
+                syncEpubLiveWebRender()
                 syncEpubCoreProgress(pageIndex, pageCount)
                 if (epubCoreBoundaryTransition &&
                     epubCoreLoadingChapterIndex == null &&
@@ -426,6 +427,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             override fun onWebDebugRequested() {
                 showEpubWebDebugDialog()
+            }
+
+            override fun onWebRenderResourceRequested(url: String?, payload: EpubWebDebugPayload): WebResourceResponse? {
+                val book = ReadBook.book?.takeIf { it.isEpub } ?: return null
+                return EpubCoreProvider.debugWebResource(book, url, payload.request)
             }
         })
         window.setBackgroundDrawable(null)
@@ -619,6 +625,31 @@ class ReadBookActivity : BaseReadBookActivity(),
         override fun shouldInterceptRequest(view: WebView?, url: String?): WebResourceResponse? {
             return EpubCoreProvider.debugWebResource(book, url, payload.request)
         }
+    }
+
+    private fun syncEpubLiveWebRender() {
+        val book = ReadBook.book?.takeIf { it.isEpub } ?: run {
+            binding.epubReadView.setWebRenderPayload(null)
+            return
+        }
+        val page = binding.epubReadView.currentPage() ?: run {
+            binding.epubReadView.setWebRenderPayload(null)
+            return
+        }
+        if (page.chapterHref.startsWith("loading:")) {
+            binding.epubReadView.setWebRenderPayload(null)
+            return
+        }
+        val config = binding.epubReadView.layoutConfig ?: run {
+            binding.epubReadView.setWebRenderPayload(null)
+            return
+        }
+        val payload = runCatching {
+            EpubCoreProvider.debugWebPayload(book, page.chapterIndex, page.pageIndex, config)
+        }.onFailure {
+            AppLog.putDebug("EPUB live Web render payload failed: ${it.localizedMessage}", it)
+        }.getOrNull()
+        binding.epubReadView.setWebRenderPayload(payload)
     }
 
     override fun onPostCreate(savedInstanceState: Bundle?) {
