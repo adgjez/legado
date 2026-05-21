@@ -678,6 +678,14 @@ class EpubFile(var book: Book) {
                 copyAttrTo(keep, "data-epub-background")
                 copyAttrTo(keep, "data-legado-width")
                 copyAttrTo(keep, "data-legado-style")
+                val declarations = EpubCss.declarations(attr("style"))
+                val floatSide = declarations["float"]
+                    ?.lowercase(Locale.ROOT)
+                    ?.takeIf { it == "left" || it == "right" }
+                floatSide?.let { side ->
+                    keep["data-legado-float"] = side
+                    keep["data-legado-style"] = side.uppercase(Locale.ROOT)
+                }
             }
             "h1", "h2", "h3", "h4", "h5", "h6" -> {
                 copyAttrTo(keep, "align")

@@ -905,6 +905,15 @@ class TextChapterLayout(
                     } else if (node.normalName() == "img") {
                         flushHtmlBuffer()
                         setTypeHtmlImage(imageStyle, book, node)
+                    } else if (node.hasFloatingEpubImage()) {
+                        flushHtmlBuffer()
+                        node.select("img[data-legado-float]").forEach { image ->
+                            setTypeHtmlImage(imageStyle, book, image)
+                            image.remove()
+                        }
+                        node.childNodes().forEach { child ->
+                            renderNode(child)
+                        }
                     } else if (node.hasHtmlImage() || node.hasEpubBlockBoxDescendant()) {
                         if (node.isHtmlBlock()) {
                             flushHtmlBuffer()
@@ -1560,6 +1569,10 @@ class TextChapterLayout(
         }
         val imageInfo = parseImageInfo(src)
         var style = element.attr("data-legado-style").ifBlank { imageInfo.style.orEmpty() }.ifBlank { null }
+        element.attr("data-legado-float")
+            .lowercase()
+            .takeIf { it == "left" || it == "right" }
+            ?.let { style = it.uppercase() }
         val width = element.attr("data-legado-width")
             .ifBlank { element.attr("width") }
             .ifBlank { element.cssWidth() }
@@ -1594,6 +1607,10 @@ class TextChapterLayout(
     private fun Element.hasHtmlImage(): Boolean {
         if (normalName() == "img") return true
         return children().any { it.hasHtmlImage() }
+    }
+
+    private fun Element.hasFloatingEpubImage(): Boolean {
+        return selectFirst("img[data-legado-float]") != null
     }
 
     private fun Element.isEpubTitleTag(): Boolean {
