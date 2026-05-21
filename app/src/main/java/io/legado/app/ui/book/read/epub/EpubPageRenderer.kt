@@ -193,7 +193,14 @@ class EpubPageRenderer {
         if (!text.isJustifiableLineText()) return false
         val scaleX = fragment.textScaleX?.takeIf { it.isFinite() && it > 0f } ?: 1f
         val letterSpacingPx = fragment.letterSpacingPx?.takeIf { it.isFinite() }
-        val targetWidth = (fragment.rectWidthPx ?: rect.width())
+        val lineLeft = fragment.lineLeftPx?.takeIf { it.isFinite() }
+        val lineRight = fragment.lineRightPx?.takeIf { it.isFinite() }
+        if (lineLeft != null && abs(rect.left - (contentBounds.left + lineLeft)) > 2f) {
+            return false
+        }
+        val targetWidth = ((lineRight ?: 0f) - (lineLeft ?: 0f))
+            .takeIf { lineLeft != null && lineRight != null && it.isFinite() && it > 0f }
+            ?: (fragment.rectWidthPx ?: rect.width())
             .takeIf { it.isFinite() && it > 0f }
             ?: return false
         val measuredWidth = (fragment.measuredTextWidthPx?.takeIf { it.isFinite() && it > 0f }?.let { measured ->
@@ -224,7 +231,7 @@ class EpubPageRenderer {
         }
         if (!extraSpacing.isFinite()) return false
         val lineOffset = if (spaceCount > 1) 0f else -extraSpacing * 0.5f
-        var x = rect.left + lineOffset
+        var x = ((lineLeft?.let { contentBounds.left + it } ?: rect.left) + lineOffset)
         val baselineY = rect.top + baseline
         glyphs.forEachIndexed { index, glyph ->
             if (glyph.isEmpty()) return@forEachIndexed

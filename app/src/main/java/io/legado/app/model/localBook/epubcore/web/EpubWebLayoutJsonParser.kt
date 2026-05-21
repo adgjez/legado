@@ -138,7 +138,10 @@ object EpubWebLayoutJsonParser {
                         italic = item.optBoolean("italic", false),
                         opacity = item.optFloat("opacity", 1f),
                         webAscentPx = item.optNullableFloat("webAscent") ?: item.optNullableFloat("webAscentPx"),
-                        webDescentPx = item.optNullableFloat("webDescent") ?: item.optNullableFloat("webDescentPx")
+                        webDescentPx = item.optNullableFloat("webDescent") ?: item.optNullableFloat("webDescentPx"),
+                        lineId = item.optString("lineId").takeIf { it.isNotBlank() },
+                        lineLeftPx = item.optNullableFloat("lineLeft") ?: item.optNullableFloat("lineLeftPx"),
+                        lineRightPx = item.optNullableFloat("lineRight") ?: item.optNullableFloat("lineRightPx")
                     )
                 }
                 "image" -> {

@@ -1104,6 +1104,9 @@ class EpubWebLayoutSession(
                     var local = localTextRect(info.rect);
                     cursor = Math.max(best, cursor + 1);
                     if (!lineText || !local) continue;
+                    var lineLeft = READER_PAD_LEFT;
+                    var lineRight = Math.max(lineLeft + 1, PAGE_W - READER_PAD_RIGHT);
+                    var lineId = local.page + ':' + Math.round(local.top * 10);
                     var measuredWidth = measuredTextWidth(lineText, style, letterSpacing);
                     if (measuredWidth && measuredWidth > local.width * 1.25 && lineText.length > 1) {
                       var fitLow = startOffset + 1;
@@ -1130,6 +1133,7 @@ class EpubWebLayoutSession(
                         measuredWidth = lineText ? measuredTextWidth(lineText, style, letterSpacing) : null;
                         cursor = Math.max(best, startOffset + 1);
                         if (!lineText || !local) continue;
+                        lineId = local.page + ':' + Math.round(local.top * 10);
                       }
                     }
                     pending.push({
@@ -1138,7 +1142,10 @@ class EpubWebLayoutSession(
                       lineText: lineText,
                       local: local,
                       measuredWidth: measuredWidth,
-                      textScaleX: textScaleX
+                      textScaleX: textScaleX,
+                      lineId: lineId,
+                      lineLeft: lineLeft,
+                      lineRight: lineRight
                     });
                     count++;
                   }
@@ -1172,6 +1179,9 @@ class EpubWebLayoutSession(
                       textScaleX: fragment.textScaleX,
                       rectWidth: fragment.local.width,
                       measuredTextWidth: fragment.measuredWidth,
+                      lineId: fragment.lineId,
+                      lineLeft: fragment.lineLeft,
+                      lineRight: fragment.lineRight,
                       tagName: tagName,
                       fontFamily: style.fontFamily || null,
                       readerFontInherited: readerFontInherited,

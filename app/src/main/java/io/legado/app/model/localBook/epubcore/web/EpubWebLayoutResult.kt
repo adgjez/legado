@@ -81,7 +81,10 @@ data class EpubWebTextFragment(
     val webAscentPx: Float? = null,
     val webDescentPx: Float? = null,
     val rectWidthPx: Float? = null,
-    val measuredTextWidthPx: Float? = null
+    val measuredTextWidthPx: Float? = null,
+    val lineId: String? = null,
+    val lineLeftPx: Float? = null,
+    val lineRightPx: Float? = null
 ) : EpubWebLayoutFragment
 
 enum class EpubWebTextFragmentKind {
