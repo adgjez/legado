@@ -657,40 +657,27 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val isSelect = kind.type == ExploreKind.Type.select
             val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
 
-            if (!url.isNullOrBlank() && isDiscoverFullWidthKind(kind) && !isButton && !isSelect) {
-                if (!discoverUrlHasList(source, url)) {
-                    currentGroup = resolveDiscoverGroupTitle(kind)
-                    return@forEachIndexed
-                }
-            }
-
-            if (isDiscoverSelectGroupKind(kind)) {
-                currentGroup = resolveDiscoverGroupTitle(kind)
-                result += DiscoverTagItem(
-                    kind = kind.copy(type = ExploreKind.Type.select),
-                    text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = false,
-                    group = currentGroup
-                )
-                return@forEachIndexed
-            }
-
-            if (!url.isNullOrBlank() && !isButton && !isSelect) {
-                result += DiscoverTagItem(
-                    kind = kind.copy(url = url),
-                    text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = false,
-                    group = currentGroup
-                )
-                return@forEachIndexed
-            }
-
             if (isSelect) {
                 result += DiscoverTagItem(
                     kind = kind.copy(type = ExploreKind.Type.select),
                     text = resolveDiscoverTagText(kind).limitDiscoverText(6),
                     isButton = false,
-                    group = currentGroup
+                    group = null
+                )
+                return@forEachIndexed
+            }
+
+            if (isDiscoverDecorativeGroupKind(kind)) {
+                currentGroup = resolveDiscoverGroupTitle(kind)
+                return@forEachIndexed
+            }
+
+            if (!url.isNullOrBlank() && isDiscoverScriptButtonUrl(url)) {
+                result += DiscoverTagItem(
+                    kind = kind.copy(type = ExploreKind.Type.button, action = url),
+                    text = resolveDiscoverTagText(kind).limitDiscoverText(6),
+                    isButton = true,
+                    group = null
                 )
                 return@forEachIndexed
             }
@@ -703,6 +690,20 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     isButton = true,
                     group = currentGroup
                 )
+            }
+
+            if (!url.isNullOrBlank()) {
+                if (isDiscoverFullWidthKind(kind) && !discoverUrlHasList(source, url)) {
+                    currentGroup = resolveDiscoverGroupTitle(kind)
+                    return@forEachIndexed
+                }
+                result += DiscoverTagItem(
+                    kind = kind.copy(url = url),
+                    text = resolveDiscoverTagText(kind).limitDiscoverText(6),
+                    isButton = false,
+                    group = currentGroup
+                )
+                return@forEachIndexed
             }
         }
         val hasMajorGroup = result.any { !it.group.isNullOrBlank() }
@@ -762,13 +763,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         return kind.action.isNullOrBlank()
     }
 
-    private fun isDiscoverSelectGroupKind(kind: ExploreKind): Boolean {
-        if (kind.type != ExploreKind.Type.select) return false
-        if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
-        val style = kind.style()
-        return style.layout_flexBasisPercent >= 0.95f
-    }
-
     private fun isDiscoverInputKind(kind: ExploreKind): Boolean {
         return kind.type == ExploreKind.Type.text || kind.type == "password"
     }
@@ -785,6 +779,23 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val text = resolveDiscoverTagText(kind).trim()
         if (text.isNotBlank() && text != ExploreKind.Type.button) return false
         return kind.type == ExploreKind.Type.button || kind.action.isNullOrBlank()
+    }
+
+    private fun isDiscoverDecorativeGroupKind(kind: ExploreKind): Boolean {
+        if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
+        val text = resolveDiscoverTagText(kind).trim()
+        if (text.isBlank()) return false
+        if (isDiscoverFullWidthKind(kind)) return true
+        val compact = text.replace("\\s+".toRegex(), "")
+        val hasDecoration = compact.count { it == '◎' || it == '●' || it == '○' || it == '◆' || it == '◇' || it == '=' || it == '-' } >= 2
+        return hasDecoration || compact.endsWith("分类") || compact.endsWith("排行") || compact.endsWith("排行榜")
+    }
+
+    private fun isDiscoverScriptButtonUrl(url: String): Boolean {
+        val value = url.trim()
+        return value.startsWith("{") ||
+            value.contains("java.startBrowser", ignoreCase = true) ||
+            value.contains("source.setVariable", ignoreCase = true)
     }
 
     private suspend fun discoverUrlHasList(source: BookSource, url: String): Boolean {
