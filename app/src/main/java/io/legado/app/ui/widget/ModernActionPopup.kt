@@ -26,6 +26,7 @@ object ModernActionPopup {
 
     data class Action(
         val title: String,
+        val checked: Boolean = false,
         val invoke: () -> Unit
     )
 
@@ -73,7 +74,7 @@ object ModernActionPopup {
         for (index in 0 until popupMenu.menu.size()) {
             val item = popupMenu.menu.getItem(index)
             if (item.isVisible) {
-                actions.add(Action(item.title.toString()) { onClick(item) })
+                actions.add(Action(item.title.toString(), item.isChecked) { onClick(item) })
             }
         }
         return show(anchor, actions, previousPopup)
@@ -122,6 +123,7 @@ object ModernActionPopup {
     ): TextView {
         return TextView(context).apply {
             text = action.title
+            isSelected = action.checked
             gravity = Gravity.CENTER_VERTICAL
             minWidth = 132.dpToPx()
             minHeight = 42.dpToPx()
@@ -130,11 +132,25 @@ object ModernActionPopup {
             applyUiMenuItemTypeface(context)
             includeFontPadding = false
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_menu),
-                UiCorner.actionRadius(context)
-            )
+            val selectedColor = ContextCompat.getColor(context, R.color.background_menu)
+            background = if (action.checked) {
+                UiCorner.opaqueRoundedStroke(
+                    selectedColor,
+                    UiCorner.actionRadius(context),
+                    1.dpToPx(),
+                    ContextCompat.getColor(context, R.color.accent)
+                )
+            } else {
+                UiCorner.actionSelector(
+                    Color.TRANSPARENT,
+                    selectedColor,
+                    UiCorner.actionRadius(context)
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && action.checked) {
+                elevation = 4.dpToPx().toFloat()
+                translationZ = 4.dpToPx().toFloat()
+            }
             setOnClickListener {
                 dismiss()
                 action.invoke()
