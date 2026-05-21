@@ -399,11 +399,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         viewModel.searchScope.stateLiveData.observe(this) {
             updateSourceGroupTags()
             updateKeyboardGroupBarVisible()
-            if (!binding.llInputHelp.isVisible) {
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
-            }
         }
         viewModel.isSearchLiveData.observe(this) {
             if (it) {
