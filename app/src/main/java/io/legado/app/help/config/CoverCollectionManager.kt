@@ -48,6 +48,26 @@ object CoverCollectionManager {
     private val remoteCacheDir: File
         get() = rootDir.getFile("remote_cache").apply { mkdirs() }
 
+    fun isMixedMode(): Boolean {
+        val isNight = AppConfig.isNightTheme
+        return appCtx.getPrefString(
+            if (isNight) PreferKey.coverCollectionModeNight else PreferKey.coverCollectionModeDay,
+            MODE_RANDOM
+        ) == MODE_MIXED
+    }
+
+    fun selectionKey(): String {
+        val isNight = AppConfig.isNightTheme
+        val collectionId = appCtx.getPrefString(
+            if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay
+        ).orEmpty()
+        val mode = appCtx.getPrefString(
+            if (isNight) PreferKey.coverCollectionModeNight else PreferKey.coverCollectionModeDay,
+            MODE_RANDOM
+        ).orEmpty()
+        return "$isNight:$collectionId:$mode"
+    }
+
     suspend fun load(isNight: Boolean): List<Collection> = withContext(IO) {
         loadIndex(isNight).sortedByDescending { it.updatedAt }
     }

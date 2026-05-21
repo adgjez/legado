@@ -282,15 +282,19 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(searchBook)
+        val originalCover = searchBook.coverUrl
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            !originalCover.isNullOrBlank()
         load(
-            collectionCover ?: searchBook.coverUrl,
+            collectionCover ?: originalCover,
             searchBook.name,
             searchBook.author,
             loadOnlyWifi,
             searchBook.origin,
             fragment,
             lifecycle,
-            forcePath = collectionCover != null
+            forcePath = collectionCover != null || forceOriginalCover
         )
     }
 
@@ -302,8 +306,12 @@ class CoverImageView @JvmOverloads constructor(
         onLoadFinish: (() -> Unit)? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
+        val originalCover = book.getDisplayCover()
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            !originalCover.isNullOrBlank()
         load(
-            collectionCover ?: book.getDisplayCover(),
+            collectionCover ?: originalCover,
             book.name,
             book.author,
             loadOnlyWifi,
@@ -311,7 +319,7 @@ class CoverImageView @JvmOverloads constructor(
             fragment,
             lifecycle,
             onLoadFinish,
-            forcePath = collectionCover != null
+            forcePath = collectionCover != null || forceOriginalCover
         )
     }
 
@@ -322,8 +330,12 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
+        val originalCover = book.getDisplayCover()
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            !originalCover.isNullOrBlank()
         load(
-            collectionCover ?: book.getDisplayCover(),
+            collectionCover ?: originalCover,
             book.name,
             book.author,
             loadOnlyWifi,
@@ -332,7 +344,7 @@ class CoverImageView @JvmOverloads constructor(
             lifecycle,
             null,
             true,
-            forcePath = collectionCover != null
+            forcePath = collectionCover != null || forceOriginalCover
         )
     }
 
@@ -362,6 +374,7 @@ class CoverImageView @JvmOverloads constructor(
             sourceOrigin.orEmpty(),
             loadOnlyWifi.toString(),
             AppConfig.useDefaultCover.toString(),
+            CoverCollectionManager.selectionKey(),
             useThumb.toString(),
             forcePath.toString()
         ).joinToString("|")
