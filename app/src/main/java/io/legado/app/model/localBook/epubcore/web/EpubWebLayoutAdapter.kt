@@ -44,9 +44,12 @@ class EpubWebLayoutAdapter {
         return when (this) {
             is EpubWebTextFragment -> {
                 if (text.isBlank() || frame.isEmpty) return null
+                val normalizedGlyphs = normalizeGlyphsToCjkAdvance()
+                val normalizedFrame = normalizedGlyphs.normalizedFrame(frame)
+                val normalizedWidth = normalizedGlyphs.normalizedWidth(frame)
                 EpubMeasuredTextFragment(
                     text = text,
-                    frame = RectF(frame),
+                    frame = normalizedFrame,
                     source = source.toSourceRange(chapterHref),
                     kind = kind.toMeasuredKind(),
                     baselinePx = baselinePx,
@@ -55,8 +58,8 @@ class EpubWebLayoutAdapter {
                     lineHeightPx = lineHeightPx,
                     letterSpacingPx = letterSpacingPx,
                     textScaleX = textScaleX,
-                    rectWidthPx = rectWidthPx,
-                    measuredTextWidthPx = measuredTextWidthPx,
+                    rectWidthPx = normalizedWidth ?: rectWidthPx,
+                    measuredTextWidthPx = normalizedWidth ?: measuredTextWidthPx,
                     lineId = lineId,
                     lineLeftPx = lineLeftPx,
                     lineRightPx = lineRightPx,
@@ -72,16 +75,7 @@ class EpubWebLayoutAdapter {
                     opacity = opacity,
                     webAscentPx = webAscentPx,
                     webDescentPx = webDescentPx,
-                    glyphs = glyphs.map {
-                        EpubMeasuredGlyph(
-                            text = it.text,
-                            xPx = it.xPx,
-                            yPx = it.yPx,
-                            widthPx = it.widthPx,
-                            heightPx = it.heightPx,
-                            baselinePx = it.baselinePx
-                        )
-                    }
+                    glyphs = normalizedGlyphs
                 )
             }
             is EpubWebImageFragment -> {
@@ -269,5 +263,70 @@ class EpubWebLayoutAdapter {
             EpubWebTextFragmentKind.Subscript -> EpubMeasuredTextKind.Subscript
             EpubWebTextFragmentKind.Text -> EpubMeasuredTextKind.Text
         }
+    }
+
+    private fun EpubWebTextFragment.normalizeGlyphsToCjkAdvance(): List<EpubMeasuredGlyph> {
+        if (glyphs.isEmpty()) return emptyList()
+        if (kind != EpubWebTextFragmentKind.Text) {
+            return glyphs.map { it.toMeasuredGlyph() }
+        }
+        val advance = normalizedCjkAdvance()
+        if (!advance.isFinite() || advance <= 0f) {
+            return glyphs.map { it.toMeasuredGlyph() }
+        }
+        val startX = glyphs.minOfOrNull { it.xPx } ?: frame.left
+        var cursorX = startX
+        return glyphs.map { glyph ->
+            val measured = glyph.toMeasuredGlyph(
+                xPx = cursorX,
+                widthPx = advance
+            )
+            cursorX += advance
+            measured
+        }
+    }
+
+    private fun EpubWebTextFragment.normalizedCjkAdvance(): Float {
+        val size = fontSizePx
+            ?.takeIf { it.isFinite() && it > 0f }
+            ?: lineHeightPx
+                ?.takeIf { it.isFinite() && it > 0f }
+                ?.let { it * 0.72f }
+            ?: glyphs
+                .mapNotNull { it.heightPx.takeIf { height -> height.isFinite() && height > 0f } }
+                .maxOrNull()
+            ?: frame.height().takeIf { it.isFinite() && it > 0f }
+            ?: 0f
+        return (size + (letterSpacingPx ?: 0f)).coerceAtLeast(1f)
+    }
+
+    private fun List<EpubMeasuredGlyph>.normalizedWidth(originalFrame: RectF): Float? {
+        if (isEmpty()) return null
+        val left = minOfOrNull { it.xPx } ?: return null
+        val right = maxOfOrNull { it.xPx + it.widthPx } ?: return null
+        val width = right - left
+        return width.takeIf { it.isFinite() && it > 0f } ?: originalFrame.width()
+    }
+
+    private fun List<EpubMeasuredGlyph>.normalizedFrame(originalFrame: RectF): RectF {
+        if (isEmpty()) return RectF(originalFrame)
+        val left = minOfOrNull { it.xPx } ?: return RectF(originalFrame)
+        val right = maxOfOrNull { it.xPx + it.widthPx } ?: return RectF(originalFrame)
+        if (!left.isFinite() || !right.isFinite() || right <= left) return RectF(originalFrame)
+        return RectF(left, originalFrame.top, right, originalFrame.bottom)
+    }
+
+    private fun EpubWebGlyph.toMeasuredGlyph(
+        xPx: Float = this.xPx,
+        widthPx: Float = this.widthPx
+    ): EpubMeasuredGlyph {
+        return EpubMeasuredGlyph(
+            text = text,
+            xPx = xPx,
+            yPx = yPx,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            baselinePx = baselinePx
+        )
     }
 }
