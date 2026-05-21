@@ -37,6 +37,7 @@ import androidx.core.graphics.createBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.backgroundColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -308,11 +309,11 @@ class CoverImageView @JvmOverloads constructor(
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
         val originalCover = book.getDisplayCover()
-        val hasCustomCover = !book.customCoverUrl.isNullOrBlank()
+        val hasCustomCover = book.customCoverUrl.isRealCoverPath()
         val forceOriginalCover = collectionCover == null &&
             CoverCollectionManager.isMixedMode() &&
             (!AppConfig.useDefaultCover || hasCustomCover) &&
-            !originalCover.isNullOrBlank()
+            originalCover.isRealCoverPath()
         load(
             collectionCover ?: originalCover,
             book.name,
@@ -334,11 +335,11 @@ class CoverImageView @JvmOverloads constructor(
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
         val originalCover = book.getDisplayCover()
-        val hasCustomCover = !book.customCoverUrl.isNullOrBlank()
+        val hasCustomCover = book.customCoverUrl.isRealCoverPath()
         val forceOriginalCover = collectionCover == null &&
             CoverCollectionManager.isMixedMode() &&
             (!AppConfig.useDefaultCover || hasCustomCover) &&
-            !originalCover.isNullOrBlank()
+            originalCover.isRealCoverPath()
         load(
             collectionCover ?: originalCover,
             book.name,
@@ -389,13 +390,14 @@ class CoverImageView @JvmOverloads constructor(
         loadKey = newLoadKey
         this.bitmapPath = path
         val thumbKey = "$sourceOrigin|$path|$currentName|$currentAuthor"
+        val hasRealCover = path.isRealCoverPath()
         if (AppConfig.useDefaultCover && !forcePath) {
             loadedKey = newLoadKey
             ImageLoader.load(context, BookCover.defaultDrawable)
                 .centerCrop()
                 .into(this)
         } else {
-            if (drawBookName && currentName != null) {
+            if (!hasRealCover && drawBookName && currentName != null) {
                 val pathName = if (drawBookAuthor){
                     currentName + currentAuthor
                 } else {
