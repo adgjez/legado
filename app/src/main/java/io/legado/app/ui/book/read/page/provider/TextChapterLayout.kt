@@ -883,11 +883,6 @@ class TextChapterLayout(
                         }
                         return
                     }
-                    if (node.isEpubTitleTag()) {
-                        flushHtmlBuffer()
-                        setTypeEpubHtmlTitle(book, node)
-                        return
-                    }
                     if (node.hasEpubPageBreakBefore()) {
                         flushHtmlBuffer()
                         prepareNextPageIfNeed()
@@ -905,15 +900,6 @@ class TextChapterLayout(
                     } else if (node.normalName() == "img") {
                         flushHtmlBuffer()
                         setTypeHtmlImage(imageStyle, book, node)
-                    } else if (node.hasFloatingEpubImage()) {
-                        flushHtmlBuffer()
-                        node.select("img[data-legado-float]").forEach { image ->
-                            setTypeHtmlImage(imageStyle, book, image)
-                            image.remove()
-                        }
-                        node.childNodes().forEach { child ->
-                            renderNode(child)
-                        }
                     } else if (node.hasHtmlImage() || node.hasEpubBlockBoxDescendant()) {
                         if (node.isHtmlBlock()) {
                             flushHtmlBuffer()
@@ -950,39 +936,6 @@ class TextChapterLayout(
             renderNode(node)
         }
         flushHtmlBuffer()
-    }
-
-    private suspend fun setTypeEpubHtmlTitle(book: Book, element: Element) {
-        val text = element.text().trim()
-        if (text.isBlank()) return
-        val oldAbsStartX = absStartX
-        val paint = TextPaint(titlePaint)
-        val declarations = element.epubCssDeclarations()
-        declarations["color"]?.toEpubCssColor()?.let { color ->
-            paint.color = color
-        }
-        declarations["font-size"]?.toEpubTitleTextSize()?.let { size ->
-            paint.textSize = size
-        }
-        val forceMiddle = element.attr("align").equals("center", true) ||
-            declarations["text-align"].equals("center", true)
-        try {
-            absStartX = 0
-            setTypeText(
-                book = book,
-                text = text,
-                textPaint = paint,
-                textHeight = paint.textSize * titlePaintTextHeight / titlePaint.textSize,
-                fontMetrics = paint.fontMetrics,
-                imageStyle = Book.imgStyleSingle,
-                isTitle = true,
-                isFirstLine = true,
-                forceMiddleTitle = forceMiddle,
-                clickList = null
-            )
-        } finally {
-            absStartX = oldAbsStartX
-        }
     }
 
     private suspend fun prepareEpubPageBackground(body: Element, book: Book) {
@@ -1227,28 +1180,6 @@ class TextChapterLayout(
             value.endsWith("px") -> value.dropLast(2).toFloatOrNull()
             else -> value.toFloatOrNull()
         }
-    }
-
-    private fun String.toEpubTitleTextSize(): Float? {
-        val value = trim().lowercase()
-        if (value.isBlank()) return null
-        val base = titlePaint.textSize
-        return when {
-            value.endsWith("%") -> {
-                val percentage = value.dropLast(1).toFloatOrNull() ?: return null
-                base * percentage / 100f
-            }
-            value.endsWith("em") -> {
-                val em = value.dropLast(2).toFloatOrNull() ?: return null
-                base * em
-            }
-            value.endsWith("rem") -> {
-                val rem = value.dropLast(3).toFloatOrNull() ?: return null
-                contentPaintTextHeight * rem
-            }
-            value.endsWith("px") -> value.dropLast(2).toFloatOrNull()
-            else -> value.toFloatOrNull()
-        }?.coerceIn(contentPaint.textSize * 0.8f, titlePaint.textSize * 2.4f)
     }
 
     private fun String.toEpubHorizontalPx(): Float? {
@@ -1569,10 +1500,6 @@ class TextChapterLayout(
         }
         val imageInfo = parseImageInfo(src)
         var style = element.attr("data-legado-style").ifBlank { imageInfo.style.orEmpty() }.ifBlank { null }
-        element.attr("data-legado-float")
-            .lowercase()
-            .takeIf { it == "left" || it == "right" }
-            ?.let { style = it.uppercase() }
         val width = element.attr("data-legado-width")
             .ifBlank { element.attr("width") }
             .ifBlank { element.cssWidth() }
@@ -1607,14 +1534,6 @@ class TextChapterLayout(
     private fun Element.hasHtmlImage(): Boolean {
         if (normalName() == "img") return true
         return children().any { it.hasHtmlImage() }
-    }
-
-    private fun Element.hasFloatingEpubImage(): Boolean {
-        return selectFirst("img[data-legado-float]") != null
-    }
-
-    private fun Element.isEpubTitleTag(): Boolean {
-        return normalName() in setOf("h1", "h2", "h3", "h4", "h5", "h6")
     }
 
     private fun Element.isHtmlBlock(): Boolean {
