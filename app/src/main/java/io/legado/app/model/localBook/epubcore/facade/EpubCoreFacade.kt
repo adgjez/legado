@@ -95,10 +95,13 @@ class EpubCoreFacade private constructor(
         return peekCanonicalPages(canonicalChapter, config)
     }
 
-    fun debugWebPayload(chapterIndex: Int, config: EpubCoreLayoutConfig): EpubWebDebugPayload {
+    fun debugWebPayload(chapterIndex: Int, pageIndex: Int, config: EpubCoreLayoutConfig): EpubWebDebugPayload {
         val chapter = chapters.getOrNull(chapterIndex) ?: error("Chapter index out of range: $chapterIndex")
         val resolvedChapter = resolveChapter(chapter)
-        return getWebLayoutSession(null).debugPayload(buildWebLayoutRequest(resolvedChapter, config))
+        return getWebLayoutSession(null).debugPayload(
+            request = buildWebLayoutRequest(resolvedChapter, config),
+            pageIndex = pageIndex
+        )
     }
 
     fun debugWebResource(url: String?, request: EpubWebLayoutRequest): WebResourceResponse? {

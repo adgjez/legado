@@ -29,7 +29,8 @@ data class EpubWebLayoutRequest(
 data class EpubWebDebugPayload(
     val request: EpubWebLayoutRequest,
     val baseUrl: String,
-    val html: String
+    val html: String,
+    val pageIndex: Int = 0
 )
 
 data class EpubWebLayoutDocument(

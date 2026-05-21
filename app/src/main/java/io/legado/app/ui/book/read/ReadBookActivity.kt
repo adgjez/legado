@@ -556,7 +556,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val page = binding.epubReadView.currentPage() ?: return
         val config = binding.epubReadView.layoutConfig ?: return
         val payload = runCatching {
-            EpubCoreProvider.debugWebPayload(book, page.chapterIndex, config)
+            EpubCoreProvider.debugWebPayload(book, page.chapterIndex, page.pageIndex, config)
         }.getOrElse {
             AppLog.putDebug("EPUB Web debug payload failed: ${it.localizedMessage}", it)
             toastOnUi("EPUB Web调试页面加载失败")
@@ -573,6 +573,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 allowFileAccess = false
                 allowContentAccess = false
                 textZoom = 100
+                setSupportZoom(true)
+                builtInZoomControls = true
+                displayZoomControls = false
+                useWideViewPort = true
+                loadWithOverviewMode = false
             }
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             webViewClient = EpubWebDebugClient(book, payload)
@@ -598,6 +603,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         private val book: Book,
         private val payload: EpubWebDebugPayload
     ) : WebViewClient() {
+
+        override fun onPageFinished(view: WebView, url: String?) {
+            val x = payload.pageIndex.coerceAtLeast(0) * payload.request.viewportWidthPx
+            view.post {
+                view.scrollTo(x, 0)
+            }
+        }
 
         override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
             return EpubCoreProvider.debugWebResource(book, request?.url?.toString(), payload.request)

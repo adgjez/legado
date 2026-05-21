@@ -51,11 +51,12 @@ class EpubWebLayoutSession(
         }
     }
 
-    fun debugPayload(request: EpubWebLayoutRequest): EpubWebDebugPayload {
+    fun debugPayload(request: EpubWebLayoutRequest, pageIndex: Int = 0): EpubWebDebugPayload {
         return EpubWebDebugPayload(
             request = request,
             baseUrl = buildBaseUrl(request.chapterHref),
-            html = wrapHtml(request)
+            html = wrapHtml(request),
+            pageIndex = pageIndex.coerceAtLeast(0)
         )
     }
 

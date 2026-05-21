@@ -98,9 +98,10 @@ object EpubCoreProvider {
     fun debugWebPayload(
         book: Book,
         chapterIndex: Int,
+        pageIndex: Int,
         config: EpubCoreLayoutConfig
     ): EpubWebDebugPayload {
-        return open(book).facade.debugWebPayload(chapterIndex, config)
+        return open(book).facade.debugWebPayload(chapterIndex, pageIndex, config)
     }
 
     @Synchronized
