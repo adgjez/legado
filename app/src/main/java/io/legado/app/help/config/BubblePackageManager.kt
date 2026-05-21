@@ -128,12 +128,13 @@ object BubblePackageManager {
     fun addOrUpdate(config: Config, oldEntry: Entry? = null): Entry {
         val normalized = normalizeConfig(config)
         val name = normalized.name.trim().ifBlank { "段评气泡" }
-        val keepOldDir = oldEntry != null &&
-            oldEntry.dirName.isNotBlank() &&
-            oldEntry.dirName != BUILTIN_DIR_NAME &&
-            oldEntry.source != Source.REMOTE
-        val dirName = if (keepOldDir) {
-            oldEntry!!.dirName
+        val editableOldEntry = oldEntry?.takeIf {
+            it.dirName.isNotBlank() &&
+                it.dirName != BUILTIN_DIR_NAME &&
+                it.source != Source.REMOTE
+        }
+        val dirName = if (editableOldEntry != null) {
+            editableOldEntry.dirName
         } else {
             val baseDirName = normalized.dirName.ifBlank { name.normalizeFileName() }
                 .ifBlank { "bubble_${System.currentTimeMillis()}" }
