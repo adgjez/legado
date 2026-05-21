@@ -86,7 +86,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 发现页面
@@ -135,7 +134,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val discoverBookshelf = linkedSetOf<String>()
     private val discoverBooks = linkedSetOf<SearchBook>()
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
-    private val discoverUrlHasListCache = hashMapOf<String, Boolean>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
     private var selectedDiscoverSource: BookSource? = null
     private var discoverCurrentUrl: String? = null
@@ -306,6 +304,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun initDiscoverRecycler() {
         binding.topBar.tagsBar.setOnTagClickListener { index ->
             val item = discoverTagItems.getOrNull(index) ?: return@setOnTagClickListener
+            if (item.role == DiscoverTagItem.Role.Toggle) {
+                handleDiscoverToggleTag(index, item)
+                return@setOnTagClickListener
+            }
             if (item.isButton) {
                 handleDiscoverButtonTag(item)
                 return@setOnTagClickListener
@@ -680,10 +682,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
             if (!action.isNullOrBlank() && isActionControl) {
                 if (blocked?.contains(action) == true) return@forEachIndexed
+                val role = if (kind.type == ExploreKind.Type.toggle) {
+                    DiscoverTagItem.Role.Toggle
+                } else {
+                    DiscoverTagItem.Role.ActionButton
+                }
                 result += DiscoverTagItem(
                     kind = kind.copy(type = ExploreKind.Type.button),
-                    text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    role = DiscoverTagItem.Role.ActionButton,
+                    text = resolveDiscoverControlText(kind).limitDiscoverText(8),
+                    role = role,
                     group = currentGroup
                 )
                 return@forEachIndexed
@@ -801,25 +808,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             value.contains("source.setVariable", ignoreCase = true)
     }
 
-    private suspend fun discoverUrlHasList(source: BookSource, url: String): Boolean {
-        val key = "${source.bookSourceUrl}|$url"
-        discoverUrlHasListCache[key]?.let { return it }
-        val hasList = withContext(IO) {
-            withTimeoutOrNull(4500) {
-                runCatching {
-                    WebBook.exploreBookAwait(
-                        source,
-                        url,
-                        1,
-                        WebViewPool.Scope.DISCOVERY
-                    ).isNotEmpty()
-                }.getOrDefault(true)
-            } ?: true
-        }
-        discoverUrlHasListCache[key] = hasList
-        return hasList
-    }
-
     private fun resolveDiscoverGroupTitle(kind: ExploreKind): String {
         val raw = resolveDiscoverTagText(kind).trim()
         if (raw.isBlank()) return getString(R.string.discovery)
@@ -841,6 +829,23 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             return viewName.substring(1, viewName.length - 1)
         }
         return kind.title.ifBlank { kind.type }
+    }
+
+    private fun resolveDiscoverControlText(kind: ExploreKind): String {
+        if (kind.type != ExploreKind.Type.toggle) {
+            return resolveDiscoverTagText(kind)
+        }
+        val source = selectedDiscoverSource ?: return resolveDiscoverTagText(kind)
+        val key = kind.title
+        val value = if (key.isBlank()) {
+            kind.default ?: kind.chars?.firstOrNull().orEmpty()
+        } else {
+            val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
+            infoMap[key] ?: (kind.default ?: kind.chars?.firstOrNull().orEmpty()).also {
+                infoMap[key] = it
+            }
+        }
+        return resolveDiscoverToggleText(kind, value)
     }
 
     private fun ExploreKind.normalizedDiscoverUrl(): String? {
@@ -1432,6 +1437,37 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 )
             }
             SearchBookOpenHelper.open(requireContext(), book, isVideo)
+        }
+    }
+
+    private fun handleDiscoverToggleTag(index: Int, item: DiscoverTagItem) {
+        val source = selectedDiscoverSource ?: return
+        val key = item.kind.title
+        if (key.isBlank()) return
+        val chars = item.kind.chars?.filterNotNull() ?: return
+        if (chars.isEmpty()) return
+        val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
+        val current = infoMap[key] ?: item.kind.default ?: chars.first()
+        val currentIndex = chars.indexOf(current).takeIf { it >= 0 } ?: 0
+        val next = chars.getOrNull(currentIndex + 1) ?: chars.first()
+        infoMap[key] = next
+        val updated = item.copy(text = resolveDiscoverToggleText(item.kind, next).limitDiscoverText(8))
+        if (index in discoverTagItems.indices) {
+            discoverTagItems[index] = updated
+            binding.topBar.tagsBar.submitItems(
+                discoverTagItems.map { RoundedTagBarView.Item(it.text, if (it.isButton) 0.9f else 1f) },
+                selectedDiscoverTagIndex
+            )
+        }
+        handleDiscoverButtonTag(updated)
+    }
+
+    private fun resolveDiscoverToggleText(kind: ExploreKind, value: String): String {
+        val label = resolveDiscoverTagText(kind)
+        return when {
+            label.isBlank() -> value
+            value.isBlank() -> label
+            else -> "$value$label"
         }
     }
 

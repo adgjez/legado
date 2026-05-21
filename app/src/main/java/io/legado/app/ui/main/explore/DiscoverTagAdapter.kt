@@ -18,12 +18,13 @@ data class DiscoverTagItem(
     enum class Role {
         UrlTag,
         GlobalSelect,
+        Toggle,
         ActionButton,
         ScriptUrl
     }
 
     val isButton: Boolean
-        get() = role == Role.ActionButton || role == Role.ScriptUrl
+        get() = role == Role.ActionButton || role == Role.ScriptUrl || role == Role.Toggle
 }
 
 class DiscoverTagAdapter(
