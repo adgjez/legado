@@ -704,6 +704,8 @@ class EpubFile(var book: Book) {
         declarations["font-weight"]?.let { keep["font-weight"] = it }
         declarations["font-style"]?.let { keep["font-style"] = it }
         declarations["font-size"]?.let { keep["font-size"] = it }
+        declarations["font-family"]?.let { keep["font-family"] = it }
+        declarations["color"]?.let { keep["color"] = it }
         return keep.entries.joinToString(";") { (key, value) -> "$key:$value" }
     }
 
