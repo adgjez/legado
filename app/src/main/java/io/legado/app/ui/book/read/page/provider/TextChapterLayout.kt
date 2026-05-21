@@ -2293,14 +2293,6 @@ class TextChapterLayout(
         val endX = endColumn.end.roundToInt()
         if (endX > visibleEnd) {
             textLine.exceed = true
-            val cc = (endX - visibleEnd) / size
-            for (i in 0..<size) {
-                textLine.getColumnReverseAt(i, offset).let {
-                    val py = cc * (size - i)
-                    it.start -= py
-                    it.end -= py
-                }
-            }
         }
     }
 
