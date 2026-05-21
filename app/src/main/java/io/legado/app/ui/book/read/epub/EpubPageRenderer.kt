@@ -26,7 +26,6 @@ import io.legado.app.model.localBook.epubcore.layout.EpubPageFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubTableFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubTextFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubWebFragment
-import kotlin.math.abs
 
 class EpubPageRenderer {
 
@@ -175,78 +174,8 @@ class EpubPageRenderer {
         resolveMeasuredTextClip(fragment, fallbackTextPaint, scratchRect, baseline)
         val saveCount = canvas.save()
         canvas.clipRect(textClipRect)
-        if (!drawJustifiedMeasuredText(canvas, fragment, scratchRect, baseline)) {
-            canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
-        }
+        canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
         canvas.restoreToCount(saveCount)
-    }
-
-    private fun drawJustifiedMeasuredText(
-        canvas: Canvas,
-        fragment: EpubMeasuredTextFragment,
-        rect: RectF,
-        baseline: Float
-    ): Boolean {
-        val config = layoutConfig ?: return false
-        if (!config.textFullJustify || !fragment.isJustifiableMeasuredText()) return false
-        val text = fragment.text.toString()
-        if (!text.isJustifiableLineText()) return false
-        val scaleX = fragment.textScaleX?.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val letterSpacingPx = fragment.letterSpacingPx?.takeIf { it.isFinite() }
-        val lineLeft = fragment.lineLeftPx?.takeIf { it.isFinite() }
-        val lineRight = fragment.lineRightPx?.takeIf { it.isFinite() }
-        if (lineLeft != null && abs(rect.left - (contentBounds.left + lineLeft)) > 2f) {
-            return false
-        }
-        val targetWidth = ((lineRight ?: 0f) - (lineLeft ?: 0f))
-            .takeIf { lineLeft != null && lineRight != null && it.isFinite() && it > 0f }
-            ?: (fragment.rectWidthPx ?: rect.width())
-            .takeIf { it.isFinite() && it > 0f }
-            ?: return false
-        val measuredWidth = (fragment.measuredTextWidthPx?.takeIf { it.isFinite() && it > 0f }?.let { measured ->
-            if (abs(scaleX - 1f) > 0.01f) measured * scaleX else measured
-        } ?: fallbackTextPaint.measureText(text))
-            .takeIf { it.isFinite() && it > 0f }
-            ?: return false
-        val residualWidth = targetWidth - measuredWidth
-        if (!residualWidth.isFinite() || residualWidth <= maxOf(1f, fallbackTextPaint.textSize * 0.03f)) {
-            return false
-        }
-        if (abs(scaleX - 1f) > 0.01f || (letterSpacingPx != null && abs(letterSpacingPx) > 0.01f)) {
-            return false
-        }
-        // Paragraph-ending short lines should stay ragged; only stretch almost-full visual lines.
-        if (residualWidth > targetWidth * 0.22f) return false
-        val glyphs = text.toGlyphUnits()
-        if (glyphs.size < 2) return false
-        val spaceCount = glyphs.count { it == " " }
-        val extraSpacing = if (spaceCount > 1) {
-            residualWidth / spaceCount
-        } else {
-            val gapCount = glyphs.lastIndex
-            if (gapCount <= 0) return false
-            val extra = residualWidth / gapCount
-            if (!extra.isFinite() || extra > fallbackTextPaint.textSize * 0.45f) return false
-            extra
-        }
-        if (!extraSpacing.isFinite()) return false
-        val lineOffset = if (spaceCount > 1) 0f else -extraSpacing * 0.5f
-        var x = ((lineLeft?.let { contentBounds.left + it } ?: rect.left) + lineOffset)
-        val baselineY = rect.top + baseline
-        glyphs.forEachIndexed { index, glyph ->
-            if (glyph.isEmpty()) return@forEachIndexed
-            val glyphWidth = fallbackTextPaint.measureText(glyph)
-            val nextX = if (spaceCount > 1 && glyph == " " && index != glyphs.lastIndex) {
-                x + glyphWidth + extraSpacing
-            } else if (spaceCount <= 1 && index != glyphs.lastIndex) {
-                x + glyphWidth + extraSpacing
-            } else {
-                x + glyphWidth
-            }
-            canvas.drawText(glyph, x, baselineY, fallbackTextPaint)
-            x = nextX
-        }
-        return true
     }
 
     private fun configureMeasuredTextPaint(fragment: EpubMeasuredTextFragment) {
@@ -623,36 +552,6 @@ class EpubPageRenderer {
             rect.height() >= contentBounds.height() * 0.92f &&
             rectArea >= contentArea * 0.85f
         return coversViewport || coversReaderFlow || coversContent || rectArea >= viewportArea * 0.82f
-    }
-
-    private fun EpubMeasuredTextFragment.isJustifiableMeasuredText(): Boolean {
-        if (kind != EpubMeasuredTextKind.Text) return false
-        val tag = tagName?.lowercase().orEmpty()
-        if (tag in setOf("h1", "h2", "h3", "h4", "h5", "h6", "title", "rt", "rp", "ruby", "sup", "sub")) {
-            return false
-        }
-        if (direction?.contains("rtl", ignoreCase = true) == true) return false
-        val mode = writingMode.orEmpty()
-        if (mode.isNotBlank() && !mode.contains("horizontal", ignoreCase = true)) return false
-        return true
-    }
-
-    private fun String.isJustifiableLineText(): Boolean {
-        if (length < 2 || contains('\n')) return false
-        return any { !it.isWhitespace() }
-    }
-
-    private fun String.toGlyphUnits(): List<String> {
-        if (isEmpty()) return emptyList()
-        val glyphs = ArrayList<String>(length)
-        var index = 0
-        while (index < length) {
-            val codePoint = codePointAt(index)
-            val charCount = Character.charCount(codePoint)
-            glyphs += substring(index, (index + charCount).coerceAtMost(length))
-            index += charCount
-        }
-        return glyphs
     }
 
     private fun drawChildren(canvas: Canvas, children: List<EpubPageFragment>, offsetX: Float, offsetY: Float) {

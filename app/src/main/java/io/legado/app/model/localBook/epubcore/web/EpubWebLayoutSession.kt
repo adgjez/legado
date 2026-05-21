@@ -13,6 +13,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebView.VisualStateCallback
 import io.legado.app.constant.AppLog
 import io.legado.app.model.localBook.epubcore.archive.EpubArchive
 import io.legado.app.model.localBook.epubcore.archive.EpubPath
@@ -169,7 +170,7 @@ class EpubWebLayoutSession(
         override fun onPageFinished(view: WebView, url: String?) {
             if (url != baseUrl) return
             if (token != layoutToken) return
-            evaluateWhenReady(view, request, token, onResult)
+            evaluateAfterVisualState(view, request, token, onResult)
         }
 
         override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
@@ -178,6 +179,25 @@ class EpubWebLayoutSession(
             }
             webView = null
             return true
+        }
+    }
+
+    private fun evaluateAfterVisualState(
+        view: WebView,
+        request: EpubWebLayoutRequest,
+        token: Long,
+        onResult: (EpubWebLayoutDocument?) -> Unit
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            view.postVisualStateCallback(token, object : VisualStateCallback() {
+                override fun onComplete(requestId: Long) {
+                    if (requestId == token && token == layoutToken) {
+                        evaluateWhenReady(view, request, token, onResult)
+                    }
+                }
+            })
+        } else {
+            evaluateWhenReady(view, request, token, onResult)
         }
     }
 
@@ -1104,8 +1124,8 @@ class EpubWebLayoutSession(
                     var local = localTextRect(info.rect);
                     cursor = Math.max(best, cursor + 1);
                     if (!lineText || !local) continue;
-                    var lineLeft = READER_PAD_LEFT;
-                    var lineRight = Math.max(lineLeft + 1, PAGE_W - READER_PAD_RIGHT);
+                    var lineLeft = 0;
+                    var lineRight = Math.max(lineLeft + 1, PAGE_W - READER_PAD_LEFT - READER_PAD_RIGHT);
                     var lineId = local.page + ':' + Math.round(local.top * 10);
                     var measuredWidth = measuredTextWidth(lineText, style, letterSpacing);
                     if (measuredWidth && measuredWidth > local.width * 1.25 && lineText.length > 1) {
