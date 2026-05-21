@@ -16,6 +16,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -102,6 +104,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var booksFlowJob: Job? = null
     private var modernMenuPopup: PopupWindow? = null
     private var isManualStopSearch = false
+    private var isImeVisible = false
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initTopBar()
@@ -181,6 +184,10 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             chipColor,
             chipPressedColor,
             UiCorner.searchRadius(14f)
+        )
+        binding.hsvSourceGroupBar.background = UiCorner.opaqueRounded(
+            cardColor,
+            UiCorner.searchRadius(18f)
         )
         updateSourceGroupTags()
         binding.btnMenu.setOnClickListener {
@@ -280,6 +287,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         })
         searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
+            updateKeyboardGroupBarVisible()
             if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank())) {
                 visibleInputHelp(false)
             } else {
@@ -352,11 +360,20 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         binding.fbStartStop.applyNavigationBarMargin(true)
         binding.tvClearHistory.setOnClickListener { alertClearHistory() }
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val nextImeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (isImeVisible != nextImeVisible) {
+                isImeVisible = nextImeVisible
+                updateKeyboardGroupBarVisible()
+            }
+            insets
+        }
     }
 
     private fun initData() {
         viewModel.searchScope.stateLiveData.observe(this) {
             updateSourceGroupTags()
+            updateKeyboardGroupBarVisible()
             if (!binding.llInputHelp.isVisible) {
                 searchView.query?.toString()?.trim()?.let {
                     searchView.setQuery(it, true)
@@ -377,6 +394,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             appDb.bookSourceDao.flowEnabledGroups().collect {
                 groups = it
                 updateSourceGroupTags()
+                updateKeyboardGroupBarVisible()
             }
         }
         lifecycleScope.launch {
@@ -430,6 +448,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         if (visible) {
             upHistory(searchView.query.toString())
             updateSourceGroupTags()
+            updateKeyboardGroupBarVisible()
             binding.llInputHelp.visibility = VISIBLE
         } else {
             binding.llInputHelp.visibility = GONE
@@ -444,7 +463,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             binding.hsvSourceGroupBar.gone()
             return
         }
-        binding.hsvSourceGroupBar.visible()
+        updateKeyboardGroupBarVisible()
         val selectedNames = if (viewModel.searchScope.isSource()) {
             emptySet()
         } else {
@@ -457,6 +476,15 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             container.addView(createSourceGroupChip(group, selectedNames.contains(group)) {
                 updateSearchScopeFromTag(group)
             })
+        }
+    }
+
+    private fun updateKeyboardGroupBarVisible() {
+        val show = isImeVisible && searchView.hasFocus() && groups.orEmpty().isNotEmpty()
+        if (show) {
+            binding.hsvSourceGroupBar.visible()
+        } else {
+            binding.hsvSourceGroupBar.gone()
         }
     }
 
