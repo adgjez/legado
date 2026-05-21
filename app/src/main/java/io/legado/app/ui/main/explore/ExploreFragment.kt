@@ -797,11 +797,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverScriptButtonUrl(url: String): Boolean {
         val value = url.trim()
-        return value.startsWith("@js:", ignoreCase = true) ||
-            value.startsWith("<js>", ignoreCase = true) ||
-            value.startsWith("{{") ||
-            value.startsWith("{\\{") ||
-            value.contains("java.startBrowser", ignoreCase = true) ||
+        if (value.startsWith("@js:", ignoreCase = true) || value.startsWith("<js>", ignoreCase = true)) {
+            return false
+        }
+        if (value.contains("page", ignoreCase = true) || value.contains("{{") || value.contains("{\\{")) {
+            return false
+        }
+        return value.contains("java.startBrowser", ignoreCase = true) ||
             value.contains("java.longToast", ignoreCase = true) ||
             value.contains("java.toast", ignoreCase = true) ||
             value.contains("java.open", ignoreCase = true) ||
