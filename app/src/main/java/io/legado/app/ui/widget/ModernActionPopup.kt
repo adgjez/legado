@@ -134,11 +134,9 @@ object ModernActionPopup {
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
             val selectedColor = ContextCompat.getColor(context, R.color.background_menu)
             background = if (action.checked) {
-                UiCorner.opaqueRoundedStroke(
+                UiCorner.opaqueRounded(
                     selectedColor,
-                    UiCorner.actionRadius(context),
-                    1.dpToPx(),
-                    ContextCompat.getColor(context, R.color.accent)
+                    UiCorner.actionRadius(context)
                 )
             } else {
                 UiCorner.actionSelector(

@@ -17,6 +17,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.Lifecycle
@@ -54,7 +55,6 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
@@ -108,6 +108,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var modernMenuPopup: PopupWindow? = null
     private var isManualStopSearch = false
     private var sourceGroupBarBaseBottomMargin = 0
+    private var inputHelpBaseBottomMargin = 0
+    private var currentBottomInset = 0
+    private var rootBaseTopPadding = 0
     private val searchEditText: TextView?
         get() = searchView.findViewById(androidx.appcompat.R.id.search_src_text)
 
@@ -153,7 +156,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initTopBar() {
-        binding.root.applyStatusBarPadding()
+        rootBaseTopPadding = binding.root.paddingTop
         binding.btnMenu.setColorFilter(secondaryTextColor)
         val isNight = AppConfig.isNightTheme
         val cardColor = if (isNight) {
@@ -189,10 +192,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             chipColor,
             chipPressedColor,
             UiCorner.searchRadius(14f)
-        )
-        binding.hsvSourceGroupBar.background = UiCorner.opaqueRounded(
-            cardColor,
-            UiCorner.searchRadius(18f)
         )
         updateSourceGroupTags()
         binding.btnMenu.setOnClickListener {
@@ -370,13 +369,25 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         sourceGroupBarBaseBottomMargin =
             (binding.hsvSourceGroupBar.layoutParams as? ViewGroup.MarginLayoutParams)
                 ?.bottomMargin ?: 0
+        inputHelpBaseBottomMargin =
+            (binding.llInputHelp.layoutParams as? ViewGroup.MarginLayoutParams)
+                ?.bottomMargin ?: 0
         binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+            val statusInset = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            binding.root.setPadding(
+                binding.root.paddingLeft,
+                rootBaseTopPadding + statusInset,
+                binding.root.paddingRight,
+                binding.root.paddingBottom
+            )
             val imeInset = windowInsets.imeHeight
             val bottomInset = if (imeInset > 0) imeInset else windowInsets.navigationBarHeight
+            currentBottomInset = bottomInset
             binding.hsvSourceGroupBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 bottomMargin = sourceGroupBarBaseBottomMargin + bottomInset
             }
             updateKeyboardGroupBarVisible()
+            updateInputHelpBottomMargin()
             windowInsets
         }
     }
@@ -494,10 +505,24 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         val show = hasSearchFocus &&
             binding.llInputHelp.isVisible &&
             groups.orEmpty().isNotEmpty()
+        val oldVisible = binding.hsvSourceGroupBar.isVisible
         if (show) {
             binding.hsvSourceGroupBar.visible()
         } else {
             binding.hsvSourceGroupBar.gone()
+        }
+        if (oldVisible != binding.hsvSourceGroupBar.isVisible) {
+            updateInputHelpBottomMargin()
+        }
+    }
+
+    private fun updateInputHelpBottomMargin() {
+        val groupBarHeight = binding.hsvSourceGroupBar.height
+            .takeIf { it > 0 } ?: 46.dpToPx()
+        val inputHelpBottomInset = currentBottomInset +
+            if (binding.hsvSourceGroupBar.isVisible) groupBarHeight else 0
+        binding.llInputHelp.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            bottomMargin = inputHelpBaseBottomMargin + inputHelpBottomInset
         }
     }
 
@@ -529,7 +554,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
             background = UiCorner.opaqueRoundedStroke(
                 bgColor,
-                UiCorner.searchRadius(14f),
+                UiCorner.actionRadius(this@SearchActivity),
                 1.dpToPx(),
                 strokeColor
             )

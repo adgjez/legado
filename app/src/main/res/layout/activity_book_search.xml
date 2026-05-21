@@ -199,7 +199,7 @@
         android:id="@+id/hsv_source_group_bar"
         android:layout_width="match_parent"
         android:layout_height="46dp"
-        android:background="@color/background"
+        android:background="@android:color/transparent"
         android:clipToPadding="false"
         android:elevation="8dp"
         android:fadingEdgeLength="24dp"
