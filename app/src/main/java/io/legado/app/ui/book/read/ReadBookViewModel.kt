@@ -126,6 +126,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             ReadBook.resetData(book)
         }
         isInitFinish = true
+        notifyNoSourceIfNeeded(book)
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
         }
@@ -162,6 +163,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         if (shouldAutoChangeSourceForCurrentChapter(book)) {
             autoChangeSource(book.name, book.author)
             return
+        }
+    }
+
+    private fun notifyNoSourceIfNeeded(book: Book) {
+        if (!book.isLocal && ReadBook.bookSource == null) {
+            context.toastOnUi(R.string.error_no_source)
         }
     }
 
