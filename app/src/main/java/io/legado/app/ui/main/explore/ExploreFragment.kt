@@ -634,13 +634,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         kinds: List<ExploreKind>
     ): List<DiscoverTagItem> {
         val blocked = blockedButtonActions[source.bookSourceUrl]
-        val ignoredRows = discoverRowsWithInput(kinds)
         var currentGroup: String? = null
         val result = mutableListOf<DiscoverTagItem>()
         kinds.forEachIndexed { index, kind ->
-            if (index in ignoredRows) {
-                return@forEachIndexed
-            }
             if (index == 0 && isDiscoverLeadingBlankPlaceholder(kind)) {
                 return@forEachIndexed
             }
@@ -648,20 +644,19 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 currentGroup = resolveDiscoverGroupTitle(kind)
                 return@forEachIndexed
             }
-            if (isDiscoverInputKind(kind)) {
-                return@forEachIndexed
-            }
 
             val action = kind.action?.takeIf { it.isNotBlank() }
             val url = kind.normalizedDiscoverUrl()
             val isSelect = kind.type == ExploreKind.Type.select
-            val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
+            val isActionControl = kind.type == ExploreKind.Type.button ||
+                kind.type == ExploreKind.Type.toggle ||
+                isDiscoverInputKind(kind)
 
             if (isSelect) {
                 result += DiscoverTagItem(
                     kind = kind.copy(type = ExploreKind.Type.select),
                     text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = false,
+                    role = DiscoverTagItem.Role.GlobalSelect,
                     group = null
                 )
                 return@forEachIndexed
@@ -676,31 +671,28 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 result += DiscoverTagItem(
                     kind = kind.copy(type = ExploreKind.Type.button, action = url),
                     text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = true,
+                    role = DiscoverTagItem.Role.ScriptUrl,
                     group = null
                 )
                 return@forEachIndexed
             }
 
-            if (!action.isNullOrBlank()) {
+            if (!action.isNullOrBlank() && isActionControl) {
                 if (blocked?.contains(action) == true) return@forEachIndexed
                 result += DiscoverTagItem(
                     kind = kind.copy(type = ExploreKind.Type.button),
                     text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = true,
+                    role = DiscoverTagItem.Role.ActionButton,
                     group = currentGroup
                 )
+                return@forEachIndexed
             }
 
             if (!url.isNullOrBlank()) {
-                if (isDiscoverFullWidthKind(kind) && !discoverUrlHasList(source, url)) {
-                    currentGroup = resolveDiscoverGroupTitle(kind)
-                    return@forEachIndexed
-                }
                 result += DiscoverTagItem(
                     kind = kind.copy(url = url),
                     text = resolveDiscoverTagText(kind).limitDiscoverText(6),
-                    isButton = false,
+                    role = DiscoverTagItem.Role.UrlTag,
                     group = currentGroup
                 )
                 return@forEachIndexed
@@ -712,7 +704,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         } else {
             result.map { it.copy(group = getString(R.string.discover_group_other)) }
         }
-        return normalized.distinctBy { "${it.group}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" }
+        return normalized.distinctBy { "${it.group}|${it.role}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" }
     }
 
     private fun discoverRowsWithInput(kinds: List<ExploreKind>): Set<Int> {
@@ -889,8 +881,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
         }
 
-        val selectItems = filtered.filter { it.kind.type == ExploreKind.Type.select }
-        val tagItems = filtered.filter { it.kind.type != ExploreKind.Type.select }
+        val selectItems = discoverAllTagItems.filter { it.role == DiscoverTagItem.Role.GlobalSelect }
+        val tagItems = filtered.filter { it.role != DiscoverTagItem.Role.GlobalSelect }
         updateDiscoverTagFilterButtonState()
         renderDiscoverSelects(selectItems)
         val targetIndexByUrl = preferredUrl
@@ -1007,8 +999,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 source.clearExploreKindsCache()
                 val action = item.kind.action?.takeIf { it.isNotBlank() }
                 if (!action.isNullOrBlank()) {
+                    val script = normalizeDiscoverActionScript(action)
                     runScriptWithContext {
-                        source.evalJS(action) {
+                        source.evalJS(script) {
                             put("java", SourceLoginJsExtensions(activity as? AppCompatActivity, source))
                             put("infoMap", infoMap)
                         }
@@ -1043,11 +1036,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun handleDiscoverButtonTag(item: DiscoverTagItem) {
         val source = selectedDiscoverSource ?: return
         val action = item.kind.action?.takeIf { it.isNotBlank() } ?: return
+        val script = normalizeDiscoverActionScript(action)
         val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
-        val actionLower = action.lowercase()
+        val actionLower = script.lowercase()
         val isNavigationAction = actionLower.contains("showbrowser(")
             || actionLower.contains("open(\"explore\"")
             || actionLower.contains("open('explore'")
+            || actionLower.contains("startbrowser(")
         discoverActionJob?.cancel()
         discoverActionJob = viewLifecycleOwner.lifecycleScope.launch {
             binding.pbDiscoverLoading.visible()
@@ -1092,7 +1087,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         }
                     )
                     runScriptWithContext {
-                        source.evalJS(action) {
+                        source.evalJS(script) {
                             put("java", java)
                             put("infoMap", infoMap)
                         }
@@ -1113,7 +1108,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     return@onSuccess
                 }
                 viewLifecycleOwner.lifecycleScope.launch {
-                    applyDiscoverButtonResult(source, action, kinds)
+                    applyDiscoverButtonResult(source, script, kinds)
                 }
             }.onFailure {
                 AppLog.put("发现标签按钮执行失败", it)
@@ -1417,6 +1412,23 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
             SearchBookOpenHelper.open(requireContext(), book, isVideo)
         }
+    }
+
+    private fun normalizeDiscoverActionScript(action: String): String {
+        var value = action.trim()
+        if (value.startsWith("@js:", ignoreCase = true)) {
+            return value.substring(4).trim()
+        }
+        if (value.startsWith("<js>", ignoreCase = true) && value.endsWith("</js>", ignoreCase = true)) {
+            return value.substring(4, value.length - 5).trim()
+        }
+        value = when {
+            value.startsWith("{\\{") && value.endsWith("}}") -> value.substring(3, value.length - 2)
+            value.startsWith("{{") && value.endsWith("}}") -> value.substring(2, value.length - 2)
+            value.startsWith("{") && value.endsWith("}") -> value.substring(1, value.length - 1)
+            else -> value
+        }
+        return value.trim()
     }
 
     fun compressExplore() {
