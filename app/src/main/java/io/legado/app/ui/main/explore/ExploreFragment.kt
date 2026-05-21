@@ -86,6 +86,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 发现页面
@@ -134,6 +135,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val discoverBookshelf = linkedSetOf<String>()
     private val discoverBooks = linkedSetOf<SearchBook>()
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
+    private val discoverUrlHasListCache = hashMapOf<String, Boolean>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
     private var selectedDiscoverSource: BookSource? = null
     private var discoverCurrentUrl: String? = null
@@ -627,7 +629,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
     }
 
-    private fun buildDiscoverTagItems(
+    private suspend fun buildDiscoverTagItems(
         source: BookSource,
         kinds: List<ExploreKind>
     ): List<DiscoverTagItem> {
@@ -637,6 +639,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val result = mutableListOf<DiscoverTagItem>()
         kinds.forEachIndexed { index, kind ->
             if (index in ignoredRows) {
+                return@forEachIndexed
+            }
+            if (index == 0 && isDiscoverLeadingBlankPlaceholder(kind)) {
                 return@forEachIndexed
             }
             if (isDiscoverMajorGroupKind(kind)) {
@@ -651,6 +656,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val url = kind.normalizedDiscoverUrl()
             val isSelect = kind.type == ExploreKind.Type.select
             val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
+
+            if (!url.isNullOrBlank() && isDiscoverFullWidthKind(kind) && !isButton && !isSelect) {
+                if (!discoverUrlHasList(source, url)) {
+                    currentGroup = resolveDiscoverGroupTitle(kind)
+                    return@forEachIndexed
+                }
+            }
 
             if (isDiscoverSelectGroupKind(kind)) {
                 currentGroup = resolveDiscoverGroupTitle(kind)
@@ -745,10 +757,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverMajorGroupKind(kind: ExploreKind): Boolean {
         if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
-        val style = kind.style()
-        val isFullWidth = style.layout_flexBasisPercent >= 0.95f ||
-            (style.layout_flexGrow >= 1f && style.layout_flexBasisPercent < 0f)
-        if (!isFullWidth) return false
+        if (!isDiscoverFullWidthKind(kind)) return false
         if (kind.type == ExploreKind.Type.toggle) return true
         return kind.action.isNullOrBlank()
     }
@@ -762,6 +771,39 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverInputKind(kind: ExploreKind): Boolean {
         return kind.type == ExploreKind.Type.text || kind.type == "password"
+    }
+
+    private fun isDiscoverFullWidthKind(kind: ExploreKind): Boolean {
+        val style = kind.style()
+        return style.layout_flexBasisPercent >= 0.95f ||
+            (style.layout_flexGrow >= 1f && style.layout_flexBasisPercent < 0f)
+    }
+
+    private fun isDiscoverLeadingBlankPlaceholder(kind: ExploreKind): Boolean {
+        if (!isDiscoverFullWidthKind(kind)) return false
+        if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
+        val text = resolveDiscoverTagText(kind).trim()
+        if (text.isNotBlank() && text != ExploreKind.Type.button) return false
+        return kind.type == ExploreKind.Type.button || kind.action.isNullOrBlank()
+    }
+
+    private suspend fun discoverUrlHasList(source: BookSource, url: String): Boolean {
+        val key = "${source.bookSourceUrl}|$url"
+        discoverUrlHasListCache[key]?.let { return it }
+        val hasList = withContext(IO) {
+            withTimeoutOrNull(4500) {
+                runCatching {
+                    WebBook.exploreBookAwait(
+                        source,
+                        url,
+                        1,
+                        WebViewPool.Scope.DISCOVERY
+                    ).isNotEmpty()
+                }.getOrDefault(true)
+            } ?: true
+        }
+        discoverUrlHasListCache[key] = hasList
+        return hasList
     }
 
     private fun resolveDiscoverGroupTitle(kind: ExploreKind): String {
@@ -1059,7 +1101,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 if (kinds == null) {
                     return@onSuccess
                 }
-                applyDiscoverButtonResult(source, action, kinds)
+                viewLifecycleOwner.lifecycleScope.launch {
+                    applyDiscoverButtonResult(source, action, kinds)
+                }
             }.onFailure {
                 AppLog.put("发现标签按钮执行失败", it)
                 context?.toastOnUi(it.localizedMessage ?: getString(R.string.unknown_error))
@@ -1067,7 +1111,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    private fun applyDiscoverButtonResult(
+    private suspend fun applyDiscoverButtonResult(
         source: BookSource,
         action: String,
         kinds: List<ExploreKind>
