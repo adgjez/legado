@@ -948,6 +948,8 @@ class EpubWebLayoutSession(
               }
               function measuredTextWidth(text, style, letterSpacing) {
                 if (!text) return null;
+                var mono = monoTextWidth(text, style, letterSpacing);
+                if (mono != null) return mono;
                 var canvas = measuredTextWidth.canvas || (measuredTextWidth.canvas = document.createElement('canvas'));
                 var ctx = canvas.getContext && canvas.getContext('2d');
                 if (!ctx) return null;
@@ -962,6 +964,16 @@ class EpubWebLayoutSession(
                 var spacing = letterSpacing || 0;
                 if (isFinite(spacing) && spacing !== 0 && text.length > 1) width += spacing * (text.length - 1);
                 return isFinite(width) && width > 0 ? width : null;
+              }
+              function cjkAdvance(style, letterSpacing) {
+                var size = number(style && style.fontSize) || ${request.fontSizePx};
+                var spacing = letterSpacing || 0;
+                return Math.max(1, size + (isFinite(spacing) ? spacing : 0));
+              }
+              function monoTextWidth(text, style, letterSpacing) {
+                var segments = graphemeSegments(text);
+                if (!segments.length) return null;
+                return cjkAdvance(style, letterSpacing) * segments.length;
               }
               function baselineFor(local, fontSize, lineHeight, tag) {
                 var size = fontSize || Math.max(1, local.height);
@@ -1108,12 +1120,14 @@ class EpubWebLayoutSession(
                 }
                 return fallback;
               }
-              function glyphRectsForLine(node, start, end, baseRect, lineBaseline) {
+              function glyphRectsForLine(node, start, end, baseRect, lineBaseline, style, letterSpacing) {
                 if (glyphCount >= MAX_GLYPHS) return [];
                 var raw = String(node.nodeValue || '');
                 var slice = raw.substring(start, end);
                 var segments = graphemeSegments(slice);
                 var glyphs = [];
+                var advance = cjkAdvance(style, letterSpacing);
+                var cursorX = localTextRect(baseRect).left;
                 for (var i = 0; i < segments.length; i++) {
                   if (glyphCount >= MAX_GLYPHS) break;
                   var text = segments[i].text;
@@ -1128,12 +1142,13 @@ class EpubWebLayoutSession(
                   if (!local) continue;
                   glyphs.push({
                     text: text,
-                    x: local.left,
+                    x: cursorX,
                     y: local.top,
-                    width: local.width,
+                    width: advance,
                     height: local.height,
                     baseline: lineBaseline
                   });
+                  cursorX += advance;
                   glyphCount++;
                 }
                 return glyphs;
@@ -1253,7 +1268,9 @@ class EpubWebLayoutSession(
                           fragment.startOffset,
                           fragment.endOffset,
                           fragment.baseRect,
-                          fragment.baseline
+                          fragment.baseline,
+                          style,
+                          letterSpacing
                         )
                       : [];
                   }
