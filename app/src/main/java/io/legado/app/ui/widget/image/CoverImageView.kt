@@ -285,6 +285,7 @@ class CoverImageView @JvmOverloads constructor(
         val originalCover = searchBook.coverUrl
         val forceOriginalCover = collectionCover == null &&
             CoverCollectionManager.isMixedMode() &&
+            !AppConfig.useDefaultCover &&
             !originalCover.isNullOrBlank()
         load(
             collectionCover ?: originalCover,
@@ -307,8 +308,10 @@ class CoverImageView @JvmOverloads constructor(
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
         val originalCover = book.getDisplayCover()
+        val hasCustomCover = !book.customCoverUrl.isNullOrBlank()
         val forceOriginalCover = collectionCover == null &&
             CoverCollectionManager.isMixedMode() &&
+            (!AppConfig.useDefaultCover || hasCustomCover) &&
             !originalCover.isNullOrBlank()
         load(
             collectionCover ?: originalCover,
@@ -331,8 +334,10 @@ class CoverImageView @JvmOverloads constructor(
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
         val originalCover = book.getDisplayCover()
+        val hasCustomCover = !book.customCoverUrl.isNullOrBlank()
         val forceOriginalCover = collectionCover == null &&
             CoverCollectionManager.isMixedMode() &&
+            (!AppConfig.useDefaultCover || hasCustomCover) &&
             !originalCover.isNullOrBlank()
         load(
             collectionCover ?: originalCover,

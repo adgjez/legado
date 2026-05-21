@@ -220,16 +220,21 @@ object CoverCollectionManager {
     }
 
     fun selectedCollectionCover(book: Book): String? {
+        val hasOriginalCover = if (AppConfig.useDefaultCover) {
+            !book.customCoverUrl.isNullOrBlank()
+        } else {
+            !book.getDisplayCover().isNullOrBlank()
+        }
         return selectedCollectionCover(
             bookKey = book.bookUrl.ifBlank { "${book.origin}|${book.name}|${book.author}" },
-            hasOriginalCover = !book.getDisplayCover().isNullOrBlank()
+            hasOriginalCover = hasOriginalCover
         )
     }
 
     fun selectedCollectionCover(searchBook: SearchBook): String? {
         return selectedCollectionCover(
             bookKey = searchBook.bookUrl.ifBlank { "${searchBook.origin}|${searchBook.name}|${searchBook.author}" },
-            hasOriginalCover = !searchBook.coverUrl.isNullOrBlank()
+            hasOriginalCover = !AppConfig.useDefaultCover && !searchBook.coverUrl.isNullOrBlank()
         )
     }
 
