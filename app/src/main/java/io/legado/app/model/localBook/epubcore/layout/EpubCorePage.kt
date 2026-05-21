@@ -88,8 +88,18 @@ data class EpubMeasuredTextFragment(
     val italic: Boolean = false,
     val opacity: Float = 1f,
     val webAscentPx: Float? = null,
-    val webDescentPx: Float? = null
+    val webDescentPx: Float? = null,
+    val glyphs: List<EpubMeasuredGlyph> = emptyList()
 ) : EpubPageFragment
+
+data class EpubMeasuredGlyph(
+    val text: String,
+    val xPx: Float,
+    val yPx: Float,
+    val widthPx: Float,
+    val heightPx: Float,
+    val baselinePx: Float? = null
+)
 
 enum class EpubMeasuredTextKind {
     Text,

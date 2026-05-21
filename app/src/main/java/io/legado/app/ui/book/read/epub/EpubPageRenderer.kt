@@ -174,8 +174,30 @@ class EpubPageRenderer {
         resolveMeasuredTextClip(fragment, fallbackTextPaint, scratchRect, baseline)
         val saveCount = canvas.save()
         canvas.clipRect(textClipRect)
-        canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
+        if (!drawMeasuredGlyphs(canvas, fragment, offsetX, offsetY, baseline)) {
+            canvas.drawText(fragment.text.toString(), scratchRect.left, scratchRect.top + baseline, fallbackTextPaint)
+        }
         canvas.restoreToCount(saveCount)
+    }
+
+    private fun drawMeasuredGlyphs(
+        canvas: Canvas,
+        fragment: EpubMeasuredTextFragment,
+        offsetX: Float,
+        offsetY: Float,
+        fallbackBaseline: Float
+    ): Boolean {
+        val glyphs = fragment.glyphs.takeIf { it.isNotEmpty() } ?: return false
+        var drew = false
+        glyphs.forEach { glyph ->
+            if (glyph.text.isEmpty()) return@forEach
+            val x = offsetX + glyph.xPx
+            val y = offsetY + glyph.yPx + (glyph.baselinePx ?: fallbackBaseline)
+            if (!x.isFinite() || !y.isFinite()) return@forEach
+            canvas.drawText(glyph.text, x, y, fallbackTextPaint)
+            drew = true
+        }
+        return drew
     }
 
     private fun configureMeasuredTextPaint(fragment: EpubMeasuredTextFragment) {

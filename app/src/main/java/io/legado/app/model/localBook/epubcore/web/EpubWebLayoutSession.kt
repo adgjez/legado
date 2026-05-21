@@ -355,6 +355,8 @@ class EpubWebLayoutSession(
         return """
             (function() {
               var EXPECTED_TOKEN = $token;
+              var MAX_GLYPHS = 2600;
+              var glyphCount = 0;
               window.__legadoEpubLayoutToken = EXPECTED_TOKEN;
               function isCurrent() {
                 return window.__legadoEpubLayoutToken === EXPECTED_TOKEN;
@@ -1068,6 +1070,61 @@ class EpubWebLayoutSession(
                 range.detach();
                 return { rect: unionRects(rects), text: text };
               }
+              function graphemeSegments(text) {
+                text = String(text || '');
+                if (!text) return [];
+                if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                  try {
+                    var segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+                    var result = [];
+                    var iterator = segmenter.segment(text)[Symbol.iterator]();
+                    var item = iterator.next();
+                    while (!item.done) {
+                      result.push({ text: item.value.segment, index: item.value.index });
+                      item = iterator.next();
+                    }
+                    return result;
+                  } catch (e) {}
+                }
+                var fallback = [];
+                var offset = 0;
+                var parts = Array.from(text);
+                for (var i = 0; i < parts.length; i++) {
+                  fallback.push({ text: parts[i], index: offset });
+                  offset += parts[i].length;
+                }
+                return fallback;
+              }
+              function glyphRectsForLine(node, start, end, baseRect, lineBaseline) {
+                if (glyphCount >= MAX_GLYPHS) return [];
+                var raw = String(node.nodeValue || '');
+                var slice = raw.substring(start, end);
+                var segments = graphemeSegments(slice);
+                var glyphs = [];
+                for (var i = 0; i < segments.length; i++) {
+                  if (glyphCount >= MAX_GLYPHS) break;
+                  var text = segments[i].text;
+                  if (!visibleText(text)) continue;
+                  var glyphStart = start + segments[i].index;
+                  var glyphEnd = glyphStart + text.length;
+                  var range = makeRange(node, glyphStart, glyphEnd);
+                  var rects = visibleTextRects(range).filter(function(rect) { return sameVisualLine(rect, baseRect); });
+                  range.detach();
+                  var rect = unionRects(rects);
+                  var local = localTextRect(rect);
+                  if (!local) continue;
+                  glyphs.push({
+                    text: text,
+                    x: local.left,
+                    y: local.top,
+                    width: local.width,
+                    height: local.height,
+                    baseline: lineBaseline
+                  });
+                  glyphCount++;
+                }
+                return glyphs;
+              }
               function addTextFragments(root, pages) {
                 var nodes = [];
                 var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -1163,6 +1220,7 @@ class EpubWebLayoutSession(
                       local: local,
                       measuredWidth: measuredWidth,
                       textScaleX: textScaleX,
+                      baseRect: baseRect,
                       lineId: lineId,
                       lineLeft: lineLeft,
                       lineRight: lineRight
@@ -1176,6 +1234,15 @@ class EpubWebLayoutSession(
                     fragment.baselineSource = baselineInfo.source;
                     fragment.webAscent = baselineInfo.ascent;
                     fragment.webDescent = baselineInfo.descent;
+                    fragment.glyphs = role.kind === 'text'
+                      ? glyphRectsForLine(
+                          node,
+                          fragment.startOffset,
+                          fragment.endOffset,
+                          fragment.baseRect,
+                          fragment.baseline
+                        )
+                      : [];
                   }
                   for (var pushIndex = 0; pushIndex < pending.length; pushIndex++) {
                     var fragment = pending[pushIndex];
@@ -1213,7 +1280,8 @@ class EpubWebLayoutSession(
                       italic: style.fontStyle === 'italic' || style.fontStyle === 'oblique',
                       opacity: opacity == null ? 1 : opacity,
                       webAscent: fragment.webAscent,
-                      webDescent: fragment.webDescent
+                      webDescent: fragment.webDescent,
+                      glyphs: fragment.glyphs || []
                     });
                   }
                 }

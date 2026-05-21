@@ -141,7 +141,8 @@ object EpubWebLayoutJsonParser {
                         webDescentPx = item.optNullableFloat("webDescent") ?: item.optNullableFloat("webDescentPx"),
                         lineId = item.optString("lineId").takeIf { it.isNotBlank() },
                         lineLeftPx = item.optNullableFloat("lineLeft") ?: item.optNullableFloat("lineLeftPx"),
-                        lineRightPx = item.optNullableFloat("lineRight") ?: item.optNullableFloat("lineRightPx")
+                        lineRightPx = item.optNullableFloat("lineRight") ?: item.optNullableFloat("lineRightPx"),
+                        glyphs = item.optJSONArray("glyphs").toGlyphs()
                     )
                 }
                 "image" -> {
@@ -243,6 +244,32 @@ object EpubWebLayoutJsonParser {
         return buildList(length()) {
             for (index in 0 until length()) {
                 optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }
+
+    private fun JSONArray?.toGlyphs(): List<EpubWebGlyph> {
+        this ?: return emptyList()
+        if (length() == 0) return emptyList()
+        return buildList(length()) {
+            for (index in 0 until length()) {
+                val item = optJSONObject(index) ?: continue
+                val text = item.optString("text").takeIf { it.isNotEmpty() } ?: continue
+                val x = item.optNullableFloat("x") ?: item.optNullableFloat("xPx") ?: continue
+                val y = item.optNullableFloat("y") ?: item.optNullableFloat("yPx") ?: continue
+                val width = item.optNullableFloat("width") ?: item.optNullableFloat("widthPx") ?: 0f
+                val height = item.optNullableFloat("height") ?: item.optNullableFloat("heightPx") ?: 0f
+                if (!x.isFinite() || !y.isFinite() || !width.isFinite() || !height.isFinite()) continue
+                add(
+                    EpubWebGlyph(
+                        text = text,
+                        xPx = x,
+                        yPx = y,
+                        widthPx = width.coerceAtLeast(0f),
+                        heightPx = height.coerceAtLeast(0f),
+                        baselinePx = item.optNullableFloat("baseline") ?: item.optNullableFloat("baselinePx")
+                    )
+                )
             }
         }
     }

@@ -5,6 +5,7 @@ import android.net.Uri
 import io.legado.app.model.localBook.epubcore.archive.EpubPath
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
 import io.legado.app.model.localBook.epubcore.layout.EpubImageFragment
+import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredGlyph
 import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredBoxFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredTextFragment
 import io.legado.app.model.localBook.epubcore.layout.EpubMeasuredTextKind
@@ -70,7 +71,17 @@ class EpubWebLayoutAdapter {
                     italic = italic,
                     opacity = opacity,
                     webAscentPx = webAscentPx,
-                    webDescentPx = webDescentPx
+                    webDescentPx = webDescentPx,
+                    glyphs = glyphs.map {
+                        EpubMeasuredGlyph(
+                            text = it.text,
+                            xPx = it.xPx,
+                            yPx = it.yPx,
+                            widthPx = it.widthPx,
+                            heightPx = it.heightPx,
+                            baselinePx = it.baselinePx
+                        )
+                    }
                 )
             }
             is EpubWebImageFragment -> {

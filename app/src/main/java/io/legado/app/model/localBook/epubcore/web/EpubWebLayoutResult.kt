@@ -84,8 +84,18 @@ data class EpubWebTextFragment(
     val measuredTextWidthPx: Float? = null,
     val lineId: String? = null,
     val lineLeftPx: Float? = null,
-    val lineRightPx: Float? = null
+    val lineRightPx: Float? = null,
+    val glyphs: List<EpubWebGlyph> = emptyList()
 ) : EpubWebLayoutFragment
+
+data class EpubWebGlyph(
+    val text: String,
+    val xPx: Float,
+    val yPx: Float,
+    val widthPx: Float,
+    val heightPx: Float,
+    val baselinePx: Float? = null
+)
 
 enum class EpubWebTextFragmentKind {
     Text,
