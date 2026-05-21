@@ -975,6 +975,32 @@ class EpubWebLayoutSession(
                 if (!segments.length) return null;
                 return cjkAdvance(style, letterSpacing) * segments.length;
               }
+              function isForbiddenLineStart(text) {
+                return /^[，。！？；：、）」』》】]/.test(String(text || ''));
+              }
+              function isForbiddenLineEnd(text) {
+                return /[（「『《【]$/.test(String(text || ''));
+              }
+              function elasticLineMetrics(text, style, letterSpacing, targetWidth, allowStretch) {
+                var segments = graphemeSegments(text).filter(function(item) { return visibleText(item.text); });
+                var count = segments.length;
+                var baseAdvance = cjkAdvance(style, letterSpacing);
+                if (!count || !isFinite(targetWidth) || targetWidth <= 0) {
+                  return { advance: baseAdvance, width: baseAdvance * count, scale: 1, count: count };
+                }
+                var natural = baseAdvance * count;
+                var scale = targetWidth / natural;
+                var minScale = 0.94;
+                var maxScale = allowStretch ? 1.08 : 1.0;
+                if (scale >= minScale && scale <= maxScale) {
+                  return { advance: baseAdvance * scale, width: targetWidth, scale: scale, count: count };
+                }
+                if (scale > maxScale && allowStretch && (targetWidth - natural) / targetWidth <= 0.18) {
+                  var cappedStretch = Math.min(scale, maxScale);
+                  return { advance: baseAdvance * cappedStretch, width: baseAdvance * cappedStretch * count, scale: cappedStretch, count: count };
+                }
+                return { advance: baseAdvance, width: natural, scale: 1, count: count };
+              }
               function baselineFor(local, fontSize, lineHeight, tag) {
                 var size = fontSize || Math.max(1, local.height);
                 var height = lineHeight || local.height;
@@ -1120,13 +1146,13 @@ class EpubWebLayoutSession(
                 }
                 return fallback;
               }
-              function glyphRectsForLine(node, start, end, baseRect, lineBaseline, style, letterSpacing) {
+              function glyphRectsForLine(node, start, end, baseRect, lineBaseline, style, letterSpacing, advanceOverride) {
                 if (glyphCount >= MAX_GLYPHS) return [];
                 var raw = String(node.nodeValue || '');
                 var slice = raw.substring(start, end);
                 var segments = graphemeSegments(slice);
                 var glyphs = [];
-                var advance = cjkAdvance(style, letterSpacing);
+                var advance = advanceOverride || cjkAdvance(style, letterSpacing);
                 var cursorX = localTextRect(baseRect).left;
                 for (var i = 0; i < segments.length; i++) {
                   if (glyphCount >= MAX_GLYPHS) break;
@@ -1211,19 +1237,22 @@ class EpubWebLayoutSession(
                     if (!lineText || !local) continue;
                     var lineLeft = 0;
                     var lineRight = Math.max(lineLeft + 1, PAGE_W - READER_PAD_LEFT - READER_PAD_RIGHT);
+                    var targetLineWidth = Math.max(1, lineRight - lineLeft);
                     var lineId = local.page + ':' + Math.round(local.top * 10);
                     var measuredWidth = measuredTextWidth(lineText, style, letterSpacing);
-                    if (measuredWidth && measuredWidth > local.width * 1.25 && lineText.length > 1) {
+                    var allowStretch = ${request.textFullJustify} && !isForbiddenLineEnd(lineText);
+                    if (measuredWidth && measuredWidth > targetLineWidth * 0.94 && lineText.length > 1) {
                       var fitLow = startOffset + 1;
-                      var fitHigh = best;
+                      var fitHigh = Math.min(rawText.length, best + 4);
                       var fitBest = fitLow;
                       while (fitLow <= fitHigh) {
                         var fitMid = Math.floor((fitLow + fitHigh) / 2);
                         var fitInfo = lineInfo(node, startOffset, fitMid, baseRect);
                         var fitText = visibleText(fitInfo.text);
                         var fitLocal = localTextRect(fitInfo.rect);
-                        var fitWidth = fitText ? measuredTextWidth(fitText, style, letterSpacing) : null;
-                        if (fitText && fitLocal && (!fitWidth || fitWidth <= fitLocal.width * 1.08)) {
+                        var fitMetrics = fitText ? elasticLineMetrics(fitText, style, letterSpacing, targetLineWidth, allowStretch) : null;
+                        var legalStart = !isForbiddenLineStart(rawText.substring(fitMid).trim());
+                        if (fitText && fitLocal && fitMetrics && fitMetrics.scale >= 0.94 && fitMetrics.scale <= 1.08 && legalStart) {
                           fitBest = fitMid;
                           fitLow = fitMid + 1;
                         } else {
@@ -1236,17 +1265,21 @@ class EpubWebLayoutSession(
                         lineText = visibleText(info.text);
                         local = localTextRect(info.rect);
                         measuredWidth = lineText ? measuredTextWidth(lineText, style, letterSpacing) : null;
+                        allowStretch = ${request.textFullJustify} && !isForbiddenLineEnd(lineText);
                         cursor = Math.max(best, startOffset + 1);
                         if (!lineText || !local) continue;
                         lineId = local.page + ':' + Math.round(local.top * 10);
                       }
                     }
+                    var lineMetrics = elasticLineMetrics(lineText, style, letterSpacing, targetLineWidth, allowStretch);
+                    measuredWidth = lineMetrics.width;
                     pending.push({
                       startOffset: startOffset,
                       endOffset: cursor,
                       lineText: lineText,
                       local: local,
                       measuredWidth: measuredWidth,
+                      effectiveAdvance: lineMetrics.advance,
                       textScaleX: textScaleX,
                       baseRect: baseRect,
                       lineId: lineId,
@@ -1270,7 +1303,8 @@ class EpubWebLayoutSession(
                           fragment.baseRect,
                           fragment.baseline,
                           style,
-                          letterSpacing
+                          letterSpacing,
+                          fragment.effectiveAdvance
                         )
                       : [];
                   }
