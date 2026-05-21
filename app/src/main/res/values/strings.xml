@@ -1928,6 +1928,8 @@ Selected text or question:
     <string name="auto_refresh_media_toc_summary">Refresh the catalog once when an audio or video chapter link is empty or invalid</string>
     <string name="book_info_manage">Book detail manager</string>
     <string name="book_info_manage_summary">Manage book detail page components and order</string>
+    <string name="bubble_manage">Bubble manager</string>
+    <string name="bubble_manage_summary">Manage paragraph comment bubble SVG, colors, size, and sync</string>
     <string name="book_info_components_hint">Enable components and drag to reorder. Changes apply when the detail page is opened again.</string>
     <string name="book_info_component_header">Main book card</string>
     <string name="book_info_component_header_hint">Cover, title, author, latest chapter and tags.</string>
