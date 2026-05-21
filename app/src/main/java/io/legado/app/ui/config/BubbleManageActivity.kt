@@ -196,9 +196,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         selector(entry.config.name, actions.map { it.title }) { _, index ->
             when (actions[index]) {
                 Action.APPLY -> {
-                    BubblePackageManager.apply(entry)
-                    toastOnUi(R.string.success)
-                    loadPackages()
+                    applyEntry(entry)
                 }
                 Action.COPY -> runAction { BubblePackageManager.copyBuiltin() }
                 Action.EDIT -> showEditDialog(entry)
@@ -435,8 +433,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 btnEdit.text = if (entry.source == BubblePackageManager.Source.BUILTIN) "复制" else getString(R.string.edit)
                 btnEdit.visibility = if (entry.source == BubblePackageManager.Source.REMOTE) View.GONE else View.VISIBLE
                 btnApply.setOnClickListener {
-                    BubblePackageManager.apply(entry)
-                    loadPackages()
+                    applyEntry(entry)
                 }
                 btnEdit.setOnClickListener {
                     if (entry.source == BubblePackageManager.Source.BUILTIN) {
@@ -457,6 +454,17 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             BubblePackageManager.Source.LOCAL -> getString(R.string.theme_source_local)
             BubblePackageManager.Source.REMOTE -> getString(R.string.theme_source_remote)
             BubblePackageManager.Source.BOTH -> getString(R.string.theme_source_both)
+        }
+    }
+
+    private fun applyEntry(entry: BubblePackageManager.Entry) {
+        runAction {
+            val localEntry = if (entry.source == BubblePackageManager.Source.REMOTE) {
+                BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
+            } else {
+                entry
+            }
+            BubblePackageManager.apply(localEntry)
         }
     }
 

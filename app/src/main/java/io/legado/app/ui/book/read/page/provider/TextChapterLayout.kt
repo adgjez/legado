@@ -32,6 +32,7 @@ import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
+import io.legado.app.model.ParagraphBubbleRenderer
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -379,11 +380,14 @@ class TextChapterLayout(
             if (isTextImageStyle) {
                 //图片样式为文字嵌入类型
                 val srcList = LinkedList<String>()
+                val clickList = LinkedList<String?>()
                 sb.setLength(0)
                 val matcher = AppPattern.imgPattern.matcher(text)
                 while (matcher.find()) {
                     matcher.group(1)?.let { src ->
-                        srcList.add(src)
+                        val imageInfo = parseImageInfo(src)
+                        srcList.add(imageInfo.renderSrc)
+                        clickList.add(imageInfo.click)
                         matcher.appendReplacement(sb, srcReplaceStr)
                     }
                 }
@@ -398,7 +402,7 @@ class TextChapterLayout(
                     contentPaintFontMetrics,
                     imageStyle,
                     srcList = srcList,
-                    clickList = null
+                    clickList = clickList
                 )
             } else {
                 if (isSingleImageStyle && isSetTypedImage) {
@@ -1673,7 +1677,9 @@ class TextChapterLayout(
                         }
                         when (iStyle?.uppercase()) {
                             "TEXT" -> {
-                                ImageProvider.cacheImage(book, imageInfo.renderSrc, ReadBook.bookSource)
+                                if (!ParagraphBubbleRenderer.isBubbleSrc(imageInfo.renderSrc)) {
+                                    ImageProvider.cacheImage(book, imageInfo.renderSrc, ReadBook.bookSource)
+                                }
                                 columns.add(
                                     ImageColumn(
                                         start = lineAbsStartX + charX,
@@ -1949,6 +1955,7 @@ class TextChapterLayout(
         breakAfterSingleImageIfNeed()
         val widthsArray = allocateFloatArray(text.length)
         textPaint.getTextWidthsCompat(text, widthsArray, reviewCharWidth)
+        applyInlineImageWidths(text, widthsArray, srcList)
         val layout = if (useZhLayout) {
             val (words, widths) = measureTextSplit(text, widthsArray)
             val indentSize = if (isFirstLine) paragraphIndent.length else 0
@@ -2247,7 +2254,9 @@ class TextChapterLayout(
             !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
                 val src = srcList.removeFirst()
                 val click = clickList?.removeFirst()
-                ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                if (!ParagraphBubbleRenderer.isBubbleSrc(src)) {
+                    ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                }
                 ImageColumn(
                     start = absStartX + xStart,
                     end = absStartX + xEnd,
@@ -2272,6 +2281,24 @@ class TextChapterLayout(
             }
         }
         textLine.addColumn(column)
+    }
+
+    private fun applyInlineImageWidths(
+        text: String,
+        widthsArray: FloatArray,
+        srcList: LinkedList<String>?
+    ) {
+        if (srcList.isNullOrEmpty()) return
+        var imageIndex = 0
+        text.forEachIndexed { index, char ->
+            if (char == srcReplaceChar || char == reviewChar) {
+                val src = srcList.getOrNull(imageIndex)
+                if (src != null && ParagraphBubbleRenderer.isBubbleSrc(src)) {
+                    widthsArray[index] = ParagraphBubbleRenderer.inlineWidth(widthsArray[index])
+                }
+                imageIndex++
+            }
+        }
     }
 
     /**
@@ -2335,8 +2362,7 @@ class TextChapterLayout(
         val renderSrc: String,
         val style: String? = null,
         val width: String? = null,
-        val click: String? = null,
-        val isParagraphBubble: Boolean = false
+        val click: String? = null
     )
 
     private companion object {
@@ -2410,8 +2436,7 @@ class TextChapterLayout(
         return ImageInfo(
             renderSrc = "bubble://paragraph?num=${count}&status=${status}",
             style = "TEXT",
-            click = pclick ?: click,
-            isParagraphBubble = true
+            click = pclick ?: click
         )
     }
 

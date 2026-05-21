@@ -7,6 +7,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.utils.SvgUtils
 import java.io.ByteArrayInputStream
+import kotlin.math.roundToInt
 
 object ParagraphBubbleRenderer {
 
@@ -19,8 +20,14 @@ object ParagraphBubbleRenderer {
     fun getSize(src: String): Size {
         val scale = BubblePackageManager.currentEntry().config.sizeScale
             .coerceIn(BubblePackageManager.MIN_SIZE_SCALE, BubblePackageManager.MAX_SIZE_SCALE)
-        val side = (64f * scale).toInt().coerceAtLeast(1)
+        val side = (64f * scale).roundToInt().coerceAtLeast(1)
         return Size(side, side)
+    }
+
+    fun inlineWidth(baseWidth: Float): Float {
+        val scale = BubblePackageManager.currentEntry().config.sizeScale
+            .coerceIn(BubblePackageManager.MIN_SIZE_SCALE, BubblePackageManager.MAX_SIZE_SCALE)
+        return baseWidth * scale
     }
 
     fun cacheKey(src: String, width: Int, height: Int?): String {
@@ -49,17 +56,10 @@ object ParagraphBubbleRenderer {
         val config = BubblePackageManager.currentEntry().config
         val color = resolveColor(config, status(src))
         val number = number(src)
-        val scale = config.sizeScale.coerceIn(
-            BubblePackageManager.MIN_SIZE_SCALE,
-            BubblePackageManager.MAX_SIZE_SCALE
-        )
-        val targetWidth = (width * scale).toInt().coerceAtLeast(1)
-        val targetHeight = height?.let { (it * scale).toInt().coerceAtLeast(1) }
-            ?: targetWidth
         val svg = config.svgTemplate
             .replace("\${color}", color)
             .replace("\${num}", number)
-        return SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), targetWidth, targetHeight)
+        return SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), width.coerceAtLeast(1), height)
     }
 
     private fun resolveColor(config: BubblePackageManager.Config, status: String): String {

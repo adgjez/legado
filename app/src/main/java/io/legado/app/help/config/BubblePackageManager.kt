@@ -135,11 +135,9 @@ object BubblePackageManager {
         val dirName = if (keepOldDir) {
             oldEntry!!.dirName
         } else {
-            normalized.dirName.ifBlank { name.normalizeFileName() }
+            val baseDirName = normalized.dirName.ifBlank { name.normalizeFileName() }
                 .ifBlank { "bubble_${System.currentTimeMillis()}" }
-        }
-        if (!keepOldDir && readEntry(localDir(dirName)) != null) {
-            throw IllegalArgumentException("已存在同名气泡")
+            uniqueDirName(baseDirName)
         }
         val dir = localDir(dirName).apply { mkdirs() }
         val next = normalized.copy(
@@ -153,7 +151,7 @@ object BubblePackageManager {
 
     fun copyBuiltin(): Entry {
         val base = builtinConfig().copy(name = "内置段评气泡 副本")
-        return addOrUpdate(base.copy(dirName = "builtin_default_copy"))
+        return addOrUpdate(base.copy(dirName = ""))
     }
 
     fun deleteLocal(entry: Entry) {
