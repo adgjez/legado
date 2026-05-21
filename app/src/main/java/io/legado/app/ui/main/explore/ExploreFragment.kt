@@ -14,10 +14,15 @@ import android.view.MenuItem
 import android.widget.PopupWindow
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
 import android.view.SubMenu
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
+import androidx.appcompat.widget.AppCompatSpinner
+import androidx.core.widget.NestedScrollView
+import com.google.android.flexbox.FlexboxLayout
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
 import androidx.core.view.isGone
@@ -40,6 +45,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.databinding.ItemFilletSelectorSingleBinding
+import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.FragmentExploreBinding
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
@@ -50,7 +57,6 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
@@ -589,40 +595,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         var dialog: AlertDialog? = null
         var filteredItems = allItems
         var filterKey = ""
-        val adapter = object : RecyclerView.Adapter<DiscoverKindDialogViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DiscoverKindDialogViewHolder {
-                return DiscoverKindDialogViewHolder(DiscoverKindDialogRow(parent.context))
-            }
-
-            override fun getItemCount(): Int = filteredItems.size
-
-            override fun onBindViewHolder(holder: DiscoverKindDialogViewHolder, position: Int) {
-                val item = filteredItems[position]
-                holder.bind(discoverDialogLabel(item)) {
-                    when (item.role) {
-                        DiscoverTagItem.Role.UrlTag -> {
-                            dialog?.dismiss()
-                            val index = discoverTagItems.indexOfFirst {
-                                it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == item.kind.url
-                            }
-                            if (!item.group.isNullOrBlank()) {
-                                selectedDiscoverMajorGroup = item.group
-                                applyDiscoverTagFilterAndSelect(preferredUrl = item.kind.url)
-                            } else if (index >= 0) {
-                                selectDiscoverTag(index, item, selectTab = true)
-                            } else {
-                                selectDiscoverTag(0, item, selectTab = false)
-                            }
-                        }
-                        DiscoverTagItem.Role.GlobalSelect -> showDiscoverSelectDialog(item)
-                        DiscoverTagItem.Role.Toggle -> handleDiscoverToggleFromDialog(item) {
-                            filteredItems = filterDiscoverDialogItems(allItems, filterKey)
-                            adapter.notifyDataSetChanged()
-                        }
-                        DiscoverTagItem.Role.ActionButton,
-                        DiscoverTagItem.Role.ScriptUrl -> handleDiscoverButtonTag(item)
-                    }
-                }
+        lateinit var flexbox: FlexboxLayout
+        fun renderItems() {
+            flexbox.removeAllViews()
+            filteredItems.forEach { item ->
+                flexbox.addView(createDiscoverDialogControl(item, dialog) {
+                    filteredItems = filterDiscoverDialogItems(allItems, filterKey)
+                    renderItems()
+                })
             }
         }
         val searchView = SearchView(context).apply {
@@ -640,16 +620,25 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 override fun onQueryTextChange(newText: String?): Boolean {
                     filterKey = newText.orEmpty()
                     filteredItems = filterDiscoverDialogItems(allItems, filterKey)
-                    adapter.notifyDataSetChanged()
+                    renderItems()
                     return true
                 }
             })
         }
         searchView.applyUiBodyTypefaceDeep(context.uiTypeface())
-        val recyclerView = RecyclerView(context).apply {
-            layoutManager = LinearLayoutManager(context)
-            this.adapter = adapter
+        flexbox = FlexboxLayout(context).apply {
+            setPadding(3.dpToPx(), 3.dpToPx(), 3.dpToPx(), 3.dpToPx())
+            clipToPadding = false
+        }
+        val scrollView = NestedScrollView(context).apply {
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                flexbox,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 420.dpToPx()
@@ -685,13 +674,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     42.dpToPx()
                 )
             )
-            addView(recyclerView)
+            addView(scrollView)
         }
         dialog = AlertDialog.Builder(context)
             .setView(container)
             .create()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        renderItems()
     }
 
     private fun filterDiscoverDialogItems(items: List<DiscoverTagItem>, key: String): List<DiscoverTagItem> {
@@ -706,6 +696,115 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 item.kind.action
             ).any { it.toString().contains(query, ignoreCase = true) }
         }
+    }
+
+    private fun createDiscoverDialogControl(
+        item: DiscoverTagItem,
+        dialog: AlertDialog?,
+        refresh: () -> Unit
+    ): View {
+        return when (item.role) {
+            DiscoverTagItem.Role.GlobalSelect -> createDiscoverDialogSelect(item)
+            else -> createDiscoverDialogText(item, dialog, refresh)
+        }
+    }
+
+    private fun createDiscoverDialogText(
+        item: DiscoverTagItem,
+        dialog: AlertDialog?,
+        refresh: () -> Unit
+    ): View {
+        val binding = ItemFilletTextBinding.inflate(layoutInflater, null, false)
+        binding.textView.text = discoverDialogLabel(item)
+        binding.textView.maxLines = 1
+        binding.textView.ellipsize = TextUtils.TruncateAt.END
+        binding.textView.setPadding(16.dpToPx(), 4.dpToPx(), 16.dpToPx(), 4.dpToPx())
+        applyDiscoverDialogFlexStyle(binding.root, item)
+        binding.root.setOnClickListener {
+            when (item.role) {
+                DiscoverTagItem.Role.UrlTag -> {
+                    dialog?.dismiss()
+                    if (!item.group.isNullOrBlank()) {
+                        selectedDiscoverMajorGroup = item.group
+                        applyDiscoverTagFilterAndSelect(preferredUrl = item.kind.url)
+                    } else {
+                        val index = discoverTagItems.indexOfFirst {
+                            it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == item.kind.url
+                        }
+                        if (index >= 0) {
+                            selectDiscoverTag(index, item, selectTab = true)
+                        } else {
+                            selectDiscoverTag(0, item, selectTab = false)
+                        }
+                    }
+                }
+                DiscoverTagItem.Role.Toggle -> handleDiscoverToggleFromDialog(item, refresh)
+                DiscoverTagItem.Role.ActionButton,
+                DiscoverTagItem.Role.ScriptUrl -> handleDiscoverButtonTag(item)
+                DiscoverTagItem.Role.GlobalSelect -> Unit
+            }
+        }
+        return binding.root
+    }
+
+    private fun createDiscoverDialogSelect(item: DiscoverTagItem): View {
+        val binding = ItemFilletSelectorSingleBinding.inflate(layoutInflater, null, false)
+        binding.spName.text = item.text
+        val source = selectedDiscoverSource ?: return binding.root
+        val key = item.kind.title
+        val options = item.kind.chars?.filterNotNull() ?: emptyList()
+        val adapter = ArrayAdapter(requireContext(), R.layout.item_text_common, options)
+        adapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
+        binding.spType.adapter = adapter
+        val current = currentDiscoverSelectValue(item)
+        binding.spType.setSelection(options.indexOf(current).coerceAtLeast(0), false)
+        binding.spType.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            var initializing = true
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (initializing) {
+                    initializing = false
+                    return
+                }
+                if (position !in options.indices || key.isBlank()) return
+                val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
+                infoMap[key] = options[position]
+                viewLifecycleOwner.lifecycleScope.launch(IO) {
+                    source.clearExploreKindsCache()
+                    item.kind.action?.takeIf { it.isNotBlank() }?.let { action ->
+                        val script = normalizeDiscoverActionScript(action)
+                        runScriptWithContext {
+                            source.evalJS(script) {
+                                put("java", SourceLoginJsExtensions(activity as? AppCompatActivity, source))
+                                put("infoMap", infoMap)
+                            }
+                        }
+                    }
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        loadDiscoverKindsAndDefault()
+                    }
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        applyDiscoverDialogFlexStyle(binding.root, item)
+        return binding.root
+    }
+
+    private fun applyDiscoverDialogFlexStyle(view: View, item: DiscoverTagItem) {
+        val style = item.kind.style()
+        val params = FlexboxLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            setMargins(3.dpToPx(), 3.dpToPx(), 3.dpToPx(), 3.dpToPx())
+            flexGrow = style.layout_flexGrow
+            flexShrink = style.layout_flexShrink
+            alignSelf = style.alignSelf()
+            flexBasisPercent = style.layout_flexBasisPercent
+            isWrapBefore = style.layout_wrapBefore
+        }
+        view.layoutParams = params
     }
 
     private fun discoverDialogLabel(item: DiscoverTagItem): CharSequence {
@@ -725,7 +824,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         return "$prefix${item.text}$value$group"
     }
 
-    private fun handleDiscoverToggleFromDialog(item: DiscoverTagItem, refresh: (String) -> Unit) {
+    private fun handleDiscoverToggleFromDialog(item: DiscoverTagItem, refresh: () -> Unit) {
         val source = selectedDiscoverSource ?: return
         val key = item.kind.title
         if (key.isBlank()) return
@@ -736,41 +835,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val currentIndex = chars.indexOf(current).takeIf { it >= 0 } ?: 0
         val next = chars.getOrNull(currentIndex + 1) ?: chars.first()
         infoMap[key] = next
-        refresh("")
+        refresh()
         handleDiscoverButtonTag(item.copy(text = resolveDiscoverToggleText(item.kind, next).limitDiscoverText(8)))
-    }
-
-    private class DiscoverKindDialogRow(context: android.content.Context) : TextView(context) {
-        init {
-            layoutParams = RecyclerView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            minHeight = 48.dpToPx()
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            applyUiLabelStyle(context)
-            textSize = 15f
-            setPadding(18.dpToPx(), 0, 18.dpToPx(), 0)
-            background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                androidx.core.content.ContextCompat.getColor(context, R.color.background_menu),
-                UiCorner.actionRadius(context)
-            )
-            isClickable = true
-            isFocusable = true
-        }
-    }
-
-    private class DiscoverKindDialogViewHolder(
-        private val rowView: DiscoverKindDialogRow
-    ) : RecyclerView.ViewHolder(rowView) {
-        fun bind(title: CharSequence, onClick: () -> Unit) {
-            rowView.text = title
-            rowView.setOnClickListener { onClick() }
-        }
     }
 
     private fun selectDiscoverSource(source: BookSourcePart) {
