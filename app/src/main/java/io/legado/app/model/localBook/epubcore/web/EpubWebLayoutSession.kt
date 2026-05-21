@@ -51,6 +51,18 @@ class EpubWebLayoutSession(
         }
     }
 
+    fun debugPayload(request: EpubWebLayoutRequest): EpubWebDebugPayload {
+        return EpubWebDebugPayload(
+            request = request,
+            baseUrl = buildBaseUrl(request.chapterHref),
+            html = wrapHtml(request)
+        )
+    }
+
+    fun debugResource(url: String?, request: EpubWebLayoutRequest): WebResourceResponse? {
+        return archiveResponse(url, request)
+    }
+
     private suspend fun layoutLocked(request: EpubWebLayoutRequest): EpubWebLayoutDocument? {
         return suspendCancellableCoroutine { continuation ->
             val token = ++layoutToken

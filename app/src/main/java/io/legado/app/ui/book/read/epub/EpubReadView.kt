@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
+import android.widget.TextView
 import android.widget.FrameLayout
 import android.widget.Magnifier
 import android.widget.Scroller
@@ -66,6 +67,7 @@ class EpubReadView @JvmOverloads constructor(
             generation: Long,
             pageKey: String
         ): Boolean = false
+        fun onWebDebugRequested() = Unit
     }
 
     data class SelectionAnchor(
@@ -118,6 +120,19 @@ class EpubReadView @JvmOverloads constructor(
     private val nextSlot = EpubPageSlotView(context, renderer)
     private val nextPlusSlot = EpubPageSlotView(context, renderer)
     private val currentSlot = EpubPageSlotView(context, renderer)
+    private val webDebugButton = TextView(context).apply {
+        text = "WEB"
+        textSize = 11f
+        setTextColor(0xFFFFFFFF.toInt())
+        gravity = android.view.Gravity.CENTER
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 10f
+            setColor(0xAA222222.toInt())
+        }
+        alpha = 0.75f
+        setOnClickListener { listener?.onWebDebugRequested() }
+    }
     private val horizontalScroller = Scroller(context, LinearInterpolator())
     private val linkedHorizontalScroller = Scroller(context, PathInterpolator(0.4f, 0f, 0.2f, 1f))
     private val verticalScroller = Scroller(context)
@@ -276,7 +291,18 @@ class EpubReadView @JvmOverloads constructor(
         addView(nextSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(nextPlusSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(currentSlot, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(
+            webDebugButton,
+            LayoutParams(dp(52), dp(32), android.view.Gravity.END or android.view.Gravity.TOP).apply {
+                topMargin = dp(72)
+                rightMargin = dp(12)
+            }
+        )
         resetSlotVisibility()
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density + 0.5f).toInt()
     }
 
     fun setListener(listener: Listener?) {

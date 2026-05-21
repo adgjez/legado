@@ -26,6 +26,12 @@ data class EpubWebLayoutRequest(
     val timeoutMillis: Long = 12_000L
 )
 
+data class EpubWebDebugPayload(
+    val request: EpubWebLayoutRequest,
+    val baseUrl: String,
+    val html: String
+)
+
 data class EpubWebLayoutDocument(
     val protocolVersion: Int,
     val chapterIndex: Int,

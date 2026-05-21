@@ -17,6 +17,7 @@ import io.legado.app.model.localBook.epubcore.pkg.EpubPackageParser
 import io.legado.app.model.localBook.epubcore.toc.EpubTocParser
 import io.legado.app.model.localBook.epubcore.toc.TocItem
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutAdapter
+import io.legado.app.model.localBook.epubcore.web.EpubWebDebugPayload
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutJsonParser
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutSession
@@ -27,6 +28,7 @@ import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import android.os.SystemClock
+import android.webkit.WebResourceResponse
 import splitties.init.appCtx
 import java.io.Closeable
 import java.io.File
@@ -93,6 +95,16 @@ class EpubCoreFacade private constructor(
         return peekCanonicalPages(canonicalChapter, config)
     }
 
+    fun debugWebPayload(chapterIndex: Int, config: EpubCoreLayoutConfig): EpubWebDebugPayload {
+        val chapter = chapters.getOrNull(chapterIndex) ?: error("Chapter index out of range: $chapterIndex")
+        val resolvedChapter = resolveChapter(chapter)
+        return getWebLayoutSession(null).debugPayload(buildWebLayoutRequest(resolvedChapter, config))
+    }
+
+    fun debugWebResource(url: String?, request: EpubWebLayoutRequest): WebResourceResponse? {
+        return getWebLayoutSession(null).debugResource(url, request)
+    }
+
     private fun peekCanonicalPages(
         chapter: BookChapter,
         config: EpubCoreLayoutConfig
@@ -145,31 +157,8 @@ class EpubCoreFacade private constructor(
         val startedAt = SystemClock.elapsedRealtime()
         val html = readChapterHtml(resolvedChapter, href)
         val readAt = SystemClock.elapsedRealtime()
-        val lineHeight = (paint.textSize * config.lineSpacingMultiplier + config.lineSpacingExtraPx)
-            .coerceAtLeast(paint.textSize)
         val document = getWebLayoutSession(backgroundSlot).layout(
-            EpubWebLayoutRequest(
-                chapterIndex = chapter.index,
-                chapterHref = href,
-                title = chapter.title.ifBlank { resolvedChapter.title },
-                html = html,
-                startFragmentId = resolvedChapter.startFragmentId,
-                endFragmentId = resolvedChapter.endFragmentId,
-                viewportWidthPx = config.pageWidthPx,
-                viewportHeightPx = config.pageHeightPx,
-                fontSizePx = paint.textSize,
-                textColor = paint.color,
-                lineHeightPx = lineHeight,
-                readerPaddingLeftPx = config.readerPaddingLeftPx,
-                readerPaddingTopPx = config.readerPaddingTopPx,
-                readerPaddingRightPx = config.readerPaddingRightPx,
-                readerPaddingBottomPx = config.readerPaddingBottomPx,
-                readerFontFamily = config.readerFontFamily,
-                readerFontUrl = config.readerFontUrl,
-                readerFontPath = config.readerFontPath,
-                letterSpacingEm = paint.letterSpacing,
-                textFullJustify = config.textFullJustify
-            )
+            buildWebLayoutRequest(resolvedChapter, config, html)
         ) ?: error("EPUB Web layout failed")
         val layoutAt = SystemClock.elapsedRealtime()
         val pages = webLayoutAdapter.toPages(document).takeIf { it.isNotEmpty() }
@@ -183,6 +172,39 @@ class EpubCoreFacade private constructor(
         cache.putPages(key, pages)
         EpubCoreDiskCache.writeLayoutRaw(bookCacheDir, bookSignature, key, io.legado.app.utils.GSON.toJson(document))
         return pages
+    }
+
+    private fun buildWebLayoutRequest(
+        chapter: BookChapter,
+        config: EpubCoreLayoutConfig,
+        html: String = readChapterHtml(chapter, EpubPath.stripFragment(chapter.url))
+    ): EpubWebLayoutRequest {
+        val href = EpubPath.stripFragment(chapter.url)
+        val paint = config.textPaint
+        val lineHeight = (paint.textSize * config.lineSpacingMultiplier + config.lineSpacingExtraPx)
+            .coerceAtLeast(paint.textSize)
+        return EpubWebLayoutRequest(
+            chapterIndex = chapter.index,
+            chapterHref = href,
+            title = chapter.title,
+            html = html,
+            startFragmentId = chapter.startFragmentId,
+            endFragmentId = chapter.endFragmentId,
+            viewportWidthPx = config.pageWidthPx,
+            viewportHeightPx = config.pageHeightPx,
+            fontSizePx = paint.textSize,
+            textColor = paint.color,
+            lineHeightPx = lineHeight,
+            readerPaddingLeftPx = config.readerPaddingLeftPx,
+            readerPaddingTopPx = config.readerPaddingTopPx,
+            readerPaddingRightPx = config.readerPaddingRightPx,
+            readerPaddingBottomPx = config.readerPaddingBottomPx,
+            readerFontFamily = config.readerFontFamily,
+            readerFontUrl = config.readerFontUrl,
+            readerFontPath = config.readerFontPath,
+            letterSpacingEm = paint.letterSpacing,
+            textFullJustify = config.textFullJustify
+        )
     }
 
     private fun pageCacheKey(chapter: BookChapter, config: EpubCoreLayoutConfig): String {
