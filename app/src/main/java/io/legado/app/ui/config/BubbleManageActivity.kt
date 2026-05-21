@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.AppCloudStorage
@@ -36,6 +37,7 @@ import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.model.ImageProvider
 import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
@@ -43,6 +45,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -198,11 +201,13 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 Action.APPLY -> {
                     applyEntry(entry)
                 }
-                Action.COPY -> runAction { BubblePackageManager.copyBuiltin() }
+                Action.COPY -> runAction(refreshReading = false) { BubblePackageManager.copyBuiltin() }
                 Action.EDIT -> showEditDialog(entry)
                 Action.EXPORT -> exportZip(entry)
                 Action.UPLOAD -> enqueueUpload(entry)
-                Action.DOWNLOAD -> runAction { BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
+                Action.DOWNLOAD -> runAction(refreshReading = false) {
+                    BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
+                }
                 Action.DELETE_LOCAL -> confirmDelete { BubblePackageManager.deleteLocal(entry) }
                 Action.DELETE_REMOTE -> confirmDelete { BubblePackageManager.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE) }
                 Action.DELETE_BOTH -> confirmDelete {
@@ -235,7 +240,9 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     nightNormalColor = views.nightNormal.text?.toString(),
                     nightEmphasisColor = views.nightEmphasis.text?.toString()
                 )
-                runAction { BubblePackageManager.addOrUpdate(next, entry) }
+                runAction(refreshReading = entry?.dirName == BubblePackageManager.activeDirName()) {
+                    BubblePackageManager.addOrUpdate(next, entry)
+                }
             }
             cancelButton()
         }
@@ -345,13 +352,21 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
-    private fun runAction(block: suspend () -> Unit) {
+    private fun runAction(refreshReading: Boolean = true, block: suspend () -> Unit) {
         lifecycleScope.launch {
             kotlin.runCatching { withContext(Dispatchers.IO) { block() } }
-                .onSuccess { toastOnUi(R.string.success) }
+                .onSuccess {
+                    toastOnUi(R.string.success)
+                    if (refreshReading) notifyBubbleChanged()
+                }
                 .onFailure { toastOnUi(it.localizedMessage) }
             loadPackages()
         }
+    }
+
+    private fun notifyBubbleChanged() {
+        ImageProvider.clear()
+        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
     }
 
     private fun previewBitmap(config: BubblePackageManager.Config) = runCatching {
@@ -437,7 +452,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 }
                 btnEdit.setOnClickListener {
                     if (entry.source == BubblePackageManager.Source.BUILTIN) {
-                        runAction { BubblePackageManager.copyBuiltin() }
+                        runAction(refreshReading = false) { BubblePackageManager.copyBuiltin() }
                     } else {
                         showEditDialog(entry)
                     }
