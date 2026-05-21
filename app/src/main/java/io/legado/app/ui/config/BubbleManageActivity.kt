@@ -347,7 +347,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun confirmDelete(block: suspend () -> Unit) {
         alert(getString(R.string.delete), getString(R.string.sure_del)) {
-            yesButton { runAction(block) }
+            yesButton { runAction(block = block) }
             noButton()
         }
     }
