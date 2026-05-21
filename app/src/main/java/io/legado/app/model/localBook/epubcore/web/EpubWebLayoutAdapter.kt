@@ -44,7 +44,7 @@ class EpubWebLayoutAdapter {
         return when (this) {
             is EpubWebTextFragment -> {
                 if (text.isBlank() || frame.isEmpty) return null
-                val normalizedGlyphs = normalizeGlyphsToCjkAdvance()
+                val normalizedGlyphs = normalizeGlyphs()
                 val normalizedFrame = normalizedGlyphs.normalizedFrame(frame)
                 val normalizedWidth = normalizedGlyphs.normalizedWidth(frame)
                 EpubMeasuredTextFragment(
@@ -265,15 +265,16 @@ class EpubWebLayoutAdapter {
         }
     }
 
-    private fun EpubWebTextFragment.normalizeGlyphsToCjkAdvance(): List<EpubMeasuredGlyph> {
+    private fun EpubWebTextFragment.normalizeGlyphs(): List<EpubMeasuredGlyph> {
         if (glyphs.isEmpty()) return emptyList()
         if (kind != EpubWebTextFragmentKind.Text) {
             return glyphs.map { it.toMeasuredGlyph() }
         }
-        val advance = normalizedCjkAdvance()
-        if (!advance.isFinite() || advance <= 0f) {
+        if (glyphs.hasValidAdvances()) {
             return glyphs.map { it.toMeasuredGlyph() }
         }
+        val advance = normalizedCjkAdvance()
+        if (!advance.isFinite() || advance <= 0f) return glyphs.map { it.toMeasuredGlyph() }
         val startX = glyphs.minOfOrNull { it.xPx } ?: frame.left
         var cursorX = startX
         return glyphs.map { glyph ->
@@ -283,6 +284,13 @@ class EpubWebLayoutAdapter {
             )
             cursorX += advance
             measured
+        }
+    }
+
+    private fun List<EpubWebGlyph>.hasValidAdvances(): Boolean {
+        if (isEmpty()) return false
+        return all { glyph ->
+            glyph.xPx.isFinite() && glyph.widthPx.isFinite() && glyph.widthPx > 0f
         }
     }
 
