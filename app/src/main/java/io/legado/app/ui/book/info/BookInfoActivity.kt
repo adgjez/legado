@@ -1413,6 +1413,9 @@ class BookInfoActivity :
     }
 
     private fun upLoading(isLoading: Boolean, chapterList: List<BookChapter>? = null) {
+        if (!isLoading) {
+            binding.refreshLayout.isRefreshing = false
+        }
         when {
             isLoading -> {
                 binding.tvToc.text = getString(R.string.toc_s, getString(R.string.loading))
