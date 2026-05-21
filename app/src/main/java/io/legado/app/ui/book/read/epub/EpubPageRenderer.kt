@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.os.Build
 import android.text.TextPaint
 import io.legado.app.model.localBook.epubcore.font.EpubTypefaceResolver
 import io.legado.app.model.localBook.epubcore.image.EpubImageResolver
@@ -203,33 +202,36 @@ class EpubPageRenderer {
         }
         // Paragraph-ending short lines should stay ragged; only stretch almost-full visual lines.
         if (residualWidth > targetWidth * 0.22f) return false
-        val oldLetterSpacing = fallbackTextPaint.letterSpacing
-        val oldWordSpacing = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            fallbackTextPaint.wordSpacing
+        val glyphs = text.toGlyphUnits()
+        if (glyphs.size < 2) return false
+        val spaceCount = glyphs.count { it == " " }
+        val extraSpacing = if (spaceCount > 1) {
+            residualWidth / spaceCount
         } else {
-            0f
+            val gapCount = glyphs.lastIndex
+            if (gapCount <= 0) return false
+            val extra = residualWidth / gapCount
+            if (!extra.isFinite() || extra > fallbackTextPaint.textSize * 0.45f) return false
+            extra
         }
-        return try {
-            val spaceCount = text.countJustifiableSpaces()
-            if (spaceCount > 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                fallbackTextPaint.wordSpacing = oldWordSpacing + residualWidth / spaceCount
-                canvas.drawText(text, rect.left, rect.top + baseline, fallbackTextPaint)
-                true
+        if (!extraSpacing.isFinite()) return false
+        val lineOffset = if (spaceCount > 1) 0f else -extraSpacing * 0.5f
+        var x = rect.left + lineOffset
+        val baselineY = rect.top + baseline
+        glyphs.forEachIndexed { index, glyph ->
+            if (glyph.isEmpty()) return@forEachIndexed
+            val glyphWidth = fallbackTextPaint.measureText(glyph)
+            val nextX = if (spaceCount > 1 && glyph == " " && index != glyphs.lastIndex) {
+                x + glyphWidth + extraSpacing
+            } else if (spaceCount <= 1 && index != glyphs.lastIndex) {
+                x + glyphWidth + extraSpacing
             } else {
-                val gapCount = text.countJustifiableGaps()
-                if (gapCount <= 0) return false
-                val extraPx = residualWidth / gapCount
-                if (!extraPx.isFinite() || extraPx > fallbackTextPaint.textSize * 0.45f) return false
-                fallbackTextPaint.letterSpacing = oldLetterSpacing + extraPx / fallbackTextPaint.textSize
-                canvas.drawText(text, rect.left, rect.top + baseline, fallbackTextPaint)
-                true
+                x + glyphWidth
             }
-        } finally {
-            fallbackTextPaint.letterSpacing = oldLetterSpacing
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                fallbackTextPaint.wordSpacing = oldWordSpacing
-            }
+            canvas.drawText(glyph, x, baselineY, fallbackTextPaint)
+            x = nextX
         }
+        return true
     }
 
     private fun configureMeasuredTextPaint(fragment: EpubMeasuredTextFragment) {
@@ -237,7 +239,7 @@ class EpubPageRenderer {
         fallbackTextPaint.isAntiAlias = true
         fallbackTextPaint.color = (fragment.color ?: textColor).withAlpha((fragment.opacity.coerceIn(0f, 1f) * 255).toInt())
         fallbackTextPaint.textSize = fragment.resolvedMeasuredTextSize()
-        fallbackTextPaint.textScaleX = 1f
+        fallbackTextPaint.textScaleX = fragment.textScaleX?.takeIf { it.isFinite() && it > 0f } ?: 1f
         if (fallbackTextPaint.textSize > 0f) {
             fallbackTextPaint.letterSpacing = ((fragment.letterSpacingPx ?: 0f) / fallbackTextPaint.textSize)
                 .takeIf { it.isFinite() }
@@ -622,29 +624,20 @@ class EpubPageRenderer {
 
     private fun String.isJustifiableLineText(): Boolean {
         if (length < 2 || contains('\n')) return false
-        val trimmed = trim()
-        if (trimmed.length < 2) return false
-        if (trimmed.length < length) return false
-        return true
+        return any { !it.isWhitespace() }
     }
 
-    private fun String.countJustifiableSpaces(): Int {
-        var count = 0
-        forEachIndexed { index, char ->
-            if (index < lastIndex && char == ' ') count++
+    private fun String.toGlyphUnits(): List<String> {
+        if (isEmpty()) return emptyList()
+        val glyphs = ArrayList<String>(length)
+        var index = 0
+        while (index < length) {
+            val codePoint = codePointAt(index)
+            val charCount = Character.charCount(codePoint)
+            glyphs += substring(index, (index + charCount).coerceAtMost(length))
+            index += charCount
         }
-        return count
-    }
-
-    private fun String.countJustifiableGaps(): Int {
-        var gaps = 0
-        var previousWasDrawable = false
-        forEach { char ->
-            val drawable = !char.isWhitespace()
-            if (previousWasDrawable && drawable) gaps++
-            previousWasDrawable = drawable
-        }
-        return gaps
+        return glyphs
     }
 
     private fun drawChildren(canvas: Canvas, children: List<EpubPageFragment>, offsetX: Float, offsetY: Float) {
