@@ -246,7 +246,7 @@ object EpubPageSelectorBuilder {
                 )
                 if (rect.width() > 0f && rect.height() > 0f) {
                     rects += rect
-                    paths += line.selectionPath(lineFrom, lineTo, offsetX, offsetY) ?: Path().apply {
+                    paths += Path().apply {
                         addRect(rect, Path.Direction.CW)
                     }
                     if (anchorStart == null) anchorStart = rect
@@ -297,24 +297,6 @@ object EpubPageSelectorBuilder {
         val length = line.textEnd - line.textStart
         val ratio = (offset - line.textStart).toFloat().coerceIn(0f, length.toFloat()) / length.toFloat()
         return line.rect.left + line.rect.width() * ratio
-    }
-
-    private fun EpubSelectableLine.selectionPath(
-        lineFrom: Int,
-        lineTo: Int,
-        offsetX: Float,
-        offsetY: Float
-    ): Path? {
-        val layout = layout ?: return null
-        val layoutLineIndex = layoutLineIndex ?: return null
-        val sourceFrom = (sourceStart + lineFrom - textStart).coerceIn(sourceStart, sourceEnd)
-        val sourceTo = (sourceStart + lineTo - textStart).coerceIn(sourceFrom, sourceEnd)
-        if (sourceTo <= sourceFrom) return null
-        val path = Path()
-        layout.getSelectionPath(sourceFrom, sourceTo, path)
-        val originY = rect.top - layout.getLineTop(layoutLineIndex)
-        path.offset(textOriginX + offsetX, originY + offsetY)
-        return path
     }
 
     private data class AbsoluteTextFragment(

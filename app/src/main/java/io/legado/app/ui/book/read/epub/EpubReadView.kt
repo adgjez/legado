@@ -1974,14 +1974,8 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun drawSelectionOverlay(canvas: Canvas) {
         val highlight = selectionHighlight ?: return
-        if (highlight.paths.isNotEmpty()) {
-            highlight.paths.forEach { path ->
-                canvas.drawPath(path, selectionPaint)
-            }
-        } else {
-            highlight.rects.forEach { rect ->
-                canvas.drawRect(rect, selectionPaint)
-            }
+        highlight.rects.forEach { rect ->
+            canvas.drawRect(rect, selectionPaint)
         }
     }
 
