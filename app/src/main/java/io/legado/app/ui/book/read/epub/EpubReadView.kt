@@ -144,6 +144,7 @@ class EpubReadView @JvmOverloads constructor(
             useWideViewPort = false
             loadWithOverviewMode = false
         }
+        setInitialScale(webInitialScalePercent())
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         visibility = View.INVISIBLE
         setOnTouchListener { _, event ->
@@ -338,6 +339,11 @@ class EpubReadView @JvmOverloads constructor(
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density + 0.5f).toInt()
+    }
+
+    private fun webInitialScalePercent(): Int {
+        val density = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        return ((1f / density) * 100f).toInt().coerceAtLeast(1)
     }
 
     fun setListener(listener: Listener?) {

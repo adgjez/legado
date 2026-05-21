@@ -585,6 +585,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 useWideViewPort = true
                 loadWithOverviewMode = false
             }
+            val density = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+            setInitialScale(((1f / density) * 100f).toInt().coerceAtLeast(1))
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             webViewClient = EpubWebDebugClient(book, payload)
             loadDataWithBaseURL(payload.baseUrl, payload.html, "text/html", "UTF-8", null)

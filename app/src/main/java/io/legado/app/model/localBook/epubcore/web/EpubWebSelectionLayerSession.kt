@@ -242,8 +242,13 @@ class EpubWebSelectionLayerSession(
                     mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 }
             }
+            setInitialScale(webInitialScalePercent())
             setBackgroundColor(Color.TRANSPARENT)
         }.also { webView = it }
+    }
+
+    private fun webInitialScalePercent(): Int {
+        return (webPageScale() * 100f).toInt().coerceAtLeast(1)
     }
 
     private fun buildSelectionJs(
@@ -933,19 +938,37 @@ class EpubWebSelectionLayerSession(
 
     private fun wrapHtml(request: EpubWebLayoutRequest): String {
         val css = buildReaderCss(request)
-        val html = request.html
+        val viewport = buildViewportMeta(request)
+        val html = stripViewportMeta(request.html)
         val headClose = Regex("</head\\s*>", RegexOption.IGNORE_CASE)
         val htmlTag = Regex("<html[\\s>]", RegexOption.IGNORE_CASE)
         return if (headClose.containsMatchIn(html)) {
-            html.replace(headClose, "<style id=\"legado-reader-css\">$css</style></head>")
+            html.replace(headClose, "$viewport<style id=\"legado-reader-css\">$css</style></head>")
         } else if (htmlTag.containsMatchIn(html)) {
             html.replaceFirst(
                 Regex("<html([^>]*)>", RegexOption.IGNORE_CASE),
-                "<html$1><head><style id=\"legado-reader-css\">$css</style></head>"
+                "<html$1><head>$viewport<style id=\"legado-reader-css\">$css</style></head>"
             )
         } else {
-            "<html><head><style id=\"legado-reader-css\">$css</style></head><body>$html</body></html>"
+            "<html><head>$viewport<style id=\"legado-reader-css\">$css</style></head><body>$html</body></html>"
         }
+    }
+
+    private fun buildViewportMeta(request: EpubWebLayoutRequest): String {
+        val scale = webPageScale()
+        return "<meta name=\"viewport\" content=\"width=${request.viewportWidthPx}, initial-scale=$scale, minimum-scale=$scale, maximum-scale=$scale, user-scalable=no\">"
+    }
+
+    private fun stripViewportMeta(html: String): String {
+        return html.replace(
+            Regex("<meta\\b(?=[^>]*\\bname\\s*=\\s*['\"]?viewport['\"]?)[^>]*>", RegexOption.IGNORE_CASE),
+            ""
+        )
+    }
+
+    private fun webPageScale(): Float {
+        val density = appCtx.resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        return 1f / density
     }
 
     private fun buildReaderCss(request: EpubWebLayoutRequest): String {
