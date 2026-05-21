@@ -571,14 +571,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun updateSearchScopeFromTag(group: String) {
         viewModel.searchScope.update(group)
-        searchView.query?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { key ->
-            isManualStopSearch = false
-            viewModel.stop()
-            viewModel.saveSearchKey(key)
-            viewModel.searchKey = ""
-            viewModel.search(key)
-            visibleInputHelp(false)
-        }
+        updateSourceGroupTags()
     }
 
     /**
