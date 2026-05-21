@@ -1,6 +1,9 @@
 package io.legado.app.ui.main.explore
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -13,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.view.SubMenu
 import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
@@ -45,9 +49,14 @@ import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.applyUiLabelStyle
+import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.explore.ExploreShowAdapter
 import io.legado.app.ui.book.explore.ExploreShowActivity
@@ -386,8 +395,21 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.topBar.titleSelect.setOnClickListener {
             showDiscoverSourceMenu()
         }
+        binding.topBar.titleSelect.setOnLongClickListener {
+            showDiscoverKindsDialog()
+            true
+        }
         binding.topBar.primaryBar.setOnTagClickListener { index ->
             discoverSources.getOrNull(index)?.let(::selectDiscoverSource)
+        }
+        binding.topBar.primaryBar.setOnTagLongClickListener { index ->
+            discoverSources.getOrNull(index)?.let { source ->
+                if (source.bookSourceUrl != selectedDiscoverSourcePart?.bookSourceUrl) {
+                    selectDiscoverSource(source)
+                }
+                binding.topBar.post { showDiscoverKindsDialog() }
+            }
+            true
         }
         binding.topBar.searchEntry.setOnClickListener {
             openDiscoverSearch()
@@ -553,6 +575,201 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             itemKey = { it.bookSourceUrl }
         ) {
             selectDiscoverSource(it)
+        }
+    }
+
+    private fun showDiscoverKindsDialog() {
+        val context = context ?: return
+        val source = selectedDiscoverSource ?: return
+        val allItems = discoverAllTagItems.toList()
+        if (allItems.isEmpty()) {
+            context.toastOnUi(R.string.explore_empty)
+            return
+        }
+        var dialog: AlertDialog? = null
+        var filteredItems = allItems
+        var filterKey = ""
+        val adapter = object : RecyclerView.Adapter<DiscoverKindDialogViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DiscoverKindDialogViewHolder {
+                return DiscoverKindDialogViewHolder(DiscoverKindDialogRow(parent.context))
+            }
+
+            override fun getItemCount(): Int = filteredItems.size
+
+            override fun onBindViewHolder(holder: DiscoverKindDialogViewHolder, position: Int) {
+                val item = filteredItems[position]
+                holder.bind(discoverDialogLabel(item)) {
+                    when (item.role) {
+                        DiscoverTagItem.Role.UrlTag -> {
+                            dialog?.dismiss()
+                            val index = discoverTagItems.indexOfFirst {
+                                it.role == DiscoverTagItem.Role.UrlTag && it.kind.url == item.kind.url
+                            }
+                            if (!item.group.isNullOrBlank()) {
+                                selectedDiscoverMajorGroup = item.group
+                                applyDiscoverTagFilterAndSelect(preferredUrl = item.kind.url)
+                            } else if (index >= 0) {
+                                selectDiscoverTag(index, item, selectTab = true)
+                            } else {
+                                selectDiscoverTag(0, item, selectTab = false)
+                            }
+                        }
+                        DiscoverTagItem.Role.GlobalSelect -> showDiscoverSelectDialog(item)
+                        DiscoverTagItem.Role.Toggle -> handleDiscoverToggleFromDialog(item) {
+                            filteredItems = filterDiscoverDialogItems(allItems, filterKey)
+                            adapter.notifyDataSetChanged()
+                        }
+                        DiscoverTagItem.Role.ActionButton,
+                        DiscoverTagItem.Role.ScriptUrl -> handleDiscoverButtonTag(item)
+                    }
+                }
+            }
+        }
+        val searchView = SearchView(context).apply {
+            queryHint = getString(R.string.screen_find)
+            isIconified = false
+            isSubmitButtonEnabled = false
+            background = GradientDrawable().apply {
+                cornerRadius = UiCorner.searchRadius(10f)
+                setColor(androidx.core.content.ContextCompat.getColor(context, R.color.background_menu))
+            }
+            setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
+            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                override fun onQueryTextSubmit(query: String?): Boolean = true
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    filterKey = newText.orEmpty()
+                    filteredItems = filterDiscoverDialogItems(allItems, filterKey)
+                    adapter.notifyDataSetChanged()
+                    return true
+                }
+            })
+        }
+        searchView.applyUiBodyTypefaceDeep(context.uiTypeface())
+        val recyclerView = RecyclerView(context).apply {
+            layoutManager = LinearLayoutManager(context)
+            this.adapter = adapter
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                420.dpToPx()
+            ).apply {
+                topMargin = 10.dpToPx()
+            }
+        }
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiCorner.opaqueRounded(
+                androidx.core.content.ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
+            addView(
+                TextView(context).apply {
+                    text = source.bookSourceName
+                    applyUiSectionTitleStyle(context)
+                    textSize = 18f
+                    includeFontPadding = false
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(2.dpToPx(), 0, 2.dpToPx(), 12.dpToPx())
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    32.dpToPx()
+                )
+            )
+            addView(
+                searchView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    42.dpToPx()
+                )
+            )
+            addView(recyclerView)
+        }
+        dialog = AlertDialog.Builder(context)
+            .setView(container)
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+    }
+
+    private fun filterDiscoverDialogItems(items: List<DiscoverTagItem>, key: String): List<DiscoverTagItem> {
+        val query = key.trim()
+        if (query.isBlank()) return items
+        return items.filter { item ->
+            listOfNotNull(
+                item.text,
+                item.group,
+                item.kind.title,
+                item.kind.url,
+                item.kind.action
+            ).any { it.toString().contains(query, ignoreCase = true) }
+        }
+    }
+
+    private fun discoverDialogLabel(item: DiscoverTagItem): CharSequence {
+        val prefix = when (item.role) {
+            DiscoverTagItem.Role.UrlTag -> ""
+            DiscoverTagItem.Role.GlobalSelect -> "选择 "
+            DiscoverTagItem.Role.Toggle -> "开关 "
+            DiscoverTagItem.Role.ActionButton,
+            DiscoverTagItem.Role.ScriptUrl -> "操作 "
+        }
+        val group = item.group?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+        val value = if (item.role == DiscoverTagItem.Role.GlobalSelect) {
+            ": ${currentDiscoverSelectValue(item)}"
+        } else {
+            ""
+        }
+        return "$prefix${item.text}$value$group"
+    }
+
+    private fun handleDiscoverToggleFromDialog(item: DiscoverTagItem, refresh: (String) -> Unit) {
+        val source = selectedDiscoverSource ?: return
+        val key = item.kind.title
+        if (key.isBlank()) return
+        val chars = item.kind.chars?.filterNotNull() ?: return
+        if (chars.isEmpty()) return
+        val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
+        val current = infoMap[key] ?: item.kind.default ?: chars.first()
+        val currentIndex = chars.indexOf(current).takeIf { it >= 0 } ?: 0
+        val next = chars.getOrNull(currentIndex + 1) ?: chars.first()
+        infoMap[key] = next
+        refresh("")
+        handleDiscoverButtonTag(item.copy(text = resolveDiscoverToggleText(item.kind, next).limitDiscoverText(8)))
+    }
+
+    private class DiscoverKindDialogRow(context: android.content.Context) : TextView(context) {
+        init {
+            layoutParams = RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+            minHeight = 48.dpToPx()
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            applyUiLabelStyle(context)
+            textSize = 15f
+            setPadding(18.dpToPx(), 0, 18.dpToPx(), 0)
+            background = UiCorner.actionSelector(
+                Color.TRANSPARENT,
+                androidx.core.content.ContextCompat.getColor(context, R.color.background_menu),
+                UiCorner.actionRadius(context)
+            )
+            isClickable = true
+            isFocusable = true
+        }
+    }
+
+    private class DiscoverKindDialogViewHolder(
+        private val rowView: DiscoverKindDialogRow
+    ) : RecyclerView.ViewHolder(rowView) {
+        fun bind(title: CharSequence, onClick: () -> Unit) {
+            rowView.text = title
+            rowView.setOnClickListener { onClick() }
         }
     }
 
