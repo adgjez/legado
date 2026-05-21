@@ -1030,7 +1030,6 @@ class EpubReadView @JvmOverloads constructor(
             } else {
                 verticalAnimating = false
                 lastScrollerY = 0f
-                scrollOffsetY = 0f
                 bindIdleSlots()
                 invalidate()
             }
