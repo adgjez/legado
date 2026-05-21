@@ -202,11 +202,9 @@
         android:background="@android:color/transparent"
         android:clipToPadding="false"
         android:elevation="8dp"
-        android:fadingEdgeLength="24dp"
         android:overScrollMode="never"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
-        android:requiresFadingEdge="horizontal"
         android:scrollbars="none"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent">

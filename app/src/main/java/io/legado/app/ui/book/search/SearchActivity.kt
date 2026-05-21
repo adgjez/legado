@@ -110,6 +110,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var sourceGroupBarBaseBottomMargin = 0
     private var inputHelpBaseBottomMargin = 0
     private var currentBottomInset = 0
+    private var currentImeInset = 0
     private var rootBaseTopPadding = 0
     private val searchEditText: TextView?
         get() = searchView.findViewById(androidx.appcompat.R.id.search_src_text)
@@ -372,6 +373,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         inputHelpBaseBottomMargin =
             (binding.llInputHelp.layoutParams as? ViewGroup.MarginLayoutParams)
                 ?.bottomMargin ?: 0
+        binding.hsvSourceGroupBar.bringToFront()
         binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
             val statusInset = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             binding.root.setPadding(
@@ -381,6 +383,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 binding.root.paddingBottom
             )
             val imeInset = windowInsets.imeHeight
+            currentImeInset = imeInset
             val bottomInset = if (imeInset > 0) imeInset else windowInsets.navigationBarHeight
             currentBottomInset = bottomInset
             binding.hsvSourceGroupBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -501,12 +504,10 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun updateKeyboardGroupBarVisible() {
-        val hasSearchFocus = searchView.hasFocus() || searchEditText?.hasFocus() == true
-        val show = hasSearchFocus &&
-            binding.llInputHelp.isVisible &&
-            groups.orEmpty().isNotEmpty()
+        val show = currentImeInset > 0 && groups.orEmpty().isNotEmpty()
         val oldVisible = binding.hsvSourceGroupBar.isVisible
         if (show) {
+            binding.hsvSourceGroupBar.bringToFront()
             binding.hsvSourceGroupBar.visible()
         } else {
             binding.hsvSourceGroupBar.gone()
