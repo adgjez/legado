@@ -1816,6 +1816,7 @@
     <string name="cover_collection_mode">封面模式</string>
     <string name="cover_collection_mode_random">随机</string>
     <string name="cover_collection_mode_sequence">顺序</string>
+    <string name="cover_collection_mode_mixed">混合模式</string>
     <string name="cover_collection_name">图集名称</string>
     <string name="cover_collection_no_images_to_export">没有可导出的图片</string>
     <string name="cover_collection_export_failed_simple">导出图集失败</string>

@@ -29,6 +29,7 @@ object CoverCollectionManager {
 
     const val MODE_RANDOM = "random"
     const val MODE_SEQUENCE = "sequence"
+    const val MODE_MIXED = "mixed"
     private const val indexFileName = "collections.json"
     private const val packageFileName = "collection.json"
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp")
@@ -199,18 +200,20 @@ object CoverCollectionManager {
     }
 
     fun selectedCollectionCover(book: Book): String? {
-        return selectedCollectionCover(book.bookUrl.ifBlank {
-            "${book.origin}|${book.name}|${book.author}"
-        })
+        return selectedCollectionCover(
+            bookKey = book.bookUrl.ifBlank { "${book.origin}|${book.name}|${book.author}" },
+            hasOriginalCover = !book.getDisplayCover().isNullOrBlank()
+        )
     }
 
     fun selectedCollectionCover(searchBook: SearchBook): String? {
-        return selectedCollectionCover(searchBook.bookUrl.ifBlank {
-            "${searchBook.origin}|${searchBook.name}|${searchBook.author}"
-        })
+        return selectedCollectionCover(
+            bookKey = searchBook.bookUrl.ifBlank { "${searchBook.origin}|${searchBook.name}|${searchBook.author}" },
+            hasOriginalCover = !searchBook.coverUrl.isNullOrBlank()
+        )
     }
 
-    private fun selectedCollectionCover(bookKey: String): String? {
+    private fun selectedCollectionCover(bookKey: String, hasOriginalCover: Boolean): String? {
         val isNight = AppConfig.isNightTheme
         val collectionId = appCtx.getPrefString(
             if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay
@@ -221,6 +224,9 @@ object CoverCollectionManager {
             if (isNight) PreferKey.coverCollectionModeNight else PreferKey.coverCollectionModeDay,
             MODE_RANDOM
         ) ?: MODE_RANDOM
+        if (mode == MODE_MIXED && hasOriginalCover) {
+            return null
+        }
         val path = when (mode) {
             MODE_SEQUENCE -> assignSequential(collection, bookKey)
             else -> collection.images[stableImageIndex(bookKey, collection.images.size)]

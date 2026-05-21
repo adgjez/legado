@@ -1978,6 +1978,7 @@ Selected text or question:
     <string name="cover_collection_mode">Cover mode</string>
     <string name="cover_collection_mode_random">Random</string>
     <string name="cover_collection_mode_sequence">Sequential</string>
+    <string name="cover_collection_mode_mixed">Mixed</string>
     <string name="cover_collection_name">Collection name</string>
     <string name="cover_collection_no_images_to_export">No images to export</string>
     <string name="cover_collection_export_failed_simple">Failed to export collection</string>
