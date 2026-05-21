@@ -596,20 +596,35 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val context = context ?: return
         val source = selectedDiscoverSource ?: return
         var dialog: AlertDialog? = null
+        val dialogWidth = 360.dpToPx()
+        val dialogHeight = 480.dpToPx()
         val itemBinding = ItemFindBookBinding.inflate(layoutInflater, null, false)
         val flexbox = itemBinding.flexbox
+        val scrollView = NestedScrollView(context).apply {
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isFillViewport = true
+            addView(
+                itemBinding.root,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
         val dialogContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(dialogWidth, dialogHeight)
             background = UiCorner.opaqueRounded(
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.panelRadius(context)
             )
             setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 10.dpToPx())
             addView(
-                itemBinding.root,
+                scrollView,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
+                    0,
+                    1f
                 )
             )
         }
@@ -632,6 +647,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setDimAmount(0.45f)
+        dialog.window?.setLayout(dialogWidth, dialogHeight)
         viewLifecycleOwner.lifecycleScope.launch {
             val kinds = withContext(IO) {
                 source.exploreKinds()
