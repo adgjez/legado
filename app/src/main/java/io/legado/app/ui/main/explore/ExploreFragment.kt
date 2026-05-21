@@ -640,10 +640,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             if (index == 0 && isDiscoverLeadingBlankPlaceholder(kind)) {
                 return@forEachIndexed
             }
-            if (isDiscoverMajorGroupKind(kind)) {
-                currentGroup = resolveDiscoverGroupTitle(kind)
-                return@forEachIndexed
-            }
 
             val action = kind.action?.takeIf { it.isNotBlank() }
             val url = kind.normalizedDiscoverUrl()
@@ -651,6 +647,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             val isActionControl = kind.type == ExploreKind.Type.button ||
                 kind.type == ExploreKind.Type.toggle ||
                 isDiscoverInputKind(kind)
+
+            if (action.isNullOrBlank() && isDiscoverMajorGroupKind(kind)) {
+                currentGroup = resolveDiscoverGroupTitle(kind)
+                return@forEachIndexed
+            }
 
             if (isSelect) {
                 result += DiscoverTagItem(
@@ -662,7 +663,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 return@forEachIndexed
             }
 
-            if (isDiscoverDecorativeGroupKind(kind)) {
+            if (action.isNullOrBlank() && isDiscoverDecorativeGroupKind(kind)) {
                 currentGroup = resolveDiscoverGroupTitle(kind)
                 return@forEachIndexed
             }
@@ -704,7 +705,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         } else {
             result.map { it.copy(group = getString(R.string.discover_group_other)) }
         }
-        return normalized.distinctBy { "${it.group}|${it.role}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" }
+        return normalized.distinctBy {
+            "${it.group}|${it.role}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}|${it.kind.default}|${it.kind.viewName}|${it.kind.chars?.joinToString("\u001f")}"
+        }
     }
 
     private fun discoverRowsWithInput(kinds: List<ExploreKind>): Set<Int> {
@@ -750,6 +753,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverMajorGroupKind(kind: ExploreKind): Boolean {
         if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
+        if (!kind.action.isNullOrBlank()) return false
         if (!isDiscoverFullWidthKind(kind)) return false
         if (kind.type == ExploreKind.Type.toggle) return true
         return kind.action.isNullOrBlank()
@@ -768,6 +772,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun isDiscoverLeadingBlankPlaceholder(kind: ExploreKind): Boolean {
         if (!isDiscoverFullWidthKind(kind)) return false
         if (!kind.normalizedDiscoverUrl().isNullOrBlank()) return false
+        if (!kind.action.isNullOrBlank()) return false
         val text = resolveDiscoverTagText(kind).trim()
         if (text.isNotBlank() && text != ExploreKind.Type.button) return false
         return kind.type == ExploreKind.Type.button || kind.action.isNullOrBlank()
@@ -785,8 +790,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverScriptButtonUrl(url: String): Boolean {
         val value = url.trim()
-        return value.startsWith("{") ||
+        return value.startsWith("@js:", ignoreCase = true) ||
+            value.startsWith("<js>", ignoreCase = true) ||
+            value.startsWith("{{") ||
+            value.startsWith("{\\{") ||
             value.contains("java.startBrowser", ignoreCase = true) ||
+            value.contains("java.longToast", ignoreCase = true) ||
+            value.contains("java.toast", ignoreCase = true) ||
+            value.contains("java.open", ignoreCase = true) ||
             value.contains("source.setVariable", ignoreCase = true)
     }
 
@@ -988,17 +999,19 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val key = item.kind.title
         if (key.isBlank()) return item.kind.default ?: ""
         val info = getDiscoverInfoMap(source.bookSourceUrl)
-        return info[key]?.toString()?.takeIf { it.isNotBlank() }
-            ?: item.kind.default?.takeIf { it.isNotBlank() }
-            ?: item.kind.chars?.firstOrNull()?.orEmpty()
+        info[key]?.let { return it }
+        val value = item.kind.default
+            ?: item.kind.chars?.firstOrNull()
             ?: ""
+        info[key] = value
+        return value
     }
 
     private fun showDiscoverSelectDialog(item: DiscoverTagItem) {
         val source = selectedDiscoverSource ?: return
         val key = item.kind.title
         if (key.isBlank()) return
-        val options = item.kind.chars?.filterNotNull()?.filter { it.isNotBlank() } ?: emptyList()
+        val options = item.kind.chars?.filterNotNull() ?: emptyList()
         if (options.isEmpty()) return
         val infoMap = getDiscoverInfoMap(source.bookSourceUrl)
         context?.selector(item.text, options) { _, value, _ ->
@@ -1433,10 +1446,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         value = when {
             value.startsWith("{\\{") && value.endsWith("}}") -> value.substring(3, value.length - 2)
             value.startsWith("{{") && value.endsWith("}}") -> value.substring(2, value.length - 2)
-            value.startsWith("{") && value.endsWith("}") -> value.substring(1, value.length - 1)
+            value.startsWith("{") && value.endsWith("}") && isDiscoverExecutableObjectScript(value) ->
+                value.substring(1, value.length - 1)
             else -> value
         }
         return value.trim()
+    }
+
+    private fun isDiscoverExecutableObjectScript(value: String): Boolean {
+        return value.contains("java.", ignoreCase = true) ||
+            value.contains("source.", ignoreCase = true) ||
+            value.contains("infoMap", ignoreCase = true)
     }
 
     fun compressExplore() {
