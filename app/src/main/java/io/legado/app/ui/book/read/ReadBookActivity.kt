@@ -45,6 +45,12 @@ import io.legado.app.help.TTS
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
+import io.legado.app.help.book.library.LibraryChapterItem
+import io.legado.app.help.book.library.LibraryCloudKeys
+import io.legado.app.help.book.library.LibraryCloudSession
+import io.legado.app.help.book.library.LibraryCloudState
+import io.legado.app.help.book.library.LibraryCloudSync
+import io.legado.app.help.book.library.LibraryContainerManager
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -347,6 +353,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var epubCoreBoundaryTransactionId = 0L
     private var epubCoreBoundaryDirection = 0
     private var epubCoreBoundaryTargetEdge = EpubCorePageEdge.Start
+    private var libraryCloudSession: LibraryCloudSession? = null
+    private var libraryCloudState: LibraryCloudState = LibraryCloudState.DISABLED
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -1408,6 +1416,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         handler.post {
             upMenu()
             binding.readMenu.upBookView()
+            refreshLibraryCloudSession(refresh = false, silent = true)
         }
     }
 
@@ -2754,6 +2763,126 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showSearchSetting() {
         showDialogFragment<MoreConfigDialog>()
+    }
+
+    override fun isLibraryCloudEnabled(): Boolean {
+        val book = ReadBook.book ?: return false
+        return !book.isLocal && LibraryContainerManager.matchForSource(book.origin) != null
+    }
+
+    override fun libraryCloudState(): LibraryCloudState = libraryCloudState
+
+    override fun showLibraryCloudChapters(refresh: Boolean) {
+        val book = ReadBook.book ?: return
+        lifecycleScope.launch {
+            val session = withContext(IO) {
+                if (refresh) {
+                    LibraryCloudSync.refreshSession(book)
+                } else {
+                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                }
+            }
+            libraryCloudSession = session
+            libraryCloudState = session.state
+            binding.readMenu.updateCloudLibraryState(session.state)
+            if (session.state != LibraryCloudState.READY) {
+                toastOnUi(libraryCloudStateMessage(session))
+                return@launch
+            }
+            val remoteItems = session.bookIndex?.chapters.orEmpty()
+                .filter { it.cached && it.remotePath.isNotBlank() }
+                .sortedWith(compareBy<LibraryChapterItem> { it.chapterIndex }.thenBy { it.title })
+            if (remoteItems.isEmpty()) {
+                toastOnUi("云端没有可用章节")
+                return@launch
+            }
+            val titles = remoteItems.map {
+                val index = if (it.chapterIndex >= 0) "${it.chapterIndex + 1}. " else ""
+                "$index${it.title}"
+            }
+            selector("云端章节", titles) { _, index ->
+                downloadLibraryCloudChapter(book, session, remoteItems[index])
+            }
+        }
+    }
+
+    private fun refreshLibraryCloudSession(refresh: Boolean, silent: Boolean) {
+        val book = ReadBook.book
+        if (book == null || !isLibraryCloudEnabled()) {
+            libraryCloudSession = null
+            libraryCloudState = LibraryCloudState.DISABLED
+            binding.readMenu.updateCloudLibraryState(libraryCloudState)
+            return
+        }
+        lifecycleScope.launch {
+            val session = withContext(IO) {
+                if (refresh) {
+                    LibraryCloudSync.refreshSession(book)
+                } else {
+                    libraryCloudSession ?: LibraryCloudSync.openSession(book)
+                }
+            }
+            if (ReadBook.book?.bookUrl != book.bookUrl) return@launch
+            libraryCloudSession = session
+            libraryCloudState = session.state
+            binding.readMenu.updateCloudLibraryState(session.state)
+            if (!silent && session.state != LibraryCloudState.READY) {
+                toastOnUi(libraryCloudStateMessage(session))
+            }
+        }
+    }
+
+    private fun downloadLibraryCloudChapter(
+        book: Book,
+        session: LibraryCloudSession,
+        item: LibraryChapterItem
+    ) {
+        lifecycleScope.launch {
+            ReadBook.upMsg("读取云端章节")
+            val result = withContext(IO) {
+                runCatching {
+                    val localChapter = findLocalChapterForCloudItem(book, item)
+                        ?: throw NoStackTraceException("未找到本地匹配章节")
+                    val content = session.downloadChapter(item)
+                        ?: throw NoStackTraceException("云端章节内容不存在")
+                    BookHelp.saveText(book, localChapter, content)
+                    localChapter
+                }
+            }
+            ReadBook.upMsg(null)
+            result.onSuccess { chapter ->
+                if (ReadBook.book?.bookUrl != book.bookUrl) return@onSuccess
+                if (isEpubCoreMode()) {
+                    skipToChapter(chapter.index)
+                } else {
+                    viewModel.openChapter(chapter.index)
+                }
+            }.onFailure {
+                toastOnUi("读取云端章节失败\n${it.localizedMessage}")
+            }
+        }
+    }
+
+    private fun findLocalChapterForCloudItem(book: Book, item: LibraryChapterItem): BookChapter? {
+        appDb.bookChapterDao.getChapter(book.bookUrl, item.chapterIndex)?.let { chapter ->
+            val sameTitle = LibraryCloudKeys.normalize(chapter.title) == item.normalizedTitle
+            if (sameTitle || item.normalizedTitle.isBlank()) return chapter
+        }
+        val title = item.title.takeIf { it.isNotBlank() } ?: return null
+        return appDb.bookChapterDao.getChapter(book.bookUrl, title)
+            ?: appDb.bookChapterDao.search(book.bookUrl, title).firstOrNull()
+    }
+
+    private fun libraryCloudStateMessage(session: LibraryCloudSession): String {
+        return when (session.state) {
+            LibraryCloudState.DISABLED -> "未配置书库容器"
+            LibraryCloudState.NO_ROOT_INDEX -> "云端书库没有目录索引"
+            LibraryCloudState.NO_BOOK_MATCH -> "云端书库没有匹配当前书籍"
+            LibraryCloudState.NO_BOOK_INDEX -> "云端书库没有当前书籍目录"
+            LibraryCloudState.READY -> "云端书库可用"
+            LibraryCloudState.ERROR -> session.errorMessage?.let { "云端书库读取失败\n$it" }
+                ?: "云端书库读取失败"
+        }
     }
 
     /**

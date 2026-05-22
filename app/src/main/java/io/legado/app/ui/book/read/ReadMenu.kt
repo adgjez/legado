@@ -24,6 +24,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
@@ -105,11 +106,14 @@ class ReadMenu @JvmOverloads constructor(
         )
     private var modernMenuPopup: PopupWindow? = null
     private var currentChapterUrl: String? = null
+    private var cloudState: LibraryCloudState = LibraryCloudState.DISABLED
     private val menuInListener = object : Animation.AnimationListener {
         override fun onAnimationStart(animation: Animation) {
             binding.tvSourceAction.text =
                 ReadBook.bookSource?.bookSourceName ?: context.getString(R.string.book_source)
             binding.tvSourceAction.isGone = ReadBook.isLocalBook
+            binding.ivCloudLibrary.isVisible = callBack.isLibraryCloudEnabled()
+            updateCloudLibraryIcon(callBack.libraryCloudState())
             ReadBook.bookSource?.let {
                 if (it.customButton) {
                     binding.tvCustomBtn.visibility = VISIBLE
@@ -525,6 +529,13 @@ class ReadMenu @JvmOverloads constructor(
             }
             true
         }
+        ivCloudLibrary.setOnClickListener {
+            callBack.showLibraryCloudChapters(refresh = false)
+        }
+        ivCloudLibrary.setOnLongClickListener {
+            callBack.showLibraryCloudChapters(refresh = true)
+            true
+        }
         //书源操作
         tvSourceAction.onClick {
             modernMenuPopup = ModernActionPopup.showFromMenu(
@@ -778,6 +789,23 @@ class ReadMenu @JvmOverloads constructor(
         fabAutoPage.setColorFilter(textColor)
     }
 
+    fun updateCloudLibraryState(state: LibraryCloudState) {
+        cloudState = state
+        binding.ivCloudLibrary.isVisible = callBack.isLibraryCloudEnabled()
+        updateCloudLibraryIcon(state)
+    }
+
+    private fun updateCloudLibraryIcon(state: LibraryCloudState) = binding.run {
+        val alpha = when (state) {
+            LibraryCloudState.READY -> 255
+            LibraryCloudState.ERROR -> 230
+            LibraryCloudState.DISABLED -> 90
+            else -> 150
+        }
+        ivCloudLibrary.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        ivCloudLibrary.imageAlpha = alpha
+    }
+
     private fun upBrightnessVwPos() {
         binding.vwBrightnessPosAdjust.gone()
     }
@@ -810,6 +838,9 @@ class ReadMenu @JvmOverloads constructor(
         fun openPreviousEpubCoreChapter() = Unit
         fun openNextEpubCoreChapter() = Unit
         fun onNightThemeChanged() = Unit
+        fun isLibraryCloudEnabled(): Boolean = false
+        fun libraryCloudState(): LibraryCloudState = LibraryCloudState.DISABLED
+        fun showLibraryCloudChapters(refresh: Boolean) = Unit
     }
 
 }
