@@ -12,13 +12,10 @@ import io.legado.app.model.localBook.epubcore.font.EpubTypefaceResolver
 import io.legado.app.model.localBook.epubcore.image.EpubImageResolver
 import io.legado.app.model.localBook.epubcore.layout.EpubCoreLayoutConfig
 import io.legado.app.model.localBook.epubcore.layout.EpubCorePage
-import io.legado.app.model.localBook.epubcore.web.EpubWebDebugPayload
-import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionAction
 import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isContentScheme
-import android.webkit.WebResourceResponse
 import splitties.init.appCtx
 import java.io.File
 
@@ -92,25 +89,6 @@ object EpubCoreProvider {
     ): EpubWebSelectionPayload? {
         val facade = synchronized(this) { open(book).facade }
         return facade.selectText(page, chapterIndex, pageIndex, config, action, x, y)
-    }
-
-    @Synchronized
-    fun debugWebPayload(
-        book: Book,
-        chapterIndex: Int,
-        pageIndex: Int,
-        config: EpubCoreLayoutConfig
-    ): EpubWebDebugPayload {
-        return open(book).facade.debugWebPayload(chapterIndex, pageIndex, config)
-    }
-
-    @Synchronized
-    fun debugWebResource(
-        book: Book,
-        url: String?,
-        request: EpubWebLayoutRequest
-    ): WebResourceResponse? {
-        return open(book).facade.debugWebResource(url, request)
     }
 
     @Synchronized

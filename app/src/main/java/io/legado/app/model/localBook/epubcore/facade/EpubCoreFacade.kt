@@ -17,7 +17,6 @@ import io.legado.app.model.localBook.epubcore.pkg.EpubPackageParser
 import io.legado.app.model.localBook.epubcore.toc.EpubTocParser
 import io.legado.app.model.localBook.epubcore.toc.TocItem
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutAdapter
-import io.legado.app.model.localBook.epubcore.web.EpubWebDebugPayload
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutJsonParser
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutRequest
 import io.legado.app.model.localBook.epubcore.web.EpubWebLayoutSession
@@ -28,7 +27,6 @@ import io.legado.app.model.localBook.epubcore.web.EpubWebSelectionPayload
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import android.os.SystemClock
-import android.webkit.WebResourceResponse
 import splitties.init.appCtx
 import java.io.Closeable
 import java.io.File
@@ -93,19 +91,6 @@ class EpubCoreFacade private constructor(
             it.bookUrl == bookUrl && !it.url.startsWith("skip:")
         } ?: chapter
         return peekCanonicalPages(canonicalChapter, config)
-    }
-
-    fun debugWebPayload(chapterIndex: Int, pageIndex: Int, config: EpubCoreLayoutConfig): EpubWebDebugPayload {
-        val chapter = chapters.getOrNull(chapterIndex) ?: error("Chapter index out of range: $chapterIndex")
-        val resolvedChapter = resolveChapter(chapter)
-        return getWebLayoutSession(null).debugPayload(
-            request = buildWebLayoutRequest(resolvedChapter, config),
-            pageIndex = pageIndex
-        )
-    }
-
-    fun debugWebResource(url: String?, request: EpubWebLayoutRequest): WebResourceResponse? {
-        return getWebLayoutSession(null).debugResource(url, request)
     }
 
     private fun peekCanonicalPages(
