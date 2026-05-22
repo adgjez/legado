@@ -156,11 +156,6 @@ object BubblePackageManager {
         return Entry(next, Source.LOCAL, dirName, localDir = dir)
     }
 
-    fun copyBuiltin(): Entry {
-        val base = builtinConfig().copy(name = "内置段评气泡 副本")
-        return addOrUpdate(base.copy(dirName = ""))
-    }
-
     fun deleteLocal(entry: Entry) {
         if (entry.source == Source.BUILTIN || entry.dirName == BUILTIN_DIR_NAME) return
         FileUtils.delete(entry.localDir ?: localDir(entry.dirName), deleteRootDir = true)

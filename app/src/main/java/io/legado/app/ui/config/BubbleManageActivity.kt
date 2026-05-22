@@ -10,13 +10,17 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import com.jaredrummler.android.colorpicker.ColorPickerDialog
+import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
@@ -42,6 +46,7 @@ import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
@@ -58,13 +63,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
+class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPickerDialogListener {
 
     override val binding by viewBinding(ActivityThemeManageBinding::inflate)
 
     private val adapter = Adapter()
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
+    private var editingConfig: BubblePackageManager.Config? = null
+    private var editingRoot: LinearLayout? = null
     private val handledWebDavTasks = mutableSetOf<String>()
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
     private val importPackage = registerForActivityResult(HandleFileContract()) {
@@ -108,6 +115,10 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             setIcon(R.drawable.ic_outline_cloud_24)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
+        menu.add(0, MENU_HELP, 1, R.string.help).apply {
+            setIcon(R.drawable.ic_help)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         updateContainerMenu()
         return true
     }
@@ -116,6 +127,10 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return when (item.itemId) {
             MENU_CONTAINER -> {
                 showContainerSelector()
+                true
+            }
+            MENU_HELP -> {
+                showBubbleHelp()
                 true
             }
             else -> super.onCompatOptionsItemSelected(item)
@@ -184,9 +199,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun showActions(entry: BubblePackageManager.Entry) {
         val actions = buildList {
             add(Action.APPLY)
-            if (entry.source == BubblePackageManager.Source.BUILTIN) {
-                add(Action.COPY)
-            } else {
+            if (entry.source != BubblePackageManager.Source.BUILTIN) {
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.EDIT)
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.EXPORT)
                 if (entry.source != BubblePackageManager.Source.REMOTE) add(Action.UPLOAD)
@@ -201,7 +214,6 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 Action.APPLY -> {
                     applyEntry(entry)
                 }
-                Action.COPY -> runAction(refreshReading = false) { BubblePackageManager.copyBuiltin() }
                 Action.EDIT -> showEditDialog(entry)
                 Action.EXPORT -> exportZip(entry)
                 Action.UPLOAD -> enqueueUpload(entry)
@@ -219,26 +231,23 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showEditDialog(entry: BubblePackageManager.Entry?) {
-        if (entry?.source == BubblePackageManager.Source.BUILTIN) return
-        val config = entry?.config ?: BubblePackageManager.builtinConfig().copy(
+        if (entry?.source == BubblePackageManager.Source.BUILTIN || entry?.source == BubblePackageManager.Source.REMOTE) return
+        editingConfig = (entry?.config ?: BubblePackageManager.builtinConfig().copy(
             name = "自定义段评气泡",
             dirName = "",
             updatedAt = System.currentTimeMillis()
-        )
-        val root = buildEditView(config)
+        )).copy(dirName = entry?.dirName.orEmpty())
+        val root = buildEditView()
+        editingRoot = root
         alert(if (entry == null) R.string.add else R.string.edit) {
             customView { root }
             okButton {
-                val views = root.tag as EditViews
-                val next = BubblePackageManager.Config(
-                    name = views.name.text?.toString().orEmpty(),
+                captureEditFields()
+                val config = editingConfig ?: return@okButton
+                val next = config.copy(
+                    name = root.findViewWithTag<EditText>(TAG_NAME)?.text?.toString().orEmpty(),
                     dirName = entry?.dirName.orEmpty(),
-                    svgTemplate = views.svg.text?.toString().orEmpty(),
-                    sizeScale = views.size.text?.toString()?.toFloatOrNull() ?: 1f,
-                    dayNormalColor = views.dayNormal.text?.toString(),
-                    dayEmphasisColor = views.dayEmphasis.text?.toString(),
-                    nightNormalColor = views.nightNormal.text?.toString(),
-                    nightEmphasisColor = views.nightEmphasis.text?.toString()
+                    svgTemplate = root.findViewWithTag<EditText>(TAG_SVG)?.text?.toString().orEmpty()
                 )
                 runAction(refreshReading = entry?.dirName == BubblePackageManager.activeDirName()) {
                     BubblePackageManager.addOrUpdate(next, entry)
@@ -248,28 +257,69 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
-    private fun buildEditView(config: BubblePackageManager.Config): LinearLayout {
-        val name = editText(config.name, "名称", singleLine = true)
-        val size = editText(config.sizeScale.toString(), "大小倍率 0.5-1.5", singleLine = true)
-        val dayNormal = editText(config.dayNormalColor.orEmpty(), "日间常规色，空则红色", singleLine = true)
-        val dayEmphasis = editText(config.dayEmphasisColor.orEmpty(), "日间强调色，空则红色", singleLine = true)
-        val nightNormal = editText(config.nightNormalColor.orEmpty(), "夜间常规色，空则红色", singleLine = true)
-        val nightEmphasis = editText(config.nightEmphasisColor.orEmpty(), "夜间强调色，空则红色", singleLine = true)
-        val svg = editText(config.svgTemplate, "SVG 模板，支持 \${color} 和 \${num}", singleLine = false)
+    private fun buildEditView(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(2, 2, 2, 4)
-            addView(name)
-            addView(size)
-            addView(dayNormal)
-            addView(dayEmphasis)
-            addView(nightNormal)
-            addView(nightEmphasis)
-            addView(svg)
-            tag = EditViews(name, size, dayNormal, dayEmphasis, nightNormal, nightEmphasis, svg)
+            populateEditView(this)
+            applyUiBodyTypefaceDeep(this@BubbleManageActivity.uiTypeface())
         }
     }
 
+    private fun populateEditView(root: LinearLayout) {
+        val config = editingConfig ?: return
+        root.addView(PackageManageUi.nameInput(this, config.name, "名称").apply { tag = TAG_NAME })
+        root.addView(PackageManageUi.optionRow(this, "大小倍率", "%.1f".format(Locale.ROOT, config.sizeScale)) {
+            showSizeScalePicker()
+        })
+        root.addView(colorRow("日间常规色", colorOrDefault(config.dayNormalColor, false), COLOR_DAY_NORMAL))
+        root.addView(colorRow("日间强调色", colorOrDefault(config.dayEmphasisColor, true), COLOR_DAY_EMPHASIS))
+        root.addView(colorRow("夜间常规色", colorOrDefault(config.nightNormalColor, false), COLOR_NIGHT_NORMAL))
+        root.addView(colorRow("夜间强调色", colorOrDefault(config.nightEmphasisColor, true), COLOR_NIGHT_EMPHASIS))
+        root.addView(editText(config.svgTemplate, "SVG 模板，支持 ${'$'}{color} 和 ${'$'}{num}", singleLine = false).apply { tag = TAG_SVG })
+    }
+
+    private fun captureEditFields() {
+        val config = editingConfig ?: return
+        val root = editingRoot ?: return
+        editingConfig = config.copy(
+            name = root.findViewWithTag<EditText>(TAG_NAME)?.text?.toString() ?: config.name,
+            svgTemplate = root.findViewWithTag<EditText>(TAG_SVG)?.text?.toString() ?: config.svgTemplate
+        )
+    }
+
+    private fun colorRow(title: String, value: String, target: Int): View {
+        return PackageManageUi.optionRow(this, title, value.uppercase(Locale.ROOT), value.toColorInt()) {
+            ColorPickerDialog.newBuilder()
+                .setColor(value.toColorInt())
+                .setShowAlphaSlider(false)
+                .setDialogType(ColorPickerDialog.TYPE_CUSTOM)
+                .setDialogId(target)
+                .show(this)
+        }
+    }
+
+    private fun showSizeScalePicker() {
+        captureEditFields()
+        val config = editingConfig ?: return
+        NumberPickerDialog(this, isDecimalMode = true)
+            .setTitle("大小倍率")
+            .setMinValue((BubblePackageManager.MIN_SIZE_SCALE * 10).toInt())
+            .setMaxValue((BubblePackageManager.MAX_SIZE_SCALE * 10).toInt())
+            .setValue((config.sizeScale.coerceIn(BubblePackageManager.MIN_SIZE_SCALE, BubblePackageManager.MAX_SIZE_SCALE) * 10).toInt())
+            .show {
+                captureEditFields()
+                val latest = editingConfig ?: config
+                editingConfig = latest.copy(sizeScale = (it / 10f).coerceIn(BubblePackageManager.MIN_SIZE_SCALE, BubblePackageManager.MAX_SIZE_SCALE))
+                refreshEditDialog()
+            }
+    }
+
+    private fun refreshEditDialog() {
+        val root = editingRoot ?: return
+        root.removeAllViews()
+        populateEditView(root)
+    }
     private fun editText(text: String, hint: String, singleLine: Boolean): EditText {
         return EditText(this).apply {
             setText(text)
@@ -373,11 +423,11 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         val color = when {
             AppConfig.isNightTheme -> config.nightNormalColor
             else -> config.dayNormalColor
-        }?.takeIf { it.isNotBlank() } ?: BubblePackageManager.DEFAULT_COLOR
+        }?.takeIf { it.isNotBlank() } ?: BubblePackageManager.DEFAULT_NORMAL_COLOR
         val svg = config.svgTemplate
             .replace("\${color}", color)
             .replace("\${num}", "12")
-        SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), 128, 128)
+        SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), 96, 96)
     }.getOrNull()
 
     private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {
@@ -430,6 +480,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 tvInfo.applyUiLabelStyle(this@BubbleManageActivity)
                 tvInfo.setTextColor(secondaryTextColor)
                 ivPreview.setBackgroundColor(Color.TRANSPARENT)
+                ivPreview.scaleType = ImageView.ScaleType.CENTER_INSIDE
                 ivPreview.setImageBitmap(previewBitmap(entry.config))
                 if (ivPreview.drawable == null) {
                     ivPreview.setImageDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -445,17 +496,16 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 }
                 btnApply.text = if (active) "已应用" else getString(R.string.theme_apply)
                 btnApply.setTextColor(accentColor)
-                btnEdit.text = if (entry.source == BubblePackageManager.Source.BUILTIN) "复制" else getString(R.string.edit)
-                btnEdit.visibility = if (entry.source == BubblePackageManager.Source.REMOTE) View.GONE else View.VISIBLE
+                btnEdit.text = getString(R.string.edit)
+                btnEdit.visibility = if (
+                    entry.source == BubblePackageManager.Source.LOCAL ||
+                    entry.source == BubblePackageManager.Source.BOTH
+                ) View.VISIBLE else View.GONE
                 btnApply.setOnClickListener {
                     applyEntry(entry)
                 }
                 btnEdit.setOnClickListener {
-                    if (entry.source == BubblePackageManager.Source.BUILTIN) {
-                        runAction(refreshReading = false) { BubblePackageManager.copyBuiltin() }
-                    } else {
-                        showEditDialog(entry)
-                    }
+                    showEditDialog(entry)
                 }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
@@ -483,19 +533,56 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
-    private data class EditViews(
-        val name: EditText,
-        val size: EditText,
-        val dayNormal: EditText,
-        val dayEmphasis: EditText,
-        val nightNormal: EditText,
-        val nightEmphasis: EditText,
-        val svg: EditText
-    )
+    override fun onColorSelected(dialogId: Int, color: Int) {
+        captureEditFields()
+        val config = editingConfig ?: return
+        val hex = String.format(Locale.ROOT, "#%06X", color and 0x00FFFFFF)
+        editingConfig = when (dialogId) {
+            COLOR_DAY_NORMAL -> config.copy(dayNormalColor = hex)
+            COLOR_DAY_EMPHASIS -> config.copy(dayEmphasisColor = hex)
+            COLOR_NIGHT_NORMAL -> config.copy(nightNormalColor = hex)
+            COLOR_NIGHT_EMPHASIS -> config.copy(nightEmphasisColor = hex)
+            else -> config
+        }
+        refreshEditDialog()
+    }
+
+    override fun onDialogDismissed(dialogId: Int) = Unit
+
+    private fun colorOrDefault(value: String?, emphasis: Boolean): String {
+        val fallback = if (emphasis) {
+            BubblePackageManager.DEFAULT_EMPHASIS_COLOR
+        } else {
+            BubblePackageManager.DEFAULT_NORMAL_COLOR
+        }
+        val normalized = value?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { if (it.startsWith("#")) it else "#$it" }
+            ?: fallback
+        return runCatching {
+            normalized.toColorInt()
+            normalized
+        }.getOrDefault(fallback)
+    }
+
+    private fun showBubbleHelp() {
+        alert(getString(R.string.help), """
+            段评气泡用于把规则里的 dp 图片转成原生 SVG 气泡。
+
+            接入格式：
+            <img src="dp:12,{&quot;pclick&quot;:&quot;...&quot;,&quot;status&quot;:&quot;normal&quot;}">
+
+            dp: 后面的数字会替换 SVG 模板里的 ${'$'}{num}。
+            status 可选：normal 使用常规色，emphasis 使用强调色；不写 status 时默认 normal。
+            SVG 模板支持 ${'$'}{color} 和 ${'$'}{num} 两个占位。
+            内置气泡只读；需要自定义时请通过添加或导入创建新气泡。
+        """.trimIndent()) {
+            okButton()
+        }
+    }
 
     private enum class Action(val title: String) {
         APPLY("应用"),
-        COPY("复制为自定义"),
         EDIT("编辑"),
         EXPORT("导出 zip"),
         UPLOAD("上传"),
@@ -510,5 +597,12 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private companion object {
         private const val CLOUD_SCOPE = "bubble"
         private const val MENU_CONTAINER = 0x6801
+        private const val MENU_HELP = 0x6802
+        private const val COLOR_DAY_NORMAL = 0x6811
+        private const val COLOR_DAY_EMPHASIS = 0x6812
+        private const val COLOR_NIGHT_NORMAL = 0x6813
+        private const val COLOR_NIGHT_EMPHASIS = 0x6814
+        private const val TAG_NAME = "name"
+        private const val TAG_SVG = "svg"
     }
 }
