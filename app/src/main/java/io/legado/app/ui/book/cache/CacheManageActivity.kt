@@ -135,6 +135,7 @@ class CacheManageActivity :
                 AppCloudStorage.selectContainer(S3ContainerScope.CACHE, container.id)
                 cloudContainerId = container.id
                 updateContainerMenu()
+                viewModel.clearDisplay()
                 viewModel.load()
             }
         }

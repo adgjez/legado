@@ -62,6 +62,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
 
     fun isLoading(): Boolean = loadJob?.isActive == true
 
+    fun clearDisplay() {
+        postItems(emptyList(), mode)
+    }
+
     fun load(mode: CacheManageMode = this.mode) {
         this.mode = mode
         loadJob?.cancel()
@@ -94,13 +98,14 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
                     .toList()
                 val localItems = currentItems + manifestItems
                 ensureActive()
-                val mirrorItems = mergeRemoteItems(localItems, CacheCloudIndexStore.readLocal())
+                val storageKey = AppCloudStorage.cacheStorageKey()
+                val mirrorItems = mergeRemoteItems(localItems, CacheCloudIndexStore.readLocal(storageKey))
                 postItems(mirrorItems, mode)
                 if (AppCloudStorage.isOk && NetworkUtils.isAvailable()) {
                     val remoteIndex = AppCloudStorage.downloadCacheIndex().items
-                    val mergedIndex = CacheCloudIndexStore.mergeRemote(remoteIndex)
+                    CacheCloudIndexStore.writeLocal(remoteIndex, storageKey)
                     ensureActive()
-                    postItems(mergeRemoteItems(localItems, mergedIndex), mode)
+                    postItems(mergeRemoteItems(localItems, remoteIndex), mode)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -258,7 +263,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             item.remoteZipFileName?.takeIf { it.isNotBlank() }?.let { zipFileName ->
                 runCatching { AppCloudStorage.deleteCachePackage(zipFileName) }
             }
-            CacheCloudIndexStore.removeLocal(item.cacheKey)
+            CacheCloudIndexStore.removeLocal(item.cacheKey, AppCloudStorage.cacheStorageKey())
             if (reloadRemoteIndex) {
                 refreshRemoteCacheIndexAfterDelete(setOf(item.cacheKey))
             }
@@ -275,9 +280,10 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
 
     private suspend fun refreshRemoteCacheIndexAfterDelete(cacheKeys: Set<String>) {
         if (cacheKeys.isEmpty()) return
+        val storageKey = AppCloudStorage.cacheStorageKey()
         val remoteItems = AppCloudStorage.downloadCacheIndex().items.filterNot { it.cacheKey in cacheKeys }
         AppCloudStorage.uploadCacheIndex(CacheCloudIndex(items = remoteItems))
-        cacheKeys.forEach(CacheCloudIndexStore::removeLocal)
+        CacheCloudIndexStore.writeLocal(remoteItems, storageKey)
     }
 
     suspend fun getChapterItems(book: Book, key: String? = null): List<CacheChapterItem> {
@@ -496,7 +502,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             merged[indexItem.cacheKey] = indexItem
             val finalItems = merged.values.sortedByDescending { it.updatedAt }
             AppCloudStorage.uploadCacheIndex(CacheCloudIndex(items = finalItems))
-            CacheCloudIndexStore.upsertLocal(indexItem)
+            CacheCloudIndexStore.writeLocal(finalItems, AppCloudStorage.cacheStorageKey())
         }
     }
 

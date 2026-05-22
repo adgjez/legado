@@ -427,7 +427,8 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         val svg = config.svgTemplate
             .replace("\${color}", color)
             .replace("\${num}", "12")
-        SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), 96, 96)
+        val side = BUBBLE_PREVIEW_BITMAP_DP.dp
+        SvgUtils.createBitmap(ByteArrayInputStream(svg.toByteArray()), side, side)
     }.getOrNull()
 
     private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {
@@ -466,6 +467,11 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                     ContextCompat.getColor(this@BubbleManageActivity, R.color.background_card),
                     UiCorner.panelRadius(this@BubbleManageActivity)
                 )
+                root.minimumHeight = BUBBLE_ITEM_MIN_HEIGHT_DP.dp
+                cardPreview.layoutParams = cardPreview.layoutParams.apply {
+                    width = BUBBLE_PREVIEW_BOX_DP.dp
+                    height = BUBBLE_PREVIEW_BOX_DP.dp
+                }
                 cardPreview.radius = UiCorner.panelRadius(this@BubbleManageActivity)
                 tvName.text = entry.config.name
                 tvInfo.text = buildString {
@@ -604,5 +610,8 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         private const val COLOR_NIGHT_EMPHASIS = 0x6814
         private const val TAG_NAME = "name"
         private const val TAG_SVG = "svg"
+        private const val BUBBLE_PREVIEW_BOX_DP = 64
+        private const val BUBBLE_PREVIEW_BITMAP_DP = 128
+        private const val BUBBLE_ITEM_MIN_HEIGHT_DP = 86
     }
 }

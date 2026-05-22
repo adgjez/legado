@@ -147,6 +147,23 @@ object AppCloudStorage {
     fun containerDisplayLabel(container: S3Container?): String = S3ContainerManager.displayLabel(container)
 
     fun containerDisplayLabel(containerId: String?): String = containerDisplayLabel(S3ContainerManager.container(containerId))
+
+    fun cacheStorageKey(): String {
+        return when (type) {
+            CloudStorageType.WEBDAV -> listOf(
+                type.name,
+                AppConfig.webDavDir.orEmpty(),
+                appCtx.getPrefString(PreferKey.webDavUrl).orEmpty(),
+                appCtx.getPrefString(PreferKey.webDavAccount).orEmpty()
+            ).joinToString("|")
+            CloudStorageType.S3 -> listOf(
+                type.name,
+                S3ContainerScope.CACHE.key,
+                S3ContainerManager.selectedContainerId(S3ContainerScope.CACHE).orEmpty()
+            ).joinToString("|")
+        }
+    }
+
     suspend fun listThemePackages(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<CloudStorageFile> {
         return listZipFiles(getThemeTypePath(isNightTheme), scopedBackend(S3ContainerScope.THEME, containerId, scope))
     }
