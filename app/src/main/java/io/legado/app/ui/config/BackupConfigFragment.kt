@@ -67,6 +67,7 @@ class BackupConfigFragment : PreferenceFragment(),
     private companion object {
         const val KEY_WEB_DAV_ACCOUNT_MANAGE = "webDavAccountManage"
         const val KEY_S3_CONTAINER_MANAGE = "s3ContainerManage"
+        const val KEY_LIBRARY_CONTAINER_MANAGE = "libraryContainerManage"
     }
 
     private val viewModel by activityViewModels<ConfigViewModel>()
@@ -329,6 +330,7 @@ class BackupConfigFragment : PreferenceFragment(),
             PreferKey.restoreIgnore -> backupIgnore()
             KEY_WEB_DAV_ACCOUNT_MANAGE -> showWebDavAccountDialog()
             KEY_S3_CONTAINER_MANAGE -> requireContext().startActivity<S3ContainerManageActivity>()
+            KEY_LIBRARY_CONTAINER_MANAGE -> requireContext().startActivity<LibraryContainerManageActivity>()
             "web_dav_backup" -> backup()
             "web_dav_restore" -> restore()
             "import_old" -> restoreOld.launch()

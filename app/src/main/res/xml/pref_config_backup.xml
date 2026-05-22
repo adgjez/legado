@@ -46,6 +46,14 @@
             app:allowDividerBelow="false"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="libraryContainerManage"
+            android:title="书库容器"
+            android:summary="管理用于同步阅读章节缓存的独立 S3 容器"
+            app:allowDividerAbove="false"
+            app:allowDividerBelow="false"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="true"
             android:key="autoSwitchS3Container"

@@ -257,6 +257,9 @@
             android:name=".ui.config.S3ContainerManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.config.LibraryContainerManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.config.CoverCollectionManageActivity"
             android:launchMode="standard" />
         <activity
