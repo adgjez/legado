@@ -1,5 +1,7 @@
 package io.legado.app.ui.config
 
+import android.app.Activity.RESULT_OK
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
@@ -12,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
@@ -29,7 +32,10 @@ import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
+import io.legado.app.help.http.newCallResponseBody
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.cloud.CloudStorageType
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -45,12 +51,14 @@ import io.legado.app.model.ImageProvider
 import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
+import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -72,13 +80,44 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private var containerMenuItem: MenuItem? = null
     private var editingConfig: BubblePackageManager.Config? = null
     private var editingRoot: LinearLayout? = null
+    private var svgCursorPosition: Int = 0
     private val handledWebDavTasks = mutableSetOf<String>()
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
+    private val importFromNet by lazy { "网络导入" }
     private val importPackage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let(::importZip)
+        it.uri?.let { uri ->
+            if (uri.path == "/$importFromNet") {
+                importNetZipAlert()
+            } else {
+                importZip(uri)
+            }
+        }
     }
     private val exportPackage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { toastOnUi(R.string.export_success) }
+        it.uri?.let { uri ->
+            val value = uri.toString()
+            if (value.startsWith("http://", true) || value.startsWith("https://", true)) {
+                alert("上传成功") {
+                    setMessage(value)
+                    positiveButton(R.string.copy_text) {
+                        sendToClip(value)
+                        toastOnUi(R.string.copy_complete)
+                    }
+                    negativeButton(R.string.cancel)
+                }
+            } else {
+                toastOnUi(R.string.export_success)
+            }
+        }
+    }
+    private val svgEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            result.data?.getStringExtra("text")?.let { text ->
+                editingConfig = editingConfig?.copy(svgTemplate = text)
+                svgCursorPosition = result.data?.getIntExtra("cursorPosition", text.length) ?: text.length
+                refreshEditDialog()
+            }
+        }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -191,6 +230,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 1 -> importPackage.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("zip")
+                    otherActions = arrayListOf(SelectItem(importFromNet, -1))
                 }
             }
         }
@@ -247,7 +287,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 val next = config.copy(
                     name = root.findViewWithTag<EditText>(TAG_NAME)?.text?.toString().orEmpty(),
                     dirName = entry?.dirName.orEmpty(),
-                    svgTemplate = root.findViewWithTag<EditText>(TAG_SVG)?.text?.toString().orEmpty()
+                    svgTemplate = config.svgTemplate
                 )
                 runAction(refreshReading = entry?.dirName == BubblePackageManager.activeDirName()) {
                     BubblePackageManager.addOrUpdate(next, entry)
@@ -276,7 +316,15 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         root.addView(colorRow("日间强调色", colorOrDefault(config.dayEmphasisColor, true), COLOR_DAY_EMPHASIS))
         root.addView(colorRow("夜间常规色", colorOrDefault(config.nightNormalColor, false), COLOR_NIGHT_NORMAL))
         root.addView(colorRow("夜间强调色", colorOrDefault(config.nightEmphasisColor, true), COLOR_NIGHT_EMPHASIS))
-        root.addView(editText(config.svgTemplate, "SVG 模板，支持 ${'$'}{color} 和 ${'$'}{num}", singleLine = false).apply { tag = TAG_SVG })
+        root.addView(
+            PackageManageUi.optionRow(
+                this,
+                "SVG 模板",
+                "点击编辑，支持 ${'$'}{color} 和 ${'$'}{num}"
+            ) {
+                openSvgEditor()
+            }
+        )
     }
 
     private fun captureEditFields() {
@@ -284,8 +332,18 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         val root = editingRoot ?: return
         editingConfig = config.copy(
             name = root.findViewWithTag<EditText>(TAG_NAME)?.text?.toString() ?: config.name,
-            svgTemplate = root.findViewWithTag<EditText>(TAG_SVG)?.text?.toString() ?: config.svgTemplate
+            svgTemplate = config.svgTemplate
         )
+    }
+
+    private fun openSvgEditor() {
+        captureEditFields()
+        val svg = editingConfig?.svgTemplate.orEmpty()
+        svgEditLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
+            putExtra("text", svg)
+            putExtra("title", "SVG 模板")
+            putExtra("cursorPosition", svgCursorPosition.coerceIn(0, svg.length))
+        })
     }
 
     private fun colorRow(title: String, value: String, target: Int): View {
@@ -369,11 +427,45 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 .onSuccess { zip ->
                     exportPackage.launch {
                         mode = HandleFileContract.EXPORT
-                        showUploadUrl = false
                         fileData = HandleFileContract.FileData(zip.name, zip, "application/zip")
                     }
                 }
                 .onFailure { toastOnUi(it.localizedMessage) }
+        }
+    }
+
+    private fun importNetZipAlert() {
+        alert("网络导入") {
+            val input = EditText(this@BubbleManageActivity).apply { hint = "https://..." }
+            customView { input }
+            okButton {
+                val url = input.text?.toString().orEmpty().trim()
+                if (url.isNotEmpty()) importNetZip(url)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun importNetZip(url: String) {
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                val file = withContext(Dispatchers.IO) {
+                    externalFiles.getFile("bubbleImports", "import_${System.currentTimeMillis()}.zip").also { target ->
+                        target.parentFile?.mkdirs()
+                        okHttpClient.newCallResponseBody {
+                            url(url)
+                        }.use { body ->
+                            FileOutputStream(target).use { output -> body.byteStream().copyTo(output) }
+                        }
+                    }
+                }
+                BubblePackageManager.importZip(file)
+            }.onSuccess {
+                toastOnUi(R.string.success)
+                loadPackages()
+            }.onFailure {
+                toastOnUi(it.localizedMessage)
+            }
         }
     }
 
@@ -609,7 +701,6 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         private const val COLOR_NIGHT_NORMAL = 0x6813
         private const val COLOR_NIGHT_EMPHASIS = 0x6814
         private const val TAG_NAME = "name"
-        private const val TAG_SVG = "svg"
         private const val BUBBLE_PREVIEW_BOX_DP = 64
         private const val BUBBLE_PREVIEW_BITMAP_DP = 128
         private const val BUBBLE_ITEM_MIN_HEIGHT_DP = 86
