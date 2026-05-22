@@ -236,7 +236,22 @@ object CoverCollectionManager {
 
     fun String?.isRealCoverPath(): Boolean {
         val value = this?.trim().orEmpty()
-        return value.isNotBlank() && !value.equals("use_default_cover", ignoreCase = true)
+        if (value.isBlank() || value.equals("use_default_cover", ignoreCase = true)) {
+            return false
+        }
+        val lowerValue = value.lowercase()
+        return when {
+            lowerValue.startsWith("http://") ||
+                lowerValue.startsWith("https://") ||
+                lowerValue.startsWith("content://") ||
+                lowerValue.startsWith("android.resource://") ||
+                lowerValue.startsWith("file:///android_asset/") -> true
+            lowerValue.startsWith("file://") -> runCatching {
+                File(Uri.parse(value).path.orEmpty()).isFile
+            }.getOrDefault(false)
+            File(value).isAbsolute -> File(value).isFile
+            else -> true
+        }
     }
 
     private fun selectedCollectionCover(bookKey: String, hasOriginalCover: Boolean): String? {
