@@ -45,6 +45,11 @@ data class LibraryCloudSession(
 
     suspend fun downloadChapter(chapter: BookChapter): String? {
         val item = cachedItemFor(chapter) ?: return null
+        return downloadChapter(item)
+    }
+
+    suspend fun downloadChapter(item: LibraryChapterItem): String? {
+        if (!item.cached || item.remotePath.isBlank()) return null
         val cfg = config ?: return null
         return runCatching {
             val bytes = LibraryCloudBackend(cfg).download(item.remotePath)

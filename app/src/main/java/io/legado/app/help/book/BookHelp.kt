@@ -11,6 +11,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.library.LibraryCloudSync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.EpubFile
@@ -172,6 +173,7 @@ object BookHelp {
     ) {
         try {
             saveText(book, bookChapter, content)
+            LibraryCloudSync.enqueueUpload(book, bookChapter, content)
             //saveImages(bookSource, book, bookChapter, content)
             postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
         } catch (e: Exception) {

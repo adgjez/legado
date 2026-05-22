@@ -22,6 +22,7 @@ object LibraryCloudSync {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadLocks = ConcurrentHashMap<String, Mutex>()
     private val pendingIndexJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val sessions = ConcurrentHashMap<String, LibraryCloudSession>()
 
     fun enqueueUpload(book: Book, chapter: BookChapter, content: String) {
         if (!shouldUpload(book, chapter, content)) return
@@ -41,7 +42,22 @@ object LibraryCloudSync {
 
     suspend fun openSession(book: Book): LibraryCloudSession {
         val config = LibraryContainerManager.matchForSource(book.origin)
-        return LibraryCloudSession.open(book, config)
+        val key = sessionKey(config, book)
+        if (key != null) {
+            sessions[key]?.let { return it }
+        }
+        val session = LibraryCloudSession.open(book, config)
+        if (key != null) {
+            sessions[key] = session
+        }
+        return session
+    }
+
+    suspend fun refreshSession(book: Book): LibraryCloudSession {
+        val config = LibraryContainerManager.matchForSource(book.origin)
+        val key = sessionKey(config, book)
+        if (key != null) sessions.remove(key)
+        return openSession(book)
     }
 
     suspend fun tryCloudFirst(book: Book, chapter: BookChapter): String? {
@@ -53,7 +69,7 @@ object LibraryCloudSync {
         val config = LibraryContainerManager.matchForSource(book.origin)
             ?.takeIf { it.priority == LibrarySyncPriority.SOURCE_FIRST }
             ?: return null
-        val session = LibraryCloudSession.open(book, config)
+        val session = openSession(book)
         return session.downloadChapter(chapter)
     }
 
@@ -64,6 +80,11 @@ object LibraryCloudSync {
         if (content.startsWith("获取正文失败") || content.startsWith("加载正文失败")) return false
         if (!NetworkUtils.isAvailable()) return false
         return true
+    }
+
+    private fun sessionKey(config: LibraryContainerConfig?, book: Book): String? {
+        config ?: return null
+        return "${config.id}\u001F${book.bookUrl}\u001F${book.name}\u001F${book.getRealAuthor()}"
     }
 
     private suspend fun uploadChapter(
@@ -163,6 +184,7 @@ object LibraryCloudSync {
             LibraryCloudCrypto.encodeJson(rootIndex, config.password),
             "application/json"
         )
+        sessions.remove(sessionKey(config, book))
     }
 
     private suspend fun downloadRootIndex(backend: LibraryCloudBackend, config: LibraryContainerConfig): LibraryRootIndex {

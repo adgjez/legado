@@ -11,6 +11,9 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.library.LibraryCloudSync
+import io.legado.app.help.book.library.LibraryContainerManager
+import io.legado.app.help.book.library.LibrarySyncPriority
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.CompositeCoroutine
@@ -391,6 +394,15 @@ object CacheBook {
                 waitDownloadSet.remove(chapter.index)
             }
             try {
+                if (LibraryContainerManager.matchForSource(book.origin)?.priority == LibrarySyncPriority.CLOUD_FIRST) {
+                    LibraryCloudSync.tryCloudFirst(book, chapter)?.let { content ->
+                        BookHelp.saveText(book, chapter, content)
+                        onSuccess(chapter)
+                        ReadBook.downloadedChapters.add(chapter.index)
+                        ReadBook.downloadFailChapters.remove(chapter.index)
+                        return content
+                    }
+                }
                 val content = WebBook.getContentAwait(bookSource, book, chapter)
                 onSuccess(chapter)
                 ReadBook.downloadedChapters.add(chapter.index)
@@ -399,6 +411,13 @@ object CacheBook {
             } catch (e: Exception) {
                 if (e is CancellationException) {
                     onCancel(chapter.index)
+                }
+                LibraryCloudSync.tryCloudFallback(book, chapter)?.let { content ->
+                    BookHelp.saveText(book, chapter, content)
+                    onSuccess(chapter)
+                    ReadBook.downloadedChapters.add(chapter.index)
+                    ReadBook.downloadFailChapters.remove(chapter.index)
+                    return content
                 }
                 onError(chapter, e)
                 ReadBook.downloadFailChapters[chapter.index] =
@@ -421,6 +440,33 @@ object CacheBook {
             }
             onDownloadSet.add(chapter.index)
             waitDownloadSet.remove(chapter.index)
+            if (LibraryContainerManager.matchForSource(book.origin)?.priority == LibrarySyncPriority.CLOUD_FIRST) {
+                Coroutine.async(scope, IO, executeContext = IO, semaphore = semaphore) {
+                    LibraryCloudSync.tryCloudFirst(book, chapter)
+                }.onSuccess { content ->
+                    if (content != null) {
+                        BookHelp.saveText(book, chapter, content)
+                        onSuccess(chapter)
+                        ReadBook.downloadedChapters.add(chapter.index)
+                        ReadBook.downloadFailChapters.remove(chapter.index)
+                        downloadFinish(chapter, content, resetPageOffset)
+                    } else {
+                        downloadFromSource(scope, chapter, semaphore, resetPageOffset)
+                    }
+                }.onError {
+                    downloadFromSource(scope, chapter, semaphore, resetPageOffset)
+                }.start()
+                return
+            }
+            downloadFromSource(scope, chapter, semaphore, resetPageOffset)
+        }
+
+        private fun downloadFromSource(
+            scope: CoroutineScope,
+            chapter: BookChapter,
+            semaphore: Semaphore?,
+            resetPageOffset: Boolean = false
+        ) {
             WebBook.getContent(
                 scope,
                 bookSource,
@@ -435,10 +481,20 @@ object CacheBook {
                 ReadBook.downloadFailChapters.remove(chapter.index)
                 downloadFinish(chapter, content, resetPageOffset)
             }.onError {
-                onError(chapter, it)
-                ReadBook.downloadFailChapters[chapter.index] =
-                    (ReadBook.downloadFailChapters[chapter.index] ?: 0) + 1
-                downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
+                val sourceError = it
+                val cloudContent = LibraryCloudSync.tryCloudFallback(book, chapter)
+                if (cloudContent != null) {
+                    BookHelp.saveText(book, chapter, cloudContent)
+                    onSuccess(chapter)
+                    ReadBook.downloadedChapters.add(chapter.index)
+                    ReadBook.downloadFailChapters.remove(chapter.index)
+                    downloadFinish(chapter, cloudContent, resetPageOffset)
+                } else {
+                    onError(chapter, sourceError)
+                    ReadBook.downloadFailChapters[chapter.index] =
+                        (ReadBook.downloadFailChapters[chapter.index] ?: 0) + 1
+                    downloadFinish(chapter, "获取正文失败\n${sourceError.localizedMessage}", resetPageOffset)
+                }
             }.onCancel {
                 onCancel(chapter.index)
                 downloadFinish(chapter, "download canceled", resetPageOffset, true)
