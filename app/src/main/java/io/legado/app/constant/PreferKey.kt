@@ -114,6 +114,8 @@ object PreferKey {
     const val s3Containers = "s3Containers"
     const val s3ContainerSelections = "s3ContainerSelections"
     const val autoSwitchS3Container = "autoSwitchS3Container"
+    const val libraryS3Containers = "libraryS3Containers"
+    const val libraryS3ContainerSelections = "libraryS3ContainerSelections"
     const val s3FullWebDavFallbackNeverRemind = "s3FullWebDavFallbackNeverRemind"
     const val syncThemePackages = "syncThemePackages"
     const val enableCustomExport = "enableCustomExport"
