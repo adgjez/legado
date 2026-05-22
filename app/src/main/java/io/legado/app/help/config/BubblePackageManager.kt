@@ -21,7 +21,9 @@ import java.io.File
 object BubblePackageManager {
 
     const val BUILTIN_DIR_NAME = "builtin_default"
-    const val DEFAULT_COLOR = "#FF0000"
+    const val DEFAULT_EMPHASIS_COLOR = "#FF0000"
+    const val DEFAULT_NORMAL_COLOR = "#808080"
+    const val DEFAULT_COLOR = DEFAULT_EMPHASIS_COLOR
     const val MIN_SIZE_SCALE = 0.5f
     const val MAX_SIZE_SCALE = 1.5f
     private const val packageFileName = "bubble.json"
@@ -73,6 +75,10 @@ object BubblePackageManager {
             dirName = BUILTIN_DIR_NAME,
             svgTemplate = defaultSvgTemplate(),
             sizeScale = 1f,
+            dayNormalColor = DEFAULT_NORMAL_COLOR,
+            dayEmphasisColor = DEFAULT_EMPHASIS_COLOR,
+            nightNormalColor = DEFAULT_NORMAL_COLOR,
+            nightEmphasisColor = DEFAULT_EMPHASIS_COLOR,
             updatedAt = 0L
         )
     }
@@ -338,8 +344,8 @@ object BubblePackageManager {
     private fun defaultSvgTemplate(): String {
         return """
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-              <path d="$defaultBubblePath" fill="${'$'}{color}"/>
-              <text x="32" y="39" text-anchor="middle" font-size="14" font-weight="600" fill="#FFFFFF">${'$'}{num}</text>
+              <path d="$defaultBubblePath" fill="none" stroke="${'$'}{color}" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+              <text x="32" y="32" dy=".35em" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="600" fill="${'$'}{color}">${'$'}{num}</text>
             </svg>
         """.trimIndent()
     }

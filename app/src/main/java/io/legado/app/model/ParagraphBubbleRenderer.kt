@@ -63,11 +63,16 @@ object ParagraphBubbleRenderer {
     }
 
     private fun resolveColor(config: BubblePackageManager.Config, status: String): String {
+        val emphasis = status.equals("emphasis", true)
         val value = if (AppConfig.isNightTheme) {
-            if (status.equals("emphasis", true)) config.nightEmphasisColor else config.nightNormalColor
+            if (emphasis) config.nightEmphasisColor else config.nightNormalColor
         } else {
-            if (status.equals("emphasis", true)) config.dayEmphasisColor else config.dayNormalColor
-        }?.takeIf { it.isNotBlank() } ?: BubblePackageManager.DEFAULT_COLOR
+            if (emphasis) config.dayEmphasisColor else config.dayNormalColor
+        }?.takeIf { it.isNotBlank() } ?: if (emphasis) {
+            BubblePackageManager.DEFAULT_EMPHASIS_COLOR
+        } else {
+            BubblePackageManager.DEFAULT_NORMAL_COLOR
+        }
         return runCatching {
             val normalized = if (value.startsWith("#")) value else "#$value"
             Color.parseColor(normalized)
