@@ -56,7 +56,7 @@ data class LibraryCloudSession(
             val json = LibraryCloudCrypto.decodeString(bytes, cfg.password)
             GSON.fromJsonObject<LibraryChapterPayload>(json).getOrThrow().content.takeIf { it.isNotBlank() }
         }.onFailure {
-            AppLog.put("下载书库章节失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it)
+            AppLog.put("下载书库章节失败 ${book.name} ${item.title}\n${it.localizedMessage}", it)
         }.getOrNull()
     }
 
