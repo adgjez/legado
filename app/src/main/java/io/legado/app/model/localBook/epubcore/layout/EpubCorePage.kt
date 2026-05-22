@@ -38,6 +38,12 @@ sealed interface EpubPageFragment {
     val source: SourceRange?
 }
 
+data class EpubTextAnchor(
+    val source: SourceRange,
+    val startOffset: Int,
+    val endOffset: Int
+)
+
 data class EpubTextFragment(
     val text: CharSequence,
     val staticLayout: StaticLayout? = null,
