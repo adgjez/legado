@@ -17,7 +17,7 @@
         android:title="@string/favorite"
         android:visible="false"
         app:showAsAction="always"
-        tools:visible="true" />
+        tools:visible="true"/>
 
     <item
         android:id="@+id/menu_float_window"

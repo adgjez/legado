@@ -43,7 +43,7 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
             cbFullBottomProgress.setOnCheckedChangeListener { _, isChecked ->
                 VideoPlay.fullBottomProgressBar = isChecked
             }
-            tvPressSpeed.setOnClickListener {
+            tvPressSpeed.setOnClickListener { _ ->
                 NumberPickerDialog(requireContext(), true)
                     .setTitle(getString(R.string.press_speed))
                     .setMaxValue(60)
@@ -64,6 +64,8 @@ class SettingsDialog(private val context: Context, private val callBack: CallBac
     private fun Float.toPressSpeedStr(): String {
         return context.getString(R.string.press_speed_summary, this)
     }
+    interface CallBack {
+//        fun upUi()
+    }
 
-    interface CallBack
 }

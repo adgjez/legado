@@ -19,7 +19,6 @@ import io.legado.app.help.http.CookieManager.cookieJarHeader
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.StrResponse
-import io.legado.app.help.http.HttpCaptureHelper
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.help.source.getSourceType
@@ -56,7 +55,6 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 import okio.use
 import org.jsoup.Connection
 import org.jsoup.Jsoup
@@ -297,42 +295,6 @@ interface JsExtensions : JsEncodeUtils {
                 cacheFirst = cacheFirst,
                 delayTime = delayTime
             ).getStrResponse().body
-        }
-    }
-
-    @JavascriptInterface
-    fun httpCapture(configJson: String): String {
-        return kotlin.runCatching {
-            if (isMainThread) {
-                error("httpCapture must be called on a background thread")
-            }
-            val config = JSONObject(configJson)
-            val url = config.optString("url").trim()
-            require(url.startsWith("http://") || url.startsWith("https://")) {
-                "httpCapture only supports http/https url"
-            }
-            runBlocking(context) {
-                HttpCaptureHelper.capture(
-                    HttpCaptureHelper.Config(
-                        url = url,
-                        source = getSource(),
-                        waitMs = config.optLong("waitMs", 5_000L).coerceIn(500L, 30_000L),
-                        timeoutMs = config.optLong("timeoutMs", 30_000L).coerceIn(10_000L, 90_000L),
-                        includeRegex = config.optString("includeRegex").takeIf { it.isNotBlank() },
-                        excludeRegex = config.optString("excludeRegex").takeIf { it.isNotBlank() },
-                        maxRequests = config.optInt("maxRequests", 50).coerceIn(1, 200),
-                        maxBodyChars = config.optInt("maxBodyChars", 20_000).coerceIn(0, 80_000),
-                        replayResponse = config.optBoolean("replayResponse", true),
-                        js = config.optString("js").takeIf { it.isNotBlank() },
-                        coroutineContext = context
-                    )
-                ).toString()
-            }
-        }.getOrElse {
-            JSONObject().apply {
-                put("ok", false)
-                put("error", it.localizedMessage ?: it.javaClass.simpleName)
-            }.toString()
         }
     }
 

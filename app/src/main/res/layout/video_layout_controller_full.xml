@@ -12,7 +12,13 @@
         android:layout_height="match_parent"
         android:gravity="center" />
 
-        <RelativeLayout
+    <master.flame.danmaku.ui.widget.DanmakuView
+        android:id="@+id/danmaku_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <RelativeLayout
         android:id="@+id/thumb"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -20,15 +26,8 @@
         android:layout_alignParentTop="true"
         android:layout_alignParentEnd="true"
         android:layout_alignParentBottom="true"
-        android:background="#000000">
-
-        <ImageView
-            android:id="@+id/thumb_image"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:scaleType="centerCrop" />
-
-    </RelativeLayout>
+        android:background="#000000"
+        android:scaleType="fitCenter" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/layout_bottom"
@@ -111,7 +110,21 @@
             app:layout_constraintStart_toEndOf="@+id/start"
             app:layout_constraintTop_toBottomOf="@+id/progress" />
 
-                <TextView
+        <TextView
+            android:id="@+id/toggle_danmaku"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="16dp"
+            android:gravity="center"
+            android:minEms="2"
+            android:text="关弹幕"
+            android:textColor="#ffffff"
+            android:visibility="invisible"
+            app:layout_constraintEnd_toStartOf="@+id/episode_list"
+            app:layout_constraintTop_toBottomOf="@+id/progress"
+            tools:visibility="visible" />
+
+        <TextView
             android:id="@+id/episode_list"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -190,9 +203,8 @@
         android:layout_height="48dp"
         android:layout_alignParentTop="true"
         android:layout_toEndOf="@+id/back_tiny"
-        android:background="#99000000"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:background="@drawable/video_title_bg"
+        android:gravity="center_vertical">
 
         <ImageView
             android:id="@+id/back"
@@ -200,8 +212,7 @@
             android:layout_height="48dp"
             android:paddingStart="10dp"
             android:scaleType="centerInside"
-            android:src="@drawable/ic_arrow_back"
-            android:tint="#ffffff"
+            android:src="@drawable/video_back"
             tools:ignore="RtlSymmetry" />
 
         <TextView
@@ -213,15 +224,6 @@
             android:textColor="@android:color/white"
             android:textSize="18sp"
             tools:ignore="RtlSymmetry" />
-
-        <ImageView
-            android:id="@+id/more"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:padding="12dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_more_vert"
-            android:tint="#ffffff" />
 
     </LinearLayout>
 

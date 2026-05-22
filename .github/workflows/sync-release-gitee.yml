@@ -24,6 +24,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve GitHub release
         id: release
         env:
@@ -66,6 +71,29 @@ jobs:
             echo "apk_count=$APK_COUNT"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Ensure Gitee release tag
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG_NAME: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEE_TOKEN:-}" ]; then
+            echo "GITEE_TOKEN is not configured."
+            exit 1
+          fi
+
+          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
+            git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+          fi
+
+          GITEE_REMOTE="https://oauth2:${GITEE_TOKEN}@gitee.com/zziji/legado.git"
+          if git ls-remote --exit-code --tags "$GITEE_REMOTE" "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+            echo "Gitee tag already exists: $TAG_NAME"
+          else
+            git push "$GITEE_REMOTE" "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+            echo "Pushed Gitee tag: $TAG_NAME"
+          fi
+
       - name: Sync versioned release to Gitee
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -97,6 +125,7 @@ jobs:
             if [ -n "$release_id" ]; then
               curl -fsS -X PATCH "$API/releases/$release_id" \
                 --data-urlencode "access_token=$GITEE_TOKEN" \
+                --data-urlencode "tag_name=$tag_name" \
                 --data-urlencode "name=$release_name" \
                 --data-urlencode "body=$(cat release-body.md)" \
                 --data-urlencode "prerelease=false" >/dev/null
@@ -104,6 +133,7 @@ jobs:
               release_id="$(curl -fsS -X POST "$API/releases" \
                 --data-urlencode "access_token=$GITEE_TOKEN" \
                 --data-urlencode "tag_name=$tag_name" \
+                --data-urlencode "target_commitish=$tag_name" \
                 --data-urlencode "name=$release_name" \
                 --data-urlencode "body=$(cat release-body.md)" \
                 --data-urlencode "prerelease=false" \
@@ -166,6 +196,7 @@ jobs:
           if [ -n "$RELEASE_ID" ]; then
             curl -fsS -X PATCH "$API/releases/$RELEASE_ID" \
               --data-urlencode "access_token=$GITEE_TOKEN" \
+              --data-urlencode "tag_name=$CHANNEL_TAG" \
               --data-urlencode "name=$CHANNEL_NAME" \
               --data-urlencode "body=$(cat release-body.md)" \
               --data-urlencode "prerelease=false" >/dev/null
@@ -173,6 +204,7 @@ jobs:
             RELEASE_ID="$(curl -fsS -X POST "$API/releases" \
               --data-urlencode "access_token=$GITEE_TOKEN" \
               --data-urlencode "tag_name=$CHANNEL_TAG" \
+              --data-urlencode "target_commitish=$CHANNEL_TAG" \
               --data-urlencode "name=$CHANNEL_NAME" \
               --data-urlencode "body=$(cat release-body.md)" \
               --data-urlencode "prerelease=false" \

@@ -5,9 +5,9 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -16,7 +16,6 @@ import android.view.textclassifier.TextClassifier
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.PopupWindow
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.annotation.OptIn
@@ -28,12 +27,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
 import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
@@ -45,7 +41,6 @@ import io.legado.app.databinding.ActivityVideoPlayerBinding
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
-import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
@@ -58,15 +53,12 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.model.VideoPlay
-import io.legado.app.model.VideoPrepareManager
 import io.legado.app.service.VideoPlayService
-import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
@@ -78,9 +70,7 @@ import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.video.config.SettingsDialog
-import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.text.ScrollTextView
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
@@ -96,7 +86,6 @@ import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.statusBarHeight
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -126,7 +115,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private var initIntroView = false
     private val introTextView by lazy {
         initIntroView = true
-        val view = layoutInflater.inflate(R.layout.view_book_intro, binding.tvIntroContainer, false) as ScrollTextView
+        val inflater = LayoutInflater.from(this)
+        val view = inflater.inflate(R.layout.view_book_intro, binding.tvIntroContainer, false) as ScrollTextView
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             view.revealOnFocusHint = false
         }
@@ -162,8 +152,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     private var detailTabIndex = 0
     private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var menuCustomBtn: MenuItem? = null
-    private var playerMenuPopup: PopupWindow? = null
-    private var coverTarget: CustomTarget<Drawable>? = null
     private val bookSourceEditResult =
         registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
@@ -203,18 +191,16 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         playerView.enlargeImageRes = R.drawable.ic_fullscreen
-        binding.root.setPadding(0, statusBarHeight, 0, 0)
         isNew = intent.getBooleanExtra("isNew", true)
         setupPlayerView()
         setupDetailTabs()
-        showVideoCover(intent.getStringExtra(SearchBookOpenHelper.EXTRA_COVER_URL))
         if (isNew) {
             intent.getStringExtra("videoUrl")?.let {
                 VideoPlay.videoUrl = it
                 VideoPlay.singleUrl = true
             }
             intent.getStringExtra("videoTitle")?.let {
-                updatePlayerTitle(it)
+                binding.titleBar.title = it
                 VideoPlay.videoTitle = it
             }
             val sourceKey = intent.getStringExtra("sourceKey")
@@ -237,7 +223,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             VideoPlay.clonePlayState(playerView)
             playerView.setSurfaceToPlay()
             playerView.startAfterPrepared()
-            updatePlayerTitle(VideoPlay.videoTitle)
+            binding.titleBar.title = VideoPlay.videoTitle
             initView()
         }
         upView()
@@ -258,7 +244,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             binding.bottomPanel.invisible()
             return
         }
-        showVideoCover()
         binding.bottomPanel.visible()
         showBook(book)
         if (VideoPlay.episodes.isNullOrEmpty()) {
@@ -276,35 +261,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         selectVideoDetailTab(detailTabIndex)
     }
 
-    private fun showVideoCover(coverUrl: String? = null) {
-        val cover = coverUrl?.takeIf { it.isNotBlank() } ?: VideoPlay.getDisplayCover()
-        if (cover.isNullOrBlank()) return
-        coverTarget?.let { Glide.with(this).clear(it) }
-        coverTarget = object : CustomTarget<Drawable>() {
-            override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
-                playerView.setCoverDrawable(resource)
-            }
-
-            override fun onLoadCleared(placeholder: Drawable?) {
-                playerView.setCoverDrawable(placeholder)
-            }
-        }.also {
-            ImageLoader.load(this, cover)
-                .centerCrop()
-                .into(it)
-        }
-    }
-
     private fun setupDetailTabs() {
         binding.tabIntro.setOnClickListener { selectVideoDetailTab(0) }
         binding.tabToc.setOnClickListener { selectVideoDetailTab(1) }
         binding.tabInfo.setOnClickListener { selectVideoDetailTab(2) }
         selectVideoDetailTab(0)
-    }
-
-    private fun updatePlayerTitle(title: CharSequence?) {
-        playerView.setTopTitle(title)
-        VideoPlay.videoTitle = title?.toString()
     }
 
     private fun selectVideoDetailTab(index: Int) {
@@ -321,18 +282,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     private fun prepareVideoBook() {
-        VideoPrepareManager.take(
-            intent.getStringExtra("origin"),
-            intent.getStringExtra("bookUrl")
-        )?.let {
-            applyPreparedVideo(it)
-            return
-        }
         bookInfoViewModel.bookData.observe(this) { book ->
             if (preparedVideoStarted) {
                 return@observe
             }
-            updatePlayerTitle(book.name)
+            binding.titleBar.title = book.name
             VideoPlay.book = book
             VideoPlay.source = bookInfoViewModel.bookSource
             VideoPlay.inBookshelf = bookInfoViewModel.inBookshelf
@@ -378,37 +332,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             VideoPlay.saveRead()
         }
         bookInfoViewModel.initData(intent)
-    }
-
-    private fun applyPreparedVideo(prepared: VideoPrepareManager.PreparedVideo) {
-        if (preparedVideoStarted) return
-        preparedVideoStarted = true
-        val book = prepared.book
-        updatePlayerTitle(book.name)
-        VideoPlay.book = book
-        VideoPlay.source = prepared.source
-        VideoPlay.inBookshelf = prepared.inBookshelf
-        VideoPlay.toc = prepared.chapters
-        VideoPlay.volumes.clear()
-        prepared.chapters.forEach { chapter ->
-            if (chapter.isVolume) {
-                VideoPlay.volumes.add(chapter)
-            }
-        }
-        VideoPlay.chapterInVolumeIndex = book.chapterInVolumeIndex
-        VideoPlay.durVolumeIndex = book.durVolumeIndex
-        VideoPlay.durChapterPos = book.durChapterPos
-        VideoPlay.upEpisodes()
-        SourceCallBack.callBackBook(
-            SourceCallBack.START_READ,
-            VideoPlay.source as? BookSource,
-            book,
-            VideoPlay.chapter
-        )
-        initView()
-        upView()
-        VideoPlay.startPlay(playerView)
-        VideoPlay.saveRead()
     }
 
     private fun showBook(book: Book) {
@@ -773,8 +696,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         playerView.isNeedOrientationUtils = false //关闭自带的屏幕方向控制
         playerView.fullscreenButton.setOnClickListener { toggleFullScreen() }
         playerView.setBackFromFullScreenListener { toggleFullScreen() }
-        playerView.setTopBackClickListener { finish() }
-        playerView.setTopMoreClickListener { showPlayerMenu(it) }
         playerView.setVideoAllCallBack(object : GSYSampleCallBack() {
             @SuppressLint("SourceLockedOrientationActivity")
             override fun onPrepared(url: String?, vararg objects: Any?) {
@@ -846,20 +767,6 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = !VideoPlay.source?.loginUrl.isNullOrBlank()
         return super.onMenuOpened(featureId, menu)
-    }
-
-    private fun showPlayerMenu(anchor: View) {
-        playerMenuPopup = ModernActionPopup.showFromMenu(
-            anchor = anchor,
-            menuRes = R.menu.video_play,
-            previousPopup = playerMenuPopup,
-            prepare = {
-                onPrepareOptionsMenu(this)
-                findItem(R.id.menu_login)?.isVisible = !VideoPlay.source?.loginUrl.isNullOrBlank()
-            }
-        ) {
-            onCompatOptionsItemSelected(it)
-        }
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
@@ -960,7 +867,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     override fun observeLiveBus() {
 
         observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
-            updatePlayerTitle(it)
+            binding.titleBar.title = it
         }
 
         observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
@@ -1027,28 +934,14 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
 
     override fun onDestroy() {
         destroyWeb()
-        runCatching {
-            if (initGetter) {
-                glideImageGetter.clear()
-            }
-        }.onFailure {
-            AppLog.put("video destroy clear intro images failed", it)
-        }
-        runCatching {
-            coverTarget?.let { Glide.with(this).clear(it) }
-            coverTarget = null
-        }.onFailure {
-            AppLog.put("video destroy clear cover failed", it)
-        }
-        runCatching {
-            VideoPlay.saveRead()
-            VideoPlay.stopLoading()
-            playerView.getCurrentPlayer().release()
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }.onFailure {
-            AppLog.put("video destroy release player failed", it)
-        }
         super.onDestroy()
+        if (initGetter) {
+            glideImageGetter.clear()
+        }
+        VideoPlay.saveRead()
+        VideoPlay.stopLoading()
+        playerView.getCurrentPlayer().release()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun destroyWeb() {
