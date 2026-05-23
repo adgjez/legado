@@ -20,7 +20,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityS3ContainerManageBinding
-import io.legado.app.databinding.DialogS3ContainerEditBinding
+import io.legado.app.databinding.DialogLibraryContainerEditBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryContainerConfig
@@ -90,7 +90,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
     private fun showEditDialog(item: LibraryContainerConfig?) {
         editingSourceUrls = item?.sourceUrls.orEmpty().toMutableSet()
-        val dialogBinding = DialogS3ContainerEditBinding.inflate(LayoutInflater.from(this))
+        val dialogBinding = DialogLibraryContainerEditBinding.inflate(LayoutInflater.from(this))
         dialogBinding.bind(item)
         val settingsView = buildLibrarySettings(item)
         dialogBinding.layoutLibrary.addView(settingsView)
@@ -120,7 +120,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         dialog.show()
     }
 
-    private fun DialogS3ContainerEditBinding.bind(item: LibraryContainerConfig?) {
+    private fun DialogLibraryContainerEditBinding.bind(item: LibraryContainerConfig?) {
         val container = item?.container
         editName.setText(container?.name.orEmpty())
         editEndpoint.setText(container?.endpoint.orEmpty())
@@ -135,7 +135,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         cbEnabled.isChecked = container?.enabled ?: true
     }
 
-    private fun setupEditDialogStyle(binding: DialogS3ContainerEditBinding) = binding.run {
+    private fun setupEditDialogStyle(binding: DialogLibraryContainerEditBinding) = binding.run {
         root.applyUiBodyTypefaceDeep(uiTypeface())
         val actionRadius = UiCorner.actionRadius(this@LibraryContainerManageActivity)
         listOf(btnCancel, btnConfirm).forEach {
@@ -148,7 +148,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         }
     }
 
-    private fun setupEditGroups(binding: DialogS3ContainerEditBinding) = binding.run {
+    private fun setupEditGroups(binding: DialogLibraryContainerEditBinding) = binding.run {
         val tabs = listOf(
             btnConnectionGroup to layoutConnection,
             btnLibraryGroup to layoutLibrary,
@@ -265,7 +265,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         return "$checked${source.bookSourceName}$group"
     }
 
-    private fun saveDialogItem(oldItem: LibraryContainerConfig?, binding: DialogS3ContainerEditBinding): LibraryContainerConfig? {
+    private fun saveDialogItem(oldItem: LibraryContainerConfig?, binding: DialogLibraryContainerEditBinding): LibraryContainerConfig? {
         val parsed = S3Config.parseAddress(
             binding.editEndpoint.text?.toString().orEmpty(),
             binding.editBucket.text?.toString().orEmpty(),
