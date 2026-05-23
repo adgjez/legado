@@ -6,7 +6,9 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.isLocal
+import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -105,7 +107,7 @@ object LibraryCloudSync {
 
     private fun sessionKey(config: LibraryContainerConfig?, book: Book): String? {
         config ?: return null
-        return "${config.id}\u001F${LibraryCloudKeys.bookKey(book)}"
+        return "${config.id}\u001F${LibraryCloudKeys.sharedBookKey(book)}"
     }
 
     private fun activeKey(book: Book): String {
@@ -119,12 +121,12 @@ object LibraryCloudSync {
         content: String
     ) {
         val backend = LibraryCloudBackend(config)
-        val bookKey = LibraryCloudKeys.bookKey(book)
+        val exactBookKey = LibraryCloudKeys.bookKey(book)
         val chapterKey = LibraryCloudKeys.chapterKey(chapter)
         val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
         val now = System.currentTimeMillis()
         val payload = LibraryChapterPayloadV2(
-            bookKey = bookKey,
+            bookKey = exactBookKey,
             chapterKey = chapterKey,
             titleKey = LibraryCloudKeys.titleKey(chapter),
             relaxedTitleKey = LibraryCloudKeys.relaxedTitleKey(chapter),
@@ -146,16 +148,42 @@ object LibraryCloudSync {
             updatedAt = now
         )
         val bytes = LibraryCloudCrypto.encodeJson(payload, config.password, gzip = true)
-        LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
-            val variantPath = LibraryCloudPaths.variantChapterPath(bookKey, matchKey, sourceKey, chapterKey)
-            if (backend.exists(variantPath)) return@forEach
-            backend.upload(variantPath, bytes, "application/json")
-            backend.upload(
-                LibraryCloudPaths.currentChapterPath(bookKey, matchKey),
-                bytes,
-                "application/json"
-            )
+        LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
+            val wroteVariant = LibraryCloudKeys.variantMatchKeys(chapter)
+                .map { matchKey ->
+                    val variantPath = LibraryCloudPaths.variantChapterPath(bookKey, matchKey, sourceKey)
+                    if (remoteHasSameContent(backend, config, variantPath, payload)) {
+                        false
+                    } else {
+                        backend.upload(variantPath, bytes, "application/json")
+                        true
+                    }
+                }
+                .any { it }
+            LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
+                val currentPath = LibraryCloudPaths.currentChapterPath(bookKey, matchKey)
+                if (wroteVariant || !backend.exists(currentPath)) {
+                    backend.upload(currentPath, bytes, "application/json")
+                }
+            }
         }
         sessions.remove(sessionKey(config, book))
+    }
+
+    private suspend fun remoteHasSameContent(
+        backend: LibraryCloudBackend,
+        config: LibraryContainerConfig,
+        path: String,
+        payload: LibraryChapterPayloadV2
+    ): Boolean {
+        val bytes = backend.downloadOrNull(path) ?: return false
+        return runCatching {
+            val json = LibraryCloudCrypto.decodeString(bytes, config.password)
+            val remote = GSON.fromJsonObject<LibraryChapterPayloadV2>(json).getOrThrow()
+            remote.sourceKey == payload.sourceKey &&
+                remote.normalizedTitle == payload.normalizedTitle &&
+                remote.relaxedTitle == payload.relaxedTitle &&
+                remote.contentHash == payload.contentHash
+        }.getOrDefault(false)
     }
 }

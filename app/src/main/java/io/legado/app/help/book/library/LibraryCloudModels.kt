@@ -75,10 +75,9 @@ object LibraryCloudPaths {
     fun variantChapterPath(
         bookKey: String,
         matchKey: LibraryCloudMatchKey,
-        sourceKey: String,
-        chapterKey: String
+        sourceKey: String
     ): String {
-        return "$V2_DIR/books/$bookKey/chapters/${matchKey.kind}/${matchKey.key}/variants/$sourceKey/$chapterKey.json.gz"
+        return "$V2_DIR/books/$bookKey/chapters/${matchKey.kind}/${matchKey.key}/variants/$sourceKey/current.json.gz"
     }
 
     fun variantsPrefix(bookKey: String, matchKey: LibraryCloudMatchKey): String {
@@ -100,6 +99,18 @@ object LibraryCloudKeys {
 
     fun bookKey(name: String, author: String): String {
         return MD5Utils.md5Encode("${normalize(name)}\u001F${normalize(author)}")
+    }
+
+    fun sharedBookKey(book: Book): String {
+        return sharedBookKey(book.name)
+    }
+
+    fun sharedBookKey(name: String): String {
+        return MD5Utils.md5Encode("name\u001F${normalizeBookName(name)}")
+    }
+
+    fun bookKeys(book: Book): List<String> {
+        return listOf(bookKey(book), sharedBookKey(book)).distinct()
     }
 
     fun chapterKey(chapter: BookChapter): String {
@@ -130,6 +141,10 @@ object LibraryCloudKeys {
         return listOf(strict, relaxed).distinctBy { "${it.kind}\u001F${it.key}" }
     }
 
+    fun variantMatchKeys(chapter: BookChapter): List<LibraryCloudMatchKey> {
+        return matchKeys(chapter).sortedBy { if (it.kind == "relaxed") 0 else 1 }.take(1)
+    }
+
     fun sourceChapterKey(sourceUrl: String, chapterKey: String): String {
         return MD5Utils.md5Encode("${normalize(sourceUrl)}\u001F$chapterKey")
     }
@@ -156,10 +171,16 @@ object LibraryCloudKeys {
             .replace(Regex("[\\p{Punct}《》“”‘’（）【】、，。！？：；—·…]+"), "")
     }
 
+    fun normalizeBookName(value: String?): String {
+        return normalize(value)
+            .replace(Regex("[\\p{Punct}《》“”‘’（）【】、，。！？：；—·…]+"), "")
+    }
+
     fun payloadMatches(book: Book, chapter: BookChapter, payload: LibraryChapterPayloadV2): Boolean {
         if (payload.content.isBlank()) return false
-        val bookKey = bookKey(book)
-        if (payload.bookKey.isNotBlank() && payload.bookKey != bookKey) return false
+        if (payload.name.isNotBlank() && normalizeBookName(payload.name) != normalizeBookName(book.name)) {
+            return false
+        }
         val strict = normalize(chapter.title)
         val relaxed = relaxedTitle(chapter.title)
         val payloadStrict = payload.normalizedTitle.ifBlank { normalize(payload.title) }

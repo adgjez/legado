@@ -24,9 +24,7 @@ data class LibraryCloudSession(
         val cfg = config ?: return null
         if (state != LibraryCloudState.READY) return null
         val backend = LibraryCloudBackend(cfg)
-        val bookKey = LibraryCloudKeys.bookKey(book)
-        for (matchKey in LibraryCloudKeys.matchKeys(chapter)) {
-            val path = LibraryCloudPaths.currentChapterPath(bookKey, matchKey)
+        for (path in currentChapterPaths(chapter)) {
             val payload = readPayloadOrNull(backend, path) ?: continue
             if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
                 return payload.content.takeIf { it.isNotBlank() }
@@ -39,23 +37,32 @@ data class LibraryCloudSession(
         val cfg = config ?: return emptyList()
         if (state != LibraryCloudState.READY) return emptyList()
         val backend = LibraryCloudBackend(cfg)
-        val bookKey = LibraryCloudKeys.bookKey(book)
         val versions = mutableListOf<LibraryCloudChapterVersion>()
-        LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
-            val prefix = LibraryCloudPaths.variantsPrefix(bookKey, matchKey)
-            val files = runCatching { backend.list(prefix) }.getOrElse {
-                AppLog.put("列出书库章节版本失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it)
-                emptyList()
-            }
-            files.forEach { file ->
-                val payload = readPayloadOrNull(backend, file.path) ?: return@forEach
-                if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
-                    versions += LibraryCloudChapterVersion(file.path, payload, matchKey.kind)
+        LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
+            LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
+                val prefix = LibraryCloudPaths.variantsPrefix(bookKey, matchKey)
+                val files = runCatching { backend.list(prefix) }.getOrElse {
+                    AppLog.put("列出书库章节版本失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it)
+                    emptyList()
+                }
+                files.forEach { file ->
+                    val payload = readPayloadOrNull(backend, file.path) ?: return@forEach
+                    if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
+                        versions += LibraryCloudChapterVersion(file.path, payload, matchKey.kind)
+                    }
                 }
             }
         }
         return versions
-            .distinctBy { it.path }
+            .distinctBy {
+                listOf(
+                    it.payload.sourceKey,
+                    it.payload.sourceBookUrl,
+                    it.payload.normalizedTitle,
+                    it.payload.relaxedTitle,
+                    it.payload.contentHash
+                ).joinToString("\u001F")
+            }
             .sortedWith(
                 compareBy<LibraryCloudChapterVersion> {
                     if (it.payload.sourceUrl == book.origin || it.payload.sourceUrl.isBlank()) 0 else 1
@@ -84,6 +91,14 @@ data class LibraryCloudSession(
         }.onFailure {
             AppLog.put("读取书库章节失败 ${book.name} $path\n${it.localizedMessage}", it)
         }.getOrNull()
+    }
+
+    private fun currentChapterPaths(chapter: BookChapter): List<String> {
+        return LibraryCloudKeys.bookKeys(book).flatMap { bookKey ->
+            LibraryCloudKeys.matchKeys(chapter).map { matchKey ->
+                LibraryCloudPaths.currentChapterPath(bookKey, matchKey)
+            }
+        }.distinct()
     }
 
     companion object {
