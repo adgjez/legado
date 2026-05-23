@@ -3,7 +3,11 @@ package io.legado.app.help.book.library
 import android.util.Base64
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.security.SecureRandom
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -26,19 +30,43 @@ object LibraryCloudCrypto {
         val cipherText: String = ""
     )
 
-    fun encodeJson(value: Any, password: String?): ByteArray {
-        val json = GSON.toJson(value)
-        if (password.isNullOrBlank()) return json.toByteArray()
-        return (PREFIX + GSON.toJson(encrypt(json.toByteArray(), password))).toByteArray()
+    fun encodeJson(value: Any, password: String?, gzip: Boolean = false): ByteArray {
+        val jsonBytes = GSON.toJson(value).toByteArray(Charsets.UTF_8)
+        val payload = if (gzip) gzip(jsonBytes) else jsonBytes
+        if (password.isNullOrBlank()) return payload
+        return (PREFIX + GSON.toJson(encrypt(payload, password))).toByteArray(Charsets.UTF_8)
     }
 
     fun decodeString(bytes: ByteArray, password: String?): String {
-        val raw = String(bytes)
-        if (!raw.startsWith(PREFIX)) return raw
-        require(!password.isNullOrBlank()) { "云端内容已加密，请先设置密码" }
-        val payload = GSON.fromJsonObject<EncryptedPayload>(raw.removePrefix(PREFIX))
-            .getOrThrow()
-        return String(decrypt(payload, password))
+        val payload = decodeBytes(bytes, password)
+        return String(payload, Charsets.UTF_8)
+    }
+
+    private fun decodeBytes(bytes: ByteArray, password: String?): ByteArray {
+        val raw = String(bytes, Charsets.UTF_8)
+        val payload = if (!raw.startsWith(PREFIX)) {
+            bytes
+        } else {
+            require(!password.isNullOrBlank()) { "云端内容已加密，请先设置密码" }
+            val encrypted = GSON.fromJsonObject<EncryptedPayload>(raw.removePrefix(PREFIX))
+                .getOrThrow()
+            decrypt(encrypted, password)
+        }
+        return if (isGzip(payload)) gunzip(payload) else payload
+    }
+
+    private fun isGzip(bytes: ByteArray): Boolean {
+        return bytes.size >= 2 && bytes[0] == 0x1f.toByte() && bytes[1] == 0x8b.toByte()
+    }
+
+    private fun gzip(bytes: ByteArray): ByteArray {
+        val output = ByteArrayOutputStream()
+        GZIPOutputStream(output).use { it.write(bytes) }
+        return output.toByteArray()
+    }
+
+    private fun gunzip(bytes: ByteArray): ByteArray {
+        return GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
     }
 
     private fun encrypt(bytes: ByteArray, password: String): EncryptedPayload {

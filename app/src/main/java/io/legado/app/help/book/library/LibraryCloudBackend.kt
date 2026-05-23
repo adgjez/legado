@@ -58,27 +58,47 @@ class LibraryCloudBackend(private val config: LibraryContainerConfig) {
         }
     }
 
-    suspend fun refreshUsage(): Long = withContext(Dispatchers.IO) {
+    suspend fun exists(path: String): Boolean = withContext(Dispatchers.IO) {
         container.requireValid()
-        listAllObjects(container).sumOf { it.size }
+        request("HEAD", path, container.toConfig()).use { response ->
+            when {
+                response.isSuccessful -> true
+                response.code == 404 -> false
+                else -> {
+                    checkResult(response)
+                    false
+                }
+            }
+        }
     }
 
-    private fun listAllObjects(container: S3Container): List<CloudStorageFile> {
+    suspend fun list(prefix: String): List<CloudStorageFile> = withContext(Dispatchers.IO) {
+        container.requireValid()
+        listObjects(container, prefix)
+    }
+
+    suspend fun refreshUsage(): Long = withContext(Dispatchers.IO) {
+        container.requireValid()
+        listObjects(container, "").sumOf { it.size }
+    }
+
+    private fun listObjects(container: S3Container, relativePrefix: String): List<CloudStorageFile> {
         val cfg = container.toConfig()
-        val prefix = cfg.normalizedPrefix
+        val rootPrefix = cfg.normalizedPrefix
+        val queryPrefix = rootPrefix + relativePrefix.trimStart('/')
         val result = mutableListOf<CloudStorageFile>()
         var token: String? = null
         do {
             val response = request("GET", "", cfg, listBucket = true) {
                 addQueryParameter("list-type", "2")
-                addQueryParameter("prefix", prefix)
+                addQueryParameter("prefix", queryPrefix)
                 token?.let { addQueryParameter("continuation-token", it) }
             }
             val body = response.use {
                 checkResult(it)
                 it.body.text()
             }
-            val parsed = parseListObjects(body, prefix)
+            val parsed = parseListObjects(body, rootPrefix)
             result += parsed.files.filterNot { it.isDir }
             token = parsed.nextToken
         } while (!token.isNullOrBlank())
