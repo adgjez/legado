@@ -66,6 +66,49 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
         postItems(emptyList(), mode)
     }
 
+    suspend fun loadBookCloudBackupItems(book: Book): List<CacheBookItem> {
+        return withContext(Dispatchers.IO) {
+            val targetMode = cacheModeForBook(book)
+            val currentBooks = getBooks(targetMode)
+                .filter { it.sameCacheBookAs(book, targetMode) }
+            val currentBookUrls = currentBooks.mapTo(hashSetOf()) { it.bookUrl }
+            val cacheDirs = CacheManifestHelper.listCacheDirs()
+            val cacheDirNames = cacheDirs.mapTo(hashSetOf()) { it.name }
+            val manifests = CacheManifestHelper.listManifests(cacheDirs)
+                .filter { it.matches(targetMode) }
+                .filter { CacheManifestHelper.toBook(it).sameCacheBookAs(book, targetMode) }
+            val manifestByBookUrl = manifests.associateBy { it.bookUrl }
+            val currentItems = currentBooks
+                .asSequence()
+                .mapNotNull { current ->
+                    buildCacheBookItem(
+                        book = current,
+                        mode = targetMode,
+                        knownManifest = manifestByBookUrl[current.bookUrl],
+                        cacheDirNames = cacheDirNames
+                    )
+                }
+                .toList()
+            val manifestItems = manifests
+                .asSequence()
+                .filterNot { currentBookUrls.contains(it.bookUrl) }
+                .mapNotNull { manifest -> buildCacheBookItem(manifest, targetMode) }
+                .toList()
+            val localItems = currentItems + manifestItems
+            val storageKey = AppCloudStorage.cacheStorageKey()
+            var remoteIndex = CacheCloudIndexStore.readLocal(storageKey)
+            if (AppCloudStorage.isOk && NetworkUtils.isAvailable()) {
+                runCatching {
+                    AppCloudStorage.downloadCacheIndex().items
+                }.onSuccess {
+                    remoteIndex = it
+                    CacheCloudIndexStore.writeLocal(it, storageKey)
+                }
+            }
+            mergeRemoteItemsForBook(localItems, remoteIndex, targetMode, book)
+        }
+    }
+
     fun load(mode: CacheManageMode = this.mode) {
         this.mode = mode
         loadJob?.cancel()
@@ -171,6 +214,51 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             .mapNotNull { buildRemoteCacheBookItem(it, mode) }
             .forEach { merged += it }
         return groupByBook(merged)
+    }
+
+    private fun mergeRemoteItemsForBook(
+        localItems: List<CacheBookItem>,
+        remoteIndex: List<CacheCloudIndexItem>,
+        mode: CacheManageMode,
+        book: Book
+    ): List<CacheBookItem> {
+        val flatLocalItems = flattenCacheItemsForGrouping(localItems)
+        val localByKey = flatLocalItems.associateBy { it.cacheKey }
+        val remoteItems = remoteIndex
+            .asSequence()
+            .filter { it.matchesBook(book, mode) }
+            .toList()
+        val remoteByKey = remoteItems.associateBy { it.cacheKey }
+        val merged = arrayListOf<CacheBookItem>()
+        flatLocalItems.forEach { item ->
+            val remote = remoteByKey[item.cacheKey]
+            merged += if (remote != null) {
+                val remoteCount = remote.cachedChapterCount.coerceAtLeast(0)
+                val totalCount = maxOf(item.totalChapterCount, remote.totalChapterCount, remoteCount)
+                item.copy(
+                    cachedCount = maxOf(item.localCachedCount, remoteCount).coerceAtMost(totalCount),
+                    totalChapterCount = totalCount,
+                    remoteAvailable = true,
+                    remoteUpdatedAt = remote.updatedAt,
+                    remoteZipFileName = remote.zipFileName,
+                    remoteCachedCount = remoteCount
+                )
+            } else {
+                item
+            }
+        }
+        remoteItems
+            .asSequence()
+            .filterNot { localByKey.containsKey(it.cacheKey) }
+            .mapNotNull { buildRemoteCacheBookItem(it, mode) }
+            .forEach { merged += it }
+        return merged
+            .distinctBy { it.cacheKey }
+            .sortedWith(
+                compareByDescending<CacheBookItem> { maxOf(it.localCachedCount, it.remoteCachedCount) }
+                    .thenByDescending { it.cachedCount }
+                    .thenBy { it.sourceName }
+            )
     }
 
     private fun buildRemoteCacheBookItem(
@@ -1420,6 +1508,48 @@ enum class CacheManageMode(@StringRes val titleRes: Int, val bookType: Int) {
     BOOK(R.string.cache_manage_books, BookType.text),
     AUDIO(R.string.cache_manage_audio, BookType.audio),
     MANGA(R.string.cache_manage_manga, BookType.image)
+}
+
+private fun cacheModeForBook(book: Book): CacheManageMode {
+    return when {
+        book.isAudio -> CacheManageMode.AUDIO
+        book.isImage -> CacheManageMode.MANGA
+        else -> CacheManageMode.BOOK
+    }
+}
+
+private fun Book.sameCacheBookAs(other: Book, mode: CacheManageMode): Boolean {
+    if (cacheGroupKey(mode.name) == other.cacheGroupKey(mode.name)) return true
+    val name = normalizedCacheText(this.name)
+    val otherName = normalizedCacheText(other.name)
+    if (name.isBlank() || name != otherName) return false
+    val authors = setOf(
+        normalizedCacheText(this.author),
+        normalizedCacheText(this.getRealAuthor())
+    ).filterTo(hashSetOf()) { it.isNotBlank() }
+    if (authors.isEmpty()) return true
+    return normalizedCacheText(other.author) in authors ||
+            normalizedCacheText(other.getRealAuthor()) in authors
+}
+
+private fun CacheCloudIndexItem.matchesBook(book: Book, mode: CacheManageMode): Boolean {
+    if (this.mode != mode.name) return false
+    if (groupKey == book.cacheGroupKey(mode.name)) return true
+    val nameMatched = normalizedCacheText(name) == normalizedCacheText(book.name)
+    if (!nameMatched) return false
+    val authors = setOf(
+        normalizedCacheText(book.author),
+        normalizedCacheText(book.getRealAuthor())
+    ).filterTo(hashSetOf()) { it.isNotBlank() }
+    if (authors.isEmpty()) return true
+    return normalizedCacheText(author) in authors
+}
+
+private fun normalizedCacheText(value: String?): String {
+    return value.orEmpty()
+        .trim()
+        .lowercase()
+        .replace("\\s+".toRegex(), "")
 }
 
 enum class CacheChapterFilter {
