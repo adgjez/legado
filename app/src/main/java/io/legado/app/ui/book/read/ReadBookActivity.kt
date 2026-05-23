@@ -102,7 +102,6 @@ import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -2793,7 +2792,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val book = ReadBook.book ?: return false
         if (book.isLocal) return false
         return when (BookCloudEntryModeStore.get(book.bookUrl)) {
-            BookCloudEntryMode.CACHE_PACKAGE -> true
+            BookCloudEntryMode.CACHE_PACKAGE -> false
             BookCloudEntryMode.LIBRARY_CHAPTER ->
                 LibraryContainerManager.readContainer() != null
         }
@@ -2804,7 +2803,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showLibraryCloudChapters(refresh: Boolean) {
         val book = ReadBook.book ?: return
         if (BookCloudEntryModeStore.get(book.bookUrl) == BookCloudEntryMode.CACHE_PACKAGE) {
-            openCachePackageManage(book)
             return
         }
         val chapterIndex = ReadBook.durChapterIndex
@@ -2959,15 +2957,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
-        }
-    }
-
-    private fun openCachePackageManage(book: Book) {
-        startActivity<CacheManageActivity> {
-            putExtra(
-                CacheManageActivity.EXTRA_INITIAL_SEARCH_KEY,
-                listOf(book.name, book.getRealAuthor()).joinToString(" ")
-            )
         }
     }
 
