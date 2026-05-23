@@ -2982,9 +2982,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun libraryCloudStateMessage(session: LibraryCloudSession): String {
         return when (session.state) {
             LibraryCloudState.DISABLED -> "未配置书库容器"
-            LibraryCloudState.NO_ROOT_INDEX -> "云端书库没有目录索引"
-            LibraryCloudState.NO_BOOK_MATCH -> "云端书库没有匹配当前书籍"
-            LibraryCloudState.NO_BOOK_INDEX -> "云端书库没有当前书籍目录"
             LibraryCloudState.READY -> "云端书库可用"
             LibraryCloudState.ERROR -> session.errorMessage?.let { "云端书库读取失败\n$it" }
                 ?: "云端书库读取失败"

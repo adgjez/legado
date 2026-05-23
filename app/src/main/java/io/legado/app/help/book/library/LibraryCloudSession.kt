@@ -11,8 +11,6 @@ data class LibraryCloudSession(
     val config: LibraryContainerConfig?,
     val book: Book,
     val state: LibraryCloudState,
-    val rootIndex: LibraryRootIndex? = null,
-    val bookIndex: LibraryBookIndex? = null,
     val errorMessage: String? = null
 ) {
 
@@ -74,34 +72,6 @@ data class LibraryCloudSession(
         return payload.content.takeIf { it.isNotBlank() }
     }
 
-    suspend fun downloadChapter(item: LibraryChapterItem): String? {
-        if (!item.cached || item.remotePath.isBlank()) return null
-        val cfg = config ?: return null
-        return runCatching {
-            val bytes = LibraryCloudBackend(cfg).download(item.remotePath)
-            val json = LibraryCloudCrypto.decodeString(bytes, cfg.password)
-            GSON.fromJsonObject<LibraryChapterPayload>(json).getOrThrow().content.takeIf { it.isNotBlank() }
-        }.onFailure {
-            AppLog.put("下载旧书库章节失败 ${book.name} ${item.title}\n${it.localizedMessage}", it)
-        }.getOrNull()
-    }
-
-    fun cachedItemFor(chapter: BookChapter): LibraryChapterItem? {
-        val index = bookIndex ?: return null
-        val key = LibraryCloudKeys.chapterKey(chapter)
-        val title = LibraryCloudKeys.normalize(chapter.title)
-        return index.chapters
-            .asSequence()
-            .filter { it.cached && it.remotePath.isNotBlank() }
-            .filter { it.chapterKey == key || it.normalizedTitle == title }
-            .sortedWith(
-                compareBy<LibraryChapterItem> { if (it.sourceUrl == book.origin || it.sourceUrl.isBlank()) 0 else 1 }
-                    .thenBy { kotlin.math.abs(it.chapterIndex - chapter.index) }
-                    .thenByDescending { it.updatedAt }
-            )
-            .firstOrNull()
-    }
-
     private suspend fun readPayloadOrNull(
         backend: LibraryCloudBackend,
         path: String
@@ -129,9 +99,6 @@ data class LibraryCloudSession(
 
 enum class LibraryCloudState {
     DISABLED,
-    NO_ROOT_INDEX,
-    NO_BOOK_MATCH,
-    NO_BOOK_INDEX,
     READY,
     ERROR
 }
