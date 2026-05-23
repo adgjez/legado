@@ -17,6 +17,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -46,6 +47,7 @@ import io.legado.app.constant.Status
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookParagraphRule
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
@@ -1311,6 +1313,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun askAiBySelection() {
         val prompt = selectedText.trim()
         if (prompt.isEmpty()) return
+        openReadAiPanel(prompt)
+    }
+
+    override fun openReadAssistant() {
+        openReadAiPanel("")
+    }
+
+    private fun openReadAiPanel(prompt: String) {
         if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
             toastOnUi(R.string.ai_missing_config)
             return
@@ -2793,6 +2803,76 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun showMoreSetting() {
         showDialogFragment<MoreConfigDialog>()
+    }
+
+    override fun showParagraphRuleQuickDialog() {
+        val book = ReadBook.book ?: run {
+            toastOnUi(R.string.paragraph_rule_no_book_hint)
+            return
+        }
+        lifecycleScope.launch {
+            val (rules, enabledIds) = withContext(IO) {
+                appDb.paragraphRuleDao.all() to
+                        appDb.paragraphRuleDao.enabledRuleIdsForBook(book.bookUrl).toMutableSet()
+            }
+            if (rules.isEmpty()) {
+                toastOnUi(R.string.paragraph_rule_empty)
+                return@launch
+            }
+            val listView = LinearLayout(this@ReadBookActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
+            }
+            rules.forEachIndexed { index, rule ->
+                val checkBox = CheckBox(this@ReadBookActivity).apply {
+                    text = rule.displayName()
+                    setTextColor(primaryTextColor)
+                    textSize = 15f
+                    minimumHeight = 44.dpToPx()
+                    isChecked = enabledIds.contains(rule.id)
+                    setOnCheckedChangeListener { _, checked ->
+                        lifecycleScope.launch {
+                            withContext(IO) {
+                                if (checked) {
+                                    appDb.paragraphRuleDao.insertBookRule(
+                                        BookParagraphRule(book.bookUrl, rule.id, true, index)
+                                    )
+                                } else {
+                                    appDb.paragraphRuleDao.deleteBookRule(book.bookUrl, rule.id)
+                                }
+                            }
+                            refreshParagraphRuleLayout()
+                        }
+                    }
+                }
+                listView.addView(
+                    checkBox,
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
+            val scrollView = ScrollView(this@ReadBookActivity).apply {
+                addView(listView)
+            }
+            alert(R.string.paragraph_rule) {
+                customView { scrollView }
+                positiveButton(R.string.paragraph_rule_manage) {
+                    startActivity<ParagraphRuleManageActivity> {
+                        putExtra("bookUrl", book.bookUrl)
+                    }
+                }
+                cancelButton()
+            }
+        }
+    }
+
+    private fun refreshParagraphRuleLayout() {
+        if (ReadBook.book == null) return
+        ReadBook.invalidateParagraphRuleLayout()
+        ReadBook.callBack?.upContent(resetPageOffset = false)
+        ReadBook.loadContent(resetPageOffset = false)
     }
 
     override fun showSearchSetting() {
