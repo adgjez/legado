@@ -8,12 +8,21 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.Settings
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 import android.view.animation.Animation
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.SeekBar
+import android.widget.TextView
+import androidx.appcompat.widget.AppCompatImageButton
+import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import io.legado.app.R
@@ -107,6 +116,13 @@ class ReadMenu @JvmOverloads constructor(
     private var modernMenuPopup: PopupWindow? = null
     private var currentChapterUrl: String? = null
     private var cloudState: LibraryCloudState = LibraryCloudState.DISABLED
+    private var autoPageActive: Boolean = false
+    private val renderedButtons = hashMapOf<String, RenderedButton>()
+
+    private data class RenderedButton(
+        val icon: ImageView,
+        val label: TextView?
+    )
     private val menuInListener = object : Animation.AnimationListener {
         override fun onAnimationStart(animation: Animation) {
             binding.tvSourceAction.text =
@@ -186,11 +202,6 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     private fun initView(reset: Boolean = false) = binding.run {
-        if (AppConfig.isNightTheme) {
-            fabNightTheme.setImageResource(R.drawable.ic_daytime)
-        } else {
-            fabNightTheme.setImageResource(R.drawable.ic_brightness)
-        }
         initAnimation()
         val paletteBaseColor = if (immersiveMenu) bgColor else context.bottomBackground
         val palette = ReaderSheetStyle.resolve(context, paletteBaseColor)
@@ -296,6 +307,264 @@ class ReadMenu @JvmOverloads constructor(
          * 确保视图不被导航栏遮挡
          */
         bottomMenu.applyNavigationBarPadding()
+        renderReadMenuButtons(
+            actionColor = actionColor,
+            strokeColor = panelStrokeColor,
+            primaryTextColor = primaryTextColor,
+            secondaryTextColor = palette.secondaryTextColor
+        )
+    }
+
+    private fun renderReadMenuButtons(
+        actionColor: Int,
+        strokeColor: Int,
+        primaryTextColor: Int,
+        secondaryTextColor: Int
+    ) = binding.run {
+        val layout = ReadMenuButtonConfig.load(context)
+        val actionRadius = UiCorner.actionRadius(context)
+        val buttonBackground = if (AppConfig.isEInkMode) {
+            null
+        } else {
+            createPanelDrawable(actionRadius, actionColor, strokeColor)
+        }
+        renderedButtons.clear()
+        llFloatingButton.removeAllViews()
+        llActionPanel.removeAllViews()
+        llFloatingButton.isVisible = layout.firstRow.isNotEmpty()
+        llActionPanel.isVisible = layout.secondRow.isNotEmpty()
+        layout.firstRow.forEach { ref ->
+            llFloatingButton.addView(
+                createFirstRowButton(ref, buttonBackground, primaryTextColor, secondaryTextColor)
+            )
+        }
+        layout.secondRow.forEach { ref ->
+            llActionPanel.addView(
+                createSecondRowButton(ref, primaryTextColor)
+            )
+        }
+        updateAutoPageButton()
+    }
+
+    private fun createFirstRowButton(
+        ref: ReadMenuButtonConfig.ButtonRef,
+        buttonBackground: GradientDrawable?,
+        primaryTextColor: Int,
+        secondaryTextColor: Int
+    ): View {
+        val title = buttonTitle(ref)
+        val container = LinearLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            orientation = LinearLayout.VERTICAL
+            setPadding(2.dpToPx(), 0, 2.dpToPx(), 6.dpToPx())
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { handleMenuButtonClick(ref) }
+        }
+        val icon = AppCompatImageButton(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                46.dpToPx()
+            )
+            background = buttonBackground?.constantState?.newDrawable() ?: ContextCompat.getDrawable(
+                context,
+                R.drawable.bg_read_menu_quick_action_button
+            )
+            contentDescription = title
+            setImageResource(buttonIconRes(ref))
+            setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(11.dpToPx(), 11.dpToPx(), 11.dpToPx(), 11.dpToPx())
+            setOnClickListener { handleMenuButtonClick(ref) }
+        }
+        val label = TextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 6.dpToPx()
+            }
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            includeFontPadding = false
+            maxLines = 1
+            text = title
+            setTextColor(secondaryTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+        }
+        container.addView(icon)
+        container.addView(label)
+        renderedButtons[buttonKey(ref)] = RenderedButton(icon, label)
+        return container
+    }
+
+    private fun createSecondRowButton(
+        ref: ReadMenuButtonConfig.ButtonRef,
+        primaryTextColor: Int
+    ): View {
+        val title = buttonTitle(ref)
+        val selectable = TypedValue()
+        context.theme.resolveAttribute(android.R.attr.selectableItemBackground, selectable, true)
+        val container = LinearLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            background = ContextCompat.getDrawable(context, selectable.resourceId)
+            contentDescription = title
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            minimumHeight = 72.dpToPx()
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 10.dpToPx(), 0, 10.dpToPx())
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { handleMenuButtonClick(ref) }
+            setOnLongClickListener { handleMenuButtonLongClick(ref) }
+        }
+        val icon = AppCompatImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(20.dpToPx(), 20.dpToPx())
+            contentDescription = title
+            setImageResource(buttonIconRes(ref))
+            setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
+        }
+        val label = TextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 8.dpToPx()
+            }
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            includeFontPadding = false
+            isSingleLine = true
+            text = title
+            setTextColor(primaryTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        container.addView(icon)
+        container.addView(label)
+        renderedButtons[buttonKey(ref)] = RenderedButton(icon, label)
+        return container
+    }
+
+    private fun handleMenuButtonClick(ref: ReadMenuButtonConfig.ButtonRef) {
+        when (ref.type) {
+            ReadMenuButtonConfig.TYPE_BUILTIN -> handleBuiltinMenuButtonClick(ref.id)
+            ReadMenuButtonConfig.TYPE_CUSTOM -> ref.id.toLongOrNull()?.let {
+                callBack.runCustomReadMenuButton(it)
+            }
+        }
+    }
+
+    private fun handleBuiltinMenuButtonClick(id: String) {
+        when (id) {
+            ReadMenuButtonConfig.Builtin.SEARCH -> runMenuOut {
+                callBack.openSearchActivity(null)
+            }
+            ReadMenuButtonConfig.Builtin.AUTO_PAGE -> runMenuOut {
+                callBack.autoPage()
+            }
+            ReadMenuButtonConfig.Builtin.REPLACE_RULE -> callBack.openReplaceRule()
+            ReadMenuButtonConfig.Builtin.NIGHT_THEME -> {
+                AppConfig.isNightTheme = !AppConfig.isNightTheme
+                ThemeConfig.applyDayNight(context)
+                callBack.onNightThemeChanged()
+            }
+            ReadMenuButtonConfig.Builtin.CATALOG -> runMenuOut {
+                callBack.openChapterList()
+            }
+            ReadMenuButtonConfig.Builtin.READ_ALOUD -> runMenuOut {
+                callBack.onClickReadAloud()
+            }
+            ReadMenuButtonConfig.Builtin.READ_STYLE -> runMenuOut {
+                callBack.showReadStyle()
+            }
+            ReadMenuButtonConfig.Builtin.SETTING -> runMenuOut {
+                callBack.showMoreSetting()
+            }
+            ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> runMenuOut {
+                callBack.openReadAssistant()
+            }
+            ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> runMenuOut {
+                callBack.showParagraphRuleQuickDialog()
+            }
+        }
+    }
+
+    private fun handleMenuButtonLongClick(ref: ReadMenuButtonConfig.ButtonRef): Boolean {
+        return when {
+            ref.type == ReadMenuButtonConfig.TYPE_BUILTIN &&
+                    ref.id == ReadMenuButtonConfig.Builtin.READ_ALOUD -> {
+                runMenuOut {
+                    callBack.showReadAloudDialog()
+                }
+                true
+            }
+            ref.type == ReadMenuButtonConfig.TYPE_CUSTOM -> {
+                ref.id.toLongOrNull()?.let { callBack.editCustomReadMenuButton(it) }
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun buttonTitle(ref: ReadMenuButtonConfig.ButtonRef): String {
+        ref.titleOverride.trim().takeIf { it.isNotBlank() }?.let { return it }
+        return when (ref.type) {
+            ReadMenuButtonConfig.TYPE_CUSTOM -> ref.id
+            else -> when (ref.id) {
+                ReadMenuButtonConfig.Builtin.SEARCH -> context.getString(R.string.search_content)
+                ReadMenuButtonConfig.Builtin.AUTO_PAGE -> context.getString(R.string.auto_next_page)
+                ReadMenuButtonConfig.Builtin.REPLACE_RULE -> context.getString(R.string.replace_rule_title)
+                ReadMenuButtonConfig.Builtin.NIGHT_THEME -> context.getString(R.string.dark_theme)
+                ReadMenuButtonConfig.Builtin.CATALOG -> context.getString(R.string.chapter_list)
+                ReadMenuButtonConfig.Builtin.READ_ALOUD -> context.getString(R.string.read_aloud)
+                ReadMenuButtonConfig.Builtin.READ_STYLE -> context.getString(R.string.interface_setting)
+                ReadMenuButtonConfig.Builtin.SETTING -> context.getString(R.string.setting)
+                ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> context.getString(R.string.ai_assistant)
+                ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> context.getString(R.string.paragraph_rule)
+                else -> ref.id
+            }
+        }
+    }
+
+    private fun buttonIconRes(ref: ReadMenuButtonConfig.ButtonRef): Int {
+        if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) return R.drawable.ic_custom
+        return when (ref.id) {
+            ReadMenuButtonConfig.Builtin.SEARCH -> R.drawable.ic_search
+            ReadMenuButtonConfig.Builtin.AUTO_PAGE -> {
+                if (autoPageActive) R.drawable.ic_auto_page_stop else R.drawable.ic_auto_page
+            }
+            ReadMenuButtonConfig.Builtin.REPLACE_RULE -> R.drawable.ic_find_replace
+            ReadMenuButtonConfig.Builtin.NIGHT_THEME -> {
+                if (AppConfig.isNightTheme) R.drawable.ic_daytime else R.drawable.ic_brightness
+            }
+            ReadMenuButtonConfig.Builtin.CATALOG -> R.drawable.ic_toc
+            ReadMenuButtonConfig.Builtin.READ_ALOUD -> R.drawable.ic_read_aloud
+            ReadMenuButtonConfig.Builtin.READ_STYLE -> R.drawable.ic_interface_setting
+            ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
+            ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
+            ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
+            else -> R.drawable.ic_custom
+        }
+    }
+
+    private fun buttonKey(ref: ReadMenuButtonConfig.ButtonRef): String {
+        return "${ref.type}:${ref.id}"
+    }
+
+    private fun builtinButtonKey(id: String): String {
+        return "${ReadMenuButtonConfig.TYPE_BUILTIN}:$id"
+    }
+
+    private fun updateAutoPageButton() {
+        val rendered = renderedButtons[builtinButtonKey(ReadMenuButtonConfig.Builtin.AUTO_PAGE)]
+        rendered?.icon?.apply {
+            setImageResource(
+                if (autoPageActive) R.drawable.ic_auto_page_stop else R.drawable.ic_auto_page
+            )
+            contentDescription = context.getString(
+                if (autoPageActive) R.string.auto_next_page_stop else R.string.auto_next_page
+            )
+            setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        }
     }
 
     fun reset() {
@@ -782,15 +1051,9 @@ class ReadMenu @JvmOverloads constructor(
         binding.seekReadPage.progress = seek
     }
 
-    fun setAutoPage(autoPage: Boolean) = binding.run {
-        if (autoPage) {
-            fabAutoPage.setImageResource(R.drawable.ic_auto_page_stop)
-            fabAutoPage.contentDescription = context.getString(R.string.auto_next_page_stop)
-        } else {
-            fabAutoPage.setImageResource(R.drawable.ic_auto_page)
-            fabAutoPage.contentDescription = context.getString(R.string.auto_next_page)
-        }
-        fabAutoPage.setColorFilter(textColor)
+    fun setAutoPage(autoPage: Boolean) {
+        autoPageActive = autoPage
+        updateAutoPageButton()
     }
 
     fun updateCloudLibraryState(state: LibraryCloudState) {
@@ -846,6 +1109,10 @@ class ReadMenu @JvmOverloads constructor(
         fun libraryCloudState(): LibraryCloudState = LibraryCloudState.DISABLED
         fun showLibraryCloudChapters(refresh: Boolean) = Unit
         fun showLibraryCloudDebug() = Unit
+        fun openReadAssistant() = Unit
+        fun showParagraphRuleQuickDialog() = Unit
+        fun runCustomReadMenuButton(id: Long) = Unit
+        fun editCustomReadMenuButton(id: Long) = Unit
     }
 
 }
