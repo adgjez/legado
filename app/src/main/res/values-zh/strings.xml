@@ -1184,6 +1184,7 @@
     <string name="read_bar_style_follow_page">工具栏样式跟随页面</string>
     <string name="read_menu_alpha">正文菜单不透明度</string>
     <string name="read_menu_alpha_summary">调整顶部与底部正文菜单的不透明程度</string>
+    <string name="read_menu_edit">菜单编辑</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>
     <string name="like_source">赞</string>
     <string name="not_like_source">踩</string>
@@ -1993,6 +1994,7 @@
     <string name="top_bar_border_color">顶栏边框色</string>
     <string name="select_color">选择颜色</string>
     <string name="paragraph_rule_manage">&#27573;&#33853;&#35268;&#21017;&#31649;&#29702;</string>
+    <string name="paragraph_rule">段落规则</string>
     <string name="paragraph_rule_add_hint">&#28155;&#21152;&#27573;&#33853;&#35268;&#21017;</string>
     <string name="paragraph_rule_all_rules">&#20840;&#37096;&#27573;&#33853;&#35268;&#21017;</string>
     <string name="paragraph_rule_current_book">&#24403;&#21069;&#20070;&#31821;</string>

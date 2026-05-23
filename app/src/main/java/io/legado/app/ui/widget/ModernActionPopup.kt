@@ -33,7 +33,9 @@ object ModernActionPopup {
     fun show(
         anchor: View,
         actions: List<Action>,
-        previousPopup: PopupWindow? = null
+        previousPopup: PopupWindow? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8
     ): PopupWindow? {
         if (actions.isEmpty()) return previousPopup
         val context = anchor.context
@@ -42,7 +44,7 @@ object ModernActionPopup {
             popup?.dismiss()
         }
         previousPopup?.dismiss()
-        val popupSize = measurePopupSize(anchor, content)
+        val popupSize = measurePopupSize(anchor, content, maxHeightRatio, bottomGapDp)
         popup = PopupWindow(
             content,
             popupSize.first,
@@ -64,6 +66,8 @@ object ModernActionPopup {
         anchor: View,
         @MenuRes menuRes: Int,
         previousPopup: PopupWindow? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8,
         prepare: (Menu.() -> Unit)? = null,
         onClick: (MenuItem) -> Boolean
     ): PopupWindow? {
@@ -77,7 +81,7 @@ object ModernActionPopup {
                 actions.add(Action(item.title.toString(), item.isChecked) { onClick(item) })
             }
         }
-        return show(anchor, actions, previousPopup)
+        return show(anchor, actions, previousPopup, maxHeightRatio, bottomGapDp)
     }
 
     private fun createContent(
@@ -162,12 +166,19 @@ object ModernActionPopup {
         }
     }
 
-    private fun measurePopupSize(anchor: View, content: View): Pair<Int, Int> {
+    private fun measurePopupSize(
+        anchor: View,
+        content: View,
+        maxHeightRatio: Float,
+        bottomGapDp: Int
+    ): Pair<Int, Int> {
         val gap = 8.dpToPx()
+        val bottomGap = bottomGapDp.dpToPx()
         val visibleFrame = Rect()
         anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
         content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val maxHeight = ((visibleFrame.height() - gap * 2) * 0.62f).toInt()
+        val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
+        val maxHeight = ((visibleFrame.height() - gap - bottomGap) * ratio).toInt()
             .coerceAtLeast(160.dpToPx())
         return content.measuredWidth to content.measuredHeight.coerceAtMost(maxHeight)
     }

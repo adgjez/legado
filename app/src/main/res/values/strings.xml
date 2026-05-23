@@ -1341,6 +1341,7 @@
     <string name="read_bar_style_follow_page">read bar style follow page</string>
     <string name="read_menu_alpha">Read Menu Opacity</string>
     <string name="read_menu_alpha_summary">Adjust opacity for top/bottom menu panels</string>
+    <string name="read_menu_edit">Menu editor</string>
     <string name="rule_image_decode">Decode Image(imageDecode)</string>
     <string name="like_source">Like</string>
     <string name="not_like_source">Not like</string>
@@ -1994,6 +1995,7 @@ Selected text or question:
     <string name="cover_collection_export_failed_simple">Failed to export collection</string>
     <string name="cover_collection_zip_no_images">ZIP contains no available images</string>
     <string name="paragraph_rule_manage">Paragraph rule management</string>
+    <string name="paragraph_rule">Paragraph rules</string>
     <string name="paragraph_rule_add_hint">Add paragraph rule</string>
     <string name="paragraph_rule_all_rules">All paragraph rules</string>
     <string name="paragraph_rule_current_book">Current book</string>

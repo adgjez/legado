@@ -853,7 +853,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_epub_schedule_mode -> showEpubCoreScheduleModeDialog()
-            R.id.menu_click_area_config -> showClickRegionalConfig()
+            R.id.menu_read_menu_edit -> toastOnUi(R.string.read_menu_edit)
 
             R.id.menu_page_anim -> showPageAnimConfig {
                 binding.readView.upPageAnim()
