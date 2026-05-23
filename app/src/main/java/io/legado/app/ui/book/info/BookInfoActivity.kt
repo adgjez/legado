@@ -1107,32 +1107,46 @@ class BookInfoActivity :
             BookCloudEntryMode.LIBRARY_CHAPTER -> "阅读页显示云按钮，按当前章节切换书库正文"
         }
         return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
             background = UiCorner.opaqueRounded(
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.panelRadius(context)
             )
-            elevation = if (selected) 8.dpToPx().toFloat() else 0f
-            translationZ = if (selected) 4.dpToPx().toFloat() else 0f
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 bottomMargin = 10.dpToPx()
             }
-            addView(TextView(context).apply {
-                text = title
-                textSize = 16f
-                setTextColor(if (selected) accentColor else primaryTextColor)
-                applyUiTitleTypeface(context)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = title
+                    textSize = 16f
+                    setTextColor(if (selected) accentColor else primaryTextColor)
+                    applyUiTitleTypeface(context)
+                })
+                addView(TextView(context).apply {
+                    text = summary
+                    textSize = 13f
+                    setTextColor(secondaryTextColor)
+                    setPadding(0, 4.dpToPx(), 0, 0)
+                    applyUiBodyTypefaceDeep(context.uiTypeface())
+                })
             })
             addView(TextView(context).apply {
-                text = summary
-                textSize = 13f
-                setTextColor(secondaryTextColor)
-                setPadding(0, 4.dpToPx(), 0, 0)
-                applyUiBodyTypefaceDeep(context.uiTypeface())
+                text = "✓"
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setTextColor(accentColor)
+                isVisible = selected
+                layoutParams = LinearLayout.LayoutParams(28.dpToPx(), 28.dpToPx()).apply {
+                    marginStart = 10.dpToPx()
+                }
+                applyUiTitleTypeface(context)
             })
             setOnClickListener { onClick() }
         }
