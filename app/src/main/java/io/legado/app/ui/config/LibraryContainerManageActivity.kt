@@ -353,9 +353,9 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         ) = binding.run {
             val container = item.container
             val isDefault = LibraryContainerManager.selectedId() == item.id
-            root.elevation = if (isDefault) 8.dp.toFloat() else 0f
-            root.translationZ = if (isDefault) 4.dp.toFloat() else 0f
-            tvName.text = if (isDefault) "默认：${LibraryContainerManager.displayLabel(item)}" else LibraryContainerManager.displayLabel(item)
+            tvName.text = LibraryContainerManager.displayLabel(item)
+            tvSelected.isVisible = isDefault
+            tvSelected.setTextColor(ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.accent))
             tvPath.text = "${container.bucket}/${container.prefix.trim('/')}"
             val capacityMb = container.capacityMb.coerceAtLeast(0)
             val usedBytes = container.usedBytes.coerceAtLeast(0)

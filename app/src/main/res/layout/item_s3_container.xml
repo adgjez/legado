@@ -49,6 +49,18 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/tv_selected"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_gravity="center_vertical"
+        android:layout_marginStart="8dp"
+        android:gravity="center"
+        android:text="✓"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/btn_more"
         android:layout_width="wrap_content"
         android:layout_height="34dp"
