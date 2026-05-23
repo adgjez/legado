@@ -95,7 +95,15 @@ class AboutFragment : PreferenceFragmentCompat() {
                         UpdateDialog(it)
                     )
                 }.onError {
-                    appCtx.toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
+                    if (!AppUpdate.isLatestVersionError(it)) {
+                        showDialogFragment(
+                            TextDialog(
+                                getString(R.string.check_update),
+                                it.localizedMessage ?: getString(R.string.check_update),
+                                TextDialog.Mode.TEXT
+                            )
+                        )
+                    }
                 }.onFinally {
                     waitDialog.dismiss()
                 }

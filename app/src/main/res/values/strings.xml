@@ -885,7 +885,7 @@
     <string name="ui_corner_scale">Corner radius scale</string>
     <string name="ui_corner_scale_summary">Current corner radius scale: %s, range 0-3</string>
     <string name="ui_corner_scale_invalid">Please enter a number from 0 to 3</string>
-    <string name="ui_layout_alpha">Interface layout opacity</string>
+    <string name="ui_layout_alpha">Interface opacity</string>
     <string name="ui_layout_alpha_value">%d%%</string>
     <string name="ui_corner_search_follow">Search bars follow corner scale</string>
     <string name="ui_corner_search_follow_summary">Allow search bars to use the global corner radius scale</string>
@@ -1776,6 +1776,11 @@
     <string name="cache_manage_books">Books</string>
     <string name="cache_manage_audio">Audio</string>
     <string name="cache_manage_manga">Manga</string>
+    <string name="cache_manage_search_book">Search cache</string>
+    <string name="cache_manage_sort_title">Sort cache</string>
+    <string name="cache_manage_sort_current">Sort: %1$s</string>
+    <string name="cache_manage_sort_name">Name</string>
+    <string name="cache_manage_sort_time">Recent</string>
     <string name="cache_manage_summary_state">%1$d book(s), %2$d cached chapter(s)</string>
     <string name="cache_manage_empty">No %1$s cache</string>
     <string name="cache_manage_chapters">Cached chapters</string>
@@ -1963,7 +1968,7 @@ Selected text or question:
     <string name="theme_image_panel_background">Panel background</string>
     <string name="theme_image_panel_background_mode">Panel image mode</string>
     <string name="theme_panel_border_color">Panel border color</string>
-    <string name="theme_panel_border_alpha">Panel border opacity</string>
+    <string name="theme_panel_border_alpha">Border opacity</string>
     <string name="bottom_bar_border_color">Bottom bar border color</string>
     <string name="top_bar_border_color">Top bar border color</string>
     <string name="select_color">Select color</string>

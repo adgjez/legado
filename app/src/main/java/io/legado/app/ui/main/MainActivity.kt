@@ -1793,6 +1793,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                             showDialogFragment(
                                 UpdateDialog(it)
                             )
+                        }.onError {
+                            if (!AppUpdate.isLatestVersionError(it)) {
+                                showDialogFragment(
+                                    TextDialog(
+                                        getString(R.string.check_update),
+                                        it.localizedMessage ?: getString(R.string.check_update),
+                                        TextDialog.Mode.TEXT
+                                    )
+                                )
+                            }
                         }
                     LocalConfig.lastCheckUpdate = System.currentTimeMillis()
                 }

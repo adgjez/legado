@@ -290,6 +290,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             totalChapterCount = remote.totalChapterCount.coerceAtLeast(remote.cachedChapterCount),
             localCachedCount = 0,
             remoteCachedCount = remote.cachedChapterCount,
+            localUpdatedAt = 0L,
             inBookshelf = appDb.bookDao.has(remote.bookUrl),
             sourceAvailable = book.isLocal || book.getBookSource() != null,
             remoteAvailable = true,
@@ -827,6 +828,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             localCachedCount = cachedCount,
             taskState = taskState,
             manifest = manifest,
+            localUpdatedAt = resolveLocalUpdatedAt(book, manifest),
             inBookshelf = true,
             sourceAvailable = book.isLocal || book.getBookSource() != null
         )
@@ -866,6 +868,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             localCachedCount = cachedCount,
             taskState = taskState,
             manifest = manifest,
+            localUpdatedAt = resolveLocalUpdatedAt(book, manifest),
             inBookshelf = true,
             sourceAvailable = book.isLocal || book.getBookSource() != null
         )
@@ -905,9 +908,19 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             totalChapterCount = totalChapterCount,
             localCachedCount = rawCachedCount.coerceAtMost(totalChapterCount),
             manifest = manifest,
+            localUpdatedAt = resolveLocalUpdatedAt(book, manifest),
             inBookshelf = false,
             sourceAvailable = book.isLocal || book.getBookSource() != null
         )
+    }
+
+    private fun resolveLocalUpdatedAt(book: Book, manifest: CacheBookManifest?): Long {
+        val manifestTime = manifest?.updatedAt ?: 0L
+        val dirTime = BookHelp.getCacheDir(book)
+            .takeIf { it.exists() }
+            ?.lastModified()
+            ?: 0L
+        return maxOf(manifestTime, dirTime)
     }
 
     private fun getFastCachedCount(cacheNames: Set<String>): Int {
@@ -1468,6 +1481,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             totalChapterCount = totalChapterCount,
             localCachedCount = localCachedCount,
             remoteCachedCount = remoteCachedCount,
+            localUpdatedAt = localUpdatedAt,
             taskState = taskState,
             manifest = manifest,
             inBookshelf = inBookshelf,
@@ -1493,6 +1507,7 @@ class CacheManageViewModel(application: Application) : BaseViewModel(application
             totalChapterCount = totalChapterCount,
             localCachedCount = localCachedCount,
             remoteCachedCount = remoteCachedCount,
+            localUpdatedAt = localUpdatedAt,
             taskState = taskState,
             manifest = manifest,
             inBookshelf = inBookshelf,
@@ -1569,6 +1584,7 @@ data class CacheBookItem(
     val totalChapterCount: Int,
     val localCachedCount: Int,
     val remoteCachedCount: Int = 0,
+    val localUpdatedAt: Long = 0L,
     val taskState: AudioCacheTaskState? = null,
     val manifest: CacheBookManifest? = null,
     val inBookshelf: Boolean = true,
@@ -1619,6 +1635,7 @@ data class CacheBookSourceVariant(
     val totalChapterCount: Int,
     val localCachedCount: Int,
     val remoteCachedCount: Int = 0,
+    val localUpdatedAt: Long = 0L,
     val taskState: AudioCacheTaskState? = null,
     val manifest: CacheBookManifest? = null,
     val inBookshelf: Boolean = true,

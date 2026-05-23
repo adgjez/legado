@@ -22,8 +22,8 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
             "official_version" -> AppVariant.OFFICIAL
             "beta_release_version" -> AppVariant.BETA_RELEASE
             "beta_releaseA_version" -> AppVariant.BETA_RELEASEA
-            "beta_releaseS_version" -> AppVariant.BETA_RELEASES
-            else -> AppConst.appInfo.appVariant
+            "beta_releaseS_version" -> AppVariant.OFFICIAL
+            else -> AppVariant.OFFICIAL
         }
 
     private suspend fun getLatestRelease(): List<AppReleaseInfo> {
@@ -70,11 +70,7 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
     suspend fun checkNow(): AppUpdate.UpdateInfo {
         return getLatestRelease()
             .filter {
-                if (AppConst.appInfo.appVariant == AppVariant.BETA_RELEASE) { //不切版本
-                    it.appVariant == AppConst.appInfo.appVariant
-                } else {
-                    it.appVariant == checkVariant
-                }
+                it.appVariant == checkVariant
             }
             .filter { it.supportsDeviceAbi() }
             .firstOrNull {

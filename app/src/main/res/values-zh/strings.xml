@@ -733,7 +733,7 @@
     <string name="ui_corner_scale">圆角倍率</string>
     <string name="ui_corner_scale_summary">当前圆角倍率：%s，范围 0-3</string>
     <string name="ui_corner_scale_invalid">请输入 0 到 3 之间的数字</string>
-    <string name="ui_layout_alpha">界面布局透明度</string>
+    <string name="ui_layout_alpha">界面不透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
@@ -1664,6 +1664,11 @@
     <string name="cache_manage_books">书籍</string>
     <string name="cache_manage_audio">音频</string>
     <string name="cache_manage_manga">漫画</string>
+    <string name="cache_manage_search_book">搜索缓存</string>
+    <string name="cache_manage_sort_title">缓存排序</string>
+    <string name="cache_manage_sort_current">排序：%1$s</string>
+    <string name="cache_manage_sort_name">名称</string>
+    <string name="cache_manage_sort_time">最近</string>
     <string name="cache_manage_summary_state">共 %1$d 本，已缓存 %2$d 章</string>
     <string name="cache_manage_empty">暂无%1$s缓存</string>
     <string name="cache_manage_chapters">缓存目录</string>
@@ -1983,7 +1988,7 @@
     <string name="cache_manage_webdav_task_duplicate">任务已在队列中</string>
     <string name="cache_manage_batch_upload_queued">已加入 %1$d 个上传任务</string>
     <string name="theme_panel_border_color">圆角卡片边框色</string>
-    <string name="theme_panel_border_alpha">圆角卡片边框不透明度</string>
+    <string name="theme_panel_border_alpha">边框不透明度</string>
     <string name="bottom_bar_border_color">底栏边框色</string>
     <string name="top_bar_border_color">顶栏边框色</string>
     <string name="select_color">选择颜色</string>

@@ -9,6 +9,8 @@ import io.legado.app.base.adapter.DiffRecyclerAdapter
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.databinding.ItemCacheManageBookBinding
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -40,6 +42,7 @@ class CacheManageAdapter(
                     oldItem.sourceAvailable == newItem.sourceAvailable &&
                     oldItem.remoteAvailable == newItem.remoteAvailable &&
                     oldItem.remoteCachedCount == newItem.remoteCachedCount &&
+                    oldItem.localUpdatedAt == newItem.localUpdatedAt &&
                     oldItem.remoteUpdatedAt == newItem.remoteUpdatedAt &&
                     oldItem.remoteZipFileName == newItem.remoteZipFileName &&
                     oldItem.sourceVariants == newItem.sourceVariants
@@ -73,11 +76,13 @@ class CacheManageAdapter(
         )
         listOf(btnChapters, btnUpload, btnDelete, btnBookshelf, btnStop).forEach {
             it.background = UiCorner.actionSelector(
-                ContextCompat.getColor(context, R.color.background_card),
+                android.graphics.Color.TRANSPARENT,
                 ContextCompat.getColor(context, R.color.background_menu),
                 UiCorner.actionRadius(context)
             )
+            it.setTextColor(context.primaryTextColor)
         }
+        btnChapters.setTextColor(context.accentColor)
         ivCover.load(book, false)
         tvName.text = book.name
         btnSource.text = if (item.sourceAvailable) {
