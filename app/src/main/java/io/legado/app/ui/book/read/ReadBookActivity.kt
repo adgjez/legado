@@ -121,6 +121,7 @@ import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCEN
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_COLOR
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ParagraphRuleManageActivity
+import io.legado.app.ui.book.read.config.ReadMenuButtonManageActivity
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.ReadStyleDialog
 import io.legado.app.ui.book.read.config.TipConfigDialog.Companion.TIP_COLOR
@@ -853,7 +854,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             R.id.menu_epub_schedule_mode -> showEpubCoreScheduleModeDialog()
-            R.id.menu_read_menu_edit -> toastOnUi(R.string.read_menu_edit)
+            R.id.menu_read_menu_edit -> startActivity<ReadMenuButtonManageActivity>()
 
             R.id.menu_page_anim -> showPageAnimConfig {
                 binding.readView.upPageAnim()

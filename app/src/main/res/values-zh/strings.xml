@@ -1185,6 +1185,16 @@
     <string name="read_menu_alpha">正文菜单不透明度</string>
     <string name="read_menu_alpha_summary">调整顶部与底部正文菜单的不透明程度</string>
     <string name="read_menu_edit">菜单编辑</string>
+    <string name="read_menu_button_manage">正文菜单按键</string>
+    <string name="read_menu_button_summary">配置正文菜单第一排和第二排按键，长按拖动可以排序。</string>
+    <string name="read_menu_first_row">第一排</string>
+    <string name="read_menu_second_row">第二排</string>
+    <string name="read_menu_add_button">添加按键</string>
+    <string name="read_menu_no_available_button">没有可添加的内置按键</string>
+    <string name="read_menu_builtin_button">内置</string>
+    <string name="read_menu_custom_button">自定义</string>
+    <string name="read_menu_move_to_first">移到第一排</string>
+    <string name="read_menu_move_to_second">移到第二排</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>
     <string name="like_source">赞</string>
     <string name="not_like_source">踩</string>

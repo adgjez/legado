@@ -1342,6 +1342,16 @@
     <string name="read_menu_alpha">Read Menu Opacity</string>
     <string name="read_menu_alpha_summary">Adjust opacity for top/bottom menu panels</string>
     <string name="read_menu_edit">Menu editor</string>
+    <string name="read_menu_button_manage">Read menu buttons</string>
+    <string name="read_menu_button_summary">Configure the first and second button rows in the reader menu. Long press and drag to sort.</string>
+    <string name="read_menu_first_row">First row</string>
+    <string name="read_menu_second_row">Second row</string>
+    <string name="read_menu_add_button">Add button</string>
+    <string name="read_menu_no_available_button">No available built-in buttons</string>
+    <string name="read_menu_builtin_button">Built-in</string>
+    <string name="read_menu_custom_button">Custom</string>
+    <string name="read_menu_move_to_first">Move to first</string>
+    <string name="read_menu_move_to_second">Move to second</string>
     <string name="rule_image_decode">Decode Image(imageDecode)</string>
     <string name="like_source">Like</string>
     <string name="not_like_source">Not like</string>

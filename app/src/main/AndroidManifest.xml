@@ -239,6 +239,9 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.book.read.config.ReadMenuButtonManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.config.ThemeManageActivity"
             android:launchMode="standard" />
         <activity
