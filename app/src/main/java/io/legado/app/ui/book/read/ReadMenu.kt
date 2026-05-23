@@ -533,7 +533,11 @@ class ReadMenu @JvmOverloads constructor(
             callBack.showLibraryCloudChapters(refresh = false)
         }
         ivCloudLibrary.setOnLongClickListener {
-            callBack.showLibraryCloudChapters(refresh = true)
+            if (io.legado.app.BuildConfig.DEBUG) {
+                callBack.showLibraryCloudDebug()
+            } else {
+                callBack.showLibraryCloudChapters(refresh = true)
+            }
             true
         }
         //书源操作
@@ -841,6 +845,7 @@ class ReadMenu @JvmOverloads constructor(
         fun isLibraryCloudEnabled(): Boolean = false
         fun libraryCloudState(): LibraryCloudState = LibraryCloudState.DISABLED
         fun showLibraryCloudChapters(refresh: Boolean) = Unit
+        fun showLibraryCloudDebug() = Unit
     }
 
 }

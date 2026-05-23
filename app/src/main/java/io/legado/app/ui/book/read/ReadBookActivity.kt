@@ -54,6 +54,8 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
 import io.legado.app.help.book.library.LibraryCloudChapterVersion
+import io.legado.app.help.book.library.LibraryCloudKeys
+import io.legado.app.help.book.library.LibraryCloudPaths
 import io.legado.app.help.book.library.LibraryCloudSession
 import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.help.book.library.LibraryCloudSync
@@ -2829,6 +2831,67 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return@launch
             }
             showLibraryCloudChapterDialog(book, session, currentChapter, versions)
+        }
+    }
+
+    override fun showLibraryCloudDebug() {
+        if (!BuildConfig.DEBUG) return
+        val book = ReadBook.book ?: return
+        val chapterIndex = ReadBook.durChapterIndex
+        lifecycleScope.launch {
+            val chapter = withContext(IO) {
+                appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
+            }
+            val container = LibraryContainerManager.readContainer()
+            val message = buildString {
+                appendLine("book.name=${book.name}")
+                appendLine("book.author=${book.getRealAuthor()}")
+                appendLine("book.bookUrl=${book.bookUrl}")
+                appendLine("book.origin=${book.origin}")
+                appendLine("book.originName=${book.originName}")
+                appendLine()
+                appendLine("exactBookKey=${LibraryCloudKeys.bookKey(book)}")
+                appendLine("sharedBookKey=${LibraryCloudKeys.sharedBookKey(book)}")
+                appendLine("allBookKeys=${LibraryCloudKeys.bookKeys(book).joinToString()}")
+                appendLine("normalizedBookName=${LibraryCloudKeys.normalizeBookName(book.name)}")
+                appendLine()
+                appendLine("container=${LibraryContainerManager.displayLabel(container)}")
+                appendLine("containerId=${container?.id.orEmpty()}")
+                appendLine("containerPrefix=${container?.container?.prefix.orEmpty()}")
+                appendLine()
+                if (chapter == null) {
+                    appendLine("chapter=null")
+                } else {
+                    appendLine("chapter.index=${chapter.index}")
+                    appendLine("chapter.title=${chapter.title}")
+                    appendLine("chapter.url=${chapter.url}")
+                    appendLine("chapter.identity=${chapter.contentCacheIdentity()}")
+                    appendLine("chapterKey=${LibraryCloudKeys.chapterKey(chapter)}")
+                    appendLine("titleKey=${LibraryCloudKeys.titleKey(chapter)}")
+                    appendLine("relaxedTitle=${LibraryCloudKeys.relaxedTitle(chapter.title)}")
+                    appendLine("relaxedTitleKey=${LibraryCloudKeys.relaxedTitleKey(chapter)}")
+                    appendLine("sourceKey=${LibraryCloudKeys.sourceKey(book.origin)}")
+                    appendLine()
+                    appendLine("listPrefixes:")
+                    LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
+                        LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
+                            appendLine(LibraryCloudPaths.variantsPrefix(bookKey, matchKey))
+                        }
+                    }
+                    appendLine()
+                    appendLine("currentPaths:")
+                    LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
+                        LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
+                            appendLine(LibraryCloudPaths.currentChapterPath(bookKey, matchKey))
+                        }
+                    }
+                }
+            }
+            AlertDialog.Builder(this@ReadBookActivity)
+                .setTitle("书库调试")
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
         }
     }
 
