@@ -56,7 +56,10 @@ import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
+import io.legado.app.help.book.library.LibraryChapterManifestV3
+import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryCloudChapterVersion
+import io.legado.app.help.book.library.LibraryCloudCrypto
 import io.legado.app.help.book.library.LibraryCloudKeys
 import io.legado.app.help.book.library.LibraryCloudPaths
 import io.legado.app.help.book.library.LibraryCloudSession
@@ -2846,6 +2849,29 @@ class ReadBookActivity : BaseReadBookActivity(),
                 appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
             }
             val container = LibraryContainerManager.readContainer()
+            val v3Debug = if (chapter != null && container != null) {
+                withContext(IO) {
+                    val v3BookKey = LibraryCloudKeys.bookKey(book)
+                    val v3ChapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
+                    val manifestPath = LibraryCloudPaths.v3ManifestPath(v3BookKey, v3ChapterKey)
+                    runCatching {
+                        val bytes = LibraryCloudBackend(container).downloadOrNull(manifestPath)
+                            ?: return@runCatching "v3ManifestState=missing"
+                        val json = LibraryCloudCrypto.decodeString(bytes, container.password)
+                        val manifest = GSON.fromJsonObject<LibraryChapterManifestV3>(json).getOrThrow()
+                        buildString {
+                            appendLine("v3ManifestState=exists")
+                            appendLine("v3ManifestVersion=${manifest.version}")
+                            appendLine("v3ManifestVariants=${manifest.variants.size}")
+                            appendLine("v3ManifestSources=${manifest.variants.joinToString { it.sourceName.ifBlank { it.sourceUrl } }}")
+                        }.trimEnd()
+                    }.getOrElse {
+                        "v3ManifestState=error ${it.localizedMessage}"
+                    }
+                }
+            } else {
+                "v3ManifestState=not_checked"
+            }
             val message = buildString {
                 appendLine("book.name=${book.name}")
                 appendLine("book.author=${book.getRealAuthor()}")
@@ -2879,6 +2905,19 @@ class ReadBookActivity : BaseReadBookActivity(),
                     appendLine("ordinalTitleKey=${LibraryCloudKeys.ordinalTitleKey(chapter).orEmpty()}")
                     appendLine("matchKeys=${LibraryCloudKeys.matchKeys(chapter).joinToString { "${it.kind}:${it.key}" }}")
                     appendLine("sourceKey=${LibraryCloudKeys.sourceKey(book.origin)}")
+                    appendLine()
+                    val v3BookKey = LibraryCloudKeys.bookKey(book)
+                    val v3ChapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
+                    val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
+                    appendLine("v3BookKey=$v3BookKey")
+                    appendLine("v3ChapterKey=$v3ChapterKey")
+                    appendLine("v3ManifestPath=${LibraryCloudPaths.v3ManifestPath(v3BookKey, v3ChapterKey)}")
+                    appendLine("v3PayloadPath=${LibraryCloudPaths.v3PayloadPath(v3BookKey, v3ChapterKey, sourceKey)}")
+                    appendLine(v3Debug)
+                    appendLine("v3RequestEstimate.uploadNew=1B+2A")
+                    appendLine("v3RequestEstimate.uploadDuplicate=1B")
+                    appendLine("v3RequestEstimate.read=2B")
+                    appendLine("v3RequestEstimate.listVersions=1B")
                     appendLine()
                     appendLine("listPrefixes:")
                     LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
