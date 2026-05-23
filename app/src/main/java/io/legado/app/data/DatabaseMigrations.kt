@@ -20,8 +20,31 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_90_91, migration_91_92,
+            migration_90_91, migration_91_92, migration_93_94,
         )
+    }
+
+    private val migration_93_94 = object : Migration(93, 94) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `read_menu_custom_buttons` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `name` TEXT NOT NULL DEFAULT '',
+                    `iconPath` TEXT NOT NULL DEFAULT '',
+                    `jsLib` TEXT NOT NULL DEFAULT '',
+                    `loginUrl` TEXT NOT NULL DEFAULT '',
+                    `loginUi` TEXT NOT NULL DEFAULT '',
+                    `enabledCookieJar` INTEGER NOT NULL DEFAULT 0,
+                    `script` TEXT NOT NULL DEFAULT '',
+                    `timeoutMillisecond` INTEGER NOT NULL DEFAULT 3000,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `updateTime` INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_menu_custom_buttons_id` ON `read_menu_custom_buttons` (`id`)")
+        }
     }
 
     private val migration_91_92 = object : Migration(91, 92) {
