@@ -50,44 +50,29 @@ data class LibraryCloudSession(
         val cfg = config ?: return emptyList()
         if (state != LibraryCloudState.READY) return emptyList()
         val backend = LibraryCloudBackend(cfg)
-        val versions = mutableListOf<LibraryCloudChapterVersion>()
-        LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
-            LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
-                val prefix = LibraryCloudPaths.variantsPrefix(bookKey, matchKey)
-                val files = runCatching { backend.list(prefix) }.getOrElse {
-                    AppLog.put("列出书库章节版本失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it)
-                    emptyList()
-                }
-                files.forEach { file ->
-                    val payload = readPayloadOrNull(backend, file.path) ?: return@forEach
-                    if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
-                        versions += LibraryCloudChapterVersion(file.path, payload, matchKey.kind)
-                    }
-                }
+        val v3Versions = listChapterVersionsV3(backend, chapter)
+        if (v3Versions.isNotEmpty()) return sortVersions(v3Versions, chapter)
+        val versions = currentChapterPaths(chapter).mapNotNull { path ->
+            val payload = readPayloadOrNull(backend, path) ?: return@mapNotNull null
+            if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
+                LibraryCloudChapterVersion(path, payload, "v2-current")
+            } else {
+                null
             }
         }
-        return versions
-            .distinctBy {
-                listOf(
-                    it.payload.sourceKey,
-                    it.payload.sourceBookUrl,
-                    it.payload.normalizedTitle,
-                    it.payload.relaxedTitle,
-                    it.payload.contentHash
-                ).joinToString("\u001F")
-            }
-            .sortedWith(
-                compareBy<LibraryCloudChapterVersion> {
-                    if (it.payload.sourceUrl == book.origin || it.payload.sourceUrl.isBlank()) 0 else 1
-                }.thenBy { kotlin.math.abs(it.payload.chapterIndex - chapter.index) }
-                    .thenBy { it.payload.sourceName.ifBlank { it.payload.sourceUrl } }
-                    .thenByDescending { it.payload.updatedAt }
-            )
+        return sortVersions(versions, chapter)
     }
 
     suspend fun downloadChapter(version: LibraryCloudChapterVersion): String? {
         val cfg = config ?: return null
         val backend = LibraryCloudBackend(cfg)
+        if (version.schemaVersion >= 3) {
+            val payload = readPayloadV3OrNull(backend, version.path) ?: return null
+            if (version.payload.contentHash.isNotBlank() && payload.contentHash != version.payload.contentHash) {
+                return null
+            }
+            return payload.content.takeIf { it.isNotBlank() }
+        }
         val payload = readPayloadOrNull(backend, version.path) ?: return null
         return payload.content.takeIf { it.isNotBlank() }
     }
@@ -104,6 +89,24 @@ data class LibraryCloudSession(
         }.onFailure {
             AppLog.put("读取书库章节失败 ${book.name} $path\n${it.localizedMessage}", it)
         }.getOrNull()
+    }
+
+    private suspend fun listChapterVersionsV3(
+        backend: LibraryCloudBackend,
+        chapter: BookChapter
+    ): List<LibraryCloudChapterVersion> {
+        val manifest = readManifestOrNull(backend, v3ManifestPath(chapter)) ?: return emptyList()
+        if (!LibraryCloudKeys.manifestMatches(book, chapter, manifest)) return emptyList()
+        return manifest.variants
+            .filter { it.payloadPath.isNotBlank() && LibraryCloudKeys.variantMatches(chapter, it) }
+            .map {
+                LibraryCloudChapterVersion(
+                    path = it.payloadPath,
+                    payload = it.toDisplayPayload(manifest),
+                    matchKind = "v3-manifest",
+                    schemaVersion = 3
+                )
+            }
     }
 
     private suspend fun readPayloadV3OrNull(
@@ -148,6 +151,56 @@ data class LibraryCloudSession(
                     .thenByDescending { it.updatedAt }
             )
             .firstOrNull()
+    }
+
+    private fun sortVersions(
+        versions: List<LibraryCloudChapterVersion>,
+        chapter: BookChapter
+    ): List<LibraryCloudChapterVersion> {
+        return versions
+            .distinctBy {
+                listOf(
+                    it.schemaVersion,
+                    it.payload.sourceKey,
+                    it.payload.sourceBookUrl,
+                    it.payload.normalizedTitle,
+                    it.payload.relaxedTitle,
+                    it.payload.contentHash
+                ).joinToString("\u001F")
+            }
+            .sortedWith(
+                compareBy<LibraryCloudChapterVersion> {
+                    if (it.payload.sourceUrl == book.origin || it.payload.sourceUrl.isBlank()) 0 else 1
+                }.thenBy { kotlin.math.abs(it.payload.chapterIndex - chapter.index) }
+                    .thenBy { it.payload.sourceName.ifBlank { it.payload.sourceUrl } }
+                    .thenByDescending { it.payload.updatedAt }
+            )
+    }
+
+    private fun LibraryChapterVariantV3.toDisplayPayload(
+        manifest: LibraryChapterManifestV3
+    ): LibraryChapterPayloadV2 {
+        return LibraryChapterPayloadV2(
+            version = 3,
+            bookKey = manifest.bookKey,
+            chapterKey = manifest.chapterKey,
+            sourceKey = sourceKey,
+            name = manifest.name,
+            author = manifest.author,
+            normalizedName = manifest.normalizedName,
+            normalizedAuthor = manifest.normalizedAuthor,
+            title = title.ifBlank { manifest.title },
+            normalizedTitle = normalizedTitle.ifBlank { manifest.normalizedTitle },
+            relaxedTitle = relaxedTitle.ifBlank { manifest.relaxedTitle },
+            ordinalTitle = ordinalTitle.ifBlank { manifest.ordinalTitle },
+            chapterIndex = chapterIndex,
+            sourceUrl = sourceUrl,
+            sourceName = sourceName,
+            sourceBookUrl = sourceBookUrl,
+            sourceChapterIdentity = sourceChapterIdentity,
+            contentHash = contentHash,
+            updatedAt = updatedAt
+        )
     }
 
     private fun v3ManifestPath(chapter: BookChapter): String {
