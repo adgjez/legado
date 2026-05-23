@@ -1881,6 +1881,9 @@
     <string name="rule_call_back">&#22238;&#35843;&#25805;&#20316;&#65288;callBackJs&#65289;</string>
     <string name="time_hour">&#23567;&#26102;</string>
     <string name="custom_button">&#23450;&#21046;&#25353;&#38062;</string>
+    <string name="book_cloud_entry_mode">&#20113;&#31471;&#20837;&#21475;</string>
+    <string name="book_cloud_library_chapter_mode">书库容器</string>
+    <string name="book_cloud_cache_package_mode">云端备份</string>
     <string name="welcome_show_time">&#27426;&#36814;&#39029;&#26174;&#31034;&#26102;&#38388;</string>
     <string name="welcome_show_time_summary">&#35774;&#20026;0&#19981;&#26174;&#31034;&#27426;&#36814;&#39029;</string>
     <string name="domain">&#22495;&#21517;</string>

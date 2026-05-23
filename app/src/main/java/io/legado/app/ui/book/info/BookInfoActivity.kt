@@ -56,6 +56,8 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
+import io.legado.app.help.book.BookCloudEntryMode
+import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isAudio
@@ -78,6 +80,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -92,6 +95,10 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.ui.book.cache.CacheBookItem
+import io.legado.app.ui.book.cache.CacheManageViewModel
+import io.legado.app.ui.book.cache.CacheSyncStrategy
+import io.legado.app.ui.book.cache.hasRemoteCache
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
@@ -248,6 +255,7 @@ class BookInfoActivity :
     private val waitDialog by lazy { WaitDialog(this) }
     private var editMenuItem: MenuItem? = null
     private var menuCustomBtn: MenuItem? = null
+    private var menuCloudEntryMode: MenuItem? = null
     private val book get() = viewModel.getBook(false)
     private var introRawText: CharSequence = ""
     private var detailIntroOnly = false
@@ -256,6 +264,7 @@ class BookInfoActivity :
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
     override val viewModel by viewModels<BookInfoViewModel>()
+    private val cacheManageViewModel by viewModels<CacheManageViewModel>()
     private var initIntroView = false
     private val introTextView by lazy {
         initIntroView = true
@@ -905,6 +914,8 @@ class BookInfoActivity :
         menuCustomBtn = menu.findItem(R.id.menu_custom_btn).also {
             it.isVisible = viewModel.hasCustomBtn
         }
+        menuCloudEntryMode = menu.findItem(R.id.menu_cloud_entry_mode)
+        updateBookCloudEntryMenu()
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -927,6 +938,7 @@ class BookInfoActivity :
             viewModel.bookData.value?.isLocal ?: false
         menu.findItem(R.id.menu_delete_alert)?.isChecked =
             LocalConfig.bookInfoDeleteAlert
+        updateBookCloudEntryMenu()
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -934,6 +946,10 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_custom_btn -> {
                 callSourceCustomButton()
+            }
+
+            R.id.menu_cloud_entry_mode -> {
+                showBookCloudEntryModeSelector()
             }
 
             R.id.menu_edit -> {
@@ -1049,6 +1065,284 @@ class BookInfoActivity :
             }
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun showBookCloudEntryModeSelector() {
+        val book = viewModel.getBook() ?: return
+        val current = BookCloudEntryModeStore.get(book.bookUrl)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8.dpToPx(), 6.dpToPx(), 8.dpToPx(), 2.dpToPx())
+        }
+        val dialog = AndroidAlertBuilder(this).apply {
+            setTitle(R.string.book_cloud_entry_mode)
+            setCustomView(content)
+            negativeButton(R.string.cancel)
+        }.show()
+        BookCloudEntryMode.entries.forEach { mode ->
+            content.addView(createBookCloudEntryModeRow(mode, mode == current) {
+                if (mode != current) {
+                    BookCloudEntryModeStore.set(book.bookUrl, mode)
+                    updateBookCloudEntryMenu()
+                }
+                dialog.dismiss()
+                if (mode == BookCloudEntryMode.CACHE_PACKAGE) {
+                    showBookCloudBackupDialog(book)
+                }
+            })
+        }
+    }
+
+    private fun createBookCloudEntryModeRow(
+        mode: BookCloudEntryMode,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): View {
+        val title = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> getString(R.string.book_cloud_cache_package_mode)
+            BookCloudEntryMode.LIBRARY_CHAPTER -> getString(R.string.book_cloud_library_chapter_mode)
+        }
+        val summary = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> "从云端备份包上传、下载、用缓存入架"
+            BookCloudEntryMode.LIBRARY_CHAPTER -> "阅读页显示云按钮，按当前章节切换书库正文"
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            elevation = if (selected) 8.dpToPx().toFloat() else 0f
+            translationZ = if (selected) 4.dpToPx().toFloat() else 0f
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 10.dpToPx()
+            }
+            addView(TextView(context).apply {
+                text = title
+                textSize = 16f
+                setTextColor(if (selected) accentColor else primaryTextColor)
+                applyUiTitleTypeface(context)
+            })
+            addView(TextView(context).apply {
+                text = summary
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 4.dpToPx(), 0, 0)
+                applyUiBodyTypefaceDeep(context)
+            })
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun showBookCloudBackupDialog(targetBook: Book) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
+        }
+        val summaryView = TextView(this).apply {
+            textSize = 13f
+            setTextColor(secondaryTextColor)
+            setPadding(0, 0, 0, 8.dpToPx())
+            applyUiBodyTypefaceDeep(this@BookInfoActivity)
+        }
+        val listLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scrollView = NestedScrollView(this).apply {
+            addView(
+                listLayout,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.55f).toInt()
+            )
+        }
+        content.addView(summaryView)
+        content.addView(scrollView)
+        AndroidAlertBuilder(this).apply {
+            setTitle(getString(R.string.book_cloud_cache_package_mode))
+            setCustomView(content)
+            negativeButton(R.string.cancel)
+        }.show()
+
+        fun reload() {
+            summaryView.text = "正在读取《${targetBook.name}》的云端备份..."
+            listLayout.removeAllViews()
+            lifecycleScope.launch {
+                val result = runCatching {
+                    cacheManageViewModel.loadBookCloudBackupItems(targetBook)
+                }
+                result.onSuccess { items ->
+                    renderBookCloudBackupItems(targetBook, summaryView, listLayout, items, ::reload)
+                }.onFailure {
+                    summaryView.text = it.localizedMessage ?: getString(R.string.error)
+                }
+            }
+        }
+        reload()
+    }
+
+    private fun renderBookCloudBackupItems(
+        targetBook: Book,
+        summaryView: TextView,
+        listLayout: LinearLayout,
+        items: List<CacheBookItem>,
+        reload: () -> Unit
+    ) {
+        listLayout.removeAllViews()
+        if (items.isEmpty()) {
+            summaryView.text = "未找到《${targetBook.name}》的本地或云端备份"
+            return
+        }
+        val localCount = items.sumOf { if (it.localCachedCount > 0) 1 else 0 }
+        val remoteCount = items.sumOf { if (it.hasRemoteCache()) 1 else 0 }
+        summaryView.text = "共 ${items.size} 个来源，本地 $localCount 个，云端 $remoteCount 个"
+        items.forEach { item ->
+            listLayout.addView(createBookCloudBackupRow(item, reload))
+        }
+    }
+
+    private fun createBookCloudBackupRow(item: CacheBookItem, reload: () -> Unit): View {
+        val sourceTitle = if (item.sourceAvailable) {
+            item.sourceName
+        } else {
+            getString(R.string.cache_manage_source_deleted, item.sourceName)
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 10.dpToPx()
+            }
+            addView(TextView(context).apply {
+                text = sourceTitle
+                textSize = 15f
+                setTextColor(primaryTextColor)
+                applyUiTitleTypeface(context)
+            })
+            addView(TextView(context).apply {
+                text = "本地 ${item.localCachedCount}/${item.totalChapterCount} · 云端 ${item.remoteCachedCount}/${item.totalChapterCount}"
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 4.dpToPx(), 0, 8.dpToPx())
+                applyUiBodyTypefaceDeep(context)
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(createBookCloudBackupAction(getString(R.string.cache_manage_upload), item.localCachedCount > 0) {
+                    selectBookCloudBackupSyncStrategy(R.string.cache_manage_upload_strategy_title) { strategy ->
+                        runBookCloudBackupAction(
+                            message = "正在上传云端备份...",
+                            block = { cacheManageViewModel.uploadCacheItem(item, strategy) }
+                        ) {
+                            toastOnUi("云端备份已上传")
+                            reload()
+                        }
+                    }
+                })
+                addView(createBookCloudBackupAction(getString(R.string.action_download), item.hasRemoteCache()) {
+                    selectBookCloudBackupSyncStrategy(R.string.cache_manage_download_strategy_title) { strategy ->
+                        runBookCloudBackupAction(
+                            message = "正在下载云端备份...",
+                            block = { cacheManageViewModel.downloadRemoteCache(item, strategy) }
+                        ) {
+                            toastOnUi(R.string.cache_manage_download_success)
+                            reload()
+                        }
+                    }
+                })
+                addView(createBookCloudBackupAction(getString(if (item.inBookshelf) R.string.cache_manage_use_cache else R.string.cache_manage_add_bookshelf), item.localCachedCount > 0) {
+                    if (item.localCachedCount <= 0) {
+                        toastOnUi(R.string.cache_manage_download_first)
+                        return@createBookCloudBackupAction
+                    }
+                    runBookCloudBackupAction(
+                        message = "正在应用本地缓存...",
+                        block = { cacheManageViewModel.restoreCacheToBookshelf(item) }
+                    ) { success ->
+                        toastOnUi(
+                            if (success) {
+                                if (item.inBookshelf) R.string.cache_manage_use_cache_success
+                                else R.string.cache_manage_add_bookshelf_success
+                            } else {
+                                R.string.cache_manage_no_cache
+                            }
+                        )
+                        reload()
+                    }
+                })
+            }
+        }
+    }
+
+    private fun createBookCloudBackupAction(
+        text: String,
+        enabled: Boolean,
+        onClick: () -> Unit
+    ): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTextColor(if (enabled) accentColor else secondaryTextColor)
+            alpha = if (enabled) 1f else 0.45f
+            isEnabled = enabled
+            setPadding(0, 4.dpToPx(), 14.dpToPx(), 4.dpToPx())
+            applyUiBodyTypefaceDeep(this@BookInfoActivity)
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun selectBookCloudBackupSyncStrategy(
+        titleRes: Int,
+        onSelected: (CacheSyncStrategy) -> Unit
+    ) {
+        val strategies = CacheSyncStrategy.entries
+        selector(getString(titleRes), strategies.map { getString(it.labelRes) }) { _, index ->
+            strategies.getOrNull(index)?.let(onSelected)
+        }
+    }
+
+    private fun <T> runBookCloudBackupAction(
+        message: String,
+        block: suspend () -> T,
+        onSuccess: (T) -> Unit
+    ) {
+        waitDialog.setText(message)
+        waitDialog.show()
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(IO) { block() }
+            }
+            waitDialog.dismiss()
+            result.onSuccess(onSuccess).onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun updateBookCloudEntryMenu() {
+        val book = viewModel.getBook() ?: return
+        val mode = BookCloudEntryModeStore.get(book.bookUrl)
+        menuCloudEntryMode?.title = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> getString(R.string.book_cloud_cache_package_mode)
+            BookCloudEntryMode.LIBRARY_CHAPTER -> getString(R.string.book_cloud_library_chapter_mode)
+        }
     }
 
     override fun observeLiveBus() {

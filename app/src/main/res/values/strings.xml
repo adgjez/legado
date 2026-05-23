@@ -1582,6 +1582,9 @@
     <string name="rule_call_back">回调操作（callBackJs）</string>
     <string name="time_hour">小时</string>
     <string name="custom_button">定制按钮</string>
+    <string name="book_cloud_entry_mode">云端入口</string>
+    <string name="book_cloud_library_chapter_mode">书库容器</string>
+    <string name="book_cloud_cache_package_mode">云端备份</string>
     <string name="change_book_source_action">更换书源</string>
     <string name="welcome_show_time">欢迎页显示时间</string>
     <string name="welcome_show_time_summary">设为0不显示欢迎页</string>
