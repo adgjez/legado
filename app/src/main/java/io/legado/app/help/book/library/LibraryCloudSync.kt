@@ -1,19 +1,15 @@
 package io.legado.app.help.book.library
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.isLocal
-import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,8 +19,8 @@ object LibraryCloudSync {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadLocks = ConcurrentHashMap<String, Mutex>()
-    private val pendingIndexJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val sessions = ConcurrentHashMap<String, LibraryCloudSession>()
+    private val activeBooks = ConcurrentHashMap<String, Boolean>()
 
     fun enqueueUpload(book: Book, chapter: BookChapter, content: String) {
         if (!shouldUpload(book, chapter, content)) return
@@ -62,15 +58,33 @@ object LibraryCloudSync {
         return openSession(book)
     }
 
+    fun setCloudReadingActive(book: Book, active: Boolean) {
+        val key = activeKey(book)
+        if (active) {
+            activeBooks[key] = true
+        } else {
+            activeBooks.remove(key)
+        }
+    }
+
+    fun isCloudReadingActive(book: Book): Boolean {
+        return activeBooks[activeKey(book)] == true
+    }
+
     suspend fun tryCloudFirst(book: Book, chapter: BookChapter): String? {
         val session = openSession(book)
-        return session.downloadChapter(chapter)
+        return session.downloadCurrentChapter(chapter)
     }
 
     suspend fun tryCloudFallback(book: Book, chapter: BookChapter): String? {
         readConfig(book) ?: return null
         val session = openSession(book)
-        return session.downloadChapter(chapter)
+        return session.downloadCurrentChapter(chapter)
+    }
+
+    suspend fun tryActiveCloud(book: Book, chapter: BookChapter): String? {
+        if (!isCloudReadingActive(book)) return null
+        return tryCloudFirst(book, chapter)
     }
 
     private fun readConfig(book: Book): LibraryContainerConfig? {
@@ -94,6 +108,10 @@ object LibraryCloudSync {
         return "${config.id}\u001F${LibraryCloudKeys.bookKey(book)}"
     }
 
+    private fun activeKey(book: Book): String {
+        return "${LibraryCloudKeys.bookKey(book)}\u001F${book.bookUrl}"
+    }
+
     private suspend fun uploadChapter(
         config: LibraryContainerConfig,
         book: Book,
@@ -103,142 +121,41 @@ object LibraryCloudSync {
         val backend = LibraryCloudBackend(config)
         val bookKey = LibraryCloudKeys.bookKey(book)
         val chapterKey = LibraryCloudKeys.chapterKey(chapter)
-        val chapterPath = LibraryCloudPaths.chapterPath(
-            bookKey,
-            LibraryCloudKeys.sourceChapterKey(book.origin, chapterKey)
-        )
+        val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
         val now = System.currentTimeMillis()
-        val payload = LibraryChapterPayload(
+        val payload = LibraryChapterPayloadV2(
             bookKey = bookKey,
             chapterKey = chapterKey,
+            titleKey = LibraryCloudKeys.titleKey(chapter),
+            relaxedTitleKey = LibraryCloudKeys.relaxedTitleKey(chapter),
+            sourceKey = sourceKey,
             name = book.name,
             author = book.getRealAuthor(),
+            normalizedName = LibraryCloudKeys.normalize(book.name),
+            normalizedAuthor = LibraryCloudKeys.normalize(book.getRealAuthor()),
             title = chapter.title,
+            normalizedTitle = LibraryCloudKeys.normalize(chapter.title),
+            relaxedTitle = LibraryCloudKeys.relaxedTitle(chapter.title),
+            chapterIndex = chapter.index,
+            sourceUrl = book.origin,
+            sourceName = book.originName,
+            sourceBookUrl = book.bookUrl,
+            sourceChapterIdentity = chapter.contentCacheIdentity(),
+            contentHash = LibraryCloudKeys.contentHash(content),
             content = content,
             updatedAt = now
         )
-        backend.upload(
-            chapterPath,
-            LibraryCloudCrypto.encodeJson(payload, config.password),
-            "application/json"
-        )
-        scheduleIndexUpdate(config, book, chapter, chapterPath, now)
-    }
-
-    private fun scheduleIndexUpdate(
-        config: LibraryContainerConfig,
-        book: Book,
-        chapter: BookChapter,
-        chapterPath: String,
-        updatedAt: Long
-    ) {
-        val key = "${config.id}\u001F${book.bookUrl}"
-        pendingIndexJobs.remove(key)?.cancel()
-        pendingIndexJobs[key] = scope.launch {
-            delay(4000)
-            runCatching {
-                upsertIndexes(config, book, chapter, chapterPath, updatedAt)
-            }.onFailure {
-                AppLog.put("更新书库索引失败 ${book.name}\n${it.localizedMessage}", it)
-            }.also {
-                pendingIndexJobs.remove(key)
-            }
-        }
-    }
-
-    private suspend fun upsertIndexes(
-        config: LibraryContainerConfig,
-        book: Book,
-        chapter: BookChapter,
-        chapterPath: String,
-        updatedAt: Long
-    ) {
-        val backend = LibraryCloudBackend(config)
-        val bookKey = LibraryCloudKeys.bookKey(book)
-        val rootIndex = downloadRootIndex(backend, config).upsertBook(book, bookKey, updatedAt)
-        val localChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-        val oldBookIndex = downloadBookIndex(backend, config, bookKey)
-        val oldMap = oldBookIndex.chapters
-            .filter { it.sourceUrl == book.origin }
-            .associateBy { it.chapterKey }
-        val currentSourceChapters = localChapters.map { item ->
-            val key = LibraryCloudKeys.chapterKey(item)
-            val old = oldMap[key]
-            val isCurrent = item.index == chapter.index
-            LibraryChapterItem(
-                chapterKey = key,
-                chapterIndex = item.index,
-                title = item.title,
-                normalizedTitle = LibraryCloudKeys.normalize(item.title),
-                urlHash = LibraryCloudKeys.urlHash(item),
-                identityHash = LibraryCloudKeys.identityHash(item),
-                sourceUrl = book.origin,
-                sourceName = book.originName,
-                sourceBookUrl = book.bookUrl,
-                remotePath = if (isCurrent) chapterPath else old?.remotePath.orEmpty(),
-                cached = isCurrent || old?.cached == true,
-                updatedAt = if (isCurrent) updatedAt else old?.updatedAt ?: 0L
+        val bytes = LibraryCloudCrypto.encodeJson(payload, config.password, gzip = true)
+        LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
+            val variantPath = LibraryCloudPaths.variantChapterPath(bookKey, matchKey, sourceKey, chapterKey)
+            if (backend.exists(variantPath)) return@forEach
+            backend.upload(variantPath, bytes, "application/json")
+            backend.upload(
+                LibraryCloudPaths.currentChapterPath(bookKey, matchKey),
+                bytes,
+                "application/json"
             )
         }
-        val nextChapters = oldBookIndex.chapters
-            .filterNot { it.sourceUrl == book.origin }
-            .plus(currentSourceChapters)
-            .distinctBy { "${it.sourceUrl}\u001F${it.chapterKey}" }
-            .sortedWith(
-                compareBy<LibraryChapterItem> { it.sourceName.ifBlank { it.sourceUrl } }
-                    .thenBy { it.chapterIndex }
-                    .thenBy { it.title }
-            )
-        val bookIndex = LibraryBookIndex(
-            bookKey = bookKey,
-            name = book.name,
-            author = book.getRealAuthor(),
-            normalizedName = LibraryCloudKeys.normalize(book.name),
-            normalizedAuthor = LibraryCloudKeys.normalize(book.getRealAuthor()),
-            chapters = nextChapters,
-            updatedAt = updatedAt
-        )
-        backend.upload(
-            LibraryCloudPaths.bookIndexPath(bookKey),
-            LibraryCloudCrypto.encodeJson(bookIndex, config.password),
-            "application/json"
-        )
-        backend.upload(
-            LibraryCloudPaths.rootIndexPath(),
-            LibraryCloudCrypto.encodeJson(rootIndex, config.password),
-            "application/json"
-        )
         sessions.remove(sessionKey(config, book))
-    }
-
-    private suspend fun downloadRootIndex(backend: LibraryCloudBackend, config: LibraryContainerConfig): LibraryRootIndex {
-        val bytes = backend.downloadOrNull(LibraryCloudPaths.rootIndexPath()) ?: return LibraryRootIndex()
-        return GSON.fromJsonObject<LibraryRootIndex>(LibraryCloudCrypto.decodeString(bytes, config.password))
-            .getOrDefault(LibraryRootIndex())
-    }
-
-    private suspend fun downloadBookIndex(
-        backend: LibraryCloudBackend,
-        config: LibraryContainerConfig,
-        bookKey: String
-    ): LibraryBookIndex {
-        val bytes = backend.downloadOrNull(LibraryCloudPaths.bookIndexPath(bookKey)) ?: return LibraryBookIndex(bookKey = bookKey)
-        return GSON.fromJsonObject<LibraryBookIndex>(LibraryCloudCrypto.decodeString(bytes, config.password))
-            .getOrDefault(LibraryBookIndex(bookKey = bookKey))
-    }
-
-    private fun LibraryRootIndex.upsertBook(book: Book, bookKey: String, updatedAt: Long): LibraryRootIndex {
-        val summary = LibraryBookSummary(
-            bookKey = bookKey,
-            name = book.name,
-            author = book.getRealAuthor(),
-            normalizedName = LibraryCloudKeys.normalize(book.name),
-            normalizedAuthor = LibraryCloudKeys.normalize(book.getRealAuthor()),
-            indexPath = LibraryCloudPaths.bookIndexPath(bookKey),
-            updatedAt = updatedAt
-        )
-        val map = books.associateBy { it.bookKey }.toMutableMap()
-        map[bookKey] = summary
-        return copy(books = map.values.sortedByDescending { it.updatedAt }, updatedAt = updatedAt)
     }
 }
