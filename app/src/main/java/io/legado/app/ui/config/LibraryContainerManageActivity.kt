@@ -1,8 +1,10 @@
 package io.legado.app.ui.config
 
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -25,14 +27,22 @@ import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerManager
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
+import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
+import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.applyTint
+import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -83,25 +93,31 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         val dialogBinding = DialogS3ContainerEditBinding.inflate(LayoutInflater.from(this))
         dialogBinding.bind(item)
         val settingsView = buildLibrarySettings(item)
-        dialogBinding.layoutAdvanced.addView(settingsView)
-        dialogBinding.tvAdvancedToggle.setOnClickListener {
-            val show = !dialogBinding.layoutAdvanced.isVisible
-            dialogBinding.layoutAdvanced.isVisible = show
-            dialogBinding.tvAdvancedToggle.setText(
-                if (show) R.string.s3_container_advanced_hide else R.string.s3_container_advanced_show
-            )
-        }
-        dialogBinding.layoutAdvanced.isVisible = true
-        dialogBinding.tvAdvancedToggle.setText(R.string.s3_container_advanced_hide)
-        alert(if (item == null) "添加书库容器" else "编辑书库容器") {
+        dialogBinding.layoutLibrary.addView(settingsView)
+        setupEditDialogStyle(dialogBinding)
+        setupEditGroups(dialogBinding)
+        val dialog = AndroidAlertBuilder(this).apply {
+            setTitle(if (item == null) "添加书库容器" else "编辑书库容器")
             customView { dialogBinding.root }
-            okButton {
-                saveDialogItem(item, dialogBinding)?.let { saved ->
-                    if (item == null) refreshCapacity(saved, showWait = false)
-                }
+            onDismiss {
+                editingSourceUrls = mutableSetOf()
+                editingSourceSummary = null
             }
-            cancelButton()
+        }.build()
+        dialog.setOnShowListener {
+            dialog.applyTint()
+            applyEditDialogSize(dialog)
         }
+        dialogBinding.btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+        dialogBinding.btnConfirm.setOnClickListener {
+            saveDialogItem(item, dialogBinding)?.let { saved ->
+                if (item == null) refreshCapacity(saved, showWait = false)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun DialogS3ContainerEditBinding.bind(item: LibraryContainerConfig?) {
@@ -117,6 +133,52 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         editCapacity.setText(capacityMbToGbText(container?.capacityMb ?: DEFAULT_CAPACITY_MB))
         cbPathStyle.isChecked = container?.pathStyle ?: true
         cbEnabled.isChecked = container?.enabled ?: true
+    }
+
+    private fun setupEditDialogStyle(binding: DialogS3ContainerEditBinding) = binding.run {
+        root.applyUiBodyTypefaceDeep(uiTypeface())
+        val actionRadius = UiCorner.actionRadius(this@LibraryContainerManageActivity)
+        listOf(btnCancel, btnConfirm).forEach {
+            it.background = UiCorner.actionSelector(
+                Color.TRANSPARENT,
+                ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.background_card),
+                actionRadius
+            )
+            it.applyUiTitleTypeface(this@LibraryContainerManageActivity)
+        }
+    }
+
+    private fun setupEditGroups(binding: DialogS3ContainerEditBinding) = binding.run {
+        val tabs = listOf(
+            btnConnectionGroup to layoutConnection,
+            btnLibraryGroup to layoutLibrary,
+            btnAdvancedGroup to layoutAdvanced
+        )
+        tabs.forEach { (button, _) ->
+            button.background = UiCorner.actionSelector(
+                Color.TRANSPARENT,
+                ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.background_card),
+                UiCorner.actionRadius(this@LibraryContainerManageActivity)
+            )
+            button.applyUiTitleTypeface(this@LibraryContainerManageActivity)
+        }
+        fun select(index: Int) {
+            tabs.forEachIndexed { tabIndex, (button, group) ->
+                val selected = tabIndex == index
+                button.isSelected = selected
+                button.setTextColor(if (selected) accentColor else primaryTextColor)
+                group.visibility = if (selected) View.VISIBLE else View.GONE
+            }
+        }
+        tabs.forEachIndexed { index, (button, _) ->
+            button.setOnClickListener { select(index) }
+        }
+        select(0)
+    }
+
+    private fun applyEditDialogSize(dialog: androidx.appcompat.app.AlertDialog) {
+        val heightRatio = if (resources.displayMetrics.heightPixels < 1600) 0.82f else 0.74f
+        dialog.setLayout(0.92f, heightRatio)
     }
 
     private fun buildLibrarySettings(item: LibraryContainerConfig?): LinearLayout {
