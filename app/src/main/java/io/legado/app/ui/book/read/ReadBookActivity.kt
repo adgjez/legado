@@ -60,6 +60,7 @@ import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
+import io.legado.app.help.book.ReadMenuCustomButtonExecutor
 import io.legado.app.help.book.library.LibraryChapterManifestV3
 import io.legado.app.help.book.library.LibraryChapterPayloadV3
 import io.legado.app.help.book.library.LibraryCloudBackend
@@ -123,6 +124,7 @@ import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCEN
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_COLOR
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ParagraphRuleManageActivity
+import io.legado.app.ui.book.read.config.ReadMenuCustomButtonEditActivity
 import io.legado.app.ui.book.read.config.ReadMenuButtonManageActivity
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.ReadStyleDialog
@@ -2865,6 +2867,46 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
                 cancelButton()
             }
+        }
+    }
+
+    override fun runCustomReadMenuButton(id: Long) {
+        val book = ReadBook.book ?: run {
+            toastOnUi(R.string.paragraph_rule_no_book_hint)
+            return
+        }
+        val chapter = ReadBook.curTextChapter?.chapter ?: run {
+            toastOnUi(R.string.read_menu_no_current_chapter)
+            return
+        }
+        lifecycleScope.launch {
+            val button = withContext(IO) { appDb.readMenuCustomButtonDao.get(id) }
+            if (button == null) {
+                toastOnUi(R.string.read_menu_custom_button_missing)
+                return@launch
+            }
+            kotlin.runCatching {
+                withContext(IO) {
+                    val content = BookHelp.getContent(book, chapter).orEmpty()
+                    ReadMenuCustomButtonExecutor.execute(
+                        this@ReadBookActivity,
+                        button,
+                        book,
+                        chapter,
+                        content,
+                        ReadBook.bookSource
+                    )
+                }
+            }.onFailure {
+                AppLog.put("阅读菜单自定义按键执行失败: ${button.displayName()}\n${it.localizedMessage}", it, true)
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    override fun editCustomReadMenuButton(id: Long) {
+        startActivity<ReadMenuCustomButtonEditActivity> {
+            putExtra("id", id)
         }
     }
 

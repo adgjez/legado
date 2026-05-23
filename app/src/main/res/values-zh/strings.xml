@@ -1199,6 +1199,8 @@
     <string name="read_menu_button_script">按键 JS</string>
     <string name="read_menu_custom_button_save_invalid">名称和按键 JS 不能为空</string>
     <string name="read_menu_custom_button_help">自定义按键可以直接读取 book、chapter、content、source、baseUrl、result、java、cache、cookie 等对象，只用于获取信息和执行动作，不应该修改正文内容。</string>
+    <string name="read_menu_custom_button_missing">自定义按键不存在</string>
+    <string name="read_menu_no_current_chapter">没有当前章节</string>
     <string name="read_menu_move_to_first">移到第一排</string>
     <string name="read_menu_move_to_second">移到第二排</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>

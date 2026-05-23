@@ -1356,6 +1356,8 @@
     <string name="read_menu_button_script">Button JS</string>
     <string name="read_menu_custom_button_save_invalid">Name and button JS cannot be empty</string>
     <string name="read_menu_custom_button_help">Custom buttons can read book, chapter, content, source, baseUrl, result, java, cache and cookie directly. They should not modify chapter content.</string>
+    <string name="read_menu_custom_button_missing">Custom button does not exist</string>
+    <string name="read_menu_no_current_chapter">No current chapter</string>
     <string name="read_menu_move_to_first">Move to first</string>
     <string name="read_menu_move_to_second">Move to second</string>
     <string name="rule_image_decode">Decode Image(imageDecode)</string>
