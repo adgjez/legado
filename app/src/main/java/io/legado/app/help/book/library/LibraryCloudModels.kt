@@ -56,6 +56,61 @@ data class LibraryChapterPayloadV2(
     val updatedAt: Long = 0L
 )
 
+data class LibraryChapterManifestV3(
+    val version: Int = 3,
+    val bookKey: String = "",
+    val name: String = "",
+    val author: String = "",
+    val normalizedName: String = "",
+    val normalizedAuthor: String = "",
+    val chapterKey: String = "",
+    val title: String = "",
+    val normalizedTitle: String = "",
+    val relaxedTitle: String = "",
+    val ordinalTitle: String = "",
+    val variants: List<LibraryChapterVariantV3> = emptyList(),
+    val updatedAt: Long = 0L
+)
+
+data class LibraryChapterVariantV3(
+    val sourceKey: String = "",
+    val sourceUrl: String = "",
+    val sourceName: String = "",
+    val sourceBookUrl: String = "",
+    val sourceChapterIdentity: String = "",
+    val chapterIndex: Int = -1,
+    val title: String = "",
+    val normalizedTitle: String = "",
+    val relaxedTitle: String = "",
+    val ordinalTitle: String = "",
+    val contentHash: String = "",
+    val payloadPath: String = "",
+    val updatedAt: Long = 0L
+)
+
+data class LibraryChapterPayloadV3(
+    val version: Int = 3,
+    val bookKey: String = "",
+    val chapterKey: String = "",
+    val sourceKey: String = "",
+    val name: String = "",
+    val author: String = "",
+    val normalizedName: String = "",
+    val normalizedAuthor: String = "",
+    val title: String = "",
+    val normalizedTitle: String = "",
+    val relaxedTitle: String = "",
+    val ordinalTitle: String = "",
+    val chapterIndex: Int = -1,
+    val sourceUrl: String = "",
+    val sourceName: String = "",
+    val sourceBookUrl: String = "",
+    val sourceChapterIdentity: String = "",
+    val contentHash: String = "",
+    val content: String = "",
+    val updatedAt: Long = 0L
+)
+
 data class LibraryCloudMatchKey(
     val kind: String,
     val key: String
@@ -64,12 +119,14 @@ data class LibraryCloudMatchKey(
 data class LibraryCloudChapterVersion(
     val path: String,
     val payload: LibraryChapterPayloadV2,
-    val matchKind: String
+    val matchKind: String,
+    val schemaVersion: Int = 2
 )
 
 object LibraryCloudPaths {
     const val ROOT_DIR = "Library"
     const val V2_DIR = "v2"
+    const val V3_DIR = "v3"
 
     fun currentChapterPath(bookKey: String, matchKey: LibraryCloudMatchKey): String {
         return "$V2_DIR/books/$bookKey/chapters/${matchKey.kind}/${matchKey.key}/current.json.gz"
@@ -85,6 +142,14 @@ object LibraryCloudPaths {
 
     fun variantsPrefix(bookKey: String, matchKey: LibraryCloudMatchKey): String {
         return "$V2_DIR/books/$bookKey/chapters/${matchKey.kind}/${matchKey.key}/variants/"
+    }
+
+    fun v3ManifestPath(bookKey: String, chapterKey: String): String {
+        return "$V3_DIR/books/$bookKey/chapters/$chapterKey/manifest.json.gz"
+    }
+
+    fun v3PayloadPath(bookKey: String, chapterKey: String, sourceKey: String): String {
+        return "$V3_DIR/books/$bookKey/chapters/$chapterKey/sources/$sourceKey.json.gz"
     }
 }
 
@@ -146,6 +211,16 @@ object LibraryCloudKeys {
 
     fun ordinalTitleKey(chapter: BookChapter): String? {
         return chapterOrdinal(chapter.title)?.let { MD5Utils.md5Encode(it) }
+    }
+
+    fun libraryChapterKey(chapter: BookChapter): String {
+        val relaxed = relaxedTitle(chapter.title)
+        val ordinal = chapterOrdinal(chapter.title).orEmpty()
+        val seed = listOf(relaxed, ordinal)
+            .filter { it.isNotBlank() }
+            .joinToString("\u001F")
+            .ifBlank { normalize(chapter.title).ifBlank { chapter.index.toString() } }
+        return MD5Utils.md5Encode(seed)
     }
 
     fun sourceKey(sourceUrl: String?): String {
@@ -211,23 +286,47 @@ object LibraryCloudKeys {
 
     fun payloadMatches(book: Book, chapter: BookChapter, payload: LibraryChapterPayloadV2): Boolean {
         if (payload.content.isBlank()) return false
-        if (payload.name.isNotBlank() && normalizeBookName(payload.name) != normalizeBookName(book.name)) {
-            return false
-        }
-        val bookAuthor = normalize(book.getRealAuthor())
-        val payloadAuthor = payload.normalizedAuthor.ifBlank { normalize(payload.author) }
-        if (bookAuthor.isNotBlank() && payloadAuthor.isNotBlank() && bookAuthor != payloadAuthor) {
-            return false
-        }
-        val strict = normalize(chapter.title)
-        val relaxed = relaxedTitle(chapter.title)
-        val ordinal = chapterOrdinal(chapter.title).orEmpty()
-        val payloadStrict = payload.normalizedTitle.ifBlank { normalize(payload.title) }
-        val payloadRelaxed = payload.relaxedTitle.ifBlank { relaxedTitle(payload.title) }
-        val payloadOrdinal = payload.ordinalTitle.ifBlank { chapterOrdinal(payload.title).orEmpty() }
-        return (strict.isNotBlank() && strict == payloadStrict) ||
-            (relaxed.isNotBlank() && relaxed == payloadRelaxed) ||
-            (ordinal.isNotBlank() && ordinal == payloadOrdinal)
+        return bookMatches(book, payload.name, payload.author, payload.normalizedAuthor) &&
+            titleMatches(
+                chapter = chapter,
+                title = payload.title,
+                normalizedTitle = payload.normalizedTitle,
+                payloadRelaxedTitle = payload.relaxedTitle,
+                ordinalTitle = payload.ordinalTitle
+            )
+    }
+
+    fun payloadMatches(book: Book, chapter: BookChapter, payload: LibraryChapterPayloadV3): Boolean {
+        if (payload.content.isBlank()) return false
+        return bookMatches(book, payload.name, payload.author, payload.normalizedAuthor) &&
+            titleMatches(
+                chapter = chapter,
+                title = payload.title,
+                normalizedTitle = payload.normalizedTitle,
+                payloadRelaxedTitle = payload.relaxedTitle,
+                ordinalTitle = payload.ordinalTitle
+            )
+    }
+
+    fun manifestMatches(book: Book, chapter: BookChapter, manifest: LibraryChapterManifestV3): Boolean {
+        return bookMatches(book, manifest.name, manifest.author, manifest.normalizedAuthor) &&
+            titleMatches(
+                chapter = chapter,
+                title = manifest.title,
+                normalizedTitle = manifest.normalizedTitle,
+                payloadRelaxedTitle = manifest.relaxedTitle,
+                ordinalTitle = manifest.ordinalTitle
+            )
+    }
+
+    fun variantMatches(chapter: BookChapter, variant: LibraryChapterVariantV3): Boolean {
+        return titleMatches(
+            chapter = chapter,
+            title = variant.title,
+            normalizedTitle = variant.normalizedTitle,
+            payloadRelaxedTitle = variant.relaxedTitle,
+            ordinalTitle = variant.ordinalTitle
+        )
     }
 
     fun debugCodePoints(value: String?): String {
@@ -294,6 +393,38 @@ object LibraryCloudKeys {
             Character.OTHER_PUNCTUATION.toInt() -> true
             else -> false
         }
+    }
+
+    private fun bookMatches(
+        book: Book,
+        name: String,
+        author: String,
+        normalizedAuthor: String
+    ): Boolean {
+        if (name.isNotBlank() && normalizeBookName(name) != normalizeBookName(book.name)) {
+            return false
+        }
+        val bookAuthor = normalize(book.getRealAuthor())
+        val payloadAuthor = normalizedAuthor.ifBlank { normalize(author) }
+        return bookAuthor.isBlank() || payloadAuthor.isBlank() || bookAuthor == payloadAuthor
+    }
+
+    private fun titleMatches(
+        chapter: BookChapter,
+        title: String,
+        normalizedTitle: String,
+        payloadRelaxedTitle: String,
+        ordinalTitle: String
+    ): Boolean {
+        val strict = normalize(chapter.title)
+        val relaxed = relaxedTitle(chapter.title)
+        val ordinal = chapterOrdinal(chapter.title).orEmpty()
+        val payloadStrict = normalizedTitle.ifBlank { normalize(title) }
+        val payloadRelaxed = payloadRelaxedTitle.ifBlank { relaxedTitle(title) }
+        val payloadOrdinal = ordinalTitle.ifBlank { chapterOrdinal(title).orEmpty() }
+        return (strict.isNotBlank() && strict == payloadStrict) ||
+            (relaxed.isNotBlank() && relaxed == payloadRelaxed) ||
+            (ordinal.isNotBlank() && ordinal == payloadOrdinal)
     }
 
     private fun chineseNumberToLong(value: String): Long? {
