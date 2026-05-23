@@ -21,14 +21,19 @@ data class LibraryCloudSession(
     fun cachedItemFor(chapter: BookChapter): LibraryChapterItem? {
         val index = bookIndex ?: return null
         val key = LibraryCloudKeys.chapterKey(chapter)
+        val sourceUrl = book.origin
         index.chapters.firstOrNull {
-            it.chapterKey == key && it.cached && it.remotePath.isNotBlank()
+            it.chapterKey == key &&
+                it.matchesSourceOrLegacy(sourceUrl) &&
+                it.cached &&
+                it.remotePath.isNotBlank()
         }?.let { return it }
         val title = LibraryCloudKeys.normalize(chapter.title)
         val urlHash = LibraryCloudKeys.urlHash(chapter)
         val strict = index.chapters.filter {
             it.cached &&
                 it.remotePath.isNotBlank() &&
+                it.matchesSourceOrLegacy(sourceUrl) &&
                 it.chapterIndex == chapter.index &&
                 it.normalizedTitle == title &&
                 it.urlHash == urlHash
@@ -37,10 +42,15 @@ data class LibraryCloudSession(
         val byIndexTitle = index.chapters.filter {
             it.cached &&
                 it.remotePath.isNotBlank() &&
+                it.matchesSourceOrLegacy(sourceUrl) &&
                 it.chapterIndex == chapter.index &&
                 it.normalizedTitle == title
         }
         return byIndexTitle.singleOrNull()
+    }
+
+    private fun LibraryChapterItem.matchesSourceOrLegacy(sourceUrl: String): Boolean {
+        return this.sourceUrl.isBlank() || this.sourceUrl == sourceUrl
     }
 
     suspend fun downloadChapter(chapter: BookChapter): String? {

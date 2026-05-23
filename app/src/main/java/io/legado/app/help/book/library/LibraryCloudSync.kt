@@ -96,7 +96,10 @@ object LibraryCloudSync {
         val backend = LibraryCloudBackend(config)
         val bookKey = LibraryCloudKeys.bookKey(book)
         val chapterKey = LibraryCloudKeys.chapterKey(chapter)
-        val chapterPath = LibraryCloudPaths.chapterPath(bookKey, chapterKey)
+        val chapterPath = LibraryCloudPaths.chapterPath(
+            bookKey,
+            LibraryCloudKeys.sourceChapterKey(book.origin, chapterKey)
+        )
         val now = System.currentTimeMillis()
         val payload = LibraryChapterPayload(
             bookKey = bookKey,
@@ -148,8 +151,10 @@ object LibraryCloudSync {
         val rootIndex = downloadRootIndex(backend, config).upsertBook(book, bookKey, updatedAt)
         val localChapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
         val oldBookIndex = downloadBookIndex(backend, config, bookKey)
-        val oldMap = oldBookIndex.chapters.associateBy { it.chapterKey }
-        val nextChapters = localChapters.map { item ->
+        val oldMap = oldBookIndex.chapters
+            .filter { it.sourceUrl == book.origin }
+            .associateBy { it.chapterKey }
+        val currentSourceChapters = localChapters.map { item ->
             val key = LibraryCloudKeys.chapterKey(item)
             val old = oldMap[key]
             val isCurrent = item.index == chapter.index
@@ -160,11 +165,23 @@ object LibraryCloudSync {
                 normalizedTitle = LibraryCloudKeys.normalize(item.title),
                 urlHash = LibraryCloudKeys.urlHash(item),
                 identityHash = LibraryCloudKeys.identityHash(item),
+                sourceUrl = book.origin,
+                sourceName = book.originName,
+                sourceBookUrl = book.bookUrl,
                 remotePath = if (isCurrent) chapterPath else old?.remotePath.orEmpty(),
                 cached = isCurrent || old?.cached == true,
                 updatedAt = if (isCurrent) updatedAt else old?.updatedAt ?: 0L
             )
         }
+        val nextChapters = oldBookIndex.chapters
+            .filterNot { it.sourceUrl == book.origin }
+            .plus(currentSourceChapters)
+            .distinctBy { "${it.sourceUrl}\u001F${it.chapterKey}" }
+            .sortedWith(
+                compareBy<LibraryChapterItem> { it.sourceName.ifBlank { it.sourceUrl } }
+                    .thenBy { it.chapterIndex }
+                    .thenBy { it.title }
+            )
         val bookIndex = LibraryBookIndex(
             bookKey = bookKey,
             name = book.name,

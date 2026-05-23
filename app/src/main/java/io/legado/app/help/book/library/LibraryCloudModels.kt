@@ -20,7 +20,8 @@ data class LibraryContainerConfig(
                 prefix = container.prefix.trim().trim('/').ifBlank { LibraryCloudPaths.ROOT_DIR }
             ),
             password = password?.takeIf { it.isNotBlank() },
-            sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet()
+            sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet(),
+            priority = LibrarySyncPriority.SOURCE_FIRST
         )
     }
 
@@ -68,6 +69,9 @@ data class LibraryChapterItem(
     val normalizedTitle: String = "",
     val urlHash: String = "",
     val identityHash: String = "",
+    val sourceUrl: String = "",
+    val sourceName: String = "",
+    val sourceBookUrl: String = "",
     val remotePath: String = "",
     val cached: Boolean = false,
     val updatedAt: Long = 0L
@@ -121,6 +125,10 @@ object LibraryCloudKeys {
                 chapter.contentCacheIdentity()
             ).joinToString("\u001F")
         )
+    }
+
+    fun sourceChapterKey(sourceUrl: String, chapterKey: String): String {
+        return MD5Utils.md5Encode("${normalize(sourceUrl)}\u001F$chapterKey")
     }
 
     fun urlHash(chapter: BookChapter): String {
