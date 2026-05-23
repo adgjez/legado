@@ -4,8 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -24,7 +22,6 @@ import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerManager
-import io.legado.app.help.book.library.LibrarySyncPriority
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.dialogs.alert
@@ -126,19 +123,6 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         val passwordInput = PackageManageUi.nameInput(context, item?.password.orEmpty(), "书库加密密码，可留空").apply {
             tag = TAG_PASSWORD
         }
-        val priorityGroup = RadioGroup(context).apply {
-            tag = TAG_PRIORITY
-            orientation = RadioGroup.HORIZONTAL
-            addView(RadioButton(context).apply {
-                id = PRIORITY_SOURCE_FIRST
-                text = "书源优先"
-            })
-            addView(RadioButton(context).apply {
-                id = PRIORITY_CLOUD_FIRST
-                text = "云端优先"
-            })
-            check(if (item?.priority == LibrarySyncPriority.CLOUD_FIRST) PRIORITY_CLOUD_FIRST else PRIORITY_SOURCE_FIRST)
-        }
         editingSourceSummary = TextView(context).apply {
             textSize = 13f
             setTextColor(secondaryTextColor)
@@ -159,7 +143,6 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 applyUiLabelStyle(context)
                 setPadding(0, 10.dp, 0, 4.dp)
             })
-            addView(priorityGroup)
             addView(PackageManageUi.optionRow(context, "指定书源", "选择允许同步的书源") {
                 showSourcePicker()
             })
@@ -237,10 +220,6 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             isFull = capacityMb > 0 && usedBytes >= mbToBytes(capacityMb),
             enabled = binding.cbEnabled.isChecked
         )
-        val priority = when (binding.root.findViewWithTag<RadioGroup>(TAG_PRIORITY)?.checkedRadioButtonId) {
-            PRIORITY_CLOUD_FIRST -> LibrarySyncPriority.CLOUD_FIRST
-            else -> LibrarySyncPriority.SOURCE_FIRST
-        }
         val password = binding.root.findViewWithTag<android.widget.EditText>(TAG_PASSWORD)
             ?.text?.toString()?.takeIf { it.isNotBlank() }
         val saved = LibraryContainerManager.upsert(
@@ -248,7 +227,6 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 container = container,
                 password = password,
                 sourceUrls = editingSourceUrls.toSet(),
-                priority = priority
             )
         )
         reload()
@@ -377,7 +355,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             } else {
                 getString(R.string.s3_container_capacity_unlimited_line, formatBytes(usedBytes))
             }
-            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · ${item.priority.label()} · ${item.sourceUrls.size} 个书源"
+            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源"
             tvName.applyUiSectionTitleStyle(this@LibraryContainerManageActivity)
             tvPath.applyUiLabelStyle(this@LibraryContainerManageActivity)
             tvCapacity.applyUiLabelStyle(this@LibraryContainerManageActivity)
@@ -403,18 +381,11 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         DELETE("删除")
     }
 
-    private fun LibrarySyncPriority.label(): String {
-        return if (this == LibrarySyncPriority.CLOUD_FIRST) "云端优先" else "书源优先"
-    }
-
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
 
     private companion object {
         const val DEFAULT_CAPACITY_MB = 5L * 1024L
         const val TAG_PASSWORD = "library_password"
-        const val TAG_PRIORITY = "library_priority"
-        const val PRIORITY_SOURCE_FIRST = 0x7101
-        const val PRIORITY_CLOUD_FIRST = 0x7102
 
         fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
 
