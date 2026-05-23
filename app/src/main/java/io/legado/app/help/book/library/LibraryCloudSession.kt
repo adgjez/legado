@@ -94,6 +94,17 @@ data class LibraryCloudSession(
         return payload.content.takeIf { it.isNotBlank() }
     }
 
+    suspend fun deleteChapter(version: LibraryCloudChapterVersion): Boolean {
+        val cfg = config ?: return false
+        if (version.path.isBlank()) return false
+        val backend = LibraryCloudBackend(cfg)
+        val deleted = backend.delete(version.path)
+        if (deleted && version.schemaVersion >= 3 && version.matchKind == "v3-manifest") {
+            removeManifestVersion(backend, version)
+        }
+        return deleted
+    }
+
     private suspend fun readPayloadOrNull(
         backend: LibraryCloudBackend,
         path: String
@@ -174,6 +185,28 @@ data class LibraryCloudSession(
         }.onFailure {
             AppLog.put("读取书库v3清单失败 ${book.name} $path\n${it.localizedMessage}", it)
         }.getOrNull()
+    }
+
+    private suspend fun removeManifestVersion(
+        backend: LibraryCloudBackend,
+        version: LibraryCloudChapterVersion
+    ) {
+        val cfg = config ?: return
+        val payload = version.payload
+        if (payload.bookKey.isBlank() || payload.chapterKey.isBlank()) return
+        val path = LibraryCloudPaths.v3ManifestPath(payload.bookKey, payload.chapterKey)
+        val manifest = readManifestOrNull(backend, path) ?: return
+        val variants = manifest.variants.filterNot { it.payloadPath == version.path }
+        if (variants.size == manifest.variants.size) return
+        if (variants.isEmpty()) {
+            backend.delete(path)
+        } else {
+            backend.upload(
+                path,
+                LibraryCloudCrypto.encodeJson(manifest.copy(variants = variants), cfg.password, gzip = true),
+                "application/json"
+            )
+        }
     }
 
     private fun selectVariant(

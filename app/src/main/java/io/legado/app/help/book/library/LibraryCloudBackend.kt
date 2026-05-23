@@ -72,6 +72,19 @@ class LibraryCloudBackend(private val config: LibraryContainerConfig) {
         }
     }
 
+    suspend fun delete(path: String): Boolean = withContext(Dispatchers.IO) {
+        container.requireValid()
+        request("DELETE", path, container.toConfig()).use { response ->
+            when {
+                response.isSuccessful || response.code == 404 -> true
+                else -> {
+                    checkResult(response)
+                    false
+                }
+            }
+        }
+    }
+
     suspend fun list(prefix: String): List<CloudStorageFile> = withContext(Dispatchers.IO) {
         container.requireValid()
         listObjects(container, prefix)

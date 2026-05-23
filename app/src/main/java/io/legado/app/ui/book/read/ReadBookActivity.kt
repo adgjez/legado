@@ -18,6 +18,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.ScrollView
@@ -26,6 +27,7 @@ import android.text.TextPaint
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.core.view.get
 import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
@@ -84,7 +86,10 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -3062,7 +3067,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     ) {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 8.dpToPx(), 0, 8.dpToPx())
+            setPadding(16.dpToPx(), 10.dpToPx(), 16.dpToPx(), 10.dpToPx())
         }
         var dialog: AlertDialog? = null
         items.groupBy { libraryCloudSourceGroupKey(it) }.forEach { (_, sourceItems) ->
@@ -3071,19 +3076,12 @@ class ReadBookActivity : BaseReadBookActivity(),
                 text = sourceLabel
                 typeface = Typeface.DEFAULT_BOLD
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setPadding(20.dpToPx(), 14.dpToPx(), 20.dpToPx(), 4.dpToPx())
+                setTextColor(secondaryTextColor)
+                setPadding(4.dpToPx(), 14.dpToPx(), 4.dpToPx(), 6.dpToPx())
             })
             sourceItems.forEach { item ->
-                root.addView(TextView(this).apply {
-                    text = libraryCloudChapterLabel(item)
-                    gravity = Gravity.CENTER_VERTICAL
-                    minHeight = 48.dpToPx()
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                    setPadding(24.dpToPx(), 8.dpToPx(), 24.dpToPx(), 8.dpToPx())
-                    setOnClickListener {
-                        dialog?.dismiss()
-                        downloadLibraryCloudChapter(book, session, currentChapter, item)
-                    }
+                root.addView(createLibraryCloudChapterRow(book, session, currentChapter, item) {
+                    dialog?.dismiss()
                 })
             }
         }
@@ -3103,6 +3101,140 @@ class ReadBookActivity : BaseReadBookActivity(),
             .setNegativeButton(android.R.string.cancel, null)
             .create()
         dialog.show()
+    }
+
+    private fun createLibraryCloudChapterRow(
+        book: Book,
+        session: LibraryCloudSession,
+        currentChapter: BookChapter,
+        item: LibraryCloudChapterVersion,
+        dismissParent: () -> Unit
+    ): View {
+        val cardColor = ContextCompat.getColor(this, R.color.background_card)
+        val pressedColor = ContextCompat.getColor(this, R.color.background_menu)
+        val actionRadius = UiCorner.actionRadius(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = 58.dpToPx()
+            setPadding(14.dpToPx(), 10.dpToPx(), 10.dpToPx(), 10.dpToPx())
+            background = UiCorner.panelRounded(
+                this@ReadBookActivity,
+                cardColor,
+                UiCorner.panelRadius(this@ReadBookActivity)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, 8.dpToPx())
+            }
+            addView(TextView(this@ReadBookActivity).apply {
+                text = libraryCloudChapterLabel(item)
+                gravity = Gravity.CENTER_VERTICAL
+                setTextColor(primaryTextColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(libraryCloudActionText("读取", accentColor, pressedColor, actionRadius) {
+                dismissParent()
+                downloadLibraryCloudChapter(book, session, currentChapter, item)
+            })
+            addView(libraryCloudActionText("删除", 0xFFD32F2F.toInt(), pressedColor, actionRadius) {
+                confirmDeleteLibraryCloudChapter(book, session, currentChapter, item, dismissParent)
+            })
+        }
+    }
+
+    private fun libraryCloudActionText(
+        text: String,
+        textColor: Int,
+        pressedColor: Int,
+        radius: Float,
+        onClick: () -> Unit
+    ): TextView {
+        return TextView(this).apply {
+            this.text = text
+            gravity = Gravity.CENTER
+            minWidth = 44.dpToPx()
+            minHeight = 36.dpToPx()
+            setTextColor(textColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            typeface = Typeface.DEFAULT_BOLD
+            background = UiCorner.actionSelector(android.graphics.Color.TRANSPARENT, pressedColor, radius)
+            setPadding(10.dpToPx(), 6.dpToPx(), 10.dpToPx(), 6.dpToPx())
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = 6.dpToPx()
+            }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun confirmDeleteLibraryCloudChapter(
+        book: Book,
+        session: LibraryCloudSession,
+        currentChapter: BookChapter,
+        item: LibraryCloudChapterVersion,
+        dismissParent: () -> Unit
+    ) {
+        val input = EditText(this).apply {
+            hint = "请输入 删除"
+            setSingleLine(true)
+            setPadding(20.dpToPx(), 8.dpToPx(), 20.dpToPx(), 8.dpToPx())
+        }
+        val confirmDialog = AlertDialog.Builder(this)
+            .setTitle("删除云端章节")
+            .setMessage("将删除云端章节：${item.payload.title.ifBlank { currentChapter.title }}\n请输入“删除”确认。")
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("删除", null)
+            .create()
+        confirmDialog.setOnShowListener {
+            confirmDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (input.text?.toString()?.trim() != "删除") {
+                    toastOnUi("请输入 删除 后再确认")
+                    return@setOnClickListener
+                }
+                confirmDialog.dismiss()
+                dismissParent()
+                deleteLibraryCloudChapter(book, session, currentChapter, item)
+            }
+        }
+        confirmDialog.show()
+    }
+
+    private fun deleteLibraryCloudChapter(
+        book: Book,
+        session: LibraryCloudSession,
+        currentChapter: BookChapter,
+        item: LibraryCloudChapterVersion
+    ) {
+        lifecycleScope.launch {
+            ReadBook.upMsg("删除云端章节")
+            val result = withContext(IO) {
+                runCatching {
+                    if (!session.deleteChapter(item)) {
+                        throw NoStackTraceException("云端章节不存在或删除失败")
+                    }
+                    LibraryCloudSync.refreshSession(book)
+                }
+            }
+            ReadBook.upMsg(null)
+            val refreshedSession = result.getOrNull()
+            if (refreshedSession != null) {
+                if (ReadBook.book?.bookUrl != book.bookUrl) return@launch
+                libraryCloudSession = refreshedSession
+                libraryCloudState = refreshedSession.state
+                binding.readMenu.updateCloudLibraryState(refreshedSession.state)
+                toastOnUi("已删除云端章节")
+                showLibraryCloudChapters(refresh = false)
+            } else {
+                toastOnUi("删除云端章节失败\n${result.exceptionOrNull()?.localizedMessage.orEmpty()}")
+            }
+        }
     }
 
     private fun libraryCloudSourceGroupKey(item: LibraryCloudChapterVersion): String {
