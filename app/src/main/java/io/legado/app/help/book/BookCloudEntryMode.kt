@@ -16,8 +16,8 @@ object BookCloudEntryModeStore {
 
     fun get(bookUrl: String): BookCloudEntryMode {
         return when (appCtx.getPrefString(prefKey(bookUrl))) {
-            BookCloudEntryMode.CACHE_PACKAGE.name -> BookCloudEntryMode.CACHE_PACKAGE
-            else -> BookCloudEntryMode.LIBRARY_CHAPTER
+            BookCloudEntryMode.LIBRARY_CHAPTER.name -> BookCloudEntryMode.LIBRARY_CHAPTER
+            else -> BookCloudEntryMode.CACHE_PACKAGE
         }
     }
 
