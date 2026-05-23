@@ -508,7 +508,11 @@ class ReadMenu @JvmOverloads constructor(
     private fun buttonTitle(ref: ReadMenuButtonConfig.ButtonRef): String {
         ref.titleOverride.trim().takeIf { it.isNotBlank() }?.let { return it }
         return when (ref.type) {
-            ReadMenuButtonConfig.TYPE_CUSTOM -> ref.id
+            ReadMenuButtonConfig.TYPE_CUSTOM -> {
+                ref.id.toLongOrNull()
+                    ?.let { appDb.readMenuCustomButtonDao.get(it)?.displayName() }
+                    ?: ref.id
+            }
             else -> when (ref.id) {
                 ReadMenuButtonConfig.Builtin.SEARCH -> context.getString(R.string.search_content)
                 ReadMenuButtonConfig.Builtin.AUTO_PAGE -> context.getString(R.string.auto_next_page)
