@@ -1,6 +1,9 @@
 package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Typeface
@@ -2887,9 +2890,29 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                 }
             }
+            val debugTextView = TextView(this@ReadBookActivity).apply {
+                text = message
+                setTextIsSelectable(true)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(20.dpToPx(), 12.dpToPx(), 20.dpToPx(), 12.dpToPx())
+            }
+            val debugScrollView = ScrollView(this@ReadBookActivity).apply {
+                addView(
+                    debugTextView,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                )
+            }
             AlertDialog.Builder(this@ReadBookActivity)
                 .setTitle("书库调试")
-                .setMessage(message)
+                .setView(debugScrollView)
+                .setNegativeButton("复制") { _, _ ->
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("书库调试", message))
+                    toastOnUi("已复制")
+                }
                 .setPositiveButton(android.R.string.ok, null)
                 .show()
         }
