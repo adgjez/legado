@@ -53,8 +53,7 @@ import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
-import io.legado.app.help.book.library.LibraryChapterItem
-import io.legado.app.help.book.library.LibraryCloudKeys
+import io.legado.app.help.book.library.LibraryCloudChapterVersion
 import io.legado.app.help.book.library.LibraryCloudSession
 import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.help.book.library.LibraryCloudSync
@@ -2822,12 +2821,14 @@ class ReadBookActivity : BaseReadBookActivity(),
                 toastOnUi("未找到当前章节")
                 return@launch
             }
-            val matchedItems = matchedLibraryCloudChapters(session, currentChapter)
-            if (matchedItems.isEmpty()) {
+            val versions = withContext(IO) {
+                session.listChapterVersions(currentChapter)
+            }
+            if (versions.isEmpty()) {
                 toastOnUi("云端没有匹配当前章节的缓存")
                 return@launch
             }
-            showLibraryCloudChapterDialog(book, session, currentChapter, matchedItems)
+            showLibraryCloudChapterDialog(book, session, currentChapter, versions)
         }
     }
 
@@ -2870,7 +2871,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         book: Book,
         session: LibraryCloudSession,
         localChapter: BookChapter,
-        item: LibraryChapterItem
+        item: LibraryCloudChapterVersion
     ) {
         lifecycleScope.launch {
             ReadBook.upMsg("读取云端章节")
@@ -2885,6 +2886,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             ReadBook.upMsg(null)
             result.onSuccess { chapter ->
                 if (ReadBook.book?.bookUrl != book.bookUrl) return@onSuccess
+                LibraryCloudSync.setCloudReadingActive(book, true)
+                libraryCloudState = LibraryCloudState.READY
+                binding.readMenu.updateCloudLibraryState(libraryCloudState)
                 if (isEpubCoreMode()) {
                     skipToChapter(chapter.index)
                 } else {
@@ -2896,39 +2900,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun matchedLibraryCloudChapters(
-        session: LibraryCloudSession,
-        currentChapter: BookChapter
-    ): List<LibraryChapterItem> {
-        val currentTitle = LibraryCloudKeys.normalize(currentChapter.title)
-        if (currentTitle.isBlank()) return emptyList()
-        val cachedItems = session.bookIndex?.chapters.orEmpty()
-            .asSequence()
-            .filter { it.cached && it.remotePath.isNotBlank() }
-            .filter { it.normalizedTitle.isNotBlank() }
-            .toList()
-        val exact = cachedItems.filter { it.normalizedTitle == currentTitle }
-        val matched = exact.ifEmpty {
-            cachedItems.filter { item ->
-                item.normalizedTitle.contains(currentTitle) ||
-                    currentTitle.contains(item.normalizedTitle)
-            }
-        }
-        return matched
-            .distinctBy { "${it.sourceUrl}\u001F${it.chapterKey}\u001F${it.remotePath}" }
-            .sortedWith(
-                compareBy<LibraryChapterItem> { libraryCloudSourceLabel(it) }
-                    .thenBy { it.chapterIndex }
-                    .thenBy { it.title }
-                    .thenByDescending { it.updatedAt }
-            )
-    }
-
     private fun showLibraryCloudChapterDialog(
         book: Book,
         session: LibraryCloudSession,
         currentChapter: BookChapter,
-        items: List<LibraryChapterItem>
+        items: List<LibraryCloudChapterVersion>
     ) {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2975,22 +2951,24 @@ class ReadBookActivity : BaseReadBookActivity(),
         dialog.show()
     }
 
-    private fun libraryCloudSourceGroupKey(item: LibraryChapterItem): String {
-        return listOf(item.sourceUrl, item.sourceBookUrl, item.sourceName).joinToString("\u001F")
+    private fun libraryCloudSourceGroupKey(item: LibraryCloudChapterVersion): String {
+        val payload = item.payload
+        return listOf(payload.sourceUrl, payload.sourceBookUrl, payload.sourceName).joinToString("\u001F")
     }
 
-    private fun libraryCloudSourceLabel(item: LibraryChapterItem): String {
-        return item.sourceName
-            .ifBlank { item.sourceUrl }
+    private fun libraryCloudSourceLabel(item: LibraryCloudChapterVersion): String {
+        return item.payload.sourceName
+            .ifBlank { item.payload.sourceUrl }
             .ifBlank { "旧缓存/未知来源" }
     }
 
-    private fun libraryCloudChapterLabel(item: LibraryChapterItem): String {
-        val time = item.updatedAt.takeIf { it > 0L }?.let {
+    private fun libraryCloudChapterLabel(item: LibraryCloudChapterVersion): String {
+        val payload = item.payload
+        val time = payload.updatedAt.takeIf { it > 0L }?.let {
             DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it))
         }.orEmpty()
-        val title = item.title.ifBlank { item.normalizedTitle.ifBlank { item.chapterKey } }
-        val prefix = if (item.chapterIndex >= 0) "${item.chapterIndex + 1}. " else ""
+        val title = payload.title.ifBlank { payload.normalizedTitle.ifBlank { payload.chapterKey } }
+        val prefix = if (payload.chapterIndex >= 0) "${payload.chapterIndex + 1}. " else ""
         return buildString {
             append(prefix)
             append(title)
