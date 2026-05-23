@@ -31,6 +31,10 @@ object LibraryContainerManager {
         return items.firstOrNull { it.id == selectedId } ?: items.firstOrNull()
     }
 
+    fun readContainer(): LibraryContainerConfig? {
+        return selected()
+    }
+
     fun selectedId(): String? {
         return selections()[SCOPE_DEFAULT]
     }

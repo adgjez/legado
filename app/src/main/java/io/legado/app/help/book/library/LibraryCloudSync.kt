@@ -4,6 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.BookCloudEntryMode
+import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.isLocal
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
@@ -41,7 +43,7 @@ object LibraryCloudSync {
     }
 
     suspend fun openSession(book: Book): LibraryCloudSession {
-        val config = LibraryContainerManager.matchForSource(book.origin)
+        val config = readConfig(book)
         val key = sessionKey(config, book)
         if (key != null) {
             sessions[key]?.let { return it }
@@ -54,7 +56,7 @@ object LibraryCloudSync {
     }
 
     suspend fun refreshSession(book: Book): LibraryCloudSession {
-        val config = LibraryContainerManager.matchForSource(book.origin)
+        val config = readConfig(book)
         val key = sessionKey(config, book)
         if (key != null) sessions.remove(key)
         return openSession(book)
@@ -66,11 +68,16 @@ object LibraryCloudSync {
     }
 
     suspend fun tryCloudFallback(book: Book, chapter: BookChapter): String? {
-        val config = LibraryContainerManager.matchForSource(book.origin)
-            ?.takeIf { it.priority == LibrarySyncPriority.SOURCE_FIRST }
-            ?: return null
+        readConfig(book) ?: return null
         val session = openSession(book)
         return session.downloadChapter(chapter)
+    }
+
+    private fun readConfig(book: Book): LibraryContainerConfig? {
+        if (BookCloudEntryModeStore.get(book.bookUrl) != BookCloudEntryMode.LIBRARY_CHAPTER) {
+            return null
+        }
+        return LibraryContainerManager.readContainer()
     }
 
     private fun shouldUpload(book: Book, chapter: BookChapter, content: String): Boolean {
@@ -84,7 +91,7 @@ object LibraryCloudSync {
 
     private fun sessionKey(config: LibraryContainerConfig?, book: Book): String? {
         config ?: return null
-        return "${config.id}\u001F${book.bookUrl}\u001F${book.name}\u001F${book.getRealAuthor()}"
+        return "${config.id}\u001F${LibraryCloudKeys.bookKey(book)}"
     }
 
     private suspend fun uploadChapter(

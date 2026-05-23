@@ -21,36 +21,37 @@ data class LibraryCloudSession(
     fun cachedItemFor(chapter: BookChapter): LibraryChapterItem? {
         val index = bookIndex ?: return null
         val key = LibraryCloudKeys.chapterKey(chapter)
-        val sourceUrl = book.origin
-        index.chapters.firstOrNull {
-            it.chapterKey == key &&
-                it.matchesSourceOrLegacy(sourceUrl) &&
-                it.cached &&
-                it.remotePath.isNotBlank()
-        }?.let { return it }
+        val available = index.chapters.filter {
+            it.cached && it.remotePath.isNotBlank()
+        }
+        available.filter { it.chapterKey == key }
+            .bestFor(chapter)
+            ?.let { return it }
         val title = LibraryCloudKeys.normalize(chapter.title)
         val urlHash = LibraryCloudKeys.urlHash(chapter)
-        val strict = index.chapters.filter {
-            it.cached &&
-                it.remotePath.isNotBlank() &&
-                it.matchesSourceOrLegacy(sourceUrl) &&
+        val strict = available.filter {
                 it.chapterIndex == chapter.index &&
                 it.normalizedTitle == title &&
                 it.urlHash == urlHash
         }
-        if (strict.size == 1) return strict.first()
-        val byIndexTitle = index.chapters.filter {
-            it.cached &&
-                it.remotePath.isNotBlank() &&
-                it.matchesSourceOrLegacy(sourceUrl) &&
+        strict.bestFor(chapter)?.let { return it }
+        val byIndexTitle = available.filter {
                 it.chapterIndex == chapter.index &&
                 it.normalizedTitle == title
         }
-        return byIndexTitle.singleOrNull()
+        byIndexTitle.bestFor(chapter)?.let { return it }
+        val byTitle = available.filter { it.normalizedTitle == title }
+        return byTitle.bestFor(chapter)
     }
 
-    private fun LibraryChapterItem.matchesSourceOrLegacy(sourceUrl: String): Boolean {
-        return this.sourceUrl.isBlank() || this.sourceUrl == sourceUrl
+    private fun List<LibraryChapterItem>.bestFor(chapter: BookChapter): LibraryChapterItem? {
+        if (isEmpty()) return null
+        val currentSource = book.origin
+        return sortedWith(
+            compareBy<LibraryChapterItem> { if (it.sourceUrl == currentSource || it.sourceUrl.isBlank()) 0 else 1 }
+                .thenBy { kotlin.math.abs(it.chapterIndex - chapter.index) }
+                .thenByDescending { it.updatedAt }
+        ).firstOrNull()
     }
 
     suspend fun downloadChapter(chapter: BookChapter): String? {

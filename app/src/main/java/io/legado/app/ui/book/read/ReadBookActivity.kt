@@ -2788,7 +2788,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         return when (BookCloudEntryModeStore.get(book.bookUrl)) {
             BookCloudEntryMode.CACHE_PACKAGE -> true
             BookCloudEntryMode.LIBRARY_CHAPTER ->
-                LibraryContainerManager.matchForSource(book.origin) != null
+                LibraryContainerManager.readContainer() != null
         }
     }
 
