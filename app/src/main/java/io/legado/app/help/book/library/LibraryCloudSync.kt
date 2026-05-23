@@ -29,7 +29,7 @@ object LibraryCloudSync {
         val config = LibraryContainerManager.matchForSource(book.origin) ?: return
         val uploadContent = LibraryCloudContent.toUploadText(content)
         if (!shouldUploadContent(config, uploadContent)) return
-        val lockKey = "${config.id}\u001F${book.bookUrl}\u001F${chapter.index}"
+        val lockKey = "${config.id}\u001F${LibraryCloudKeys.bookKey(book)}\u001F${LibraryCloudKeys.libraryChapterKey(chapter)}"
         val lock = uploadLocks.getOrPut(lockKey) { Mutex() }
         scope.launch {
             lock.withLock {
@@ -130,15 +130,15 @@ object LibraryCloudSync {
         content: String
     ) {
         val backend = LibraryCloudBackend(config)
-        val exactBookKey = LibraryCloudKeys.bookKey(book)
-        val chapterKey = LibraryCloudKeys.chapterKey(chapter)
+        val bookKey = LibraryCloudKeys.bookKey(book)
+        val chapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
         val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
         val now = System.currentTimeMillis()
-        val payload = LibraryChapterPayloadV2(
-            bookKey = exactBookKey,
+        val manifestPath = LibraryCloudPaths.v3ManifestPath(bookKey, chapterKey)
+        val payloadPath = LibraryCloudPaths.v3PayloadPath(bookKey, chapterKey, sourceKey)
+        val payload = LibraryChapterPayloadV3(
+            bookKey = bookKey,
             chapterKey = chapterKey,
-            titleKey = LibraryCloudKeys.titleKey(chapter),
-            relaxedTitleKey = LibraryCloudKeys.relaxedTitleKey(chapter),
             sourceKey = sourceKey,
             name = book.name,
             author = book.getRealAuthor(),
@@ -157,48 +157,85 @@ object LibraryCloudSync {
             content = content,
             updatedAt = now
         )
-        val bytes = LibraryCloudCrypto.encodeJson(payload, config.password, gzip = true)
-        LibraryCloudKeys.bookKeys(book).forEach { bookKey ->
-            val wroteVariant = LibraryCloudKeys.variantMatchKeys(chapter)
-                .map { matchKey ->
-                    val variantPath = LibraryCloudPaths.variantChapterPath(bookKey, matchKey, sourceKey)
-                    if (remoteHasSameContent(backend, config, variantPath, payload)) {
-                        false
-                    } else {
-                        backend.upload(variantPath, bytes, "application/json")
-                        true
-                    }
-                }
-                .any { it }
-            LibraryCloudKeys.matchKeys(chapter).forEach { matchKey ->
-                val currentPath = LibraryCloudPaths.currentChapterPath(bookKey, matchKey)
-                if (wroteVariant || !backend.exists(currentPath)) {
-                    backend.upload(currentPath, bytes, "application/json")
-                }
-            }
+        val remoteManifest = readManifestOrNull(backend, config, manifestPath)
+        if (remoteManifest?.variants?.any {
+                it.sourceKey == sourceKey && it.contentHash == payload.contentHash && it.payloadPath.isNotBlank()
+            } == true
+        ) {
+            return
         }
+        val variant = payload.toVariant(payloadPath)
+        backend.upload(
+            payloadPath,
+            LibraryCloudCrypto.encodeJson(payload, config.password, gzip = true),
+            "application/json"
+        )
+        val manifest = mergeManifest(remoteManifest, payload, variant)
+        backend.upload(
+            manifestPath,
+            LibraryCloudCrypto.encodeJson(manifest, config.password, gzip = true),
+            "application/json"
+        )
         sessions.remove(sessionKey(config, book))
     }
 
-    private suspend fun remoteHasSameContent(
+    private suspend fun readManifestOrNull(
         backend: LibraryCloudBackend,
         config: LibraryContainerConfig,
-        path: String,
-        payload: LibraryChapterPayloadV2
-    ): Boolean {
-        val bytes = backend.downloadOrNull(path) ?: return false
+        path: String
+    ): LibraryChapterManifestV3? {
+        val bytes = backend.downloadOrNull(path) ?: return null
         return runCatching {
             val json = LibraryCloudCrypto.decodeString(bytes, config.password)
-            val remote = GSON.fromJsonObject<LibraryChapterPayloadV2>(json).getOrThrow()
-            val remoteRelaxed = remote.relaxedTitle.ifBlank { LibraryCloudKeys.relaxedTitle(remote.title) }
-            val remoteOrdinal = remote.ordinalTitle.ifBlank { LibraryCloudKeys.chapterOrdinal(remote.title).orEmpty() }
-            remote.sourceKey == payload.sourceKey &&
-                (
-                    remote.normalizedTitle == payload.normalizedTitle ||
-                        remoteRelaxed == payload.relaxedTitle ||
-                        (remoteOrdinal.isNotBlank() && remoteOrdinal == payload.ordinalTitle)
-                    ) &&
-                remote.contentHash == payload.contentHash
-        }.getOrDefault(false)
+            GSON.fromJsonObject<LibraryChapterManifestV3>(json).getOrThrow()
+        }.onFailure {
+            AppLog.put("读取书库章节清单失败 $path\n${it.localizedMessage}", it)
+        }.getOrNull()
+    }
+
+    private fun mergeManifest(
+        remote: LibraryChapterManifestV3?,
+        payload: LibraryChapterPayloadV3,
+        variant: LibraryChapterVariantV3
+    ): LibraryChapterManifestV3 {
+        val variants = remote?.variants.orEmpty()
+            .filter { it.sourceKey.isNotBlank() && it.sourceKey != variant.sourceKey }
+            .plus(variant)
+            .sortedWith(
+                compareByDescending<LibraryChapterVariantV3> { it.updatedAt }
+                    .thenBy { it.sourceName.ifBlank { it.sourceUrl } }
+            )
+        return LibraryChapterManifestV3(
+            bookKey = payload.bookKey,
+            name = payload.name,
+            author = payload.author,
+            normalizedName = payload.normalizedName,
+            normalizedAuthor = payload.normalizedAuthor,
+            chapterKey = payload.chapterKey,
+            title = payload.title,
+            normalizedTitle = payload.normalizedTitle,
+            relaxedTitle = payload.relaxedTitle,
+            ordinalTitle = payload.ordinalTitle,
+            variants = variants,
+            updatedAt = payload.updatedAt
+        )
+    }
+
+    private fun LibraryChapterPayloadV3.toVariant(payloadPath: String): LibraryChapterVariantV3 {
+        return LibraryChapterVariantV3(
+            sourceKey = sourceKey,
+            sourceUrl = sourceUrl,
+            sourceName = sourceName,
+            sourceBookUrl = sourceBookUrl,
+            sourceChapterIdentity = sourceChapterIdentity,
+            chapterIndex = chapterIndex,
+            title = title,
+            normalizedTitle = normalizedTitle,
+            relaxedTitle = relaxedTitle,
+            ordinalTitle = ordinalTitle,
+            contentHash = contentHash,
+            payloadPath = payloadPath,
+            updatedAt = updatedAt
+        )
     }
 }
