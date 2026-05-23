@@ -1132,7 +1132,7 @@ class BookInfoActivity :
                 textSize = 13f
                 setTextColor(secondaryTextColor)
                 setPadding(0, 4.dpToPx(), 0, 0)
-                applyUiBodyTypefaceDeep(context)
+                applyUiBodyTypefaceDeep(context.uiTypeface())
             })
             setOnClickListener { onClick() }
         }
@@ -1147,7 +1147,7 @@ class BookInfoActivity :
             textSize = 13f
             setTextColor(secondaryTextColor)
             setPadding(0, 0, 0, 8.dpToPx())
-            applyUiBodyTypefaceDeep(this@BookInfoActivity)
+            applyUiBodyTypefaceDeep(this@BookInfoActivity.uiTypeface())
         }
         val listLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1240,7 +1240,7 @@ class BookInfoActivity :
                 textSize = 13f
                 setTextColor(secondaryTextColor)
                 setPadding(0, 4.dpToPx(), 0, 8.dpToPx())
-                applyUiBodyTypefaceDeep(context)
+                applyUiBodyTypefaceDeep(context.uiTypeface())
             })
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1287,7 +1287,7 @@ class BookInfoActivity :
                         reload()
                     }
                 })
-            }
+            })
         }
     }
 
@@ -1303,7 +1303,7 @@ class BookInfoActivity :
             alpha = if (enabled) 1f else 0.45f
             isEnabled = enabled
             setPadding(0, 4.dpToPx(), 14.dpToPx(), 4.dpToPx())
-            applyUiBodyTypefaceDeep(this@BookInfoActivity)
+            applyUiBodyTypefaceDeep(this@BookInfoActivity.uiTypeface())
             setOnClickListener { onClick() }
         }
     }
