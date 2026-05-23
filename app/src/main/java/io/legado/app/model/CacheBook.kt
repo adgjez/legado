@@ -12,8 +12,6 @@ import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.library.LibraryCloudSync
-import io.legado.app.help.book.library.LibraryContainerManager
-import io.legado.app.help.book.library.LibrarySyncPriority
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.CompositeCoroutine
@@ -394,14 +392,12 @@ object CacheBook {
                 waitDownloadSet.remove(chapter.index)
             }
             try {
-                if (LibraryContainerManager.matchForSource(book.origin)?.priority == LibrarySyncPriority.CLOUD_FIRST) {
-                    LibraryCloudSync.tryCloudFirst(book, chapter)?.let { content ->
-                        BookHelp.saveText(book, chapter, content)
-                        onSuccess(chapter)
-                        ReadBook.downloadedChapters.add(chapter.index)
-                        ReadBook.downloadFailChapters.remove(chapter.index)
-                        return content
-                    }
+                LibraryCloudSync.tryActiveCloud(book, chapter)?.let { content ->
+                    BookHelp.saveText(book, chapter, content)
+                    onSuccess(chapter)
+                    ReadBook.downloadedChapters.add(chapter.index)
+                    ReadBook.downloadFailChapters.remove(chapter.index)
+                    return content
                 }
                 val content = WebBook.getContentAwait(bookSource, book, chapter)
                 onSuccess(chapter)
@@ -440,9 +436,9 @@ object CacheBook {
             }
             onDownloadSet.add(chapter.index)
             waitDownloadSet.remove(chapter.index)
-            if (LibraryContainerManager.matchForSource(book.origin)?.priority == LibrarySyncPriority.CLOUD_FIRST) {
+            if (LibraryCloudSync.isCloudReadingActive(book)) {
                 Coroutine.async(scope, IO, executeContext = IO, semaphore = semaphore) {
-                    LibraryCloudSync.tryCloudFirst(book, chapter)
+                    LibraryCloudSync.tryActiveCloud(book, chapter)
                 }.onSuccess { content ->
                     if (content != null) {
                         BookHelp.saveText(book, chapter, content)
