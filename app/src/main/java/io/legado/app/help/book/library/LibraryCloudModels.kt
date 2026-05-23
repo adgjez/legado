@@ -10,7 +10,8 @@ import java.util.Locale
 data class LibraryContainerConfig(
     val container: S3Container = S3Container(prefix = LibraryCloudPaths.ROOT_DIR),
     val password: String? = null,
-    val sourceUrls: Set<String> = emptySet()
+    val sourceUrls: Set<String> = emptySet(),
+    val minUploadChars: Int = 1500
 ) {
     val id: String get() = container.id
 
@@ -20,7 +21,8 @@ data class LibraryContainerConfig(
                 prefix = container.prefix.trim().trim('/').ifBlank { LibraryCloudPaths.ROOT_DIR }
             ),
             password = password?.takeIf { it.isNotBlank() },
-            sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet()
+            sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet(),
+            minUploadChars = minUploadChars.coerceAtLeast(0)
         )
     }
 
@@ -43,6 +45,7 @@ data class LibraryChapterPayloadV2(
     val title: String = "",
     val normalizedTitle: String = "",
     val relaxedTitle: String = "",
+    val ordinalTitle: String = "",
     val chapterIndex: Int = -1,
     val sourceUrl: String = "",
     val sourceName: String = "",
@@ -87,10 +90,20 @@ object LibraryCloudPaths {
 
 object LibraryCloudKeys {
     fun normalize(value: String?): String {
-        return Normalizer.normalize(value.orEmpty(), Normalizer.Form.NFKC)
-            .trim()
-            .lowercase(Locale.ROOT)
-            .replace(Regex("\\s+"), "")
+        return canonicalTextForKey(value)
+    }
+
+    fun canonicalTextForKey(value: String?): String {
+        val normalized = Normalizer.normalize(value.orEmpty(), Normalizer.Form.NFKC)
+        val builder = StringBuilder(normalized.length)
+        var index = 0
+        while (index < normalized.length) {
+            val codePoint = normalized.codePointAt(index)
+            index += Character.charCount(codePoint)
+            if (shouldDropFromKey(codePoint)) continue
+            builder.appendCodePoint(Character.toLowerCase(codePoint))
+        }
+        return builder.toString()
     }
 
     fun bookKey(book: Book): String {
@@ -131,18 +144,27 @@ object LibraryCloudKeys {
         return MD5Utils.md5Encode(relaxedTitle(chapter.title))
     }
 
+    fun ordinalTitleKey(chapter: BookChapter): String? {
+        return chapterOrdinal(chapter.title)?.let { MD5Utils.md5Encode(it) }
+    }
+
     fun sourceKey(sourceUrl: String?): String {
         return MD5Utils.md5Encode(normalize(sourceUrl))
     }
 
     fun matchKeys(chapter: BookChapter): List<LibraryCloudMatchKey> {
-        val strict = LibraryCloudMatchKey("title", titleKey(chapter))
         val relaxed = LibraryCloudMatchKey("relaxed", relaxedTitleKey(chapter))
-        return listOf(strict, relaxed).distinctBy { "${it.kind}\u001F${it.key}" }
+        val strict = LibraryCloudMatchKey("title", titleKey(chapter))
+        val ordinal = ordinalTitleKey(chapter)?.let { LibraryCloudMatchKey("ordinal", it) }
+        return listOfNotNull(relaxed, strict, ordinal)
+            .distinctBy { "${it.kind}\u001F${it.key}" }
     }
 
     fun variantMatchKeys(chapter: BookChapter): List<LibraryCloudMatchKey> {
-        return matchKeys(chapter).sortedBy { if (it.kind == "relaxed") 0 else 1 }.take(1)
+        val relaxed = LibraryCloudMatchKey("relaxed", relaxedTitleKey(chapter))
+        val ordinal = ordinalTitleKey(chapter)?.let { LibraryCloudMatchKey("ordinal", it) }
+        return listOfNotNull(relaxed, ordinal)
+            .distinctBy { "${it.kind}\u001F${it.key}" }
     }
 
     fun sourceChapterKey(sourceUrl: String, chapterKey: String): String {
@@ -163,17 +185,28 @@ object LibraryCloudKeys {
 
     fun relaxedTitle(value: String?): String {
         val normalized = normalize(value)
-        val converted = Regex("[零〇一二两三四五六七八九十百千万]+").replace(normalized) {
+        val converted = chineseNumberRegex.replace(normalized) {
             chineseNumberToLong(it.value)?.toString() ?: it.value
         }
-        return converted
+        return removePunctuation(converted
             .replace(Regex("(chapter|chap|volume|vol|正文|章节|第|章|回|节|卷|集|部|篇)"), "")
-            .replace(Regex("[\\p{Punct}《》“”‘’（）【】、，。！？：；—·…]+"), "")
+        )
+    }
+
+    fun chapterOrdinal(value: String?): String? {
+        val normalized = normalize(value)
+        if (normalized.isBlank()) return null
+        val converted = chineseNumberRegex.replace(normalized) {
+            chineseNumberToLong(it.value)?.toString() ?: it.value
+        }
+        val ordinal = ordinalRegexes.firstNotNullOfOrNull { regex ->
+            regex.find(converted)?.groupValues?.getOrNull(1)
+        } ?: return null
+        return ordinal.trimStart('0').ifBlank { "0" }
     }
 
     fun normalizeBookName(value: String?): String {
-        return normalize(value)
-            .replace(Regex("[\\p{Punct}《》“”‘’（）【】、，。！？：；—·…]+"), "")
+        return removePunctuation(normalize(value))
     }
 
     fun payloadMatches(book: Book, chapter: BookChapter, payload: LibraryChapterPayloadV2): Boolean {
@@ -181,12 +214,86 @@ object LibraryCloudKeys {
         if (payload.name.isNotBlank() && normalizeBookName(payload.name) != normalizeBookName(book.name)) {
             return false
         }
+        val bookAuthor = normalize(book.getRealAuthor())
+        val payloadAuthor = payload.normalizedAuthor.ifBlank { normalize(payload.author) }
+        if (bookAuthor.isNotBlank() && payloadAuthor.isNotBlank() && bookAuthor != payloadAuthor) {
+            return false
+        }
         val strict = normalize(chapter.title)
         val relaxed = relaxedTitle(chapter.title)
+        val ordinal = chapterOrdinal(chapter.title).orEmpty()
         val payloadStrict = payload.normalizedTitle.ifBlank { normalize(payload.title) }
         val payloadRelaxed = payload.relaxedTitle.ifBlank { relaxedTitle(payload.title) }
+        val payloadOrdinal = payload.ordinalTitle.ifBlank { chapterOrdinal(payload.title).orEmpty() }
         return (strict.isNotBlank() && strict == payloadStrict) ||
-            (relaxed.isNotBlank() && relaxed == payloadRelaxed)
+            (relaxed.isNotBlank() && relaxed == payloadRelaxed) ||
+            (ordinal.isNotBlank() && ordinal == payloadOrdinal)
+    }
+
+    fun debugCodePoints(value: String?): String {
+        val text = value.orEmpty()
+        if (text.isBlank()) return ""
+        val parts = mutableListOf<String>()
+        var index = 0
+        while (index < text.length) {
+            val codePoint = text.codePointAt(index)
+            index += Character.charCount(codePoint)
+            parts += "U+${codePoint.toString(16).uppercase(Locale.ROOT).padStart(4, '0')}"
+        }
+        return parts.joinToString(" ")
+    }
+
+    private fun removePunctuation(value: String): String {
+        val builder = StringBuilder(value.length)
+        var index = 0
+        while (index < value.length) {
+            val codePoint = value.codePointAt(index)
+            index += Character.charCount(codePoint)
+            if (isPunctuation(codePoint)) continue
+            builder.appendCodePoint(codePoint)
+        }
+        return builder.toString()
+    }
+
+    private fun shouldDropFromKey(codePoint: Int): Boolean {
+        if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) return true
+        if (Character.isISOControl(codePoint)) return true
+        return when (Character.getType(codePoint)) {
+            Character.CONTROL.toInt(),
+            Character.FORMAT.toInt(),
+            Character.PRIVATE_USE.toInt(),
+            Character.SURROGATE.toInt(),
+            Character.UNASSIGNED.toInt() -> true
+            else -> isDecorativeSymbolBlock(codePoint)
+        }
+    }
+
+    private fun isDecorativeSymbolBlock(codePoint: Int): Boolean {
+        return when (Character.UnicodeBlock.of(codePoint)?.toString()) {
+            "VARIATION_SELECTORS",
+            "VARIATION_SELECTORS_SUPPLEMENT",
+            "EMOTICONS",
+            "MISCELLANEOUS_SYMBOLS",
+            "MISCELLANEOUS_SYMBOLS_AND_PICTOGRAPHS",
+            "TRANSPORT_AND_MAP_SYMBOLS",
+            "SUPPLEMENTAL_SYMBOLS_AND_PICTOGRAPHS",
+            "SYMBOLS_AND_PICTOGRAPHS_EXTENDED_A",
+            "DINGBATS" -> true
+            else -> false
+        }
+    }
+
+    private fun isPunctuation(codePoint: Int): Boolean {
+        return when (Character.getType(codePoint)) {
+            Character.CONNECTOR_PUNCTUATION.toInt(),
+            Character.DASH_PUNCTUATION.toInt(),
+            Character.START_PUNCTUATION.toInt(),
+            Character.END_PUNCTUATION.toInt(),
+            Character.INITIAL_QUOTE_PUNCTUATION.toInt(),
+            Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+            Character.OTHER_PUNCTUATION.toInt() -> true
+            else -> false
+        }
     }
 
     private fun chineseNumberToLong(value: String): Long? {
@@ -228,4 +335,11 @@ object LibraryCloudKeys {
         }
         return result + section + number
     }
+
+    private val chineseNumberRegex = Regex("[零〇一二两三四五六七八九十百千万]+")
+    private val ordinalRegexes = listOf(
+        Regex("(?:第)?([0-9]{1,7})(?:章|回|节|卷|集|部|篇|话)"),
+        Regex("(?:chapter|chap|volume|vol)([0-9]{1,7})"),
+        Regex("^\\D{0,8}?([0-9]{1,7})")
+    )
 }

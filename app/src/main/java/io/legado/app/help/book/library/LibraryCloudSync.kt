@@ -25,14 +25,16 @@ object LibraryCloudSync {
     private val activeBooks = ConcurrentHashMap<String, Boolean>()
 
     fun enqueueUpload(book: Book, chapter: BookChapter, content: String) {
-        if (!shouldUpload(book, chapter, content)) return
+        if (!canUpload(book, chapter, content)) return
         val config = LibraryContainerManager.matchForSource(book.origin) ?: return
+        val uploadContent = LibraryCloudContent.toUploadText(content)
+        if (!shouldUploadContent(config, uploadContent)) return
         val lockKey = "${config.id}\u001F${book.bookUrl}\u001F${chapter.index}"
         val lock = uploadLocks.getOrPut(lockKey) { Mutex() }
         scope.launch {
             lock.withLock {
                 runCatching {
-                    uploadChapter(config, book, chapter, content)
+                    uploadChapter(config, book, chapter, uploadContent)
                 }.onFailure {
                     AppLog.put("上传书库章节失败 ${book.name} ${chapter.title}\n${it.localizedMessage}", it)
                 }
@@ -96,13 +98,20 @@ object LibraryCloudSync {
         return LibraryContainerManager.readContainer()
     }
 
-    private fun shouldUpload(book: Book, chapter: BookChapter, content: String): Boolean {
+    private fun canUpload(book: Book, chapter: BookChapter, content: String): Boolean {
         if (book.isLocal) return false
         if (chapter.isVolume) return false
         if (content.isBlank()) return false
         if (content.startsWith("获取正文失败") || content.startsWith("加载正文失败")) return false
         if (!NetworkUtils.isAvailable()) return false
         return true
+    }
+
+    private fun shouldUploadContent(config: LibraryContainerConfig, content: String): Boolean {
+        if (content.isBlank()) return false
+        val minChars = config.minUploadChars
+        if (minChars <= 0) return true
+        return LibraryCloudContent.meaningfulCharCount(content) >= minChars
     }
 
     private fun sessionKey(config: LibraryContainerConfig?, book: Book): String? {
@@ -138,6 +147,7 @@ object LibraryCloudSync {
             title = chapter.title,
             normalizedTitle = LibraryCloudKeys.normalize(chapter.title),
             relaxedTitle = LibraryCloudKeys.relaxedTitle(chapter.title),
+            ordinalTitle = LibraryCloudKeys.chapterOrdinal(chapter.title).orEmpty(),
             chapterIndex = chapter.index,
             sourceUrl = book.origin,
             sourceName = book.originName,
@@ -180,9 +190,14 @@ object LibraryCloudSync {
         return runCatching {
             val json = LibraryCloudCrypto.decodeString(bytes, config.password)
             val remote = GSON.fromJsonObject<LibraryChapterPayloadV2>(json).getOrThrow()
+            val remoteRelaxed = remote.relaxedTitle.ifBlank { LibraryCloudKeys.relaxedTitle(remote.title) }
+            val remoteOrdinal = remote.ordinalTitle.ifBlank { LibraryCloudKeys.chapterOrdinal(remote.title).orEmpty() }
             remote.sourceKey == payload.sourceKey &&
-                remote.normalizedTitle == payload.normalizedTitle &&
-                remote.relaxedTitle == payload.relaxedTitle &&
+                (
+                    remote.normalizedTitle == payload.normalizedTitle ||
+                        remoteRelaxed == payload.relaxedTitle ||
+                        (remoteOrdinal.isNotBlank() && remoteOrdinal == payload.ordinalTitle)
+                    ) &&
                 remote.contentHash == payload.contentHash
         }.getOrDefault(false)
     }

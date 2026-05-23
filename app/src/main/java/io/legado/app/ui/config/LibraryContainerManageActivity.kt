@@ -1,6 +1,7 @@
 package io.legado.app.ui.config
 
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -123,6 +124,14 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         val passwordInput = PackageManageUi.nameInput(context, item?.password.orEmpty(), "书库加密密码，可留空").apply {
             tag = TAG_PASSWORD
         }
+        val minUploadInput = PackageManageUi.nameInput(
+            context,
+            (item?.minUploadChars ?: 1500).toString(),
+            "最少自动上传字数，默认1500，0为不过滤"
+        ).apply {
+            tag = TAG_MIN_UPLOAD_CHARS
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
         editingSourceSummary = TextView(context).apply {
             textSize = 13f
             setTextColor(secondaryTextColor)
@@ -138,6 +147,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 setPadding(0, 12.dp, 0, 6.dp)
             })
             addView(passwordInput)
+            addView(minUploadInput)
             addView(TextView(context).apply {
                 text = "读取策略"
                 applyUiLabelStyle(context)
@@ -222,11 +232,15 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         )
         val password = binding.root.findViewWithTag<android.widget.EditText>(TAG_PASSWORD)
             ?.text?.toString()?.takeIf { it.isNotBlank() }
+        val minUploadChars = binding.root.findViewWithTag<android.widget.EditText>(TAG_MIN_UPLOAD_CHARS)
+            ?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0)
+            ?: 1500
         val saved = LibraryContainerManager.upsert(
             LibraryContainerConfig(
                 container = container,
                 password = password,
                 sourceUrls = editingSourceUrls.toSet(),
+                minUploadChars = minUploadChars,
             )
         )
         reload()
@@ -355,7 +369,8 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             } else {
                 getString(R.string.s3_container_capacity_unlimited_line, formatBytes(usedBytes))
             }
-            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源"
+            val minUpload = if (item.minUploadChars > 0) "最少${item.minUploadChars}字" else "不过滤短章"
+            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload"
             tvName.applyUiSectionTitleStyle(this@LibraryContainerManageActivity)
             tvPath.applyUiLabelStyle(this@LibraryContainerManageActivity)
             tvCapacity.applyUiLabelStyle(this@LibraryContainerManageActivity)
@@ -386,6 +401,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private companion object {
         const val DEFAULT_CAPACITY_MB = 5L * 1024L
         const val TAG_PASSWORD = "library_password"
+        const val TAG_MIN_UPLOAD_CHARS = "library_min_upload_chars"
 
         fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
 

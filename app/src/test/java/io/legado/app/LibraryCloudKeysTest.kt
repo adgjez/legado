@@ -2,6 +2,7 @@ package io.legado.app
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.library.LibraryCloudContent
 import io.legado.app.help.book.library.LibraryCloudKeys
 import io.legado.app.help.book.library.LibraryCloudPaths
 import org.junit.Assert.assertEquals
@@ -41,5 +42,33 @@ class LibraryCloudKeysTest {
             LibraryCloudPaths.variantChapterPath("book", matchKey, sourceKey),
             LibraryCloudPaths.variantChapterPath("book", changedMatchKey, sourceKey)
         )
+    }
+
+    @Test
+    fun relaxedTitleIgnoresInvisibleAndDecorativeChars() {
+        val clean = BookChapter(title = "第31章 婚姻")
+        val dirty = BookChapter(title = "\uFE0F 第\u200B31章\u00A0婚姻")
+        assertEquals(LibraryCloudKeys.relaxedTitle(clean.title), LibraryCloudKeys.relaxedTitle(dirty.title))
+        assertEquals(LibraryCloudKeys.relaxedTitleKey(clean), LibraryCloudKeys.relaxedTitleKey(dirty))
+    }
+
+    @Test
+    fun ordinalTitleMatchesArabicAndChineseNumbers() {
+        assertEquals("31", LibraryCloudKeys.chapterOrdinal("第31章 婚姻"))
+        assertEquals("31", LibraryCloudKeys.chapterOrdinal("第三十一章 婚姻"))
+        assertEquals(
+            LibraryCloudKeys.ordinalTitleKey(BookChapter(title = "第031章 婚姻")),
+            LibraryCloudKeys.ordinalTitleKey(BookChapter(title = "第三十一章 婚姻"))
+        )
+    }
+
+    @Test
+    fun uploadTextDropsHtmlAndParagraphCommentImages() {
+        val html = """
+            <p>正文<img src="dp:12,{&quot;status&quot;:&quot;normal&quot;}">一</p>
+            <style>.x{color:red}</style>
+            <p>二<br>三</p>
+        """.trimIndent()
+        assertEquals("正文一\n二\n三", LibraryCloudContent.toUploadText(html))
     }
 }
