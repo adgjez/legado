@@ -150,6 +150,10 @@ object LibraryCloudPaths {
         return "$V3_DIR/books/$bookKey/chapters/$chapterKey/manifest.json.gz"
     }
 
+    fun v3CurrentPath(bookKey: String, chapterKey: String): String {
+        return "$V3_DIR/books/$bookKey/chapters/$chapterKey/current.json.gz"
+    }
+
     fun v3PayloadPath(bookKey: String, chapterKey: String, sourceKey: String): String {
         return "$V3_DIR/books/$bookKey/chapters/$chapterKey/sources/$sourceKey.json.gz"
     }

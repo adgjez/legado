@@ -125,6 +125,18 @@ class LibraryCloudKeysTest {
     }
 
     @Test
+    fun v3CurrentPathUsesOneObjectPerSharedChapter() {
+        val book = Book(name = "廓晋", author = "榴弹怕水")
+        val chapter = BookChapter(title = "第31章 婚姻")
+        val bookKey = LibraryCloudKeys.sharedBookKey(book)
+        val chapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
+        assertEquals(
+            "v3/books/$bookKey/chapters/$chapterKey/current.json.gz",
+            LibraryCloudPaths.v3CurrentPath(bookKey, chapterKey)
+        )
+    }
+
+    @Test
     fun v3PayloadMatchesByFuzzyTitle() {
         val book = Book(name = "廓晋", author = "榴弹怕水")
         val chapter = BookChapter(title = " 第31章 婚姻")

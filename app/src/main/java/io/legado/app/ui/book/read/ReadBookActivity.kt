@@ -57,6 +57,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ParagraphRuleProcessor
 import io.legado.app.help.book.library.LibraryChapterManifestV3
+import io.legado.app.help.book.library.LibraryChapterPayloadV3
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryCloudChapterVersion
 import io.legado.app.help.book.library.LibraryCloudCrypto
@@ -2849,26 +2850,55 @@ class ReadBookActivity : BaseReadBookActivity(),
             val container = LibraryContainerManager.readContainer()
             val v3Debug = if (chapter != null && container != null) {
                 withContext(IO) {
-                    val v3BookKey = LibraryCloudKeys.bookKey(book)
+                    val v3SharedBookKey = LibraryCloudKeys.sharedBookKey(book)
+                    val v3ExactBookKey = LibraryCloudKeys.bookKey(book)
                     val v3ChapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
-                    val manifestPath = LibraryCloudPaths.v3ManifestPath(v3BookKey, v3ChapterKey)
+                    val currentPaths = listOf(
+                        LibraryCloudPaths.v3CurrentPath(v3SharedBookKey, v3ChapterKey),
+                        LibraryCloudPaths.v3CurrentPath(v3ExactBookKey, v3ChapterKey)
+                    ).distinct()
+                    val manifestPaths = listOf(
+                        LibraryCloudPaths.v3ManifestPath(v3ExactBookKey, v3ChapterKey),
+                        LibraryCloudPaths.v3ManifestPath(v3SharedBookKey, v3ChapterKey)
+                    ).distinct()
+                    val backend = LibraryCloudBackend(container)
+                    suspend fun currentState(path: String): String {
+                        return runCatching {
+                            val bytes = backend.downloadOrNull(path)
+                                ?: return@runCatching "$path = missing"
+                            val json = LibraryCloudCrypto.decodeString(bytes, container.password)
+                            val payload = GSON.fromJsonObject<LibraryChapterPayloadV3>(json).getOrThrow()
+                            "$path = exists source=${payload.sourceName.ifBlank { payload.sourceUrl }} hash=${payload.contentHash}"
+                        }.getOrElse {
+                            "$path = error ${it.localizedMessage}"
+                        }
+                    }
+                    suspend fun manifestState(path: String): String {
+                        return runCatching {
+                            val bytes = backend.downloadOrNull(path)
+                                ?: return@runCatching "$path = missing"
+                            val json = LibraryCloudCrypto.decodeString(bytes, container.password)
+                            val manifest = GSON.fromJsonObject<LibraryChapterManifestV3>(json).getOrThrow()
+                            "$path = exists variants=${manifest.variants.size}"
+                        }.getOrElse {
+                            "$path = error ${it.localizedMessage}"
+                        }
+                    }
                     runCatching {
-                        val bytes = LibraryCloudBackend(container).downloadOrNull(manifestPath)
-                            ?: return@runCatching "v3ManifestState=missing"
-                        val json = LibraryCloudCrypto.decodeString(bytes, container.password)
-                        val manifest = GSON.fromJsonObject<LibraryChapterManifestV3>(json).getOrThrow()
+                        val currentLines = currentPaths.map { currentState(it) }
+                        val manifestLines = manifestPaths.map { manifestState(it) }
                         buildString {
-                            appendLine("v3ManifestState=exists")
-                            appendLine("v3ManifestVersion=${manifest.version}")
-                            appendLine("v3ManifestVariants=${manifest.variants.size}")
-                            appendLine("v3ManifestSources=${manifest.variants.joinToString { it.sourceName.ifBlank { it.sourceUrl } }}")
+                            appendLine("v3CurrentState:")
+                            currentLines.forEach { appendLine(it) }
+                            appendLine("v3ManifestState:")
+                            manifestLines.forEach { appendLine(it) }
                         }.trimEnd()
                     }.getOrElse {
-                        "v3ManifestState=error ${it.localizedMessage}"
+                        "v3State=error ${it.localizedMessage}"
                     }
                 }
             } else {
-                "v3ManifestState=not_checked"
+                "v3State=not_checked"
             }
             val message = buildString {
                 appendLine("book.name=${book.name}")
@@ -2904,18 +2934,23 @@ class ReadBookActivity : BaseReadBookActivity(),
                     appendLine("matchKeys=${LibraryCloudKeys.matchKeys(chapter).joinToString { "${it.kind}:${it.key}" }}")
                     appendLine("sourceKey=${LibraryCloudKeys.sourceKey(book.origin)}")
                     appendLine()
-                    val v3BookKey = LibraryCloudKeys.bookKey(book)
+                    val v3SharedBookKey = LibraryCloudKeys.sharedBookKey(book)
+                    val v3ExactBookKey = LibraryCloudKeys.bookKey(book)
                     val v3ChapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
                     val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
-                    appendLine("v3BookKey=$v3BookKey")
+                    appendLine("v3SharedBookKey=$v3SharedBookKey")
+                    appendLine("v3ExactBookKey=$v3ExactBookKey")
                     appendLine("v3ChapterKey=$v3ChapterKey")
-                    appendLine("v3ManifestPath=${LibraryCloudPaths.v3ManifestPath(v3BookKey, v3ChapterKey)}")
-                    appendLine("v3PayloadPath=${LibraryCloudPaths.v3PayloadPath(v3BookKey, v3ChapterKey, sourceKey)}")
+                    appendLine("v3SharedCurrentPath=${LibraryCloudPaths.v3CurrentPath(v3SharedBookKey, v3ChapterKey)}")
+                    appendLine("v3ExactCurrentPath=${LibraryCloudPaths.v3CurrentPath(v3ExactBookKey, v3ChapterKey)}")
+                    appendLine("v3LegacyManifestPath=${LibraryCloudPaths.v3ManifestPath(v3ExactBookKey, v3ChapterKey)}")
+                    appendLine("v3LegacyPayloadPath=${LibraryCloudPaths.v3PayloadPath(v3ExactBookKey, v3ChapterKey, sourceKey)}")
                     appendLine(v3Debug)
-                    appendLine("v3RequestEstimate.uploadNew=1B+2A")
+                    appendLine("v3RequestEstimate.uploadNew=1B+1A")
                     appendLine("v3RequestEstimate.uploadDuplicate=1B")
-                    appendLine("v3RequestEstimate.read=2B")
-                    appendLine("v3RequestEstimate.listVersions=1B")
+                    appendLine("v3RequestEstimate.readHit=1B")
+                    appendLine("v3RequestEstimate.readLegacyFallback<=4B")
+                    appendLine("v3RequestEstimate.listVersions<=4B")
                     appendLine()
                     appendLine("listPrefixes:")
                     LibraryCloudKeys.bookKeys(book).forEach { bookKey ->

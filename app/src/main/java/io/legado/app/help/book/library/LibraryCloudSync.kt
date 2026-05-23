@@ -135,14 +135,16 @@ object LibraryCloudSync {
         content: String
     ) {
         val backend = LibraryCloudBackend(config)
-        val bookKey = LibraryCloudKeys.bookKey(book)
+        val sharedBookKey = LibraryCloudKeys.sharedBookKey(book)
+        val exactBookKey = LibraryCloudKeys.bookKey(book)
         val chapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
         val sourceKey = LibraryCloudKeys.sourceKey(book.origin)
         val now = System.currentTimeMillis()
-        val manifestPath = LibraryCloudPaths.v3ManifestPath(bookKey, chapterKey)
-        val payloadPath = LibraryCloudPaths.v3PayloadPath(bookKey, chapterKey, sourceKey)
+        val sharedCurrentPath = LibraryCloudPaths.v3CurrentPath(sharedBookKey, chapterKey)
+        val exactCurrentPath = LibraryCloudPaths.v3CurrentPath(exactBookKey, chapterKey)
+        val contentHash = LibraryCloudKeys.contentHash(content)
         val payload = LibraryChapterPayloadV3(
-            bookKey = bookKey,
+            bookKey = sharedBookKey,
             chapterKey = chapterKey,
             sourceKey = sourceKey,
             name = book.name,
@@ -158,28 +160,26 @@ object LibraryCloudSync {
             sourceName = book.originName,
             sourceBookUrl = book.bookUrl,
             sourceChapterIdentity = chapter.contentCacheIdentity(),
-            contentHash = LibraryCloudKeys.contentHash(content),
+            contentHash = contentHash,
             content = content,
             updatedAt = now
         )
-        val remoteManifest = readManifestOrNull(backend, config, manifestPath)
-        if (remoteManifest?.variants?.any {
-                it.sourceKey == sourceKey && it.contentHash == payload.contentHash && it.payloadPath.isNotBlank()
-            } == true
-        ) {
+        val sharedState = readCurrentState(backend, config, book, chapter, sharedCurrentPath)
+        if (sharedState == CurrentState.MATCHED) {
             return
         }
+        val targetPath = if (sharedState == CurrentState.MISSING) {
+            sharedCurrentPath
+        } else {
+            val exactState = readCurrentState(backend, config, book, chapter, exactCurrentPath)
+            if (exactState == CurrentState.MATCHED) return
+            exactCurrentPath
+        }
+        val targetBookKey = if (targetPath == sharedCurrentPath) sharedBookKey else exactBookKey
         if (!reserveDailyUpload(config)) return
-        val variant = payload.toVariant(payloadPath)
         backend.upload(
-            payloadPath,
-            LibraryCloudCrypto.encodeJson(payload, config.password, gzip = true),
-            "application/json"
-        )
-        val manifest = mergeManifest(remoteManifest, payload, variant)
-        backend.upload(
-            manifestPath,
-            LibraryCloudCrypto.encodeJson(manifest, config.password, gzip = true),
+            targetPath,
+            LibraryCloudCrypto.encodeJson(payload.copy(bookKey = targetBookKey), config.password, gzip = true),
             "application/json"
         )
         sessions.remove(sessionKey(config, book))
@@ -213,67 +213,34 @@ object LibraryCloudSync {
         ).getOrNull() ?: LibraryDailyUploadState()
     }
 
-    private suspend fun readManifestOrNull(
+    private suspend fun readCurrentState(
         backend: LibraryCloudBackend,
         config: LibraryContainerConfig,
+        book: Book,
+        chapter: BookChapter,
         path: String
-    ): LibraryChapterManifestV3? {
-        val bytes = backend.downloadOrNull(path) ?: return null
-        return runCatching {
+    ): CurrentState {
+        val bytes = backend.downloadOrNull(path) ?: return CurrentState.MISSING
+        val payload = runCatching {
             val json = LibraryCloudCrypto.decodeString(bytes, config.password)
-            GSON.fromJsonObject<LibraryChapterManifestV3>(json).getOrThrow()
+            GSON.fromJsonObject<LibraryChapterPayloadV3>(json).getOrThrow()
         }.onFailure {
-            AppLog.put("读取书库章节清单失败 $path\n${it.localizedMessage}", it)
-        }.getOrNull()
-    }
-
-    private fun mergeManifest(
-        remote: LibraryChapterManifestV3?,
-        payload: LibraryChapterPayloadV3,
-        variant: LibraryChapterVariantV3
-    ): LibraryChapterManifestV3 {
-        val variants = remote?.variants.orEmpty()
-            .filter { it.sourceKey.isNotBlank() && it.sourceKey != variant.sourceKey }
-            .plus(variant)
-            .sortedWith(
-                compareByDescending<LibraryChapterVariantV3> { it.updatedAt }
-                    .thenBy { it.sourceName.ifBlank { it.sourceUrl } }
-            )
-        return LibraryChapterManifestV3(
-            bookKey = payload.bookKey,
-            name = payload.name,
-            author = payload.author,
-            normalizedName = payload.normalizedName,
-            normalizedAuthor = payload.normalizedAuthor,
-            chapterKey = payload.chapterKey,
-            title = payload.title,
-            normalizedTitle = payload.normalizedTitle,
-            relaxedTitle = payload.relaxedTitle,
-            ordinalTitle = payload.ordinalTitle,
-            variants = variants,
-            updatedAt = payload.updatedAt
-        )
-    }
-
-    private fun LibraryChapterPayloadV3.toVariant(payloadPath: String): LibraryChapterVariantV3 {
-        return LibraryChapterVariantV3(
-            sourceKey = sourceKey,
-            sourceUrl = sourceUrl,
-            sourceName = sourceName,
-            sourceBookUrl = sourceBookUrl,
-            sourceChapterIdentity = sourceChapterIdentity,
-            chapterIndex = chapterIndex,
-            title = title,
-            normalizedTitle = normalizedTitle,
-            relaxedTitle = relaxedTitle,
-            ordinalTitle = ordinalTitle,
-            contentHash = contentHash,
-            payloadPath = payloadPath,
-            updatedAt = updatedAt
-        )
+            AppLog.put("读取书库current章节失败 $path\n${it.localizedMessage}", it)
+        }.getOrNull() ?: return CurrentState.CONFLICT
+        return if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
+            CurrentState.MATCHED
+        } else {
+            CurrentState.CONFLICT
+        }
     }
 
     private const val PREF_DAILY_UPLOAD_STATE = "libraryCloudDailyUploadState"
+
+    private enum class CurrentState {
+        MISSING,
+        MATCHED,
+        CONFLICT
+    }
 }
 
 private data class LibraryDailyUploadState(

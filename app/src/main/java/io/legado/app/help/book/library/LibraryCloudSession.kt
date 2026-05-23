@@ -24,7 +24,8 @@ data class LibraryCloudSession(
         val cfg = config ?: return null
         if (state != LibraryCloudState.READY) return null
         val backend = LibraryCloudBackend(cfg)
-        downloadCurrentChapterV3(backend, chapter)?.let { return it }
+        downloadCurrentChapterCurrentV3(backend, chapter)?.let { return it }
+        downloadCurrentChapterManifestV3(backend, chapter)?.let { return it }
         for (path in currentChapterPaths(chapter)) {
             val payload = readPayloadOrNull(backend, path) ?: continue
             if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
@@ -34,23 +35,39 @@ data class LibraryCloudSession(
         return null
     }
 
-    private suspend fun downloadCurrentChapterV3(
+    private suspend fun downloadCurrentChapterCurrentV3(
         backend: LibraryCloudBackend,
         chapter: BookChapter
     ): String? {
-        val manifest = readManifestOrNull(backend, v3ManifestPath(chapter)) ?: return null
-        if (!LibraryCloudKeys.manifestMatches(book, chapter, manifest)) return null
-        val variant = selectVariant(manifest, chapter) ?: return null
-        val payload = readPayloadV3OrNull(backend, variant.payloadPath) ?: return null
-        if (!LibraryCloudKeys.payloadMatches(book, chapter, payload)) return null
-        return payload.content.takeIf { it.isNotBlank() }
+        for (path in v3CurrentPaths(chapter)) {
+            val payload = readPayloadV3OrNull(backend, path) ?: continue
+            if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
+                return payload.content.takeIf { it.isNotBlank() }
+            }
+        }
+        return null
+    }
+
+    private suspend fun downloadCurrentChapterManifestV3(
+        backend: LibraryCloudBackend,
+        chapter: BookChapter
+    ): String? {
+        for (path in v3ManifestPaths(chapter)) {
+            val manifest = readManifestOrNull(backend, path) ?: continue
+            if (!LibraryCloudKeys.manifestMatches(book, chapter, manifest)) continue
+            val variant = selectVariant(manifest, chapter) ?: continue
+            val payload = readPayloadV3OrNull(backend, variant.payloadPath) ?: continue
+            if (!LibraryCloudKeys.payloadMatches(book, chapter, payload)) continue
+            return payload.content.takeIf { it.isNotBlank() }
+        }
+        return null
     }
 
     suspend fun listChapterVersions(chapter: BookChapter): List<LibraryCloudChapterVersion> {
         val cfg = config ?: return emptyList()
         if (state != LibraryCloudState.READY) return emptyList()
         val backend = LibraryCloudBackend(cfg)
-        val v3Versions = listChapterVersionsV3(backend, chapter)
+        val v3Versions = listCurrentVersionsV3(backend, chapter) + listManifestVersionsV3(backend, chapter)
         if (v3Versions.isNotEmpty()) return sortVersions(v3Versions, chapter)
         val versions = currentChapterPaths(chapter).mapNotNull { path ->
             val payload = readPayloadOrNull(backend, path) ?: return@mapNotNull null
@@ -91,22 +108,43 @@ data class LibraryCloudSession(
         }.getOrNull()
     }
 
-    private suspend fun listChapterVersionsV3(
+    private suspend fun listCurrentVersionsV3(
         backend: LibraryCloudBackend,
         chapter: BookChapter
     ): List<LibraryCloudChapterVersion> {
-        val manifest = readManifestOrNull(backend, v3ManifestPath(chapter)) ?: return emptyList()
-        if (!LibraryCloudKeys.manifestMatches(book, chapter, manifest)) return emptyList()
-        return manifest.variants
-            .filter { it.payloadPath.isNotBlank() && LibraryCloudKeys.variantMatches(chapter, it) }
-            .map {
+        return v3CurrentPaths(chapter).mapNotNull { path ->
+            val payload = readPayloadV3OrNull(backend, path) ?: return@mapNotNull null
+            if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
                 LibraryCloudChapterVersion(
-                    path = it.payloadPath,
-                    payload = it.toDisplayPayload(manifest),
-                    matchKind = "v3-manifest",
+                    path = path,
+                    payload = payload.toDisplayPayload(),
+                    matchKind = "v3-current",
                     schemaVersion = 3
                 )
+            } else {
+                null
             }
+        }
+    }
+
+    private suspend fun listManifestVersionsV3(
+        backend: LibraryCloudBackend,
+        chapter: BookChapter
+    ): List<LibraryCloudChapterVersion> {
+        return v3ManifestPaths(chapter).flatMap { path ->
+            val manifest = readManifestOrNull(backend, path) ?: return@flatMap emptyList()
+            if (!LibraryCloudKeys.manifestMatches(book, chapter, manifest)) return@flatMap emptyList()
+            manifest.variants
+                .filter { it.payloadPath.isNotBlank() && LibraryCloudKeys.variantMatches(chapter, it) }
+                .map {
+                    LibraryCloudChapterVersion(
+                        path = it.payloadPath,
+                        payload = it.toDisplayPayload(manifest),
+                        matchKind = "v3-manifest",
+                        schemaVersion = 3
+                    )
+                }
+        }
     }
 
     private suspend fun readPayloadV3OrNull(
@@ -203,11 +241,53 @@ data class LibraryCloudSession(
         )
     }
 
-    private fun v3ManifestPath(chapter: BookChapter): String {
-        return LibraryCloudPaths.v3ManifestPath(
-            LibraryCloudKeys.bookKey(book),
-            LibraryCloudKeys.libraryChapterKey(chapter)
+    private fun LibraryChapterPayloadV3.toDisplayPayload(): LibraryChapterPayloadV2 {
+        return LibraryChapterPayloadV2(
+            version = 3,
+            bookKey = bookKey,
+            chapterKey = chapterKey,
+            sourceKey = sourceKey,
+            name = name,
+            author = author,
+            normalizedName = normalizedName,
+            normalizedAuthor = normalizedAuthor,
+            title = title,
+            normalizedTitle = normalizedTitle,
+            relaxedTitle = relaxedTitle,
+            ordinalTitle = ordinalTitle,
+            chapterIndex = chapterIndex,
+            sourceUrl = sourceUrl,
+            sourceName = sourceName,
+            sourceBookUrl = sourceBookUrl,
+            sourceChapterIdentity = sourceChapterIdentity,
+            contentHash = contentHash,
+            updatedAt = updatedAt
         )
+    }
+
+    private fun v3CurrentPaths(chapter: BookChapter): List<String> {
+        val chapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
+        return v3ReadBookKeys().map { bookKey ->
+            LibraryCloudPaths.v3CurrentPath(bookKey, chapterKey)
+        }.distinct()
+    }
+
+    private fun v3ManifestPaths(chapter: BookChapter): List<String> {
+        val chapterKey = LibraryCloudKeys.libraryChapterKey(chapter)
+        val bookKeys = listOf(
+            LibraryCloudKeys.bookKey(book),
+            LibraryCloudKeys.sharedBookKey(book)
+        ).distinct()
+        return bookKeys.map { bookKey ->
+            LibraryCloudPaths.v3ManifestPath(bookKey, chapterKey)
+        }.distinct()
+    }
+
+    private fun v3ReadBookKeys(): List<String> {
+        return listOf(
+            LibraryCloudKeys.sharedBookKey(book),
+            LibraryCloudKeys.bookKey(book)
+        ).distinct()
     }
 
     private fun currentChapterPaths(chapter: BookChapter): List<String> {
