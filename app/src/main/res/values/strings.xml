@@ -1350,6 +1350,12 @@
     <string name="read_menu_no_available_button">No available built-in buttons</string>
     <string name="read_menu_builtin_button">Built-in</string>
     <string name="read_menu_custom_button">Custom</string>
+    <string name="read_menu_custom_button_edit">Edit custom button</string>
+    <string name="read_menu_create_custom_button">Create custom button</string>
+    <string name="read_menu_existing_custom_button">Existing custom</string>
+    <string name="read_menu_button_script">Button JS</string>
+    <string name="read_menu_custom_button_save_invalid">Name and button JS cannot be empty</string>
+    <string name="read_menu_custom_button_help">Custom buttons can read book, chapter, content, source, baseUrl, result, java, cache and cookie directly. They should not modify chapter content.</string>
     <string name="read_menu_move_to_first">Move to first</string>
     <string name="read_menu_move_to_second">Move to second</string>
     <string name="rule_image_decode">Decode Image(imageDecode)</string>

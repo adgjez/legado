@@ -1,12 +1,15 @@
 package io.legado.app.ui.book.read.config
 
 import android.graphics.Color
+import android.content.Intent
+import android.app.Activity
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -14,6 +17,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.config.AppConfig
@@ -39,6 +44,16 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private val adapter = ButtonAdapter()
     private var layout = ReadMenuButtonConfig.defaultLayout()
     private var rowIndex = 0
+    private var customButtons: Map<Long, ReadMenuCustomButton> = emptyMap()
+
+    private val editCustomButton = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val id = result.data?.getLongExtra("id", 0L)?.takeIf { it > 0 } ?: return@registerForActivityResult
+            addButton(ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, id.toString()))
+        } else {
+            load()
+        }
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -113,6 +128,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun load() {
         layout = ReadMenuButtonConfig.load(this)
+        customButtons = appDb.readMenuCustomButtonDao.all().associateBy { it.id }
         adapter.items = currentRow()
         binding.tvSummary.text = getString(R.string.read_menu_button_summary)
         updateTabs()
@@ -150,19 +166,49 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             .filter { it.type == ReadMenuButtonConfig.TYPE_BUILTIN }
             .map { it.id }
             .toSet()
-        val candidates = builtinCandidates().filterNot { it.id in usedIds }
+        val candidates = buildList {
+            builtinCandidates()
+                .filterNot { it.id in usedIds }
+                .forEach { add(AddCandidate(buttonTitle(it), it)) }
+            val usedCustomIds = (layout.firstRow + layout.secondRow)
+                .filter { it.type == ReadMenuButtonConfig.TYPE_CUSTOM }
+                .mapNotNull { it.id.toLongOrNull() }
+                .toSet()
+            customButtons.values
+                .filterNot { it.id in usedCustomIds }
+                .forEach { button ->
+                    add(
+                        AddCandidate(
+                            "${getString(R.string.read_menu_existing_custom_button)}：${button.displayName()}",
+                            ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, button.id.toString())
+                        )
+                    )
+                }
+            add(AddCandidate(getString(R.string.read_menu_create_custom_button), null))
+        }
         if (candidates.isEmpty()) {
             toastOnUi(R.string.read_menu_no_available_button)
             return
         }
         selector(
             getString(R.string.read_menu_add_button),
-            candidates.map { buttonTitle(it) }
+            candidates.map { it.title }
         ) { _, index ->
-            val row = currentRow().toMutableList()
-            row.add(candidates[index])
-            saveCurrentRow(row)
+            val ref = candidates[index].ref
+            if (ref == null) {
+                openCustomButtonEdit()
+            } else {
+                addButton(ref)
+            }
         }
+    }
+
+    private fun addButton(ref: ReadMenuButtonConfig.ButtonRef) {
+        load()
+        val row = currentRow().toMutableList()
+        if (row.any { it.type == ref.type && it.id == ref.id }) return
+        row.add(ref)
+        saveCurrentRow(row)
     }
 
     private fun builtinCandidates(): List<ReadMenuButtonConfig.ButtonRef> {
@@ -193,6 +239,12 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             first.add(ref)
         }
         saveLayout(ReadMenuButtonConfig.ButtonLayout(first, second))
+    }
+
+    private fun openCustomButtonEdit(id: Long = 0L) {
+        editCustomButton.launch(Intent(this, ReadMenuCustomButtonEditActivity::class.java).apply {
+            if (id > 0) putExtra("id", id)
+        })
     }
 
     private fun deleteButton(ref: ReadMenuButtonConfig.ButtonRef) {
@@ -228,7 +280,9 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun buttonTitle(ref: ReadMenuButtonConfig.ButtonRef): String {
         ref.titleOverride.trim().takeIf { it.isNotBlank() }?.let { return it }
-        if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) return ref.id
+        if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
+            return ref.id.toLongOrNull()?.let { customButtons[it]?.displayName() } ?: ref.id
+        }
         return when (ref.id) {
             ReadMenuButtonConfig.Builtin.SEARCH -> getString(R.string.search_content)
             ReadMenuButtonConfig.Builtin.AUTO_PAGE -> getString(R.string.auto_next_page)
@@ -309,9 +363,10 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (rowIndex == 0) R.string.read_menu_move_to_second
                 else R.string.read_menu_move_to_first
             )
-            btnEdit.visibility = View.GONE
+            btnEdit.visibility = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) View.VISIBLE else View.GONE
+            btnEdit.text = getString(R.string.edit)
             btnMore.text = getString(R.string.delete)
-            listOf(btnApply, btnMore).forEach {
+            listOf(btnApply, btnEdit, btnMore).forEach {
                 it.background = UiCorner.actionSelector(
                     ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
                     ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
@@ -320,10 +375,17 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 it.typeface = this@ReadMenuButtonManageActivity.uiTypeface()
             }
             btnApply.setOnClickListener { moveToOtherRow(ref) }
+            btnEdit.setOnClickListener {
+                ref.id.toLongOrNull()?.let { openCustomButtonEdit(it) }
+            }
             btnMore.setOnClickListener { deleteButton(ref) }
-            root.setOnClickListener { moveToOtherRow(ref) }
         }
     }
+
+    private data class AddCandidate(
+        val title: String,
+        val ref: ReadMenuButtonConfig.ButtonRef?
+    )
 
     companion object {
         private const val MENU_RESET = 1

@@ -1193,6 +1193,12 @@
     <string name="read_menu_no_available_button">没有可添加的内置按键</string>
     <string name="read_menu_builtin_button">内置</string>
     <string name="read_menu_custom_button">自定义</string>
+    <string name="read_menu_custom_button_edit">编辑自定义按键</string>
+    <string name="read_menu_create_custom_button">新建自定义按键</string>
+    <string name="read_menu_existing_custom_button">已有自定义</string>
+    <string name="read_menu_button_script">按键 JS</string>
+    <string name="read_menu_custom_button_save_invalid">名称和按键 JS 不能为空</string>
+    <string name="read_menu_custom_button_help">自定义按键可以直接读取 book、chapter、content、source、baseUrl、result、java、cache、cookie 等对象，只用于获取信息和执行动作，不应该修改正文内容。</string>
     <string name="read_menu_move_to_first">移到第一排</string>
     <string name="read_menu_move_to_second">移到第二排</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>
