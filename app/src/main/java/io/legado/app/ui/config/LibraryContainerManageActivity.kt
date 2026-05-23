@@ -4,8 +4,11 @@ import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -25,6 +28,8 @@ import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerManager
+import io.legado.app.help.http.newCallResponseBody
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
@@ -39,9 +44,15 @@ import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.readText
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -60,6 +71,39 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private val waitDialog by lazy { WaitDialog(this) }
     private var editingSourceUrls: MutableSet<String> = mutableSetOf()
     private var editingSourceSummary: TextView? = null
+    private val importJson = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let { uri ->
+            lifecycleScope.launch {
+                runCatching { importContainers(uri.readText(this@LibraryContainerManageActivity)) }
+                    .onSuccess { count ->
+                        if (count > 0) {
+                            reload()
+                            toastOnUi("已导入 $count 个书库容器")
+                        } else {
+                            toastOnUi(R.string.wrong_format)
+                        }
+                    }
+                    .onFailure { toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format)) }
+            }
+        }
+    }
+    private val exportJson = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let { uri ->
+            val value = uri.toString()
+            if (value.startsWith("http://", true) || value.startsWith("https://", true)) {
+                alert(R.string.upload_url) {
+                    setMessage(value)
+                    positiveButton(R.string.copy_text) {
+                        sendToClip(value)
+                        toastOnUi(R.string.copy_complete)
+                    }
+                    negativeButton(R.string.cancel)
+                }
+            } else {
+                toastOnUi(R.string.export_success)
+            }
+        }
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = "书库容器"
@@ -79,6 +123,26 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         reload()
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, MENU_IMPORT, 0, R.string.import_str).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_EXPORT_ALL, 1, "导出全部").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        return super.onCompatCreateOptionsMenu(menu)
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_IMPORT -> {
+                showImportActions()
+                true
+            }
+            MENU_EXPORT_ALL -> {
+                exportContainers(LibraryContainerManager.containers(), "library-containers.json")
+                true
+            }
+            else -> super.onCompatOptionsItemSelected(item)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         waitDialog.dismiss()
@@ -86,6 +150,114 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
     private fun reload() {
         adapter.setItems(LibraryContainerManager.containers())
+    }
+
+    private fun showImportActions() {
+        selector(
+            getString(R.string.import_str),
+            listOf(getString(R.string.import_str), getString(R.string.import_on_line))
+        ) { _, index ->
+            when (index) {
+                0 -> importJson.launch {
+                    mode = HandleFileContract.FILE
+                    title = getString(R.string.import_str)
+                    allowExtensions = arrayOf("json")
+                }
+                1 -> showImportUrlDialog()
+            }
+        }
+    }
+
+    private fun showImportUrlDialog() {
+        alert(R.string.import_on_line) {
+            val input = EditText(this@LibraryContainerManageActivity).apply {
+                hint = "https://..."
+                setSingleLine(true)
+            }
+            customView { input }
+            okButton {
+                val url = input.text?.toString().orEmpty().trim()
+                if (url.isNotEmpty()) importContainersFromUrl(url)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun importContainersFromUrl(url: String) {
+        lifecycleScope.launch {
+            runCatching {
+                val text = withContext(Dispatchers.IO) {
+                    okHttpClient.newCallResponseBody { url(url) }.use { it.string() }
+                }
+                importContainers(text)
+            }.onSuccess { count ->
+                if (count > 0) {
+                    reload()
+                    toastOnUi("已导入 $count 个书库容器")
+                } else {
+                    toastOnUi(R.string.wrong_format)
+                }
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format))
+            }
+        }
+    }
+
+    private fun importContainers(text: String): Int {
+        val imported = parseImportedContainers(text)
+        if (imported.containers.isEmpty()) return 0
+        val idMap = mutableMapOf<String, String>()
+        var count = 0
+        imported.containers
+            .map { it.normalized() }
+            .filter { it.container.endpoint.isNotBlank() && it.container.bucket.isNotBlank() }
+            .forEach { config ->
+                val saved = LibraryContainerManager.upsert(config)
+                idMap[config.id] = saved.id
+                count++
+            }
+        imported.selectedId?.let { selectedId ->
+            idMap[selectedId]?.let { LibraryContainerManager.select(it) }
+        }
+        return count
+    }
+
+    private fun parseImportedContainers(text: String): LibraryContainerImport {
+        val raw = text.trim()
+        if (raw.isBlank()) return LibraryContainerImport()
+        GSON.fromJsonObject<LibraryContainerExport>(raw).getOrNull()
+            ?.takeIf { it.containers.isNotEmpty() }
+            ?.let { return LibraryContainerImport(it.containers, it.selectedId) }
+        GSON.fromJsonArray<LibraryContainerConfig>(raw).getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return LibraryContainerImport(it) }
+        GSON.fromJsonObject<LibraryContainerConfig>(raw).getOrNull()
+            ?.takeIf { it.container.endpoint.isNotBlank() || it.container.bucket.isNotBlank() }
+            ?.let { return LibraryContainerImport(listOf(it)) }
+        GSON.fromJsonObject<S3Container>(raw).getOrNull()
+            ?.takeIf { it.endpoint.isNotBlank() || it.bucket.isNotBlank() }
+            ?.let { return LibraryContainerImport(listOf(LibraryContainerConfig(container = it))) }
+        return LibraryContainerImport()
+    }
+
+    private fun exportContainers(items: List<LibraryContainerConfig>, fileName: String) {
+        if (items.isEmpty()) {
+            toastOnUi("没有可导出的书库容器")
+            return
+        }
+        val payload = LibraryContainerExport(
+            selectedId = LibraryContainerManager.selectedId(),
+            containers = items.map { it.normalized() }
+        )
+        exportJson.launch {
+            mode = HandleFileContract.EXPORT
+            title = "导出书库容器"
+            fileData = HandleFileContract.FileData(
+                fileName,
+                GSON.toJson(payload).toByteArray(),
+                "application/json"
+            )
+        }
     }
 
     private fun showEditDialog(item: LibraryContainerConfig?) {
@@ -325,6 +497,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private fun showActions(item: LibraryContainerConfig) {
         val actions = listOf(
             Action.EDIT,
+            Action.EXPORT,
             Action.TEST,
             Action.REFRESH,
             Action.SET_DEFAULT,
@@ -334,6 +507,10 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         selector(LibraryContainerManager.displayLabel(item), actions.map { it.title }) { _, index ->
             when (actions[index]) {
                 Action.EDIT -> showEditDialog(item)
+                Action.EXPORT -> exportContainers(
+                    listOf(item),
+                    "library-container-${safeExportName(LibraryContainerManager.displayLabel(item))}.json"
+                )
                 Action.TEST -> testConnection(item)
                 Action.REFRESH -> refreshCapacity(item)
                 Action.SET_DEFAULT -> {
@@ -466,6 +643,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
     private enum class Action(val title: String) {
         EDIT("编辑"),
+        EXPORT("导出"),
         TEST("测试连接"),
         REFRESH("刷新容量"),
         SET_DEFAULT("设为默认"),
@@ -481,6 +659,8 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         const val TAG_PASSWORD = "library_password"
         const val TAG_MIN_UPLOAD_CHARS = "library_min_upload_chars"
         const val TAG_DAILY_UPLOAD_LIMIT = "library_daily_upload_limit"
+        const val MENU_IMPORT = 1
+        const val MENU_EXPORT_ALL = 2
 
         fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
 
@@ -514,5 +694,20 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         fun formatDecimal(value: Double): String {
             return String.format(Locale.US, "%.2f", value).trimEnd('0').trimEnd('.')
         }
+
+        fun safeExportName(value: String): String {
+            return value.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "-").trim('-').ifBlank { "default" }
+        }
     }
+
+    private data class LibraryContainerImport(
+        val containers: List<LibraryContainerConfig> = emptyList(),
+        val selectedId: String? = null
+    )
+
+    private data class LibraryContainerExport(
+        val version: Int = 1,
+        val selectedId: String? = null,
+        val containers: List<LibraryContainerConfig> = emptyList()
+    )
 }
