@@ -11,7 +11,8 @@ data class LibraryContainerConfig(
     val container: S3Container = S3Container(prefix = LibraryCloudPaths.ROOT_DIR),
     val password: String? = null,
     val sourceUrls: Set<String> = emptySet(),
-    val minUploadChars: Int = 1500
+    val minUploadChars: Int = 1500,
+    val dailyUploadLimit: Int = 0
 ) {
     val id: String get() = container.id
 
@@ -22,7 +23,8 @@ data class LibraryContainerConfig(
             ),
             password = password?.takeIf { it.isNotBlank() },
             sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet(),
-            minUploadChars = minUploadChars.coerceAtLeast(0)
+            minUploadChars = minUploadChars.coerceAtLeast(0),
+            dailyUploadLimit = dailyUploadLimit.coerceAtLeast(0)
         )
     }
 

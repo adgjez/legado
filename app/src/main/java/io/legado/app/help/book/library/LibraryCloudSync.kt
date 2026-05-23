@@ -9,18 +9,23 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import splitties.init.appCtx
+import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 
 object LibraryCloudSync {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val uploadLocks = ConcurrentHashMap<String, Mutex>()
+    private val dailyUploadLock = Mutex()
     private val sessions = ConcurrentHashMap<String, LibraryCloudSession>()
     private val activeBooks = ConcurrentHashMap<String, Boolean>()
 
@@ -164,6 +169,7 @@ object LibraryCloudSync {
         ) {
             return
         }
+        if (!reserveDailyUpload(config)) return
         val variant = payload.toVariant(payloadPath)
         backend.upload(
             payloadPath,
@@ -177,6 +183,34 @@ object LibraryCloudSync {
             "application/json"
         )
         sessions.remove(sessionKey(config, book))
+    }
+
+    private suspend fun reserveDailyUpload(config: LibraryContainerConfig): Boolean {
+        val limit = config.dailyUploadLimit
+        if (limit <= 0) return true
+        return dailyUploadLock.withLock {
+            val today = LocalDate.now().toString()
+            val state = readDailyUploadState()
+            val counts = if (state.day == today) {
+                state.counts.toMutableMap()
+            } else {
+                mutableMapOf()
+            }
+            val current = counts[config.id] ?: 0
+            if (current >= limit) {
+                false
+            } else {
+                counts[config.id] = current + 1
+                appCtx.putPrefString(PREF_DAILY_UPLOAD_STATE, GSON.toJson(LibraryDailyUploadState(today, counts)))
+                true
+            }
+        }
+    }
+
+    private fun readDailyUploadState(): LibraryDailyUploadState {
+        return GSON.fromJsonObject<LibraryDailyUploadState>(
+            appCtx.getPrefString(PREF_DAILY_UPLOAD_STATE).orEmpty()
+        ).getOrNull() ?: LibraryDailyUploadState()
     }
 
     private suspend fun readManifestOrNull(
@@ -238,4 +272,11 @@ object LibraryCloudSync {
             updatedAt = updatedAt
         )
     }
+
+    private const val PREF_DAILY_UPLOAD_STATE = "libraryCloudDailyUploadState"
 }
+
+private data class LibraryDailyUploadState(
+    val day: String = "",
+    val counts: Map<String, Int> = emptyMap()
+)

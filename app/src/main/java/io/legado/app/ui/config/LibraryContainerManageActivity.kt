@@ -132,6 +132,14 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             tag = TAG_MIN_UPLOAD_CHARS
             inputType = InputType.TYPE_CLASS_NUMBER
         }
+        val dailyUploadLimitInput = PackageManageUi.nameInput(
+            context,
+            (item?.dailyUploadLimit ?: 0).toString(),
+            "每日自动上传章节上限，0为不限制"
+        ).apply {
+            tag = TAG_DAILY_UPLOAD_LIMIT
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
         editingSourceSummary = TextView(context).apply {
             textSize = 13f
             setTextColor(secondaryTextColor)
@@ -148,6 +156,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             })
             addView(passwordInput)
             addView(minUploadInput)
+            addView(dailyUploadLimitInput)
             addView(TextView(context).apply {
                 text = "读取策略"
                 applyUiLabelStyle(context)
@@ -235,12 +244,16 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         val minUploadChars = binding.root.findViewWithTag<android.widget.EditText>(TAG_MIN_UPLOAD_CHARS)
             ?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0)
             ?: 1500
+        val dailyUploadLimit = binding.root.findViewWithTag<android.widget.EditText>(TAG_DAILY_UPLOAD_LIMIT)
+            ?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0)
+            ?: 0
         val saved = LibraryContainerManager.upsert(
             LibraryContainerConfig(
                 container = container,
                 password = password,
                 sourceUrls = editingSourceUrls.toSet(),
                 minUploadChars = minUploadChars,
+                dailyUploadLimit = dailyUploadLimit,
             )
         )
         reload()
@@ -372,7 +385,8 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 getString(R.string.s3_container_capacity_unlimited_line, formatBytes(usedBytes))
             }
             val minUpload = if (item.minUploadChars > 0) "最少${item.minUploadChars}字" else "不过滤短章"
-            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload"
+            val dailyLimit = if (item.dailyUploadLimit > 0) "每日${item.dailyUploadLimit}章" else "每日不限"
+            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload · $dailyLimit"
             tvName.applyUiSectionTitleStyle(this@LibraryContainerManageActivity)
             tvPath.applyUiLabelStyle(this@LibraryContainerManageActivity)
             tvCapacity.applyUiLabelStyle(this@LibraryContainerManageActivity)
@@ -404,6 +418,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         const val DEFAULT_CAPACITY_MB = 5L * 1024L
         const val TAG_PASSWORD = "library_password"
         const val TAG_MIN_UPLOAD_CHARS = "library_min_upload_chars"
+        const val TAG_DAILY_UPLOAD_LIMIT = "library_daily_upload_limit"
 
         fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
 
