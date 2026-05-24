@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.database.ContentObserver
@@ -12,6 +13,7 @@ import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
 import android.view.animation.Animation
@@ -69,6 +71,7 @@ import androidx.core.graphics.toColorInt
 import io.legado.app.constant.BookType
 import io.legado.app.utils.buildMainHandler
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * 阅读界面菜单
@@ -331,7 +334,7 @@ class ReadMenu @JvmOverloads constructor(
             rowContainer.addView(page)
             return
         }
-        val scrollView = HorizontalScrollView(context).apply {
+        val scrollView = MenuButtonPagerScrollView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -363,7 +366,7 @@ class ReadMenu @JvmOverloads constructor(
                 )
             }
             scrollView.addView(pagesContainer)
-            attachPageSnap(scrollView, pageRefs.size)
+            scrollView.setPageCount(pageRefs.size)
         }
     }
 
@@ -392,52 +395,6 @@ class ReadMenu @JvmOverloads constructor(
                     )
                 })
             }
-        }
-    }
-
-    private fun attachPageSnap(
-        scrollView: HorizontalScrollView,
-        pageCount: Int
-    ) {
-        var downX = 0f
-        var downScrollX = 0
-        var downTime = 0L
-        scrollView.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.x
-                    downScrollX = scrollView.scrollX
-                    downTime = event.eventTime
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val releaseX = event.x
-                    val isCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
-                    val duration = event.eventTime - downTime
-                    scrollView.postDelayed({
-                        val pageWidth = scrollView.width.takeIf { it > 0 } ?: return@postDelayed
-                        val lastPage = (pageCount - 1).coerceAtLeast(0)
-                        val startPage = ((downScrollX + pageWidth / 2) / pageWidth)
-                            .coerceIn(0, lastPage)
-                        val nearestPage = ((scrollView.scrollX + pageWidth / 2) / pageWidth)
-                            .coerceIn(0, lastPage)
-                        val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
-                        val dragDistance = downX - releaseX
-                        val isFastSwipe = !isCancel &&
-                                duration in 1..MENU_PAGE_FAST_SWIPE_MAX_MS &&
-                                abs(dragDistance) >= MENU_PAGE_FAST_SWIPE_MIN_DISTANCE_DP.dpToPx()
-                        val targetPage = when {
-                            isCancel -> nearestPage
-                            isFastSwipe && dragDistance > 0f -> startPage + 1
-                            isFastSwipe && dragDistance < 0f -> startPage - 1
-                            dragDistance > threshold -> startPage + 1
-                            dragDistance < -threshold -> startPage - 1
-                            else -> nearestPage
-                        }.coerceIn(0, lastPage)
-                        scrollView.smoothScrollTo(targetPage * pageWidth, 0)
-                    }, MENU_PAGE_SNAP_DELAY_MS)
-                }
-            }
-            false
         }
     }
 
@@ -1127,12 +1084,164 @@ class ReadMenu @JvmOverloads constructor(
         fun loginCustomReadMenuButton(id: Long) = Unit
     }
 
+    private class MenuButtonPagerScrollView(context: Context) : HorizontalScrollView(context) {
+
+        private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        private val minFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
+        private var pageCount = 1
+        private var downX = 0f
+        private var downY = 0f
+        private var downScrollX = 0
+        private var downTime = 0L
+        private var dragging = false
+        private var snapAnimator: ValueAnimator? = null
+
+        fun setPageCount(count: Int) {
+            pageCount = count.coerceAtLeast(1)
+        }
+
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            return when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    beginGesture(ev)
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (shouldStartDrag(ev)) {
+                        dragging = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    endGesture()
+                    false
+                }
+                else -> false
+            }
+        }
+
+        override fun onTouchEvent(ev: MotionEvent): Boolean {
+            return when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    beginGesture(ev)
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging && shouldStartDrag(ev)) {
+                        dragging = true
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    if (dragging) {
+                        dragTo(ev.x)
+                        true
+                    } else {
+                        super.onTouchEvent(ev)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val handled = dragging
+                    settle(ev.x, ev.eventTime, ev.actionMasked == MotionEvent.ACTION_CANCEL)
+                    endGesture()
+                    handled || super.onTouchEvent(ev)
+                }
+                else -> super.onTouchEvent(ev)
+            }
+        }
+
+        override fun fling(velocityX: Int) {
+            val pageWidth = width.takeIf { it > 0 } ?: return
+            val lastPage = lastPage()
+            val nearestPage = nearestPage(pageWidth, lastPage)
+            val targetPage = when {
+                velocityX > minFlingVelocity -> nearestPage + 1
+                velocityX < -minFlingVelocity -> nearestPage - 1
+                else -> nearestPage
+            }.coerceIn(0, lastPage)
+            animateToPage(targetPage, pageWidth)
+        }
+
+        private fun beginGesture(event: MotionEvent) {
+            snapAnimator?.cancel()
+            downX = event.x
+            downY = event.y
+            downScrollX = scrollX
+            downTime = event.eventTime
+            dragging = false
+        }
+
+        private fun endGesture() {
+            dragging = false
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+
+        private fun shouldStartDrag(event: MotionEvent): Boolean {
+            val dx = event.x - downX
+            val dy = event.y - downY
+            return abs(dx) > touchSlop && abs(dx) > abs(dy)
+        }
+
+        private fun dragTo(x: Float) {
+            val pageWidth = width.takeIf { it > 0 } ?: return
+            val maxScroll = pageWidth * lastPage()
+            val targetScroll = (downScrollX - (x - downX)).roundToInt()
+                .coerceIn(0, maxScroll)
+            scrollTo(targetScroll, 0)
+        }
+
+        private fun settle(releaseX: Float, releaseTime: Long, isCancel: Boolean) {
+            val pageWidth = width.takeIf { it > 0 } ?: return
+            val lastPage = lastPage()
+            val startPage = ((downScrollX + pageWidth / 2) / pageWidth)
+                .coerceIn(0, lastPage)
+            val nearestPage = nearestPage(pageWidth, lastPage)
+            val dragDistance = downX - releaseX
+            val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
+            val duration = releaseTime - downTime
+            val isFastSwipe = !isCancel &&
+                    duration in 1..MENU_PAGE_FAST_SWIPE_MAX_MS &&
+                    abs(dragDistance) >= MENU_PAGE_FAST_SWIPE_MIN_DISTANCE_DP.dpToPx()
+            val targetPage = when {
+                isCancel -> nearestPage
+                isFastSwipe && dragDistance > 0f -> startPage + 1
+                isFastSwipe && dragDistance < 0f -> startPage - 1
+                dragDistance > threshold -> startPage + 1
+                dragDistance < -threshold -> startPage - 1
+                else -> startPage
+            }.coerceIn(0, lastPage)
+            animateToPage(targetPage, pageWidth)
+        }
+
+        private fun animateToPage(page: Int, pageWidth: Int) {
+            val targetScroll = page * pageWidth
+            snapAnimator?.cancel()
+            if (scrollX == targetScroll) return
+            snapAnimator = ValueAnimator.ofInt(scrollX, targetScroll).apply {
+                duration = MENU_PAGE_SNAP_ANIM_MS
+                addUpdateListener { animator ->
+                    scrollTo(animator.animatedValue as Int, 0)
+                }
+                start()
+            }
+        }
+
+        private fun nearestPage(pageWidth: Int, lastPage: Int): Int {
+            return ((scrollX + pageWidth / 2) / pageWidth).coerceIn(0, lastPage)
+        }
+
+        private fun lastPage(): Int {
+            return (pageCount - 1).coerceAtLeast(0)
+        }
+    }
+
     private companion object {
         const val MENU_BUTTONS_PER_PAGE = 4
         const val MENU_PAGE_SWITCH_THRESHOLD = 0.02f
         const val MENU_PAGE_FAST_SWIPE_MAX_MS = 220L
         const val MENU_PAGE_FAST_SWIPE_MIN_DISTANCE_DP = 8
-        const val MENU_PAGE_SNAP_DELAY_MS = 48L
+        const val MENU_PAGE_SNAP_ANIM_MS = 120L
     }
 
 }
