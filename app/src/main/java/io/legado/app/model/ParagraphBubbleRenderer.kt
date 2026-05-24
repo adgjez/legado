@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.util.Size
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BubblePackageManager
@@ -94,6 +95,7 @@ object ParagraphBubbleRenderer {
         return query.split('&')
             .firstOrNull { it.substringBefore('=') == key }
             ?.substringAfter('=', "")
+            ?.let(Uri::decode)
             .orEmpty()
     }
 }

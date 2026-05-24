@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read.page.provider
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
 import android.text.Layout
 import android.text.Spanned
 import android.text.StaticLayout
@@ -2433,8 +2434,10 @@ class TextChapterLayout(
         val click = option["click"]
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
+        val encodedCount = Uri.encode(count)
+        val encodedStatus = Uri.encode(status)
         return ImageInfo(
-            renderSrc = "bubble://paragraph?num=${count}&status=${status}",
+            renderSrc = "bubble://paragraph?num=${encodedCount}&status=${encodedStatus}",
             style = "TEXT",
             click = pclick ?: click
         )
