@@ -18,6 +18,8 @@ import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemReadRecordCoverBinding
 import io.legado.app.databinding.ItemReadRecordRankBinding
+import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiInputStyle
@@ -30,6 +32,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.search.SearchActivity
+import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
@@ -99,6 +102,33 @@ fun ImageView.loadReadRecordCover(path: String?) {
     BookCover.load(context, path).into(this)
 }
 
+fun CoverImageView.loadReadRecordCover(
+    book: Book?,
+    snapshot: ReadRecentVisualSnapshot?,
+    fallbackPath: String? = null
+) {
+    if (book != null) {
+        load(book)
+        return
+    }
+    val originalCover = snapshot?.displayCover() ?: fallbackPath
+    val bookKey = snapshot?.bookUrl
+        ?.takeIf { it.isNotBlank() }
+        ?: listOf(snapshot?.name, snapshot?.author).joinToString("|")
+    val collectionCover = CoverCollectionManager.selectedCollectionCover(bookKey, originalCover)
+    val usingCollectionCover = collectionCover != null
+    val forceOriginalCover = collectionCover == null &&
+        CoverCollectionManager.isMixedMode() &&
+        originalCover.isRealCoverPath()
+    load(
+        path = collectionCover ?: originalCover,
+        name = snapshot?.name,
+        author = snapshot?.author,
+        forcePath = usingCollectionCover || forceOriginalCover,
+        allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
+    )
+}
+
 fun ImageView.loadReadRecordAvatar(path: String?) {
     ImageLoader.load(context, path)
         .placeholder(R.drawable.ic_read_record_default_avatar)
@@ -129,7 +159,7 @@ class ReadRecordCoverAdapter(
     inner class CoverHolder(private val binding: ItemReadRecordCoverBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun bind(item: ReadRecentVisualItem) {
-            binding.ivCover.loadReadRecordCover(item.snapshot.displayCover())
+            binding.ivCover.loadReadRecordCover(item.book, item.snapshot)
             binding.root.setOnClickListener { onClick(item) }
             binding.root.setOnLongClickListener {
                 onLongClick?.invoke(item)
@@ -175,9 +205,7 @@ class ReadRecordRankAdapter(
             binding.tvName.typeface = context.uiTypeface()
             binding.tvMeta.typeface = context.uiTypeface()
             binding.tvTime.typeface = context.uiTypeface()
-            binding.ivCover.loadReadRecordCover(
-                item.book?.getDisplayCover() ?: item.snapshot?.displayCover()
-            )
+            binding.ivCover.loadReadRecordCover(item.book, item.snapshot)
             binding.root.alpha = if (item.book == null) 0.72f else 1f
             binding.root.setOnClickListener { onClick(item) }
             binding.root.setOnLongClickListener {

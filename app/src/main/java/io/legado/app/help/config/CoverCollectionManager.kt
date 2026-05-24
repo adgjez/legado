@@ -234,6 +234,13 @@ object CoverCollectionManager {
         )
     }
 
+    fun selectedCollectionCover(bookKey: String, coverPath: String?): String? {
+        return selectedCollectionCover(
+            bookKey = bookKey,
+            hasOriginalCover = coverPath.isRealCoverPath()
+        )
+    }
+
     fun String?.isRealCoverPath(): Boolean {
         val value = this?.trim().orEmpty()
         if (value.isBlank() || value.equals("use_default_cover", ignoreCase = true)) {

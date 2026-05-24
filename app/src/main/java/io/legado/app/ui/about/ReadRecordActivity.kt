@@ -469,7 +469,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         items.forEachIndexed { index, item ->
             val rowBinding =
                 io.legado.app.databinding.ItemReadRecordRankBinding.inflate(layoutInflater, binding.llReadRank, false)
-            rowBinding.ivCover.loadReadRecordCover(item.book?.getDisplayCover() ?: item.snapshot?.displayCover())
+            rowBinding.ivCover.loadReadRecordCover(item.book, item.snapshot)
             rowBinding.tvName.text = item.book?.name ?: item.snapshot?.name ?: item.displayName
             val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
             rowBinding.tvMeta.text = if (author.isBlank()) {
