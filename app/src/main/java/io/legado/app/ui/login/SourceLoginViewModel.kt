@@ -33,6 +33,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
         execute {
             bookType = intent.getIntExtra("bookType", 0)
             val sourceType = intent.getStringExtra("type")
+            val contextSource = sourceType == "readMenuCustomButton" || sourceType == "paragraphRule"
             when (bookType) {
                 BookType.text -> {
                     source = ReadBook.bookSource
@@ -72,7 +73,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                     book = bookUrl?.let {
                         appDb.bookDao.getBook(it) ?: appDb.searchBookDao.getSearchBook(it)?.toBook()
                     }
-                    if (book == null && sourceType == "readMenuCustomButton") {
+                    if (book == null && contextSource) {
                         book = ReadBook.book
                     }
                     val chapterIndex = intent.getIntExtra("chapterIndex", -1)
@@ -80,7 +81,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                         chapterIndex.takeIf { it >= 0 }?.let {
                             appDb.bookChapterDao.getChapter(currentBook.bookUrl, it)
                         }
-                    } ?: if (sourceType == "readMenuCustomButton") {
+                    } ?: if (contextSource) {
                         ReadBook.curTextChapter?.chapter
                     } else {
                         null
@@ -91,7 +92,7 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                 source?.getHeaderMap(true) ?: emptyMap()
             }
             source?.let {
-                loginInfo = if (sourceType == "readMenuCustomButton") {
+                loginInfo = if (contextSource) {
                     it.getLoginInfo()?.let { json ->
                         GSON.fromJsonObject<MutableMap<String, String>>(json).getOrNull()
                     } ?: mutableMapOf()

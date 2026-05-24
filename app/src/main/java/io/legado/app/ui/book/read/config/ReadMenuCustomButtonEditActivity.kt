@@ -15,7 +15,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.databinding.ActivityParagraphRuleEditBinding
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.utils.GSON
@@ -23,6 +22,7 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +68,7 @@ class ReadMenuCustomButtonEditActivity : BaseActivity<ActivityParagraphRuleEditB
             R.id.menu_save -> save()
             R.id.menu_copy_rule -> sendToClip(GSON.toJson(getButton()))
             R.id.menu_paste_rule -> pasteButton()
-            R.id.menu_help -> showHelpDialog()
+            R.id.menu_help -> showHelp("readMenuCustomButtonHelp")
         }
         return true
     }
@@ -170,10 +170,4 @@ class ReadMenuCustomButtonEditActivity : BaseActivity<ActivityParagraphRuleEditB
         }
     }
 
-    private fun showHelpDialog() {
-        alert(titleResource = R.string.help) {
-            setMessage(R.string.read_menu_custom_button_help)
-            okButton()
-        }
-    }
 }

@@ -266,6 +266,7 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             putExtra("type", "paragraphRule")
             putExtra("key", rule.id.toString())
             bookUrl?.let { putExtra("bookUrl", it) }
+            putExtra("chapterIndex", ReadBook.durChapterIndex)
         }
     }
 

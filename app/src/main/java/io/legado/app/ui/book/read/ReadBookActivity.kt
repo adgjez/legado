@@ -2876,6 +2876,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                             putExtra("type", "paragraphRule")
                             putExtra("key", rule.id.toString())
                             putExtra("bookUrl", book.bookUrl)
+                            putExtra("chapterIndex", ReadBook.durChapterIndex)
                         }
                     }
                 }
