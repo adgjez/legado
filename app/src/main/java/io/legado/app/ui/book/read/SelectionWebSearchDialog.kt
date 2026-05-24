@@ -71,6 +71,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     private var currentSearchEngine: ContentSelectConfig.SearchEngine? = null
     private var currentSearchRootHost: String? = null
     private var webViewUserAgent: String = ""
+    private var pendingShowAfterLoad = false
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -126,6 +127,8 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         prepareWebView()
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                pendingShowAfterLoad = true
+                hideWebViewWhileLoading()
                 binding.progressBar.visible()
                 binding.progressBar.progress = 8
             }
@@ -133,6 +136,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progressBar.gone()
                 injectHideCssRepeated()
+                showWebViewAfterCss()
                 updateSheetDragState()
                 if (clearHistoryOnNextFinish) {
                     clearHistoryOnNextFinish = false
@@ -185,7 +189,10 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
                 binding.progressBar.progress = newProgress
                 if (newProgress >= 100) {
                     binding.progressBar.gone()
+                    showWebViewAfterCss()
                 } else {
+                    pendingShowAfterLoad = true
+                    hideWebViewWhileLoading()
                     binding.progressBar.visible()
                 }
             }
@@ -206,7 +213,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
             clearHistory()
             setBackgroundColor(Color.TRANSPARENT)
             visibility = View.VISIBLE
-            alpha = 1f
+            alpha = 0f
             isNestedScrollingEnabled = true
             settings.apply {
                 javaScriptEnabled = true
@@ -395,7 +402,25 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         currentSearchEngine = engine
         currentSearchRootHost = rootHostOf(engine.url)
         clearHistoryOnNextFinish = true
+        pendingShowAfterLoad = true
+        hideWebViewWhileLoading()
         webView.loadUrl(ContentSelectConfig.buildSearchUrl(engine, query))
+    }
+
+    private fun hideWebViewWhileLoading() {
+        if (!::webView.isInitialized) return
+        webView.alpha = 0f
+    }
+
+    private fun showWebViewAfterCss() {
+        if (!pendingShowAfterLoad || !::webView.isInitialized) return
+        pendingShowAfterLoad = false
+        injectHideCss()
+        webView.postDelayed({
+            if (isAdded && ::webView.isInitialized) {
+                webView.alpha = 1f
+            }
+        }, 80L)
     }
 
     private fun updateSheetDragState() {
@@ -580,6 +605,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     override fun onDestroyView() {
         behavior = null
         clearHistoryOnNextFinish = false
+        pendingShowAfterLoad = false
         currentSearchEngine = null
         currentSearchRootHost = null
         webView.setOnTouchListener(null)
