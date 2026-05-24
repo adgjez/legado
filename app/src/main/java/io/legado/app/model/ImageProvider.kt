@@ -277,7 +277,6 @@ object ImageProvider {
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
         val vFile = BookHelp.getImage(book, src)
-        if (!vFile.exists()) return errorBitmap
         //epub文件提供图片链接是相对链接，同时阅读多个epub文件，缓存命中错误
         //bitmapLruCache的key同一改成缓存文件的路径
         val cacheKey = if (cacheKeySuffix.isNullOrBlank()) {
@@ -287,32 +286,12 @@ object ImageProvider {
         }
         val cacheBitmap = getNotRecycled(cacheKey)
         if (cacheBitmap != null) return cacheBitmap
-        if (!vFile.exists() && src.isDataUrl()) {
-            return kotlin.runCatching {
-                val dataBytes = src.decodeBase64DataUrlBytes()
-                    ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
-                val options = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-                BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
-                options.inSampleSize = kotlin.run {
-                    val wRatio = if (width > 0) options.outWidth / width else -1
-                    val hRatio = height?.takeIf { it > 0 }?.let { options.outHeight / it } ?: -1
-                    when {
-                        wRatio > 1 && hRatio > 1 -> maxOf(wRatio, hRatio)
-                        wRatio > 1 -> wRatio
-                        hRatio > 1 -> hRatio
-                        else -> 1
-                    }
-                }
-                options.inJustDecodeBounds = false
-                val bitmap = BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
-                    ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
-                put(cacheKey, bitmap)
-                bitmap
-            }.onFailure {
-                put(cacheKey, errorBitmap)
-            }.getOrDefault(errorBitmap)
+        if (!vFile.exists()) {
+            return if (src.isDataUrl()) {
+                decodeDataUrlImage(src, width, height, cacheKey)
+            } else {
+                errorBitmap
+            }
         }
         return kotlin.runCatching {
             val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
@@ -322,6 +301,39 @@ object ImageProvider {
             bitmap
         }.onFailure {
             //错误图片占位,防止重复获取
+            put(cacheKey, errorBitmap)
+        }.getOrDefault(errorBitmap)
+    }
+
+    private fun decodeDataUrlImage(
+        src: String,
+        width: Int,
+        height: Int?,
+        cacheKey: String
+    ): Bitmap {
+        return kotlin.runCatching {
+            val dataBytes = src.decodeBase64DataUrlBytes()
+                ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
+            options.inSampleSize = kotlin.run {
+                val wRatio = if (width > 0) options.outWidth / width else -1
+                val hRatio = height?.takeIf { it > 0 }?.let { options.outHeight / it } ?: -1
+                when {
+                    wRatio > 1 && hRatio > 1 -> maxOf(wRatio, hRatio)
+                    wRatio > 1 -> wRatio
+                    hRatio > 1 -> hRatio
+                    else -> 1
+                }
+            }
+            options.inJustDecodeBounds = false
+            val bitmap = BitmapFactory.decodeByteArray(dataBytes, 0, dataBytes.size, options)
+                ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
+            put(cacheKey, bitmap)
+            bitmap
+        }.onFailure {
             put(cacheKey, errorBitmap)
         }.getOrDefault(errorBitmap)
     }
