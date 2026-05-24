@@ -47,6 +47,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var layout = ReadMenuButtonConfig.defaultLayout()
     private var rowIndex = 0
     private var customButtons: Map<Long, ReadMenuCustomButton> = emptyMap()
+    private var rowOrderDirty = false
 
     private val editCustomButton = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -278,12 +279,15 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     override fun swap(srcPosition: Int, targetPosition: Int): Boolean {
-        val row = currentRow().toMutableList()
-        if (srcPosition !in row.indices || targetPosition !in row.indices) return false
-        val item = row.removeAt(srcPosition)
-        row.add(targetPosition, item)
-        saveCurrentRow(row)
-        return true
+        val moved = adapter.moveItem(srcPosition, targetPosition)
+        if (moved) rowOrderDirty = true
+        return moved
+    }
+
+    override fun onClearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+        if (!rowOrderDirty) return
+        rowOrderDirty = false
+        saveCurrentRow(adapter.items)
     }
 
     private fun buttonTitle(ref: ReadMenuButtonConfig.ButtonRef): String {
@@ -324,11 +328,25 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private inner class ButtonAdapter : RecyclerView.Adapter<ButtonViewHolder>() {
+        private var itemList: List<ReadMenuButtonConfig.ButtonRef> = emptyList()
+
         var items: List<ReadMenuButtonConfig.ButtonRef> = emptyList()
+            get() = itemList
             set(value) {
-                field = value
+                itemList = value
                 notifyDataSetChanged()
             }
+
+        fun moveItem(srcPosition: Int, targetPosition: Int): Boolean {
+            if (srcPosition !in itemList.indices || targetPosition !in itemList.indices) return false
+            if (srcPosition == targetPosition) return true
+            val mutable = itemList.toMutableList()
+            val item = mutable.removeAt(srcPosition)
+            mutable.add(targetPosition, item)
+            itemList = mutable
+            notifyItemMoved(srcPosition, targetPosition)
+            return true
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ButtonViewHolder {
             return ButtonViewHolder(
@@ -336,10 +354,10 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             )
         }
 
-        override fun getItemCount(): Int = items.size
+        override fun getItemCount(): Int = itemList.size
 
         override fun onBindViewHolder(holder: ButtonViewHolder, position: Int) {
-            holder.bind(items[position])
+            holder.bind(itemList[position])
         }
     }
 
