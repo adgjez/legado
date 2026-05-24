@@ -29,6 +29,10 @@ object BubblePackageManager {
     private const val packageFileName = "bubble.json"
     private const val defaultBubblePath =
         "M44 48 Q48 48 48 44 L48 20 Q48 16 44 16 L20 16 Q16 16 16 20 L16 24 S16 28 10 30 Q6 32 10 34 Q16 36 16 38 L16 44 Q16 48 20 48 Z"
+    @Volatile
+    private var cachedEntry: Entry? = null
+    @Volatile
+    private var cachedDirName: String? = null
 
     val rootDir: File
         get() = appCtx.externalFiles.getFile("bubblePackages")
@@ -99,12 +103,25 @@ object BubblePackageManager {
 
     fun apply(entry: Entry) {
         appCtx.putPrefString(PreferKey.paragraphBubblePackage, entry.dirName)
+        invalidateCurrentEntry()
     }
 
     fun currentEntry(): Entry {
         val dirName = activeDirName()
-        if (dirName == BUILTIN_DIR_NAME) return builtinEntry()
-        return readEntry(localDir(dirName)) ?: builtinEntry()
+        cachedEntry?.takeIf { cachedDirName == dirName }?.let { return it }
+        val entry = if (dirName == BUILTIN_DIR_NAME) {
+            builtinEntry()
+        } else {
+            readEntry(localDir(dirName)) ?: builtinEntry()
+        }
+        cachedDirName = dirName
+        cachedEntry = entry
+        return entry
+    }
+
+    fun invalidateCurrentEntry() {
+        cachedEntry = null
+        cachedDirName = null
     }
 
     suspend fun loadEntries(containerId: String? = null, scope: String? = null): List<Entry> = withContext(IO) {
@@ -153,6 +170,7 @@ object BubblePackageManager {
             updatedAt = System.currentTimeMillis()
         )
         File(dir, packageFileName).writeText(GSON.toJson(next))
+        invalidateCurrentEntry()
         return Entry(next, Source.LOCAL, dirName, localDir = dir)
     }
 
@@ -162,6 +180,7 @@ object BubblePackageManager {
         if (activeDirName() == entry.dirName) {
             appCtx.putPrefString(PreferKey.paragraphBubblePackage, BUILTIN_DIR_NAME)
         }
+        invalidateCurrentEntry()
     }
 
     suspend fun exportZip(entry: Entry): File = withContext(IO) {
@@ -221,6 +240,7 @@ object BubblePackageManager {
                 updatedAt = if (remoteUpdatedAt > 0L) config.updatedAt else System.currentTimeMillis()
             )
             File(targetDir, packageFileName).writeText(GSON.toJson(next))
+            invalidateCurrentEntry()
             Entry(next, Source.LOCAL, dirName, localDir = targetDir, remoteUpdatedAt = remoteUpdatedAt)
         } finally {
             FileUtils.delete(unzipDir, deleteRootDir = true)

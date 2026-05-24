@@ -65,20 +65,21 @@ object ParagraphBubbleRenderer {
 
     private fun resolveColor(config: BubblePackageManager.Config, status: String): String {
         val emphasis = status.equals("emphasis", true)
-        val value = if (AppConfig.isNightTheme) {
-            if (emphasis) config.nightEmphasisColor else config.nightNormalColor
-        } else {
-            if (emphasis) config.dayEmphasisColor else config.dayNormalColor
-        }?.takeIf { it.isNotBlank() } ?: if (emphasis) {
+        val fallback = if (emphasis) {
             BubblePackageManager.DEFAULT_EMPHASIS_COLOR
         } else {
             BubblePackageManager.DEFAULT_NORMAL_COLOR
         }
+        val value = if (AppConfig.isNightTheme) {
+            if (emphasis) config.nightEmphasisColor else config.nightNormalColor
+        } else {
+            if (emphasis) config.dayEmphasisColor else config.dayNormalColor
+        }?.takeIf { it.isNotBlank() } ?: fallback
         return runCatching {
             val normalized = if (value.startsWith("#")) value else "#$value"
             Color.parseColor(normalized)
             normalized
-        }.getOrDefault(BubblePackageManager.DEFAULT_COLOR)
+        }.getOrDefault(fallback)
     }
 
     private fun number(src: String): String {
