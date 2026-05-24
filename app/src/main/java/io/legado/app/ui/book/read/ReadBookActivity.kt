@@ -2965,6 +2965,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                 putExtra("type", "readMenuCustomButton")
                 putExtra("key", id.toString())
                 ReadBook.book?.bookUrl?.let { putExtra("bookUrl", it) }
+                putExtra("chapterIndex", ReadBook.durChapterIndex)
             }
         }
     }
