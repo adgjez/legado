@@ -12,8 +12,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.PopupMenu
@@ -21,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogSelectionWebSearchBinding
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebViewPool
@@ -91,8 +97,14 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         super.onViewCreated(view, savedInstanceState)
         binding.root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
         applyStyle()
-        binding.webViewContainer.addView(webView)
-        webView.setBackgroundColor(Color.TRANSPARENT)
+        binding.webViewContainer.addView(
+            webView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        prepareWebView()
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 binding.progressBar.visible()
@@ -101,6 +113,38 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progressBar.gone()
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    binding.progressBar.gone()
+                    AppLog.putDebug(
+                        "Selection web search load error " +
+                            "url=${request.url} " +
+                            "code=${error?.errorCode} " +
+                            "desc=${error?.description}"
+                    )
+                }
+                super.onReceivedError(view, request, error)
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    AppLog.putDebug(
+                        "Selection web search http error " +
+                            "url=${request.url} " +
+                            "status=${errorResponse?.statusCode}"
+                    )
+                }
+                super.onReceivedHttpError(view, request, errorResponse)
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
@@ -120,6 +164,29 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         renderEngines()
         bindActions()
         loadSearch(currentQuery)
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun prepareWebView() {
+        webView.run {
+            setBackgroundColor(Color.TRANSPARENT)
+            visibility = View.VISIBLE
+            alpha = 1f
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                loadsImagesAutomatically = true
+                blockNetworkImage = false
+                cacheMode = WebSettings.LOAD_DEFAULT
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                useWideViewPort = true
+                loadWithOverviewMode = true
+                textZoom = 100
+                userAgentString = WebSettings.getDefaultUserAgent(requireContext())
+            }
+            resumeTimers()
+            onResume()
+        }
     }
 
     private fun applyStyle() = binding.run {
