@@ -5,11 +5,14 @@ import android.app.Dialog
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Outline
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -84,6 +87,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
             this.height = height
             this.width = ViewGroup.LayoutParams.MATCH_PARENT
         }
+        applySheetHostStyle(sheet)
         BottomSheetBehavior.from(sheet).apply {
             state = BottomSheetBehavior.STATE_EXPANDED
             skipCollapsed = true
@@ -191,7 +195,11 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
 
     private fun applyStyle() = binding.run {
         val palette = ReaderSheetStyle.resolve(requireContext())
-        sheetSurface.background = ReaderSheetStyle.topSheetDrawable(palette)
+        sheetSurface.background = topSheetDrawable(
+            palette.surface,
+            palette.stroke,
+            UiCorner.panelRadius(requireContext())
+        )
         val iconTint = palette.textColor
         btnBack.setColorFilter(iconTint)
         btnMore.setColorFilter(iconTint)
@@ -199,6 +207,46 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         editQuery.setHintTextColor(palette.secondaryTextColor)
         progressBar.progressTintList = ColorStateList.valueOf(palette.accentColor)
         progressBar.progressBackgroundTintList = ColorStateList.valueOf(ColorUtils.adjustAlpha(palette.stroke, 0.35f))
+    }
+
+    private fun applySheetHostStyle(sheet: View) {
+        val radius = UiCorner.panelRadius(requireContext())
+        sheet.backgroundTintList = null
+        sheet.background = topSheetDrawable(Color.TRANSPARENT, null, radius)
+        sheet.clipToOutline = radius > 0f
+        setTopRoundOutline(sheet, radius)
+        binding.sheetSurface.clipToPadding = false
+        binding.sheetSurface.clipToOutline = radius > 0f
+        setTopRoundOutline(binding.sheetSurface, radius)
+    }
+
+    private fun topSheetDrawable(
+        fillColor: Int,
+        strokeColor: Int?,
+        radius: Float
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            cornerRadii = floatArrayOf(
+                radius, radius,
+                radius, radius,
+                0f, 0f,
+                0f, 0f
+            )
+            setColor(fillColor)
+            strokeColor?.let { setStroke(1.dpToPx(), it) }
+        }
+    }
+
+    private fun setTopRoundOutline(view: View, radius: Float) {
+        if (radius <= 0f) {
+            view.outlineProvider = null
+            return
+        }
+        view.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height + radius.toInt(), radius)
+            }
+        }
     }
 
     private fun bindActions() = binding.run {
