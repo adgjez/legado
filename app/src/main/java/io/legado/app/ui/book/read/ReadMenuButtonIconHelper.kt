@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -11,6 +12,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.normalizeFileName
+import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -30,7 +32,7 @@ object ReadMenuButtonIconHelper {
     }
 
     fun saveIcon(context: Context, uri: Uri, oldPath: String? = null, targetSize: Int = 96): String {
-        val dir = File(context.externalFiles, "readMenuIcons").apply { mkdirs() }
+        val dir = iconDir(context).apply { mkdirs() }
         val extension = uri.lastPathSegment
             ?.substringAfterLast('.', "")
             ?.lowercase(Locale.ROOT)
@@ -53,7 +55,11 @@ object ReadMenuButtonIconHelper {
         if (path.isNullOrBlank()) return
         runCatching {
             val file = File(path)
-            if (file.exists()) file.delete()
+            val iconDir = iconDir(appCtx).canonicalFile
+            val target = file.canonicalFile
+            if (target.parentFile == iconDir && target.exists() && target.isFile) {
+                target.delete()
+            }
         }
     }
 
@@ -81,9 +87,34 @@ object ReadMenuButtonIconHelper {
         val bitmap = if (file.extension.equals("svg", ignoreCase = true)) {
             SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)
         } else {
-            BitmapFactory.decodeFile(file.absolutePath)
+            decodeBitmapFile(file, targetSize)
                 ?: SvgUtils.createBitmap(file.absolutePath, targetSize, targetSize)
         } ?: return null
         return BitmapDrawable(context.resources, bitmap)
+    }
+
+    private fun iconDir(context: Context): File {
+        return File(context.externalFiles, "readMenuIcons")
+    }
+
+    private fun decodeBitmapFile(file: File, targetSize: Int): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeFile(file.absolutePath, options)
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        val target = targetSize.coerceAtLeast(1)
+        var sampleSize = 1
+        var halfWidth = options.outWidth / 2
+        var halfHeight = options.outHeight / 2
+        while (halfWidth / sampleSize >= target && halfHeight / sampleSize >= target) {
+            sampleSize *= 2
+        }
+        return BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply {
+                inSampleSize = sampleSize.coerceAtLeast(1)
+            }
+        )
     }
 }
