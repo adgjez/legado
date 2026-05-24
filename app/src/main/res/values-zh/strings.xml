@@ -204,6 +204,11 @@
     <string name="content_select_default_open">默认打开</string>
     <string name="content_select_speak_from_selection">已切换为从选择处开始连续朗读</string>
     <string name="content_select_speak_selected">已切换为朗读选择内容</string>
+    <string name="selection_search_engine_manage">搜索引擎</string>
+    <string name="selection_search_engine_name">引擎名称</string>
+    <string name="selection_search_engine_url">搜索 URL</string>
+    <string name="selection_search_engine_url_hint">使用 {query} 代表选中文字</string>
+    <string name="selection_search_engine_url_error">搜索 URL 必须以 http:// 或 https:// 开头</string>
     <string name="default_none">不默认打开</string>
     <string name="default_search">搜索</string>
     <string name="default_dict">字典</string>

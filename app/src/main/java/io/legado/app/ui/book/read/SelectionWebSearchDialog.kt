@@ -151,14 +151,27 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     private fun showMoreMenu() {
         PopupMenu(requireContext(), binding.btnMore, Gravity.NO_GRAVITY).apply {
             menu.add(0, MENU_REFRESH, 0, R.string.refresh)
+            menu.add(0, MENU_EDIT, 1, R.string.edit)
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     MENU_REFRESH -> webView.reload()
+                    MENU_EDIT -> showEngineManageDialog()
                 }
                 true
             }
             show()
         }
+    }
+
+    private fun showEngineManageDialog() {
+        SelectionSearchEngineManageDialog {
+            val engines = ContentSelectConfig.searchEngines(requireContext())
+            if (engines.none { it.id == currentEngineId }) {
+                currentEngineId = engines.first().id
+            }
+            renderEngines()
+            currentQuery.takeIf { it.isNotBlank() }?.let { loadSearch(it) }
+        }.show(parentFragmentManager, "selectionSearchEngineManage")
     }
 
     private fun renderEngines() = binding.engineContainer.run {
@@ -236,5 +249,6 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
 
     private companion object {
         const val MENU_REFRESH = 1
+        const val MENU_EDIT = 2
     }
 }
