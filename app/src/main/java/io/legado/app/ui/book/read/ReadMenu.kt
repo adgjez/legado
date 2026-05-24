@@ -68,6 +68,7 @@ import splitties.views.onClick
 import androidx.core.graphics.toColorInt
 import io.legado.app.constant.BookType
 import io.legado.app.utils.buildMainHandler
+import kotlin.math.abs
 
 /**
  * 阅读界面菜单
@@ -400,15 +401,18 @@ class ReadMenu @JvmOverloads constructor(
     ) {
         var downX = 0f
         var downScrollX = 0
+        var downTime = 0L
         scrollView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downScrollX = scrollView.scrollX
+                    downTime = event.eventTime
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val releaseX = event.x
                     val isCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
+                    val duration = event.eventTime - downTime
                     scrollView.postDelayed({
                         val pageWidth = scrollView.width.takeIf { it > 0 } ?: return@postDelayed
                         val lastPage = (pageCount - 1).coerceAtLeast(0)
@@ -418,8 +422,13 @@ class ReadMenu @JvmOverloads constructor(
                             .coerceIn(0, lastPage)
                         val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
                         val dragDistance = downX - releaseX
+                        val isFastSwipe = !isCancel &&
+                                duration in 1..MENU_PAGE_FAST_SWIPE_MAX_MS &&
+                                abs(dragDistance) >= MENU_PAGE_FAST_SWIPE_MIN_DISTANCE_DP.dpToPx()
                         val targetPage = when {
                             isCancel -> nearestPage
+                            isFastSwipe && dragDistance > 0f -> startPage + 1
+                            isFastSwipe && dragDistance < 0f -> startPage - 1
                             dragDistance > threshold -> startPage + 1
                             dragDistance < -threshold -> startPage - 1
                             else -> nearestPage
@@ -1120,7 +1129,9 @@ class ReadMenu @JvmOverloads constructor(
 
     private companion object {
         const val MENU_BUTTONS_PER_PAGE = 4
-        const val MENU_PAGE_SWITCH_THRESHOLD = 0.04f
+        const val MENU_PAGE_SWITCH_THRESHOLD = 0.02f
+        const val MENU_PAGE_FAST_SWIPE_MAX_MS = 220L
+        const val MENU_PAGE_FAST_SWIPE_MIN_DISTANCE_DP = 8
         const val MENU_PAGE_SNAP_DELAY_MS = 48L
     }
 
