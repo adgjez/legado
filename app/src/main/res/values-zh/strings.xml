@@ -1203,6 +1203,11 @@
     <string name="read_menu_no_current_chapter">没有当前章节</string>
     <string name="read_menu_move_to_first">移到第一排</string>
     <string name="read_menu_move_to_second">移到第二排</string>
+    <string name="read_menu_icon_set_day">设置日间图标</string>
+    <string name="read_menu_icon_set_night">设置夜间图标</string>
+    <string name="read_menu_icon_clear_day">清除日间图标</string>
+    <string name="read_menu_icon_clear_night">清除夜间图标</string>
+    <string name="read_menu_icon_select_file">选择菜单图标</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>
     <string name="like_source">赞</string>
     <string name="not_like_source">踩</string>

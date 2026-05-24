@@ -41,7 +41,8 @@ object ReadMenuButtonConfig {
         val type: String = TYPE_BUILTIN,
         val id: String = "",
         val titleOverride: String = "",
-        val iconPath: String = ""
+        val iconPath: String = "",
+        val nightIconPath: String = ""
     )
 
     data class ButtonLayout(

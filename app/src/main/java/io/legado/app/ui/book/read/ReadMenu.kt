@@ -120,6 +120,7 @@ class ReadMenu @JvmOverloads constructor(
     private val renderedButtons = hashMapOf<String, RenderedButton>()
 
     private data class RenderedButton(
+        val ref: ReadMenuButtonConfig.ButtonRef,
         val icon: ImageView,
         val label: TextView?
     )
@@ -372,8 +373,7 @@ class ReadMenu @JvmOverloads constructor(
                 R.drawable.bg_read_menu_quick_action_button
             )
             contentDescription = title
-            setImageResource(buttonIconRes(ref))
-            setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
+            setButtonIcon(this, ref, primaryTextColor)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(11.dpToPx(), 11.dpToPx(), 11.dpToPx(), 11.dpToPx())
             setOnClickListener { handleMenuButtonClick(ref) }
@@ -394,7 +394,7 @@ class ReadMenu @JvmOverloads constructor(
         }
         container.addView(icon)
         container.addView(label)
-        renderedButtons[buttonKey(ref)] = RenderedButton(icon, label)
+        renderedButtons[buttonKey(ref)] = RenderedButton(ref, icon, label)
         return container
     }
 
@@ -421,8 +421,7 @@ class ReadMenu @JvmOverloads constructor(
         val icon = AppCompatImageView(context).apply {
             layoutParams = LinearLayout.LayoutParams(20.dpToPx(), 20.dpToPx())
             contentDescription = title
-            setImageResource(buttonIconRes(ref))
-            setColorFilter(primaryTextColor, PorterDuff.Mode.SRC_IN)
+            setButtonIcon(this, ref, primaryTextColor)
         }
         val label = TextView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -440,7 +439,7 @@ class ReadMenu @JvmOverloads constructor(
         }
         container.addView(icon)
         container.addView(label)
-        renderedButtons[buttonKey(ref)] = RenderedButton(icon, label)
+        renderedButtons[buttonKey(ref)] = RenderedButton(ref, icon, label)
         return container
     }
 
@@ -550,6 +549,27 @@ class ReadMenu @JvmOverloads constructor(
         }
     }
 
+    private fun setButtonIcon(
+        imageView: ImageView,
+        ref: ReadMenuButtonConfig.ButtonRef,
+        color: Int
+    ) {
+        val customIconPath = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
+            ref.id.toLongOrNull()?.let { appDb.readMenuCustomButtonDao.get(it)?.iconPath }
+        } else {
+            null
+        }
+        imageView.setImageDrawable(
+            ReadMenuButtonIconHelper.drawable(
+                context,
+                ref,
+                buttonIconRes(ref),
+                customIconPath
+            )
+        )
+        imageView.setColorFilter(color, PorterDuff.Mode.SRC_IN)
+    }
+
     private fun buttonKey(ref: ReadMenuButtonConfig.ButtonRef): String {
         return "${ref.type}:${ref.id}"
     }
@@ -561,13 +581,10 @@ class ReadMenu @JvmOverloads constructor(
     private fun updateAutoPageButton() {
         val rendered = renderedButtons[builtinButtonKey(ReadMenuButtonConfig.Builtin.AUTO_PAGE)]
         rendered?.icon?.apply {
-            setImageResource(
-                if (autoPageActive) R.drawable.ic_auto_page_stop else R.drawable.ic_auto_page
-            )
+            setButtonIcon(this, rendered.ref, textColor)
             contentDescription = context.getString(
                 if (autoPageActive) R.string.auto_next_page_stop else R.string.auto_next_page
             )
-            setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         }
     }
 

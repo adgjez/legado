@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -33,11 +34,16 @@ import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.book.read.ReadMenuButtonIconHelper
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     ItemTouchCallback.Callback {
@@ -48,6 +54,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var rowIndex = 0
     private var customButtons: Map<Long, ReadMenuCustomButton> = emptyMap()
     private var rowOrderDirty = false
+    private var pendingIconRequest: IconRequest? = null
 
     private val editCustomButton = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -55,6 +62,24 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             addButton(ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, id.toString()))
         } else {
             load()
+        }
+    }
+
+    private val selectIconFile = registerForActivityResult(HandleFileContract()) { result ->
+        val request = pendingIconRequest?.takeIf { it.requestCode == result.requestCode } ?: return@registerForActivityResult
+        val uri = result.uri ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                withContext(Dispatchers.IO) {
+                    ReadMenuButtonIconHelper.saveIcon(this@ReadMenuButtonManageActivity, uri, request.oldPath())
+                }
+            }.onSuccess { path ->
+                updateButtonRef(request.ref, request.ref.withIconPath(request.nightIcon, path))
+                toastOnUi(R.string.success)
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.navigation_icon_decode_failed))
+            }
+            pendingIconRequest = null
         }
     }
 
@@ -290,6 +315,63 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         saveCurrentRow(adapter.items)
     }
 
+    private fun showIconOptions(ref: ReadMenuButtonConfig.ButtonRef) {
+        val isNightButton = ref.type == ReadMenuButtonConfig.TYPE_BUILTIN &&
+                ref.id == ReadMenuButtonConfig.Builtin.NIGHT_THEME
+        if (isNightButton) {
+            selector(
+                getString(R.string.change_icon),
+                listOf(
+                    getString(R.string.read_menu_icon_set_day),
+                    getString(R.string.read_menu_icon_set_night),
+                    getString(R.string.read_menu_icon_clear_day),
+                    getString(R.string.read_menu_icon_clear_night)
+                )
+            ) { _, index ->
+                when (index) {
+                    0 -> selectIcon(ref, nightIcon = false)
+                    1 -> selectIcon(ref, nightIcon = true)
+                    2 -> clearIcon(ref, nightIcon = false)
+                    3 -> clearIcon(ref, nightIcon = true)
+                }
+            }
+        } else {
+            selector(
+                getString(R.string.change_icon),
+                listOf(getString(R.string.change_icon), getString(R.string.clear))
+            ) { _, index ->
+                if (index == 0) selectIcon(ref, nightIcon = false) else clearIcon(ref, nightIcon = false)
+            }
+        }
+    }
+
+    private fun selectIcon(ref: ReadMenuButtonConfig.ButtonRef, nightIcon: Boolean) {
+        pendingIconRequest = IconRequest(ref, nightIcon, ICON_REQUEST)
+        selectIconFile.launch {
+            mode = HandleFileContract.FILE
+            title = getString(R.string.read_menu_icon_select_file)
+            requestCode = ICON_REQUEST
+            allowExtensions = arrayOf("png", "jpg", "jpeg", "webp", "bmp", "svg")
+        }
+    }
+
+    private fun clearIcon(ref: ReadMenuButtonConfig.ButtonRef, nightIcon: Boolean) {
+        ReadMenuButtonIconHelper.clearIcon(if (nightIcon) ref.nightIconPath else ref.iconPath)
+        updateButtonRef(ref, ref.withIconPath(nightIcon, ""))
+        toastOnUi(R.string.success)
+    }
+
+    private fun updateButtonRef(
+        oldRef: ReadMenuButtonConfig.ButtonRef,
+        newRef: ReadMenuButtonConfig.ButtonRef
+    ) {
+        val row = currentRow().toMutableList()
+        val index = row.indexOf(oldRef)
+        if (index < 0) return
+        row[index] = newRef
+        saveCurrentRow(row)
+    }
+
     private fun buttonTitle(ref: ReadMenuButtonConfig.ButtonRef): String {
         ref.titleOverride.trim().takeIf { it.isNotBlank() }?.let { return it }
         if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
@@ -370,9 +452,17 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_card),
                 UiCorner.panelRadius(this@ReadMenuButtonManageActivity)
             )
-            ivPreview.setImageResource(buttonIconRes(ref))
+            ivPreview.setImageDrawable(
+                ReadMenuButtonIconHelper.drawable(
+                    this@ReadMenuButtonManageActivity,
+                    ref,
+                    buttonIconRes(ref),
+                    ref.id.toLongOrNull()?.let { customButtons[it]?.iconPath }
+                )
+            )
             ivPreview.setColorFilter(primaryTextColor)
             ivPreview.setBackgroundColor(Color.TRANSPARENT)
+            ivPreview.setOnClickListener { showIconOptions(ref) }
             tvName.text = buttonTitle(ref)
             tvSource.text = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
                 getString(R.string.read_menu_custom_button)
@@ -413,7 +503,23 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val ref: ReadMenuButtonConfig.ButtonRef?
     )
 
+    private data class IconRequest(
+        val ref: ReadMenuButtonConfig.ButtonRef,
+        val nightIcon: Boolean,
+        val requestCode: Int
+    ) {
+        fun oldPath(): String = if (nightIcon) ref.nightIconPath else ref.iconPath
+    }
+
     companion object {
         private const val MENU_RESET = 1
+        private const val ICON_REQUEST = 1001
     }
+}
+
+private fun ReadMenuButtonConfig.ButtonRef.withIconPath(
+    nightIcon: Boolean,
+    path: String
+): ReadMenuButtonConfig.ButtonRef {
+    return if (nightIcon) copy(nightIconPath = path) else copy(iconPath = path)
 }
