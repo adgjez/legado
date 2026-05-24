@@ -30,7 +30,6 @@ import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
@@ -54,21 +53,19 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
 
     private val configuredActionIds: Set<String>
-        get() = context.getPrefStringSet(
-            PreferKey.contentSelectActions,
-            mutableSetOf("replace", "copy", "bookmark", "aloud", "dict", "ask_ai")
-        )?.filterNot { it == "generate_image" }?.toSet() ?: emptySet()
+        get() = ContentSelectConfig.selectedActionIds(context)
 
     private val defaultOpenActionId: String
         get() = context.getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
 
     private fun menuItemToActionId(itemId: Int): String? = when (itemId) {
-        R.id.menu_replace -> "replace"
-        R.id.menu_copy -> "copy"
-        R.id.menu_bookmark -> "bookmark"
-        R.id.menu_aloud -> "aloud"
-        R.id.menu_dict -> "dict"
-        R.id.menu_ask_ai -> "ask_ai"
+        R.id.menu_web_search -> ContentSelectConfig.ACTION_WEB_SEARCH
+        R.id.menu_replace -> ContentSelectConfig.ACTION_REPLACE
+        R.id.menu_copy -> ContentSelectConfig.ACTION_COPY
+        R.id.menu_bookmark -> ContentSelectConfig.ACTION_BOOKMARK
+        R.id.menu_aloud -> ContentSelectConfig.ACTION_ALOUD
+        R.id.menu_dict -> ContentSelectConfig.ACTION_DICT
+        R.id.menu_ask_ai -> ContentSelectConfig.ACTION_ASK_AI
         else -> null
     }
 

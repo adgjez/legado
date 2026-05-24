@@ -205,6 +205,7 @@
     <string name="content_select_speak_from_selection">已切换为从选择处开始连续朗读</string>
     <string name="content_select_speak_selected">已切换为朗读选择内容</string>
     <string name="default_none">不默认打开</string>
+    <string name="default_search">搜索</string>
     <string name="default_dict">字典</string>
     <string name="default_ask_ai">问AI</string>
     <string name="ai_reply">AI回复</string>

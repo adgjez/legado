@@ -50,6 +50,12 @@
                 android:text="@string/copy_text" />
 
             <io.legado.app.lib.theme.view.ThemeCheckBox
+                android:id="@+id/cb_search"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/search" />
+
+            <io.legado.app.lib.theme.view.ThemeCheckBox
                 android:id="@+id/cb_bookmark"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -92,6 +98,12 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/default_none" />
+
+                <io.legado.app.lib.theme.view.ThemeRadioButton
+                    android:id="@+id/rb_default_search"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/default_search" />
 
                 <io.legado.app.lib.theme.view.ThemeRadioButton
                     android:id="@+id/rb_default_dict"
