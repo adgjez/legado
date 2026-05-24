@@ -19,7 +19,9 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:orientation="horizontal"
-            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+            app:flexDirection="row"
+            app:flexWrap="wrap"
+            app:layoutManager="com.google.android.flexbox.FlexboxLayoutManager" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/iv_menu_more"
