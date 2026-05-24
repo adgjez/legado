@@ -48,14 +48,28 @@ object ContentSelectConfig {
     )
 
     private val defaultBingHideCss = """
+        header#b_header,
         #b_header,
+        #sb_form,
         #b_searchboxForm,
-        .b_searchboxForm {
+        .b_searchboxForm,
+        .b_searchbox,
+        .b_scopebar,
+        #est_switch {
             display: none !important;
         }
     """.trimIndent()
 
     private val defaultBaiduHideCss = """
+        .se-page-hd,
+        .se-page-hd-fixed,
+        .se-results-top,
+        .se-head-tablink,
+        .se-head-logo,
+        .se-box,
+        .se-form,
+        .se-searchbox,
+        .sfc-dom,
         #head,
         #s_tab,
         #u,
@@ -66,6 +80,10 @@ object ContentSelectConfig {
 
     private val defaultGoogleHideCss = """
         header,
+        #searchform,
+        .sfbg,
+        .minidiv,
+        [jsname="RNNXgb"],
         form[role="search"],
         div[role="search"] {
             display: none !important;
@@ -143,11 +161,13 @@ object ContentSelectConfig {
             if (id.isBlank() || name.isBlank() || !url.startsWith("http", ignoreCase = true)) {
                 null
             } else {
+                val fallbackHideCss = engine.hideCss?.trim()
+                    ?: defaultSearchEngines.firstOrNull { it.id == id }?.hideCss
                 SearchEngine(
                     id = id,
                     name = name,
                     url = url,
-                    hideCss = engine.hideCss?.trim().orEmpty()
+                    hideCss = fallbackHideCss
                 )
             }
         }.distinctBy { it.id }
