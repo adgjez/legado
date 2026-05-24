@@ -2,7 +2,6 @@ package io.legado.app.help.book
 
 import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.constant.BookType
-import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -20,7 +19,7 @@ object ReadMenuCustomButtonExecutor {
         content: String,
         bookSource: BookSource?
     ): Any? {
-        val source = ButtonSource(button)
+        val source = ReadMenuCustomButtonSource(button)
         val java = SourceLoginJsExtensions(activity, source, BookType.text)
         val baseUrl = chapterRequestUrl(chapter)
         return withTimeout(button.validTimeout()) {
@@ -46,11 +45,8 @@ object ReadMenuCustomButtonExecutor {
             append(
                 """
                 ;(function(){
-                    if (typeof click === 'function') return click();
                     if (typeof run === 'function') return run();
-                    if (typeof main === 'function') return main();
-                    if (typeof result !== 'undefined') return result;
-                    return null;
+                    throw '自定义按键未定义 function run()';
                 })();
                 """.trimIndent()
             )
@@ -67,18 +63,4 @@ object ReadMenuCustomButtonExecutor {
         }
     }
 
-    private class ButtonSource(
-        private val button: ReadMenuCustomButton
-    ) : BaseSource {
-        override var concurrentRate: String? = null
-        override var loginUrl: String? = button.loginUrl
-        override var loginUi: String? = button.loginUi
-        override var header: String? = null
-        override var enabledCookieJar: Boolean? = button.enabledCookieJar
-        override var jsLib: String? = button.jsLib
-
-        override fun getTag(): String = "ReadMenuButton:${button.id}:${button.displayName()}"
-
-        override fun getKey(): String = "read_menu_button_${button.id}"
-    }
 }

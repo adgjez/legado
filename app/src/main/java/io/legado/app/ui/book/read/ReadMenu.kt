@@ -492,7 +492,9 @@ class ReadMenu @JvmOverloads constructor(
                 true
             }
             ref.type == ReadMenuButtonConfig.TYPE_CUSTOM -> {
-                ref.id.toLongOrNull()?.let { callBack.editCustomReadMenuButton(it) }
+                ref.id.toLongOrNull()?.let { id ->
+                    runMenuOut { callBack.loginCustomReadMenuButton(id) }
+                }
                 true
             }
             else -> false
@@ -1073,6 +1075,7 @@ class ReadMenu @JvmOverloads constructor(
         fun showParagraphRuleQuickDialog() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
+        fun loginCustomReadMenuButton(id: Long) = Unit
     }
 
     private companion object {

@@ -2910,6 +2910,26 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    override fun loginCustomReadMenuButton(id: Long) {
+        lifecycleScope.launch {
+            val button = withContext(IO) { appDb.readMenuCustomButtonDao.get(id) }
+            if (button == null) {
+                toastOnUi(R.string.read_menu_custom_button_missing)
+                return@launch
+            }
+            if (button.loginUrl.isBlank() && button.loginUi.isBlank()) {
+                toastOnUi(R.string.source_no_login)
+                return@launch
+            }
+            startActivity<SourceLoginActivity> {
+                putExtra("bookType", -1)
+                putExtra("type", "readMenuCustomButton")
+                putExtra("key", id.toString())
+                ReadBook.book?.bookUrl?.let { putExtra("bookUrl", it) }
+            }
+        }
+    }
+
     private fun refreshParagraphRuleLayout() {
         if (ReadBook.book == null) return
         ReadBook.invalidateParagraphRuleLayout()

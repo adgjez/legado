@@ -12,6 +12,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.ParagraphRuleJsExtensions
+import io.legado.app.help.book.ReadMenuCustomButtonSource
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
 import io.legado.app.model.VideoPlay
@@ -59,6 +60,9 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                         "httpTts" -> appDb.httpTTSDao.get(sourceKey.toLong())
                         "paragraphRule" -> appDb.paragraphRuleDao.get(sourceKey.toLong())?.let { rule ->
                             ParagraphRuleJsExtensions(rule)
+                        }
+                        "readMenuCustomButton" -> appDb.readMenuCustomButtonDao.get(sourceKey.toLong())?.let { button ->
+                            ReadMenuCustomButtonSource(button)
                         }
                         else -> null
                     }
