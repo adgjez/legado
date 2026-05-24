@@ -210,6 +210,8 @@
     <string name="selection_search_engine_url">Search URL</string>
     <string name="selection_search_engine_url_hint">Use {query} as the selected text</string>
     <string name="selection_search_engine_url_error">Search URL must start with http:// or https://</string>
+    <string name="selection_search_engine_hide_css_enabled">CSS blocker enabled</string>
+    <string name="selection_search_engine_hide_css_hint">CSS blocker, optional. Example: header, form[role=&quot;search&quot;] { display:none!important; }</string>
     <string name="default_none">No default action</string>
     <string name="default_search">Search</string>
     <string name="default_dict">Dictionary</string>

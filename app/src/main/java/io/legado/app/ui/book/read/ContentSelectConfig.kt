@@ -43,13 +43,39 @@ object ContentSelectConfig {
     data class SearchEngine(
         val id: String = "",
         val name: String = "",
-        val url: String = ""
+        val url: String = "",
+        val hideCss: String? = null
     )
 
+    private val defaultBingHideCss = """
+        #b_header,
+        #b_searchboxForm,
+        .b_searchboxForm {
+            display: none !important;
+        }
+    """.trimIndent()
+
+    private val defaultBaiduHideCss = """
+        #head,
+        #s_tab,
+        #u,
+        .s_form {
+            display: none !important;
+        }
+    """.trimIndent()
+
+    private val defaultGoogleHideCss = """
+        header,
+        form[role="search"],
+        div[role="search"] {
+            display: none !important;
+        }
+    """.trimIndent()
+
     val defaultSearchEngines = listOf(
-        SearchEngine("bing", "Bing", "https://www.bing.com/search?q={query}"),
-        SearchEngine("baidu", "Baidu", "https://www.baidu.com/s?wd={query}"),
-        SearchEngine("google", "Google", "https://www.google.com/search?q={query}")
+        SearchEngine("bing", "Bing", "https://www.bing.com/search?q={query}", defaultBingHideCss),
+        SearchEngine("baidu", "Baidu", "https://www.baidu.com/s?wd={query}", defaultBaiduHideCss),
+        SearchEngine("google", "Google", "https://www.google.com/search?q={query}", defaultGoogleHideCss)
     )
 
     fun selectedActionIds(context: Context): Set<String> {
@@ -117,7 +143,12 @@ object ContentSelectConfig {
             if (id.isBlank() || name.isBlank() || !url.startsWith("http", ignoreCase = true)) {
                 null
             } else {
-                SearchEngine(id, name, url)
+                SearchEngine(
+                    id = id,
+                    name = name,
+                    url = url,
+                    hideCss = engine.hideCss?.trim().orEmpty()
+                )
             }
         }.distinctBy { it.id }
     }

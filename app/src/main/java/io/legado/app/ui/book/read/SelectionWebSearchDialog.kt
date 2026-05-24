@@ -43,6 +43,7 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import org.json.JSONObject
 
 class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_selection_web_search) {
 
@@ -117,6 +118,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.progressBar.gone()
+                injectHideCss()
             }
 
             override fun onReceivedError(
@@ -346,6 +348,34 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
                 currentEngineId = it.id
             }
         webView.loadUrl(ContentSelectConfig.buildSearchUrl(engine, query))
+    }
+
+    private fun injectHideCss() {
+        val css = ContentSelectConfig.searchEngines(requireContext())
+            .firstOrNull { it.id == currentEngineId }
+            ?.hideCss
+            ?.takeIf { it.isNotBlank() }
+            ?: return
+        val js = """
+            (function() {
+                try {
+                    var css = ${JSONObject.quote(css)};
+                    var id = 'legado-selection-search-hide-css';
+                    var style = document.getElementById(id);
+                    if (!style) {
+                        style = document.createElement('style');
+                        style.id = id;
+                        (document.head || document.documentElement).appendChild(style);
+                    }
+                    style.textContent = css;
+                } catch (e) {}
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js) { result ->
+            if (result == null) {
+                AppLog.putDebug("Selection web search hideCss evaluateJavascript returned null")
+            }
+        }
     }
 
     private fun handleBack() {

@@ -85,6 +85,14 @@ class SelectionSearchEngineManageDialog(
                 setTextColor(requireContext().secondaryTextColor)
                 setPadding(0, 5.dpToPx(), 0, 6.dpToPx())
             })
+            if (!engine.hideCss.isNullOrBlank()) {
+                addView(TextView(requireContext()).apply {
+                    text = getString(R.string.selection_search_engine_hide_css_enabled)
+                    textSize = 12f
+                    setTextColor(palette.accentColor)
+                    setPadding(0, 0, 0, 6.dpToPx())
+                })
+            }
             addView(LinearLayout(requireContext()).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
                 orientation = LinearLayout.HORIZONTAL
@@ -133,11 +141,24 @@ class SelectionSearchEngineManageDialog(
             setSingleLine(true)
             setText(engine?.url.orEmpty())
         }
+        val cssEdit = EditText(requireContext()).apply {
+            hint = getString(R.string.selection_search_engine_hide_css_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            gravity = Gravity.TOP or Gravity.START
+            minLines = 3
+            maxLines = 8
+            setSingleLine(false)
+            setHorizontallyScrolling(false)
+            setText(engine?.hideCss.orEmpty())
+        }
         val input = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(16.dpToPx(), 4.dpToPx(), 16.dpToPx(), 0)
             addView(nameEdit)
             addView(urlEdit)
+            addView(cssEdit)
         }
         alert {
             setTitle(if (engine == null) R.string.add else R.string.edit)
@@ -156,7 +177,8 @@ class SelectionSearchEngineManageDialog(
                 val edited = ContentSelectConfig.SearchEngine(
                     id = engine?.id ?: "engine_${System.currentTimeMillis()}",
                     name = name,
-                    url = url
+                    url = url,
+                    hideCss = cssEdit.text?.toString()?.trim().orEmpty()
                 )
                 val index = engines.indexOfFirst { it.id == edited.id }
                 if (index >= 0) {
