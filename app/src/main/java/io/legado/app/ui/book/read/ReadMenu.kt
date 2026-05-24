@@ -21,8 +21,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.SeekBar
+import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.view.doOnLayout
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import io.legado.app.R
@@ -319,7 +321,7 @@ class ReadMenu @JvmOverloads constructor(
         rowContainer.isVisible = refs.isNotEmpty()
         if (refs.isEmpty()) return
         if (refs.size <= MENU_BUTTONS_PER_PAGE) {
-            val page = createButtonPage(refs, primaryTextColor, secondaryTextColor).apply {
+            val page = createButtonPage(refs, primaryTextColor, secondaryTextColor, fillEmptySlots = false).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -337,33 +339,38 @@ class ReadMenu @JvmOverloads constructor(
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
         }
-        val pagesContainer = LinearLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            orientation = LinearLayout.HORIZONTAL
-        }
-        refs.chunked(MENU_BUTTONS_PER_PAGE).forEach { pageRefs ->
-            pagesContainer.addView(createButtonPage(pageRefs, primaryTextColor, secondaryTextColor))
-        }
-        scrollView.addView(pagesContainer)
-        attachPageSnap(scrollView, rowContainer, pagesContainer)
         rowContainer.addView(scrollView)
-        rowContainer.post {
-            val width = rowContainer.width.takeIf { it > 0 } ?: return@post
-            for (index in 0 until pagesContainer.childCount) {
-                pagesContainer.getChildAt(index).layoutParams =
-                    pagesContainer.getChildAt(index).layoutParams.apply { this.width = width }
+        rowContainer.doOnLayout {
+            val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@doOnLayout
+            if (scrollView.parent !== rowContainer || scrollView.childCount > 0) return@doOnLayout
+            val pageRefs = refs.chunked(MENU_BUTTONS_PER_PAGE)
+            val pagesContainer = LinearLayout(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    pageWidth * pageRefs.size,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                orientation = LinearLayout.HORIZONTAL
             }
-            pagesContainer.requestLayout()
+            pageRefs.forEach { refsInPage ->
+                pagesContainer.addView(
+                    createButtonPage(refsInPage, primaryTextColor, secondaryTextColor, fillEmptySlots = true).apply {
+                        layoutParams = LinearLayout.LayoutParams(
+                            pageWidth,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                    }
+                )
+            }
+            scrollView.addView(pagesContainer)
+            attachPageSnap(scrollView, pageRefs.size)
         }
     }
 
     private fun createButtonPage(
         refs: List<ReadMenuButtonConfig.ButtonRef>,
         primaryTextColor: Int,
-        secondaryTextColor: Int
+        secondaryTextColor: Int,
+        fillEmptySlots: Boolean
     ) = LinearLayout(context).apply {
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -374,12 +381,22 @@ class ReadMenu @JvmOverloads constructor(
         refs.forEach { ref ->
             addView(createMenuButton(ref, primaryTextColor, secondaryTextColor))
         }
+        if (fillEmptySlots) {
+            repeat((MENU_BUTTONS_PER_PAGE - refs.size).coerceAtLeast(0)) {
+                addView(Space(context).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        1f
+                    )
+                })
+            }
+        }
     }
 
     private fun attachPageSnap(
         scrollView: HorizontalScrollView,
-        rowContainer: LinearLayout,
-        pagesContainer: LinearLayout
+        pageCount: Int
     ) {
         var downX = 0f
         var downScrollX = 0
@@ -393,20 +410,19 @@ class ReadMenu @JvmOverloads constructor(
                     val releaseX = event.x
                     val isCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
                     scrollView.postDelayed({
-                        val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@postDelayed
-                        val lastPage = (pagesContainer.childCount - 1).coerceAtLeast(0)
+                        val pageWidth = scrollView.width.takeIf { it > 0 } ?: return@postDelayed
+                        val lastPage = (pageCount - 1).coerceAtLeast(0)
                         val startPage = ((downScrollX + pageWidth / 2) / pageWidth)
+                            .coerceIn(0, lastPage)
+                        val nearestPage = ((scrollView.scrollX + pageWidth / 2) / pageWidth)
                             .coerceIn(0, lastPage)
                         val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
                         val dragDistance = downX - releaseX
-                        val scrollDistance = scrollView.scrollX - startPage * pageWidth
                         val targetPage = when {
-                            isCancel -> ((scrollView.scrollX + pageWidth / 2) / pageWidth)
+                            isCancel -> nearestPage
                             dragDistance > threshold -> startPage + 1
                             dragDistance < -threshold -> startPage - 1
-                            scrollDistance > threshold -> startPage + 1
-                            scrollDistance < -threshold -> startPage - 1
-                            else -> startPage
+                            else -> nearestPage
                         }.coerceIn(0, lastPage)
                         scrollView.smoothScrollTo(targetPage * pageWidth, 0)
                     }, MENU_PAGE_SNAP_DELAY_MS)
