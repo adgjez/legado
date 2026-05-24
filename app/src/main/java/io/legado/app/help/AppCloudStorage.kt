@@ -27,7 +27,9 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
@@ -294,6 +296,34 @@ object AppCloudStorage {
                 target.upload(BG_DIR + it.name, it)
             }
         }
+    }
+
+    suspend fun downBgs(names: Collection<String>): Map<String, File> {
+        val fileNames = names
+            .mapNotNull { File(it).name.takeIf { name -> name.isNotBlank() } }
+            .distinct()
+        if (fileNames.isEmpty()) return emptyMap()
+        val target = storage(S3ContainerScope.DEFAULT)
+        if (!NetworkUtils.isAvailable() || !target.isOk) return emptyMap()
+        val bgDir = appCtx.externalFiles.getFile("bg").apply { mkdirs() }
+        val restored = linkedMapOf<String, File>()
+        fileNames.forEach { fileName ->
+            val localFile = bgDir.getFile(fileName)
+            if (localFile.exists()) {
+                restored[fileName] = localFile
+                return@forEach
+            }
+            runCatching {
+                target.downloadTo(BG_DIR + fileName, localFile, true)
+                if (localFile.exists()) {
+                    restored[fileName] = localFile
+                }
+            }.onFailure {
+                localFile.delete()
+                io.legado.app.constant.AppLog.put("恢复背景图片失败 $fileName\n${it.localizedMessage}", it)
+            }
+        }
+        return restored
     }
 
     suspend fun export(byteArray: ByteArray, fileName: String) {
