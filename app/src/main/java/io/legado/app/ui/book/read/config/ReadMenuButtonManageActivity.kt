@@ -412,7 +412,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private inner class ButtonAdapter : RecyclerView.Adapter<ButtonViewHolder>() {
         private var itemList: List<ReadMenuButtonConfig.ButtonRef> = emptyList()
 
-        var items: List<ReadMenuButtonConfig.ButtonRef> = emptyList()
+        var items: List<ReadMenuButtonConfig.ButtonRef>
             get() = itemList
             set(value) {
                 itemList = value

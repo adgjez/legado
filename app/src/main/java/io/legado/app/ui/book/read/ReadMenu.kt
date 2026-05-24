@@ -329,7 +329,7 @@ class ReadMenu @JvmOverloads constructor(
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         val pagesContainer = LinearLayout(context).apply {
-            layoutParams = HorizontalScrollView.LayoutParams(
+            layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -341,7 +341,7 @@ class ReadMenu @JvmOverloads constructor(
                     rowContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                baselineAligned = false
+                isBaselineAligned = false
                 orientation = LinearLayout.HORIZONTAL
             }
             repeat(MENU_BUTTONS_PER_PAGE) { index ->
