@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogContentSelectMenuConfigBinding
 import io.legado.app.lib.theme.primaryColor
@@ -85,7 +86,7 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
         }
         requireContext().putPrefStringSet(PreferKey.contentSelectActions, selected)
         requireContext().putPrefString(PreferKey.contentSelectDefaultOpen, defaultOpen)
-        postEvent("contentSelectMenuConfigChanged", true)
+        postEvent(EventBus.CONTENT_SELECT_MENU_CONFIG_CHANGED, true)
         dismissAllowingStateLoss()
     }
 }

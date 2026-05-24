@@ -33,6 +33,7 @@ object EventBus {
     const val SEARCH_RESULT = "searchResult"
     const val UPDATE_READ_ACTION_BAR = "updateReadActionBar"
     const val READ_MENU_BUTTON_CHANGED = "readMenuButtonChanged"
+    const val CONTENT_SELECT_MENU_CONFIG_CHANGED = "contentSelectMenuConfigChanged"
     const val UP_SEEK_BAR = "upSeekBar"
     const val READ_ALOUD_PLAY = "readAloudPlay"
     const val EXPORT_BOOK = "exportBook"
