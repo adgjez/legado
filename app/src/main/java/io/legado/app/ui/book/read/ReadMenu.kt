@@ -392,21 +392,24 @@ class ReadMenu @JvmOverloads constructor(
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     val releaseX = event.x
                     val isCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
-                    scrollView.post {
-                        val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@post
+                    scrollView.postDelayed({
+                        val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@postDelayed
                         val lastPage = (pagesContainer.childCount - 1).coerceAtLeast(0)
                         val startPage = ((downScrollX + pageWidth / 2) / pageWidth)
                             .coerceIn(0, lastPage)
                         val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
                         val dragDistance = downX - releaseX
+                        val scrollDistance = scrollView.scrollX - startPage * pageWidth
                         val targetPage = when {
-                            isCancel -> startPage
+                            isCancel -> ((scrollView.scrollX + pageWidth / 2) / pageWidth)
                             dragDistance > threshold -> startPage + 1
                             dragDistance < -threshold -> startPage - 1
+                            scrollDistance > threshold -> startPage + 1
+                            scrollDistance < -threshold -> startPage - 1
                             else -> startPage
                         }.coerceIn(0, lastPage)
                         scrollView.smoothScrollTo(targetPage * pageWidth, 0)
-                    }
+                    }, MENU_PAGE_SNAP_DELAY_MS)
                 }
             }
             false
@@ -1101,7 +1104,8 @@ class ReadMenu @JvmOverloads constructor(
 
     private companion object {
         const val MENU_BUTTONS_PER_PAGE = 4
-        const val MENU_PAGE_SWITCH_THRESHOLD = 0.05f
+        const val MENU_PAGE_SWITCH_THRESHOLD = 0.04f
+        const val MENU_PAGE_SNAP_DELAY_MS = 48L
     }
 
 }
