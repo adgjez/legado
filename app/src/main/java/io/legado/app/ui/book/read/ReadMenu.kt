@@ -32,6 +32,7 @@ import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.databinding.ViewReadMenuBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -123,6 +124,7 @@ class ReadMenu @JvmOverloads constructor(
     private var cloudState: LibraryCloudState = LibraryCloudState.DISABLED
     private var autoPageActive: Boolean = false
     private val renderedButtons = hashMapOf<String, RenderedButton>()
+    private var customButtonMetadata: Map<Long, ReadMenuCustomButton> = emptyMap()
 
     private data class RenderedButton(
         val ref: ReadMenuButtonConfig.ButtonRef,
@@ -303,6 +305,11 @@ class ReadMenu @JvmOverloads constructor(
         secondaryTextColor: Int
     ) = binding.run {
         val layout = ReadMenuButtonConfig.load(context)
+        customButtonMetadata = if ((layout.firstRow + layout.secondRow).any { it.type == ReadMenuButtonConfig.TYPE_CUSTOM }) {
+            appDb.readMenuCustomButtonDao.all().associateBy { it.id }
+        } else {
+            emptyMap()
+        }
         renderedButtons.clear()
         val hasFirstRow = layout.firstRow.isNotEmpty()
         val hasSecondRow = layout.secondRow.isNotEmpty()
@@ -512,7 +519,7 @@ class ReadMenu @JvmOverloads constructor(
         return when (ref.type) {
             ReadMenuButtonConfig.TYPE_CUSTOM -> {
                 ref.id.toLongOrNull()
-                    ?.let { appDb.readMenuCustomButtonDao.get(it)?.displayName() }
+                    ?.let { customButtonMetadata[it]?.displayName() }
                     ?: ref.id
             }
             else -> when (ref.id) {
@@ -558,7 +565,7 @@ class ReadMenu @JvmOverloads constructor(
         color: Int
     ) {
         val customIconPath = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
-            ref.id.toLongOrNull()?.let { appDb.readMenuCustomButtonDao.get(it)?.iconPath }
+            ref.id.toLongOrNull()?.let { customButtonMetadata[it]?.iconPath }
         } else {
             null
         }
