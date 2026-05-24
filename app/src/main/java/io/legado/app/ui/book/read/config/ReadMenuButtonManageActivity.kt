@@ -22,7 +22,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.databinding.ActivityThemeManageBinding
+import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.ItemThemePackageBinding
+import io.legado.app.help.http.newCallResponseBody
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -38,7 +41,12 @@ import io.legado.app.ui.book.read.ReadMenuButtonIconHelper
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.readText
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +88,38 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 toastOnUi(it.localizedMessage ?: getString(R.string.navigation_icon_decode_failed))
             }
             pendingIconRequest = null
+        }
+    }
+
+    private val importCustomButton = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let { uri ->
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    parseImportedButtons(uri.readText(this@ReadMenuButtonManageActivity))
+                }.onSuccess { buttons ->
+                    importButtons(buttons)
+                }.onFailure {
+                    toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format))
+                }
+            }
+        }
+    }
+
+    private val exportCustomButton = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let { uri ->
+            val url = uri.toString()
+            if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+                alert(R.string.upload_url) {
+                    setMessage(url)
+                    positiveButton(R.string.copy_text) {
+                        sendToClip(url)
+                        toastOnUi(R.string.copy_complete)
+                    }
+                    negativeButton(R.string.cancel)
+                }
+            } else {
+                toastOnUi(R.string.export_success)
+            }
         }
     }
 
@@ -203,7 +243,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val candidates = buildList {
             builtinCandidates()
                 .filterNot { it.id in usedIds }
-                .forEach { add(AddCandidate(buttonTitle(it), it)) }
+                .forEach { add(AddCandidate(buttonTitle(it), AddAction.AddRef(it))) }
             val usedCustomIds = (layout.firstRow + layout.secondRow)
                 .filter { it.type == ReadMenuButtonConfig.TYPE_CUSTOM }
                 .mapNotNull { it.id.toLongOrNull() }
@@ -214,11 +254,14 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     add(
                         AddCandidate(
                             "${getString(R.string.read_menu_existing_custom_button)}：${button.displayName()}",
-                            ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, button.id.toString())
+                            AddAction.AddRef(
+                                ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, button.id.toString())
+                            )
                         )
                     )
                 }
-            add(AddCandidate(getString(R.string.read_menu_create_custom_button), null))
+            add(AddCandidate(getString(R.string.read_menu_create_custom_button), AddAction.CreateCustom))
+            add(AddCandidate(getString(R.string.import_str), AddAction.ImportCustom))
         }
         if (candidates.isEmpty()) {
             toastOnUi(R.string.read_menu_no_available_button)
@@ -228,11 +271,10 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             getString(R.string.read_menu_add_button),
             candidates.map { it.title }
         ) { _, index ->
-            val ref = candidates[index].ref
-            if (ref == null) {
-                openCustomButtonEdit()
-            } else {
-                addButton(ref)
+            when (val action = candidates[index].action) {
+                is AddAction.AddRef -> addButton(action.ref)
+                AddAction.CreateCustom -> openCustomButtonEdit()
+                AddAction.ImportCustom -> showImportButtonActions()
             }
         }
     }
@@ -281,6 +323,118 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         })
     }
 
+    private fun showImportButtonActions() {
+        selector(
+            getString(R.string.import_str),
+            listOf(getString(R.string.import_str), getString(R.string.import_on_line))
+        ) { _, index ->
+            when (index) {
+                0 -> launchImportButtonFile()
+                1 -> showImportButtonUrlDialog()
+            }
+        }
+    }
+
+    private fun launchImportButtonFile() {
+        importCustomButton.launch {
+            mode = HandleFileContract.FILE
+            title = getString(R.string.import_str)
+            allowExtensions = arrayOf("json")
+        }
+    }
+
+    private fun showImportButtonUrlDialog() {
+        alert(R.string.import_on_line) {
+            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "https://..."
+            }
+            customView { dialogBinding.root }
+            okButton {
+                val url = dialogBinding.editView.text?.toString().orEmpty().trim()
+                if (url.isNotEmpty()) importButtonsFromUrl(url)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun importButtonsFromUrl(url: String) {
+        lifecycleScope.launch {
+            kotlin.runCatching {
+                val text = withContext(Dispatchers.IO) {
+                    okHttpClient.newCallResponseBody { url(url) }.use { it.string() }
+                }
+                parseImportedButtons(text)
+            }.onSuccess { buttons ->
+                importButtons(buttons)
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format))
+            }
+        }
+    }
+
+    private fun parseImportedButtons(raw: String): List<ReadMenuCustomButton> {
+        val text = raw.trim()
+        if (text.isBlank()) return emptyList()
+        GSON.fromJsonArray<ReadMenuCustomButton>(text).getOrNull()?.let { return it }
+        GSON.fromJsonObject<ReadMenuCustomButton>(text).getOrNull()?.let { return listOf(it) }
+        return emptyList()
+    }
+
+    private fun importButtons(buttons: List<ReadMenuCustomButton>) {
+        if (buttons.isEmpty()) {
+            toastOnUi(R.string.wrong_format)
+            return
+        }
+        lifecycleScope.launch {
+            val importedIds = withContext(Dispatchers.IO) {
+                var order = (appDb.readMenuCustomButtonDao.maxOrder() ?: 0) + 1
+                buttons.mapNotNull { imported ->
+                    val normalized = imported.copy(
+                        id = 0L,
+                        name = imported.name.trim(),
+                        order = order++,
+                        updateTime = System.currentTimeMillis()
+                    )
+                    if (normalized.name.isBlank() || normalized.script.isBlank()) {
+                        null
+                    } else {
+                        appDb.readMenuCustomButtonDao.insert(normalized)
+                    }
+                }
+            }
+            if (importedIds.isEmpty()) {
+                toastOnUi(R.string.wrong_format)
+                return@launch
+            }
+            load()
+            val row = currentRow().toMutableList()
+            importedIds.forEach { id ->
+                val ref = ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, id.toString())
+                if (row.none { it.type == ref.type && it.id == ref.id }) {
+                    row.add(ref)
+                }
+            }
+            saveCurrentRow(row)
+            toastOnUi(R.string.success)
+        }
+    }
+
+    private fun exportButton(button: ReadMenuCustomButton) {
+        exportCustomButton.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "${sanitizeFileName(button.displayName())}.json",
+                GSON.toJson(button).toByteArray(),
+                "application/json"
+            )
+        }
+    }
+
+    private fun sanitizeFileName(name: String): String {
+        return name.trim().ifBlank { "read_menu_custom_button" }
+            .replace(Regex("""[\\/:*?"<>|]"""), "_")
+    }
+
     private fun deleteButton(ref: ReadMenuButtonConfig.ButtonRef) {
         alert(R.string.delete) {
             setMessage(R.string.del_msg)
@@ -290,6 +444,41 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 saveCurrentRow(row)
             }
             noButton()
+        }
+    }
+
+    private fun deleteCustomButton(ref: ReadMenuButtonConfig.ButtonRef) {
+        val id = ref.id.toLongOrNull() ?: return
+        val button = customButtons[id] ?: return
+        alert(R.string.delete) {
+            setMessage(button.displayName())
+            yesButton {
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        appDb.readMenuCustomButtonDao.delete(button)
+                    }
+                    val first = layout.firstRow.filterNot { it.type == ref.type && it.id == ref.id }
+                    val second = layout.secondRow.filterNot { it.type == ref.type && it.id == ref.id }
+                    saveLayout(ReadMenuButtonConfig.ButtonLayout(first, second))
+                    toastOnUi(R.string.delete_success)
+                }
+            }
+            noButton()
+        }
+    }
+
+    private fun showCustomButtonMenu(ref: ReadMenuButtonConfig.ButtonRef) {
+        val id = ref.id.toLongOrNull() ?: return
+        val button = customButtons[id] ?: return
+        selector(
+            button.displayName(),
+            listOf(getString(R.string.edit), getString(R.string.delete), getString(R.string.export))
+        ) { _, index ->
+            when (index) {
+                0 -> openCustomButtonEdit(id)
+                1 -> deleteCustomButton(ref)
+                2 -> exportButton(button)
+            }
         }
     }
 
@@ -479,9 +668,14 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (rowIndex == 0) R.string.read_menu_move_to_second
                 else R.string.read_menu_move_to_first
             )
-            btnEdit.visibility = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) View.VISIBLE else View.GONE
+            btnEdit.visibility = View.GONE
             btnEdit.text = getString(R.string.edit)
-            btnMore.text = getString(R.string.delete)
+            btnMore.text = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) "\u22EE" else getString(R.string.delete)
+            btnMore.contentDescription = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
+                getString(R.string.more)
+            } else {
+                getString(R.string.delete)
+            }
             listOf(btnApply, btnEdit, btnMore).forEach {
                 it.background = UiCorner.actionSelector(
                     ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
@@ -491,17 +685,27 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 it.typeface = this@ReadMenuButtonManageActivity.uiTypeface()
             }
             btnApply.setOnClickListener { moveToOtherRow(ref) }
-            btnEdit.setOnClickListener {
-                ref.id.toLongOrNull()?.let { openCustomButtonEdit(it) }
+            btnEdit.setOnClickListener(null)
+            btnMore.setOnClickListener {
+                if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
+                    showCustomButtonMenu(ref)
+                } else {
+                    deleteButton(ref)
+                }
             }
-            btnMore.setOnClickListener { deleteButton(ref) }
         }
     }
 
     private data class AddCandidate(
         val title: String,
-        val ref: ReadMenuButtonConfig.ButtonRef?
+        val action: AddAction
     )
+
+    private sealed interface AddAction {
+        data class AddRef(val ref: ReadMenuButtonConfig.ButtonRef) : AddAction
+        data object CreateCustom : AddAction
+        data object ImportCustom : AddAction
+    }
 
     private data class IconRequest(
         val ref: ReadMenuButtonConfig.ButtonRef,
