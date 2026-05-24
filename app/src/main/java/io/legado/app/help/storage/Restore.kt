@@ -276,7 +276,6 @@ object Restore {
             }
         }
         restoreBackgroundAssets(path)
-        restoreReadConfigBackgrounds()
         restoreThemePackages(path)
         restoreNavigationIcons(path)
         restoreTopBarPackages(path)
@@ -319,6 +318,7 @@ object Restore {
         normalizeBackgroundPrefs()
         normalizeStringPrefs()
         refreshWebDavAfterRestore()
+        restoreReadConfigBackgrounds()
         restoreAppliedUiPackages()
         appCtx.getSharedPreferences(path, "videoConfig")?.all?.let { map ->
             appCtx.getSharedPreferences(VIDEO_PREF_NAME, Context.MODE_PRIVATE).edit().apply {
