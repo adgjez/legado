@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -33,6 +34,8 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.databinding.DialogSelectionWebSearchBinding
+import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.http.text
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.theme.UiCorner
@@ -45,7 +48,10 @@ import io.legado.app.utils.gone
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import okhttp3.Request
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.net.URL
 
 class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_selection_web_search) {
 
@@ -62,6 +68,9 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     private var currentQuery: String = ""
     private var behavior: BottomSheetBehavior<View>? = null
     private var clearHistoryOnNextFinish = false
+    private var currentSearchEngine: ContentSelectConfig.SearchEngine? = null
+    private var currentSearchRootHost: String? = null
+    private var webViewUserAgent: String = ""
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -162,6 +171,14 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
                 }
                 super.onReceivedHttpError(view, request, errorResponse)
             }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                return interceptSearchDocument(request)
+                    ?: super.shouldInterceptRequest(view, request)
+            }
         }
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -203,6 +220,7 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
                 textZoom = 100
                 userAgentString = WebSettings.getDefaultUserAgent(requireContext())
             }
+            webViewUserAgent = settings.userAgentString
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 setOnScrollChangeListener { _, _, _, _, _ ->
                     updateSheetDragState()
@@ -374,6 +392,8 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
             ?: ContentSelectConfig.currentSearchEngine(requireContext()).also {
                 currentEngineId = it.id
             }
+        currentSearchEngine = engine
+        currentSearchRootHost = rootHostOf(engine.url)
         clearHistoryOnNextFinish = true
         webView.loadUrl(ContentSelectConfig.buildSearchUrl(engine, query))
     }
@@ -394,9 +414,12 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     }
 
     private fun injectHideCss() {
-        val css = ContentSelectConfig.searchEngines(requireContext())
-            .firstOrNull { it.id == currentEngineId }
+        val css = currentSearchEngine
+            ?.takeIf { it.id == currentEngineId }
             ?.hideCss
+            ?: ContentSelectConfig.searchEngines(requireContext())
+                .firstOrNull { it.id == currentEngineId }
+                ?.hideCss
             ?.takeIf { it.isNotBlank() }
             ?: return
         val js = """
@@ -421,6 +444,120 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
         }
     }
 
+    private fun interceptSearchDocument(request: WebResourceRequest?): WebResourceResponse? {
+        request ?: return null
+        if (!request.isForMainFrame) return null
+        if (!request.method.equals("GET", ignoreCase = true)) return null
+        val engine = currentSearchEngine ?: return null
+        val css = engine.hideCss?.takeIf { it.isNotBlank() } ?: return null
+        val url = request.url?.toString().orEmpty()
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
+            return null
+        }
+        if (!matchesCurrentSearchHost(url)) {
+            return null
+        }
+        return runCatching {
+            val response = okHttpClient.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+                .newCall(buildInterceptRequest(url, request))
+                .execute()
+            response.use { res ->
+                if (!res.isSuccessful || res.code == 204 || res.code == 205 || res.code == 304) {
+                    return null
+                }
+                val body = res.body
+                val contentType = body.contentType()
+                val mimeType = contentType?.toString()?.substringBefore(";") ?: "text/html"
+                if (!mimeType.contains("html", ignoreCase = true)) {
+                    return null
+                }
+                val html = body.text()
+                val injectedHtml = injectCssIntoHtml(html, css)
+                val bytes = injectedHtml.toByteArray(contentType?.charset() ?: Charsets.UTF_8)
+                val headers = res.headers.toMultimap()
+                    .mapValues { it.value.joinToString(",") }
+                    .toMutableMap()
+                    .apply {
+                        remove("content-length")
+                        remove("Content-Length")
+                        remove("content-encoding")
+                        remove("Content-Encoding")
+                    }
+                WebResourceResponse(
+                    mimeType,
+                    contentType?.charset()?.name() ?: "UTF-8",
+                    res.code,
+                    res.message.ifBlank { "OK" },
+                    headers,
+                    ByteArrayInputStream(bytes)
+                )
+            }
+        }.onFailure {
+            AppLog.putDebug("Selection web search intercept failed url=$url error=${it.localizedMessage}")
+        }.getOrNull()
+    }
+
+    private fun buildInterceptRequest(url: String, request: WebResourceRequest): Request {
+        return Request.Builder()
+            .url(url)
+            .apply {
+                request.requestHeaders.forEach { (key, value) ->
+                    if (!key.equals("accept-encoding", true) &&
+                        !key.equals("content-length", true) &&
+                        value.isNotBlank()
+                    ) {
+                        header(key, value)
+                    }
+                }
+                CookieManager.getInstance().getCookie(url)
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { header("Cookie", it) }
+                header("Accept-Encoding", "identity")
+                webViewUserAgent.takeIf { it.isNotBlank() }
+                    ?.let { header("User-Agent", it) }
+            }
+            .get()
+            .build()
+    }
+
+    private fun injectCssIntoHtml(html: String, css: String): String {
+        val style = """<style id="legado-selection-search-hide-css">${css.forHtmlStyle()}</style>"""
+        val headOpen = Regex("<head(\\s[^>]*)?>", RegexOption.IGNORE_CASE)
+        headOpen.find(html)?.let { match ->
+            return html.replaceRange(match.range, "${match.value}$style")
+        }
+        val htmlOpen = Regex("<html(\\s[^>]*)?>", RegexOption.IGNORE_CASE)
+        htmlOpen.find(html)?.let { match ->
+            return html.replaceRange(match.range, "${match.value}<head>$style</head>")
+        }
+        return "$style$html"
+    }
+
+    private fun String.forHtmlStyle(): String {
+        return replace(Regex("</style", RegexOption.IGNORE_CASE), "<\\/style")
+    }
+
+    private fun matchesCurrentSearchHost(url: String): Boolean {
+        val expectedRoot = currentSearchRootHost ?: return false
+        val actualRoot = rootHostOf(url) ?: return false
+        return actualRoot == expectedRoot
+    }
+
+    private fun rootHostOf(url: String): String? {
+        return runCatching {
+            val host = URL(url).host.lowercase().trim('.')
+            val parts = host.split('.').filter { it.isNotBlank() }
+            if (parts.size >= 2) {
+                "${parts[parts.size - 2]}.${parts.last()}"
+            } else {
+                host
+            }
+        }.getOrNull()
+    }
+
     private fun handleBack() {
         if (!::webView.isInitialized || !webView.canGoBack()) {
             dismissAllowingStateLoss()
@@ -443,6 +580,8 @@ class SelectionWebSearchDialog() : BottomSheetDialogFragment(R.layout.dialog_sel
     override fun onDestroyView() {
         behavior = null
         clearHistoryOnNextFinish = false
+        currentSearchEngine = null
+        currentSearchRootHost = null
         webView.setOnTouchListener(null)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             webView.setOnScrollChangeListener(null)
