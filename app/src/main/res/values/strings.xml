@@ -1355,7 +1355,79 @@
     <string name="read_menu_existing_custom_button">Existing custom</string>
     <string name="read_menu_button_script">Button JS</string>
     <string name="read_menu_custom_button_save_invalid">Name and button JS cannot be empty</string>
-    <string name="read_menu_custom_button_help">Custom buttons can read book, chapter, content, source, baseUrl, result, java, cache and cookie directly. They should not modify chapter content.</string>
+    <string name="read_menu_custom_button_help"><![CDATA[自定义按键说明
+
+触发方式：
+1. 短按按键：执行「按钮 JS」里的 function run()。
+2. 长按按键：打开登录入口。登录 UI 使用 loginUi；点击登录按钮后执行 loginUrl 里的 function login()。
+3. 如果 loginUi 为空，但 loginUrl 中定义了 function login()，长按时仍可直接执行登录逻辑。
+
+短按 run() 可直接使用：
+- book：当前书籍。常用字段：book.name、book.author、book.bookUrl、book.origin、book.originName、book.kind、book.customTag、book.coverUrl、book.intro、book.latestChapterTitle、book.totalChapterNum、book.durChapterIndex。
+- chapter：当前章节。常用字段：chapter.title、chapter.index、chapter.url、chapter.baseUrl、chapter.bookUrl、chapter.tag、chapter.wordCount、chapter.variable。
+- content / src / result：当前章节正文，三者内容相同。
+- title：当前章节标题，等同于 chapter.title。
+- baseUrl：当前章节请求地址，优先使用章节绝对地址。
+- bookSource / readSource：当前正在阅读的书源对象，可能为空。
+- button：当前自定义按键对象。常用字段：button.id、button.name、button.loginUrl、button.loginUi、button.jsLib、button.timeoutMillisecond。
+- source：当前按键源对象。常用方法：source.getKey()、source.getTag()、source.get(key)、source.put(key,value)、source.getVariable()、source.putVariable(value)、source.login()。
+- java：阅读页辅助对象。常用方法：java.copyText(text)、java.showBrowser(url, html)、java.refreshBookInfo()、java.refreshBookToc()、java.refreshContent()。
+- cache / cookie：缓存与 Cookie 工具。
+
+长按登录可直接使用：
+- book：当前书籍。
+- chapter：当前章节。
+- result：登录表单数据 Map，例如 result.bookName。
+- isLongClick：是否长按触发。
+- source / java / cache / cookie：同上。
+
+短按测试例程，填入「按钮 JS」：
+function run() {
+    var info = {
+        bookName: book ? book.name : "",
+        author: book ? book.author : "",
+        bookUrl: book ? book.bookUrl : "",
+        originName: book ? book.originName : "",
+        chapterTitle: chapter ? chapter.title : title,
+        chapterIndex: chapter ? chapter.index : -1,
+        chapterUrl: chapter ? chapter.url : "",
+        baseUrl: baseUrl,
+        buttonId: button ? button.id : "",
+        buttonName: button ? button.name : "",
+        sourceKey: source.getKey(),
+        sourceTag: source.getTag(),
+        textLength: (content || "").length
+    };
+    var text = JSON.stringify(info, null, 2);
+    java.copyText(text);
+    java.showBrowser(baseUrl || "about:blank", "<pre style='white-space:pre-wrap'>" + text + "</pre>");
+    return text;
+}
+
+长按登录测试：
+1. loginUi 填入：
+@js:
+JSON.stringify([
+    {name:"bookName", type:"text", viewName:"书名", default:book ? book.name : ""},
+    {name:"chapterTitle", type:"text", viewName:"章节名", default:chapter ? chapter.title : ""},
+    {name:"copyInfo", type:"button", viewName:"复制当前登录信息", action:"java.copyText(JSON.stringify({bookName:book?book.name:'', chapterTitle:chapter?chapter.title:'', form:result, isLongClick:isLongClick}, null, 2))"}
+])
+
+2. loginUrl 填入：
+function login() {
+    var info = {
+        bookName: book ? book.name : "",
+        chapterTitle: chapter ? chapter.title : "",
+        form: result,
+        isLongClick: isLongClick
+    };
+    var text = JSON.stringify(info, null, 2);
+    source.put("lastLoginTest", text);
+    java.copyText(text);
+    return true;
+}
+
+注意：自定义按键用于读取和辅助操作，不建议直接修改正文内容。]]></string>
     <string name="read_menu_custom_button_missing">Custom button does not exist</string>
     <string name="read_menu_no_current_chapter">No current chapter</string>
     <string name="read_menu_move_to_first">Move to first</string>
