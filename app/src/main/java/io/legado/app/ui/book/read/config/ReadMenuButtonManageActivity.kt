@@ -249,14 +249,12 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 .mapNotNull { it.id.toLongOrNull() }
                 .toSet()
             customButtons.values
-                .filterNot { it.id in usedCustomIds }
                 .forEach { button ->
+                    val usedMark = if (button.id in usedCustomIds) " (${getString(R.string.theme_source_using)})" else ""
                     add(
                         AddCandidate(
-                            "${getString(R.string.read_menu_existing_custom_button)}：${button.displayName()}",
-                            AddAction.AddRef(
-                                ReadMenuButtonConfig.ButtonRef(ReadMenuButtonConfig.TYPE_CUSTOM, button.id.toString())
-                            )
+                            "${getString(R.string.read_menu_existing_custom_button)}：${button.displayName()}$usedMark  \u22EE",
+                            AddAction.ExistingCustom(button)
                         )
                     )
                 }
@@ -273,10 +271,18 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         ) { _, index ->
             when (val action = candidates[index].action) {
                 is AddAction.AddRef -> addButton(action.ref)
+                is AddAction.ExistingCustom -> showExistingCustomButtonActions(action.button)
                 AddAction.CreateCustom -> openCustomButtonEdit()
                 AddAction.ImportCustom -> showImportButtonActions()
             }
         }
+    }
+
+    private fun customButtonRef(button: ReadMenuCustomButton): ReadMenuButtonConfig.ButtonRef {
+        return ReadMenuButtonConfig.ButtonRef(
+            ReadMenuButtonConfig.TYPE_CUSTOM,
+            button.id.toString()
+        )
     }
 
     private fun addButton(ref: ReadMenuButtonConfig.ButtonRef) {
@@ -447,9 +453,8 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
-    private fun deleteCustomButton(ref: ReadMenuButtonConfig.ButtonRef) {
-        val id = ref.id.toLongOrNull() ?: return
-        val button = customButtons[id] ?: return
+    private fun deleteCustomButton(button: ReadMenuCustomButton) {
+        val ref = customButtonRef(button)
         alert(R.string.delete) {
             setMessage(button.displayName())
             yesButton {
@@ -467,18 +472,24 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
-    private fun showCustomButtonMenu(ref: ReadMenuButtonConfig.ButtonRef) {
-        val id = ref.id.toLongOrNull() ?: return
-        val button = customButtons[id] ?: return
+    private fun showExistingCustomButtonActions(button: ReadMenuCustomButton) {
+        val ref = customButtonRef(button)
+        val alreadyAdded = (layout.firstRow + layout.secondRow).any {
+            it.type == ref.type && it.id == ref.id
+        }
+        val actions = buildList<Pair<String, () -> Unit>> {
+            if (!alreadyAdded) {
+                add(getString(R.string.add) to { addButton(ref) })
+            }
+            add(getString(R.string.edit) to { openCustomButtonEdit(button.id) })
+            add(getString(R.string.delete) to { deleteCustomButton(button) })
+            add(getString(R.string.export) to { exportButton(button) })
+        }
         selector(
             button.displayName(),
-            listOf(getString(R.string.edit), getString(R.string.delete), getString(R.string.export))
+            actions.map { it.first }
         ) { _, index ->
-            when (index) {
-                0 -> openCustomButtonEdit(id)
-                1 -> deleteCustomButton(ref)
-                2 -> exportButton(button)
-            }
+            actions[index].second.invoke()
         }
     }
 
@@ -668,14 +679,14 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (rowIndex == 0) R.string.read_menu_move_to_second
                 else R.string.read_menu_move_to_first
             )
-            btnEdit.visibility = View.GONE
-            btnEdit.text = getString(R.string.edit)
-            btnMore.text = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) "\u22EE" else getString(R.string.delete)
-            btnMore.contentDescription = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
-                getString(R.string.more)
+            btnEdit.visibility = if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
+                View.VISIBLE
             } else {
-                getString(R.string.delete)
+                View.GONE
             }
+            btnEdit.text = getString(R.string.edit)
+            btnMore.text = getString(R.string.delete)
+            btnMore.contentDescription = getString(R.string.delete)
             listOf(btnApply, btnEdit, btnMore).forEach {
                 it.background = UiCorner.actionSelector(
                     ContextCompat.getColor(this@ReadMenuButtonManageActivity, R.color.background_menu),
@@ -685,14 +696,10 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 it.typeface = this@ReadMenuButtonManageActivity.uiTypeface()
             }
             btnApply.setOnClickListener { moveToOtherRow(ref) }
-            btnEdit.setOnClickListener(null)
-            btnMore.setOnClickListener {
-                if (ref.type == ReadMenuButtonConfig.TYPE_CUSTOM) {
-                    showCustomButtonMenu(ref)
-                } else {
-                    deleteButton(ref)
-                }
+            btnEdit.setOnClickListener {
+                ref.id.toLongOrNull()?.let { openCustomButtonEdit(it) }
             }
+            btnMore.setOnClickListener { deleteButton(ref) }
         }
     }
 
@@ -703,6 +710,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private sealed interface AddAction {
         data class AddRef(val ref: ReadMenuButtonConfig.ButtonRef) : AddAction
+        data class ExistingCustom(val button: ReadMenuCustomButton) : AddAction
         data object CreateCustom : AddAction
         data object ImportCustom : AddAction
     }
