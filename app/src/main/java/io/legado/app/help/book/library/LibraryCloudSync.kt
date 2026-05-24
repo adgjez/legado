@@ -164,14 +164,14 @@ object LibraryCloudSync {
             content = content,
             updatedAt = now
         )
-        val sharedState = readCurrentState(backend, config, book, chapter, sharedCurrentPath)
+        val sharedState = readCurrentState(backend, config, book, chapter, sharedCurrentPath, contentHash)
         if (sharedState == CurrentState.MATCHED) {
             return
         }
-        val targetPath = if (sharedState == CurrentState.MISSING) {
+        val targetPath = if (sharedState == CurrentState.MISSING || sharedState == CurrentState.CONTENT_CHANGED) {
             sharedCurrentPath
         } else {
-            val exactState = readCurrentState(backend, config, book, chapter, exactCurrentPath)
+            val exactState = readCurrentState(backend, config, book, chapter, exactCurrentPath, contentHash)
             if (exactState == CurrentState.MATCHED) return
             exactCurrentPath
         }
@@ -218,7 +218,8 @@ object LibraryCloudSync {
         config: LibraryContainerConfig,
         book: Book,
         chapter: BookChapter,
-        path: String
+        path: String,
+        contentHash: String
     ): CurrentState {
         val bytes = backend.downloadOrNull(path) ?: return CurrentState.MISSING
         val payload = runCatching {
@@ -228,7 +229,11 @@ object LibraryCloudSync {
             AppLog.put("读取书库current章节失败 $path\n${it.localizedMessage}", it)
         }.getOrNull() ?: return CurrentState.CONFLICT
         return if (LibraryCloudKeys.payloadMatches(book, chapter, payload)) {
-            CurrentState.MATCHED
+            if (payload.contentHash == contentHash) {
+                CurrentState.MATCHED
+            } else {
+                CurrentState.CONTENT_CHANGED
+            }
         } else {
             CurrentState.CONFLICT
         }
@@ -238,6 +243,7 @@ object LibraryCloudSync {
 
     private enum class CurrentState {
         MISSING,
+        CONTENT_CHANGED,
         MATCHED,
         CONFLICT
     }
