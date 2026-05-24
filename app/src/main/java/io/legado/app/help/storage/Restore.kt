@@ -732,6 +732,8 @@ object Restore {
             PreferKey.mangaColorFilter,
             PreferKey.contentSelectMenuConfig,
             PreferKey.contentSelectDefaultOpen,
+            PreferKey.contentSelectSearchEngines,
+            PreferKey.contentSelectSearchEngineId,
             PreferKey.advancedTitleConfig,
             PreferKey.advancedTitleLottieJson,
             PreferKey.advancedTitleLottiePath,
