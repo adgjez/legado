@@ -4147,6 +4147,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Boolean>(EventBus.UPDATE_READ_ACTION_BAR) {
             readMenu.reset()
         }
+        observeEvent<Boolean>(EventBus.READ_MENU_BUTTON_CHANGED) {
+            readMenu.reset()
+        }
         observeEvent<Boolean>(EventBus.UP_SEEK_BAR) {
             readMenu.upSeekBar()
         }

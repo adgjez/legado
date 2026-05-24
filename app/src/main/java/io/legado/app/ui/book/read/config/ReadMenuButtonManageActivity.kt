@@ -17,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.databinding.ActivityThemeManageBinding
@@ -34,6 +35,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -152,13 +154,19 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             layout.copy(secondRow = row)
         }
         ReadMenuButtonConfig.save(this, layout)
+        notifyReadMenuChanged()
         adapter.items = currentRow()
     }
 
     private fun saveLayout(newLayout: ReadMenuButtonConfig.ButtonLayout) {
         layout = newLayout
         ReadMenuButtonConfig.save(this, layout)
+        notifyReadMenuChanged()
         adapter.items = currentRow()
+    }
+
+    private fun notifyReadMenuChanged() {
+        postEvent(EventBus.READ_MENU_BUTTON_CHANGED, true)
     }
 
     private fun showAddButtonDialog() {

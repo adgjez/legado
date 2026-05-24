@@ -90,11 +90,7 @@ object ReadMenuButtonConfig {
     private fun sanitize(layout: ButtonLayout): ButtonLayout {
         val first = sanitizeRow(layout.firstRow)
         val second = sanitizeRow(layout.secondRow)
-        return if (first.isEmpty() && second.isEmpty()) {
-            defaultLayout()
-        } else {
-            ButtonLayout(first, second)
-        }
+        return ButtonLayout(first, second)
     }
 
     private fun sanitizeRow(row: List<ButtonRef>): List<ButtonRef> {
