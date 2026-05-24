@@ -78,6 +78,18 @@ object ContentSelectConfig {
         }
     """.trimIndent()
 
+    private val defaultBaiduBaikeHideCss = """
+        header,
+        .navbar-wrapper,
+        .lemmaWgt-searchHeader,
+        .search-box,
+        .header-wrapper,
+        .baike-header,
+        .wgt-searchbar {
+            display: none !important;
+        }
+    """.trimIndent()
+
     private val defaultGoogleHideCss = """
         header,
         #searchform,
@@ -90,7 +102,15 @@ object ContentSelectConfig {
         }
     """.trimIndent()
 
+    private val legacyDefaultSearchEngineIds = listOf("bing", "baidu", "google")
+
     val defaultSearchEngines = listOf(
+        SearchEngine(
+            "baidu_baike",
+            "百度百科",
+            "https://baike.baidu.com/item/{queryPath}",
+            defaultBaiduBaikeHideCss
+        ),
         SearchEngine("bing", "Bing", "https://www.bing.com/search?q={query}", defaultBingHideCss),
         SearchEngine("baidu", "Baidu", "https://www.baidu.com/s?wd={query}", defaultBaiduHideCss),
         SearchEngine("google", "Google", "https://www.google.com/search?q={query}", defaultGoogleHideCss)
@@ -111,7 +131,12 @@ object ContentSelectConfig {
                 GSON.fromJson(it, Array<SearchEngine>::class.java).toList()
             }.getOrNull()
         }
-        return sanitizeSearchEngines(parsed.orEmpty()).ifEmpty { defaultSearchEngines }
+        val sanitized = sanitizeSearchEngines(parsed.orEmpty())
+        if (isLegacyDefaultSearchEngines(sanitized)) {
+            saveDefaultSearchEngines(context)
+            return defaultSearchEngines
+        }
+        return sanitized.ifEmpty { defaultSearchEngines }
     }
 
     fun saveSearchEngines(context: Context, engines: List<SearchEngine>) {
@@ -124,7 +149,7 @@ object ContentSelectConfig {
     }
 
     fun resetSearchEngines(context: Context) {
-        saveSearchEngines(context, defaultSearchEngines)
+        saveDefaultSearchEngines(context)
     }
 
     fun currentSearchEngine(context: Context): SearchEngine {
@@ -141,7 +166,11 @@ object ContentSelectConfig {
 
     fun buildSearchUrl(engine: SearchEngine, query: String): String {
         val encoded = URLEncoder.encode(query, "UTF-8")
+        val pathEncoded = encoded.replace("+", "%20")
         val template = engine.url.trim()
+        if (template.contains("{queryPath}")) {
+            return template.replace("{queryPath}", pathEncoded)
+        }
         if (template.contains("{query}")) {
             return template.replace("{query}", encoded)
         }
@@ -151,6 +180,15 @@ object ContentSelectConfig {
             else -> "?"
         }
         return "$template${separator}q=$encoded"
+    }
+
+    private fun saveDefaultSearchEngines(context: Context) {
+        context.putPrefString(PreferKey.contentSelectSearchEngines, GSON.toJson(defaultSearchEngines))
+        context.putPrefString(PreferKey.contentSelectSearchEngineId, defaultSearchEngines.first().id)
+    }
+
+    private fun isLegacyDefaultSearchEngines(engines: List<SearchEngine>): Boolean {
+        return engines.map { it.id } == legacyDefaultSearchEngineIds
     }
 
     private fun sanitizeSearchEngines(engines: List<SearchEngine>): List<SearchEngine> {
