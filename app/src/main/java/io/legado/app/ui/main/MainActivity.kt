@@ -60,6 +60,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
@@ -101,6 +102,7 @@ import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.utils.ColorUtils as AppColorUtils
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -309,6 +311,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    override fun upBackgroundImage() {
+        super.upBackgroundImage()
+        binding.root.post {
+            syncLiquidGlassSampleBackground()
+            scheduleLiquidGlassSetup(delayMillis = 32L)
+        }
+    }
+
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         return handleNavigationItemSelected(item, closeSidebar = true)
     }
@@ -398,6 +408,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             true
         }
+        syncLiquidGlassSampleBackground()
         scheduleLiquidGlassSetup()
         contentContainer.doOnPreDraw {
             liquidGlassReady = true
@@ -450,6 +461,25 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         } else {
             binding.bottomControls.post(liquidGlassSetupRunnable)
         }
+    }
+
+    private fun syncLiquidGlassSampleBackground() = binding.run {
+        val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
+            runCatching {
+                ThemeConfig.getBgImage(this@MainActivity, windowManager.windowSize)
+            }.getOrNull()
+        } else {
+            null
+        }
+        if (wallpaper != null) {
+            liquidGlassSampleBackground.background = wallpaper
+        } else {
+            liquidGlassSampleBackground.setBackgroundColor(
+                ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
+            )
+        }
+        liquidGlassSampleBackground.invalidate()
+        contentContainer.invalidate()
     }
 
     private fun refreshBottomNavigationConfig() {

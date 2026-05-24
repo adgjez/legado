@@ -499,6 +499,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             kotlin.runCatching { withContext(Dispatchers.IO) { block() } }
                 .onSuccess {
                     toastOnUi(R.string.success)
+                    adapter.refreshActiveDirName()
                     if (refreshReading) notifyBubbleChanged()
                 }
                 .onFailure { toastOnUi(it.localizedMessage) }
@@ -525,10 +526,15 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
 
     private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {
 
+        private var activeDirName: String = BubblePackageManager.activeDirName()
+
         var items: List<BubblePackageManager.Entry> = emptyList()
             set(value) {
                 val old = field
+                val oldActiveDirName = activeDirName
+                val newActiveDirName = BubblePackageManager.activeDirName()
                 field = value
+                activeDirName = newActiveDirName
                 DiffUtil.calculateDiff(object : DiffUtil.Callback() {
                     override fun getOldListSize() = old.size
                     override fun getNewListSize() = value.size
@@ -536,10 +542,24 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                         return old[oldItemPosition].dirName == value[newItemPosition].dirName
                     }
                     override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                        return old[oldItemPosition] == value[newItemPosition]
+                        val oldEntry = old[oldItemPosition]
+                        val newEntry = value[newItemPosition]
+                        return oldEntry == newEntry &&
+                            (oldEntry.dirName == oldActiveDirName) == (newEntry.dirName == newActiveDirName)
                     }
                 }).dispatchUpdatesTo(this)
             }
+
+        fun refreshActiveDirName() {
+            val oldActiveDirName = activeDirName
+            val newActiveDirName = BubblePackageManager.activeDirName()
+            if (oldActiveDirName == newActiveDirName) return
+            activeDirName = newActiveDirName
+            val oldIndex = items.indexOfFirst { it.dirName == oldActiveDirName }
+            val newIndex = items.indexOfFirst { it.dirName == newActiveDirName }
+            if (oldIndex >= 0) notifyItemChanged(oldIndex)
+            if (newIndex >= 0 && newIndex != oldIndex) notifyItemChanged(newIndex)
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
             return Holder(ItemThemePackageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
@@ -553,7 +573,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
 
         inner class Holder(private val itemBinding: ItemThemePackageBinding) : RecyclerView.ViewHolder(itemBinding.root) {
             fun bind(entry: BubblePackageManager.Entry) = itemBinding.run {
-                val active = BubblePackageManager.activeDirName() == entry.dirName
+                val active = activeDirName == entry.dirName
                 root.background = UiCorner.panelRounded(
                     this@BubbleManageActivity,
                     ContextCompat.getColor(this@BubbleManageActivity, R.color.background_card),

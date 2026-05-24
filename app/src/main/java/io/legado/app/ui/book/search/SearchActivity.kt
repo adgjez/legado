@@ -177,13 +177,13 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         val strokeColor = TopBarSearchStyle.strokeColor(this)
         TopBarSearchStyle.apply(binding.searchView)
-        binding.llBookshelfHintCard.background = UiCorner.roundedStroke(
+        binding.llBookshelfHintCard.background = UiCorner.opaqueRoundedStroke(
             cardColor,
             UiCorner.searchRadius(20f),
             1.dpToPx(),
             strokeColor
         )
-        binding.llHistoryCard.background = UiCorner.roundedStroke(
+        binding.llHistoryCard.background = UiCorner.opaqueRoundedStroke(
             cardColor,
             UiCorner.searchRadius(20f),
             1.dpToPx(),

@@ -1,6 +1,7 @@
 <resources>
     <!--App-->
     <string name="app_name">阅读Archive</string>
+    <string name="app_launcher_name">阅读</string>
     <string name="app_name_a">阅读Archive·A</string>
     <string name="app_name_s">阅读ArchivePlus</string>
     <string name="receiving_shared_label">阅读Archive·搜索</string>
