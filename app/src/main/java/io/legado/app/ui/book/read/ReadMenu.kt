@@ -21,7 +21,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.SeekBar
-import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.view.isGone
@@ -319,6 +318,16 @@ class ReadMenu @JvmOverloads constructor(
         rowContainer.removeAllViews()
         rowContainer.isVisible = refs.isNotEmpty()
         if (refs.isEmpty()) return
+        if (refs.size <= MENU_BUTTONS_PER_PAGE) {
+            val page = createButtonPage(refs, primaryTextColor, secondaryTextColor).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            }
+            rowContainer.addView(page)
+            return
+        }
         val scrollView = HorizontalScrollView(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -336,27 +345,7 @@ class ReadMenu @JvmOverloads constructor(
             orientation = LinearLayout.HORIZONTAL
         }
         refs.chunked(MENU_BUTTONS_PER_PAGE).forEach { pageRefs ->
-            val page = LinearLayout(context).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    rowContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                isBaselineAligned = false
-                orientation = LinearLayout.HORIZONTAL
-            }
-            repeat(MENU_BUTTONS_PER_PAGE) { index ->
-                val child = pageRefs.getOrNull(index)?.let { ref ->
-                    createMenuButton(ref, primaryTextColor, secondaryTextColor)
-                } ?: Space(context).apply {
-                    layoutParams = LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        1f
-                    )
-                }
-                page.addView(child)
-            }
-            pagesContainer.addView(page)
+            pagesContainer.addView(createButtonPage(pageRefs, primaryTextColor, secondaryTextColor))
         }
         scrollView.addView(pagesContainer)
         attachPageSnap(scrollView, rowContainer, pagesContainer)
@@ -371,21 +360,53 @@ class ReadMenu @JvmOverloads constructor(
         }
     }
 
+    private fun createButtonPage(
+        refs: List<ReadMenuButtonConfig.ButtonRef>,
+        primaryTextColor: Int,
+        secondaryTextColor: Int
+    ) = LinearLayout(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        isBaselineAligned = false
+        orientation = LinearLayout.HORIZONTAL
+        refs.forEach { ref ->
+            addView(createMenuButton(ref, primaryTextColor, secondaryTextColor))
+        }
+    }
+
     private fun attachPageSnap(
         scrollView: HorizontalScrollView,
         rowContainer: LinearLayout,
         pagesContainer: LinearLayout
     ) {
+        var downX = 0f
+        var downScrollX = 0
         scrollView.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_UP ||
-                event.actionMasked == MotionEvent.ACTION_CANCEL
-            ) {
-                scrollView.post {
-                    val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@post
-                    val lastPage = (pagesContainer.childCount - 1).coerceAtLeast(0)
-                    val page = ((scrollView.scrollX + pageWidth / 2) / pageWidth)
-                        .coerceIn(0, lastPage)
-                    scrollView.smoothScrollTo(page * pageWidth, 0)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.x
+                    downScrollX = scrollView.scrollX
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val releaseX = event.x
+                    val isCancel = event.actionMasked == MotionEvent.ACTION_CANCEL
+                    scrollView.post {
+                        val pageWidth = rowContainer.width.takeIf { it > 0 } ?: return@post
+                        val lastPage = (pagesContainer.childCount - 1).coerceAtLeast(0)
+                        val startPage = ((downScrollX + pageWidth / 2) / pageWidth)
+                            .coerceIn(0, lastPage)
+                        val threshold = pageWidth * MENU_PAGE_SWITCH_THRESHOLD
+                        val dragDistance = downX - releaseX
+                        val targetPage = when {
+                            isCancel -> startPage
+                            dragDistance > threshold -> startPage + 1
+                            dragDistance < -threshold -> startPage - 1
+                            else -> startPage
+                        }.coerceIn(0, lastPage)
+                        scrollView.smoothScrollTo(targetPage * pageWidth, 0)
+                    }
                 }
             }
             false
@@ -1080,6 +1101,7 @@ class ReadMenu @JvmOverloads constructor(
 
     private companion object {
         const val MENU_BUTTONS_PER_PAGE = 4
+        const val MENU_PAGE_SWITCH_THRESHOLD = 0.05f
     }
 
 }
