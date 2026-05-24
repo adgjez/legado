@@ -276,12 +276,12 @@ object Restore {
             }
         }
         restoreBackgroundAssets(path)
+        restoreReadConfigBackgrounds()
         restoreThemePackages(path)
         restoreNavigationIcons(path)
         restoreTopBarPackages(path)
         restoreCoverCollections(path)
         restoreSourceRuntime(path)
-        //AppCloudStorage.downBgs()
         appCtx.getSharedPreferences(path, "config")?.all?.let { map ->
             val edit = appCtx.defaultSharedPreferences.edit()
 
@@ -490,6 +490,78 @@ object Restore {
                 AppLog.put("恢复背景图片出错 $dirName\n${it.localizedMessage}", it)
             }
         }
+    }
+
+    private suspend fun restoreReadConfigBackgrounds() {
+        val names = linkedSetOf<String>()
+        fun collect(config: ReadBookConfig.Config) {
+            readConfigBgFileName(config.bgType, config.bgStr)?.let(names::add)
+            readConfigBgFileName(config.bgTypeNight, config.bgStrNight)?.let(names::add)
+            readConfigBgFileName(config.bgTypeEInk, config.bgStrEInk)?.let(names::add)
+        }
+        ReadBookConfig.configList.forEach(::collect)
+        collect(ReadBookConfig.shareConfig)
+        if (names.isEmpty()) return
+        val restored = AppCloudStorage.downBgs(names)
+        if (restored.isEmpty()) return
+        var changed = false
+        fun normalize(config: ReadBookConfig.Config) {
+            if (normalizeReadConfigBg(config, restored)) {
+                changed = true
+            }
+        }
+        ReadBookConfig.configList.forEach(::normalize)
+        normalize(ReadBookConfig.shareConfig)
+        if (!changed) return
+        runCatching {
+            FileUtils.delete(ReadBookConfig.configFilePath)
+            FileUtils.createFileIfNotExist(ReadBookConfig.configFilePath)
+                .writeText(GSON.toJson(ReadBookConfig.configList))
+            FileUtils.delete(ReadBookConfig.shareConfigFilePath)
+            FileUtils.createFileIfNotExist(ReadBookConfig.shareConfigFilePath)
+                .writeText(GSON.toJson(ReadBookConfig.shareConfig))
+            ReadBookConfig.initConfigs()
+            ReadBookConfig.initShareConfig()
+        }.onFailure {
+            AppLog.put("恢复正文背景图片配置出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun normalizeReadConfigBg(
+        config: ReadBookConfig.Config,
+        restored: Map<String, File>
+    ): Boolean {
+        var changed = false
+        fun restorePath(bgType: Int, bgStr: String): String? {
+            val fileName = readConfigBgFileName(bgType, bgStr) ?: return null
+            return restored[fileName]?.absolutePath
+        }
+        restorePath(config.bgType, config.bgStr)?.let {
+            if (config.bgStr != it) {
+                config.bgStr = it
+                changed = true
+            }
+        }
+        restorePath(config.bgTypeNight, config.bgStrNight)?.let {
+            if (config.bgStrNight != it) {
+                config.bgStrNight = it
+                changed = true
+            }
+        }
+        restorePath(config.bgTypeEInk, config.bgStrEInk)?.let {
+            if (config.bgStrEInk != it) {
+                config.bgStrEInk = it
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    private fun readConfigBgFileName(bgType: Int, bgStr: String?): String? {
+        if (bgType != 2) return null
+        val value = bgStr?.trim().orEmpty()
+        if (value.isBlank() || value.startsWith("http", ignoreCase = true)) return null
+        return File(value).name.takeIf { it.isNotBlank() }
     }
 
     private fun restoreThemePackages(path: String) {
