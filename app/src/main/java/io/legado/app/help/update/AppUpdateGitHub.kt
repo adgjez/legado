@@ -33,7 +33,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
             "https://api.github.com/repos/Rimchars/legado/releases?per_page=10"
         }
         val res = okHttpClient.newCallResponse {
-            url(lastReleaseUrl)
+            url(AppUpdateConfig.applyGithubProxy(lastReleaseUrl))
         }
         if (!res.isSuccessful) {
             throw NoStackTraceException("获取新版本出错(${res.code})")
@@ -82,7 +82,7 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
                 AppUpdate.UpdateInfo(
                     it.versionName,
                     it.note,
-                    it.downloadUrl,
+                    AppUpdateConfig.applyGithubProxy(it.downloadUrl),
                     it.name
                 )
             }

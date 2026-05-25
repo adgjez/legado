@@ -356,7 +356,10 @@ class BookInfoActivity :
         initDetailTabs()
         initCatalogPager()
         binding.vwBg.doOnLayout { updateDetailContentPanelHeight() }
-        viewModel.bookData.observe(this) { showBook(it) }
+        viewModel.bookData.observe(this) {
+            showBook(it)
+            updateBookCloudEntryMenu()
+        }
         viewModel.chapterListData.observe(this) {
             upLoading(false, it)
             if (detailPage == DetailPage.TOC) {
@@ -1351,7 +1354,7 @@ class BookInfoActivity :
     }
 
     private fun updateBookCloudEntryMenu() {
-        val book = viewModel.getBook() ?: return
+        val book = viewModel.getBook(false) ?: return
         val mode = BookCloudEntryModeStore.get(book.bookUrl)
         menuCloudEntryMode?.title = when (mode) {
             BookCloudEntryMode.CACHE_PACKAGE -> getString(R.string.book_cloud_cache_package_mode)
@@ -1391,17 +1394,15 @@ class BookInfoActivity :
     }
 
     private fun refreshBook() {
+        val book = viewModel.getBook(false) ?: return
         upLoading(true)
-        viewModel.getBook()?.let {
-            viewModel.refreshBook(it)
-        }
+        viewModel.refreshBook(book)
     }
 
     private fun refreshToc() {
+        val book = viewModel.getBook(false) ?: return
         upLoading(true)
-        viewModel.getBook()?.let {
-            viewModel.loadChapter(it, true, isFromBookInfo = true)
-        }
+        viewModel.loadChapter(book, true, isFromBookInfo = true)
     }
 
     private fun upLoadBook(

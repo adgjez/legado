@@ -38,6 +38,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.script.rhino.runScriptWithContext
 import io.legado.app.R
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -613,6 +614,22 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 )
             )
         }
+        val refreshLayout = SwipeRefreshLayout(context).apply {
+            setColorSchemeColors(accentColor)
+            setOnChildScrollUpCallback { _, _ ->
+                scrollView.canScrollVertically(-1)
+            }
+            setOnRefreshListener {
+                refreshDiscoverKindsDialog(itemBinding, source, dialog, this, clearCache = true)
+            }
+            addView(
+                scrollView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
         val dialogContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(dialogWidth, dialogHeight)
@@ -622,7 +639,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             )
             setPadding(8.dpToPx(), 8.dpToPx(), 8.dpToPx(), 10.dpToPx())
             addView(
-                scrollView,
+                refreshLayout,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     0,
@@ -650,17 +667,39 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setDimAmount(0.45f)
         dialog.window?.setLayout(dialogWidth, dialogHeight)
+        refreshDiscoverKindsDialog(itemBinding, source, dialog, refreshLayout, clearCache = false)
+    }
+
+    private fun refreshDiscoverKindsDialog(
+        itemBinding: ItemFindBookBinding,
+        source: BookSource,
+        dialog: AlertDialog?,
+        refreshLayout: SwipeRefreshLayout?,
+        clearCache: Boolean
+    ) {
+        itemBinding.rotateLoading.visible()
         viewLifecycleOwner.lifecycleScope.launch {
-            val kinds = withContext(IO) {
-                source.exploreKinds()
+            val result = runCatching {
+                withContext(IO) {
+                    if (clearCache) {
+                        source.clearExploreKindsCache()
+                    }
+                    source.exploreKinds()
+                }
             }
             if (!isAdded || dialog?.isShowing != true) return@launch
+            refreshLayout?.isRefreshing = false
             itemBinding.rotateLoading.gone()
-            if (kinds.isEmpty()) {
-                context.toastOnUi(R.string.explore_empty)
-                return@launch
+            result.onSuccess { kinds ->
+                if (kinds.isEmpty()) {
+                    context?.toastOnUi(R.string.explore_empty)
+                    return@onSuccess
+                }
+                renderDiscoverDialogKinds(itemBinding, source, kinds, dialog)
+            }.onFailure {
+                AppLog.put("完整发现刷新失败", it)
+                context?.toastOnUi(it.localizedMessage ?: getString(R.string.unknown_error))
             }
-            renderDiscoverDialogKinds(itemBinding, source, kinds, dialog)
         }
     }
 
@@ -692,12 +731,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             callback = object : SourceLoginJsExtensions.Callback {
                 override fun upUiData(data: Map<String, Any?>?) = Unit
                 override fun reUiView(deltaUp: Boolean) {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        val newKinds = withContext(IO) { source.exploreKinds() }
-                        if (dialog?.isShowing == true) {
-                            renderDiscoverDialogKinds(itemBinding, source, newKinds, dialog)
-                        }
-                    }
+                    refreshDiscoverKindsDialog(itemBinding, source, dialog, null, clearCache = true)
                 }
             }
         )
@@ -1243,6 +1277,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
             val action = kind.action?.takeIf { it.isNotBlank() }
             val url = kind.normalizedDiscoverUrl()
+            if (isDiscoverModernIgnoredControl(kind, currentGroup, url, action)) {
+                return@forEachIndexed
+            }
             val isSelect = kind.type == ExploreKind.Type.select
             val isActionControl = kind.type == ExploreKind.Type.button ||
                 kind.type == ExploreKind.Type.toggle ||
@@ -1366,6 +1403,33 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun isDiscoverInputKind(kind: ExploreKind): Boolean {
         return kind.type == ExploreKind.Type.text || kind.type == "password"
+    }
+
+    private fun isDiscoverModernIgnoredControl(
+        kind: ExploreKind,
+        currentGroup: String?,
+        url: String?,
+        action: String?
+    ): Boolean {
+        if (!url.isNullOrBlank()) return false
+        val text = resolveDiscoverTagText(kind).trim()
+        val compact = text
+            .replace(Regex("[\\p{So}\\p{Sk}\\uFE0F\\s]+"), "")
+            .trim()
+        if (compact.isBlank() || compact == "※" || compact.equals("null", ignoreCase = true)) {
+            return true
+        }
+        if (isDiscoverInputKind(kind)) {
+            return true
+        }
+        val actionValue = action.orEmpty()
+        val viewName = kind.viewName.orEmpty()
+        val isTopSearchControl = currentGroup.isNullOrBlank() && (
+            compact.contains("搜索") ||
+                viewName.contains("搜索") ||
+                actionValue.contains("toSearch", ignoreCase = true)
+            )
+        return isTopSearchControl
     }
 
     private fun isDiscoverFullWidthKind(kind: ExploreKind): Boolean {
