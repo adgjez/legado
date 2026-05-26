@@ -95,4 +95,10 @@ object AiToolRegistry {
             .distinctBy { it.name }
             .filter { it.name in enabled }
     }
+
+    suspend fun resolveAllTools(): List<AiResolvedTool> {
+        val tools = nativeResolvedTools().toMutableList()
+        tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+        return tools.distinctBy { it.name }
+    }
 }

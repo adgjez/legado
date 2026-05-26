@@ -13,6 +13,7 @@ import io.legado.app.ui.main.ai.AiProviderConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
+import java.util.concurrent.TimeUnit
 
 object AiChatService {
 
@@ -89,7 +90,8 @@ object AiChatService {
         includeStructuredBlocks: Boolean = true,
         contextSummary: AiContextSummary? = null,
         onContextSummary: (AiContextSummary) -> Unit = {},
-        onContextStats: (JSONObject) -> Unit = {}
+        onContextStats: (JSONObject) -> Unit = {},
+        useAllTools: Boolean = false
     ): String {
         val provider = AppConfig.aiCurrentProvider
         val modelConfig = AppConfig.aiCurrentModelConfig
@@ -98,7 +100,9 @@ object AiChatService {
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         require(model.isNotBlank()) { "Model is empty" }
 
-        val tools = runCatching { AiToolRegistry.resolveAvailableTools() }.getOrDefault(emptyList())
+        val tools = runCatching {
+            if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
+        }.getOrDefault(emptyList())
         val preparedContext = AiContextManager.prepare(messages, contextSummary)
         preparedContext.summary?.takeIf { preparedContext.compressed }?.let(onContextSummary)
         onContextStats(
@@ -128,7 +132,8 @@ object AiChatService {
                 onPartial = onPartial,
                 onThinking = onThinking,
                 onStatus = onStatus,
-                includeStructuredBlocks = includeStructuredBlocks
+                includeStructuredBlocks = includeStructuredBlocks,
+                useAllTools = useAllTools
             )
         }.getOrElse { throwable ->
             if (throwable is AiChatException) {
@@ -153,7 +158,8 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onStatus: (JSONObject) -> Unit,
-        includeStructuredBlocks: Boolean
+        includeStructuredBlocks: Boolean,
+        useAllTools: Boolean
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -206,7 +212,7 @@ object AiChatService {
                         put("success", true)
                     }
                 )
-                val result = executeToolCall(toolCall, toolMap)
+                val result = executeToolCall(toolCall, toolMap, useAllTools)
                 collectSearchResultCards(toolCall, result, searchResultCards)
                 val resultSuccess = parseToolResultSuccess(result)
                 toolEvents.put(
@@ -329,12 +335,20 @@ object AiChatService {
         }.getOrDefault(true)
     }
 
+    private fun aiChatHttpClient() = okHttpClient.newBuilder()
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .callTimeout(300, TimeUnit.SECONDS)
+        .build()
+
     private suspend fun executeToolCall(
         toolCall: ToolCall,
-        toolMap: Map<String, AiResolvedTool>
+        toolMap: Map<String, AiResolvedTool>,
+        useAllTools: Boolean
     ): String {
         val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
-        if (toolCall.name !in enabled) {
+        if (!useAllTools && toolCall.name !in enabled) {
             return JSONObject().apply {
                 put("ok", false)
                 put("error", "Tool is disabled: ${toolCall.name}")
@@ -373,7 +387,7 @@ object AiChatService {
         val requestBody = buildRequestBody(messages, model, tools, stream = true)
         requestLog.append("round=").append(round).append('\n')
             .append("request=").append(requestBody).append('\n')
-        val response = okHttpClient.newCallResponse {
+        val response = aiChatHttpClient().newCallResponse {
             url(resolveChatUrl(baseUrl))
             addHeader("Accept", "text/event-stream, application/json")
             addHeader("Content-Type", "application/json")

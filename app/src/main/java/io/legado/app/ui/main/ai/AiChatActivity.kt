@@ -122,9 +122,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                         },
                         ModernActionPopup.Action(getString(R.string.ai_image_generate)) {
                             showImageGenerateDialog()
-                        },
-                        ModernActionPopup.Action(getString(R.string.ai_image_gallery)) {
-                            startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
                         }
                     ),
                     modernMenuPopup

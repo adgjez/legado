@@ -238,7 +238,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                                 }
                             }
                         },
-                        includeStructuredBlocks = false
+                        includeStructuredBlocks = false,
+                        useAllTools = true
                     )
                 }
             }

@@ -26,6 +26,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
@@ -77,6 +78,8 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
             "aiContextCompression" -> showContextCompressionDialog()
             "aiPersonaManage" -> showPersonaManageDialog()
+            "aiImageGallery" ->
+                startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
             "aiImageProviderManage" ->
                 startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
             "aiImportDefaultSkill" -> importDefaultSkill()

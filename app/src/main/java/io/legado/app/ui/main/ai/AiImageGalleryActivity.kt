@@ -116,11 +116,9 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
 
         override fun getViewBinding(parent: ViewGroup): ItemAiGeneratedImageBinding {
             return ItemAiGeneratedImageBinding.inflate(inflater, parent, false).apply {
-                root.background = UiCorner.panelRounded(
-                    root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
-                    UiCorner.panelRadius(root.context)
-                )
+                root.radius = UiCorner.scaledDp(14f)
+                root.cardElevation = 0f
+                root.setCardBackgroundColor(ContextCompat.getColor(root.context, R.color.background_card))
             }
         }
 
@@ -140,7 +138,12 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             tvPrompt.applyUiLabelStyle(this@AiImageGalleryActivity)
             tvState.applyUiLabelStyle(this@AiImageGalleryActivity)
             tvPrompt.setTextColor(secondaryTextColor)
-            tvState.setTextColor(if (item.favorite) accentColor else secondaryTextColor)
+            tvState.setTextColor(if (item.favorite) accentColor else ContextCompat.getColor(this@AiImageGalleryActivity, R.color.primaryText))
+            tvState.background = UiCorner.actionSelector(
+                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_card),
+                ContextCompat.getColor(this@AiImageGalleryActivity, R.color.background_menu),
+                UiCorner.actionRadius(this@AiImageGalleryActivity)
+            )
         }
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemAiGeneratedImageBinding) {

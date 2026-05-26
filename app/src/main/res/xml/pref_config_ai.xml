@@ -67,6 +67,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiImageGallery"
+            android:summary="@string/ai_image_gallery_summary"
+            android:title="@string/ai_image_gallery"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiImageProviderManage"
             android:summary="@string/ai_image_provider_summary_empty"
             android:title="@string/ai_image_provider_manage"
