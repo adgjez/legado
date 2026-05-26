@@ -200,9 +200,11 @@ class AiChatAdapter(
     private fun parseImageToolResult(content: String): ImageCard? {
         val payload = runCatching { JSONObject(content) }.getOrNull() ?: return null
         if (!payload.optBoolean("success", payload.optBoolean("ok", false))) return null
-        val image = payload.optString("image")
-        if (!image.startsWith("http", true) && !image.startsWith("data:image", true)) return null
+        val imageId = payload.optString("imageId")
+        val image = payload.optString("imagePath").ifBlank { payload.optString("image") }
+        if (imageId.isBlank() && !image.startsWith("http", true) && !image.startsWith("data:image", true)) return null
         return ImageCard(
+            imageId = imageId,
             image = image,
             prompt = payload.optString("prompt")
         )
@@ -248,8 +250,12 @@ class AiChatAdapter(
             }
             isClickable = true
             setOnClickListener {
-                (context as? androidx.appcompat.app.AppCompatActivity)
-                    ?.showDialogFragment(PhotoDialog(card.image))
+                val activity = context as? androidx.appcompat.app.AppCompatActivity
+                if (card.imageId.isNotBlank()) {
+                    activity?.showDialogFragment(AiImagePreviewDialog(card.imageId))
+                } else {
+                    activity?.showDialogFragment(PhotoDialog(card.image))
+                }
             }
             layoutParams = LinearLayout.LayoutParams(180.dpToPx(), 230.dpToPx()).apply {
                 marginEnd = 10.dpToPx()
@@ -577,6 +583,7 @@ class AiChatAdapter(
     )
 
     private data class ImageCard(
+        val imageId: String,
         val image: String,
         val prompt: String
     )

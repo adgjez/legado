@@ -682,6 +682,17 @@
     <string name="ai_image_params">请求参数 JSON</string>
     <string name="ai_image_script">生图脚本</string>
     <string name="ai_image_generate">生图</string>
+    <string name="ai_image_gallery">AI 图片库</string>
+    <string name="ai_image_gallery_empty">暂无图片</string>
+    <string name="ai_image_gallery_all">全部</string>
+    <string name="ai_image_gallery_temporary">未收藏</string>
+    <string name="ai_image_group">分组</string>
+    <string name="ai_image_default_group">默认分组</string>
+    <string name="ai_image_new_group">新建分组</string>
+    <string name="ai_image_favorite_to">收藏到</string>
+    <string name="ai_image_cancel_favorite">取消收藏</string>
+    <string name="ai_image_rename">重命名</string>
+    <string name="ai_image_delete_confirm">删除这张图片？</string>
     <string name="ai_image_prompt_hint">输入图片提示词</string>
     <string name="ai_image_generating">正在生成图片...</string>
     <string name="ai_image_generated">图片已生成</string>

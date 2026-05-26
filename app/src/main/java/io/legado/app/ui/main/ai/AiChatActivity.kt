@@ -22,6 +22,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityAiChatBinding
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
@@ -33,7 +34,6 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
-import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.ModernActionPopup
@@ -75,6 +75,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         observeMessages()
         updateHeader()
         updateComposerState()
+        lifecycleScope.launch(Dispatchers.IO) {
+            AiImageGalleryManager.cleanupExpiredTemporary()
+        }
     }
 
     override fun onResume() {
@@ -119,6 +122,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                         },
                         ModernActionPopup.Action(getString(R.string.ai_image_generate)) {
                             showImageGenerateDialog()
+                        },
+                        ModernActionPopup.Action(getString(R.string.ai_image_gallery)) {
+                            startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
                         }
                     ),
                     modernMenuPopup
@@ -176,11 +182,11 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         waitDialog.show()
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { AiImageService.generate(prompt) }
+                runCatching { AiImageService.generateAndStore(prompt) }
             }
             waitDialog.dismiss()
             result.onSuccess { image ->
-                showDialogFragment(PhotoDialog(image))
+                showDialogFragment(AiImagePreviewDialog(image.id))
             }.onFailure {
                 toastOnUi(getString(R.string.ai_request_failed, it.localizedMessage ?: it.javaClass.simpleName))
             }
