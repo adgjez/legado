@@ -165,6 +165,18 @@ object AiChatService {
         val searchResultCards = JSONArray()
         val toolEvents = JSONArray()
         repeat(MAX_TOOL_ROUNDS) { round ->
+            val roundNo = round + 1
+            val thinkingKey = "thinking_$roundNo"
+            onStatus(
+                JSONObject().apply {
+                    put("key", thinkingKey)
+                    put("kind", "thinking")
+                    put("stage", "start")
+                    put("round", roundNo)
+                    put("label", appCtx.getString(R.string.ai_chat_thinking))
+                    put("success", true)
+                }
+            )
             val assistantTurn = requestCompletionStream(
                 baseUrl = baseUrl,
                 model = model,
@@ -173,12 +185,24 @@ object AiChatService {
                 messages = conversation,
                 tools = tools,
                 requestLog = requestLog,
-                round = round + 1,
+                round = roundNo,
                 onPartial = onPartial,
                 onThinking = onThinking
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
+                onStatus(
+                    JSONObject().apply {
+                        put("key", thinkingKey)
+                        put("kind", "thinking")
+                        put("stage", "finish")
+                        put("round", roundNo)
+                        put("label", appCtx.getString(R.string.ai_chat_thinking_done))
+                        put("content", assistantTurn.reasoningContent)
+                        put("removeIfBlank", assistantTurn.reasoningContent.isBlank())
+                        put("success", true)
+                    }
+                )
                 val content = assistantTurn.content
                 if (content.isBlank()) {
                     throw AiChatException(
@@ -192,6 +216,18 @@ object AiChatService {
                     content
                 }
             }
+            onStatus(
+                JSONObject().apply {
+                    put("key", thinkingKey)
+                    put("kind", "thinking")
+                    put("stage", "finish")
+                    put("round", roundNo)
+                    put("label", appCtx.getString(R.string.ai_chat_thinking_done))
+                    put("content", assistantTurn.reasoningContent)
+                    put("fallback", appCtx.getString(R.string.ai_tool_status_calling))
+                    put("success", true)
+                }
+            )
             assistantTurn.toolCalls.forEach { toolCall ->
                 onStatus(
                     JSONObject().apply {
@@ -622,7 +658,8 @@ object AiChatService {
                 )
             }
         }
-        val requestMessages = if (AppConfig.aiContextCompressionEnabled) messages else messages.takeLast(12)
+        val textMessages = messages.filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
+        val requestMessages = if (AppConfig.aiContextCompressionEnabled) textMessages else textMessages.takeLast(12)
         requestMessages.forEach { message ->
             conversation += JSONObject().apply {
                 put(

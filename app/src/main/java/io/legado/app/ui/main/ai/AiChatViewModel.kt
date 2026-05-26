@@ -64,13 +64,6 @@ class AiChatViewModel : ViewModel() {
         activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
-        val pendingMessage = AiChatMessage(
-            role = AiChatMessage.Role.ASSISTANT,
-            content = pendingThinkingLabel,
-            pending = true
-        )
-        activePendingAssistantMessageId = pendingMessage.id
-        append(pendingMessage)
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
         var updatedContextSummary = currentSessionSummary()
@@ -98,11 +91,14 @@ class AiChatViewModel : ViewModel() {
             activeJob = null
             activeSessionId = null
             result.onSuccess { content ->
+                targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
                 activePendingContent = ""
                 activeToolMessageIds.clear()
                 updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
                 targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
             }.onFailure { throwable ->
+                targetFor(requestSessionId).finishActiveThinking(fallback = throwable.localizedMessage)
+                targetFor(requestSessionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
                 activePendingContent = ""
                 activeToolMessageIds.clear()
                 if (throwable is CancellationException) {
@@ -126,7 +122,8 @@ class AiChatViewModel : ViewModel() {
         activeJob = null
         activeSessionId = null
         activePendingContent = ""
-        activeThinkingMessageId = null
+        finishActiveThinking(fallback = cancelledText)
+        finishActiveTools(false, cancelledText)
         activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         setRequesting(false)
@@ -158,20 +155,155 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun upsertThinkingStatus(thinkingTitle: String, thinking: String) {
-        if (activePendingContent.isNotBlank()) return
-        val messageId = activePendingAssistantMessageId ?: return
+        val messageId = activeThinkingMessageId ?: createThinkingMessage("thinking")
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
+            val current = messages[index].content
+            val content = mergeThinkingContent(current, thinking)
             messages[index] = messages[index].copy(
-                content = pendingThinkingLabel,
-                pending = true
+                content = content,
+                pending = true,
+                collapsed = false,
+                statusLabel = thinkingTitle,
+                updatedAt = System.currentTimeMillis()
             )
             publish()
         }
     }
 
     fun upsertStatus(status: org.json.JSONObject) {
-        return
+        when (status.optString("kind")) {
+            "thinking" -> upsertThinkingEvent(status)
+            "tool" -> upsertToolEvent(status)
+        }
+    }
+
+    private fun upsertThinkingEvent(status: org.json.JSONObject) {
+        val stage = status.optString("stage")
+        val key = status.optString("key").ifBlank { "thinking" }
+        when (stage) {
+            "start" -> createThinkingMessage(key, status.optString("label").ifBlank { pendingThinkingLabel })
+            "finish" -> finishActiveThinking(
+                fallback = status.optString("fallback"),
+                content = status.optString("content"),
+                removeIfBlank = status.optBoolean("removeIfBlank", false),
+                label = status.optString("label").ifBlank { null }
+            )
+        }
+    }
+
+    private fun createThinkingMessage(key: String, label: String = pendingThinkingLabel): String {
+        activeThinkingMessageId?.let { return it }
+        val message = AiChatMessage(
+            role = AiChatMessage.Role.ASSISTANT,
+            content = "",
+            pending = true,
+            kind = AiChatMessage.Kind.THINKING,
+            statusKey = key,
+            statusLabel = label,
+            collapsed = false
+        )
+        messages.add(message)
+        activeThinkingMessageId = message.id
+        publish()
+        return message.id
+    }
+
+    fun finishActiveThinking(
+        fallback: String? = null,
+        content: String = "",
+        removeIfBlank: Boolean = false,
+        label: String? = null
+    ) {
+        val messageId = activeThinkingMessageId ?: return
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) {
+            activeThinkingMessageId = null
+            return
+        }
+        val current = messages[index]
+        val finalContent = content.takeIf { it.isNotBlank() }
+            ?: current.content.takeIf { it.isNotBlank() }
+            ?: fallback.orEmpty()
+        if (removeIfBlank && finalContent.isBlank()) {
+            messages.removeAt(index)
+        } else {
+            messages[index] = current.copy(
+                content = finalContent.ifBlank { pendingThinkingLabel },
+                pending = false,
+                collapsed = true,
+                statusLabel = label ?: current.statusLabel,
+                updatedAt = System.currentTimeMillis()
+            )
+        }
+        activeThinkingMessageId = null
+        publish()
+    }
+
+    private fun upsertToolEvent(status: org.json.JSONObject) {
+        val key = status.optString("key").ifBlank { status.optString("name").ifBlank { UUID.randomUUID().toString() } }
+        val name = status.optString("name").ifBlank { appCtx.getString(R.string.ai_tool_default_name) }
+        val stage = status.optString("stage")
+        val content = status.optString("content")
+        val messageId = activeToolMessageIds[key]
+        if (stage == "call" || messageId == null) {
+            val message = AiChatMessage(
+                role = AiChatMessage.Role.ASSISTANT,
+                content = content,
+                pending = stage != "result",
+                kind = AiChatMessage.Kind.TOOL,
+                statusName = name,
+                statusStage = stage,
+                statusSuccess = status.optBoolean("success", true),
+                statusLabel = status.optString("label"),
+                statusDetail = content,
+                statusKey = key,
+                collapsed = false
+            )
+            messages.add(message)
+            activeToolMessageIds[key] = message.id
+            publish()
+            return
+        }
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return
+        val current = messages[index]
+        val detail = buildString {
+            current.statusDetail?.takeIf { it.isNotBlank() }?.let {
+                append(it)
+                append("\n\n")
+            }
+            append(content)
+        }
+        messages[index] = current.copy(
+            content = content,
+            pending = false,
+            kind = AiChatMessage.Kind.TOOL,
+            statusName = name,
+            statusStage = stage,
+            statusSuccess = status.optBoolean("success", true),
+            statusLabel = status.optString("label"),
+            statusDetail = detail,
+            collapsed = true,
+            updatedAt = System.currentTimeMillis()
+        )
+        publish()
+    }
+
+    private fun finishActiveTools(success: Boolean, label: String) {
+        activeToolMessageIds.values.forEach { id ->
+            val index = messages.indexOfFirst { it.id == id }
+            if (index >= 0 && messages[index].pending) {
+                messages[index] = messages[index].copy(
+                    pending = false,
+                    statusSuccess = success,
+                    statusLabel = label,
+                    collapsed = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            }
+        }
+        publish()
     }
 
     fun finishPendingAssistant() {
@@ -249,7 +381,7 @@ class AiChatViewModel : ViewModel() {
 
     fun snapshotForRequest(): List<AiChatMessage> {
         return messages
-            .filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+            .filter { !it.pending && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
             .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) }
     }
 
@@ -304,10 +436,6 @@ class AiChatViewModel : ViewModel() {
 
     private fun saveCurrentSession() {
         val snapshot = messages.filterNot { it.pending }
-            .filterNot {
-                (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS &&
-                    it.content.isBlank()
-            }
             .map { it.copy(pending = false) }
             .filter { it.content.isNotBlank() }
         val history = AppConfig.aiChatSessionList.toMutableList()
@@ -336,7 +464,9 @@ class AiChatViewModel : ViewModel() {
     }
 
     private fun resolveSessionTitle(messages: List<AiChatMessage>): String {
-        val titleSource = messages.firstOrNull { it.role == AiChatMessage.Role.USER }?.content
+        val titleSource = messages.firstOrNull {
+            it.role == AiChatMessage.Role.USER && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT
+        }?.content
             ?: messages.first().content
         return titleSource.replace("\n", " ")
             .replace(Regex("\\s+"), " ")
@@ -360,5 +490,13 @@ class AiChatViewModel : ViewModel() {
     private fun sanitizeImagePayloadsForRequest(content: String): String {
         if (!content.contains("data:image", ignoreCase = true)) return content
         return content.replace(dataImageRegex, "[image omitted]")
+    }
+
+    private fun mergeThinkingContent(current: String, incoming: String): String {
+        if (incoming.isBlank()) return current
+        if (current.isBlank()) return incoming
+        if (current.endsWith(incoming)) return current
+        if (incoming.startsWith(current)) return incoming
+        return current + incoming
     }
 }
