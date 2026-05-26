@@ -187,7 +187,7 @@ class AiChatViewModel : ViewModel() {
                 fallback = status.optString("fallback"),
                 content = status.optString("content"),
                 removeIfBlank = status.optBoolean("removeIfBlank", false),
-                label = status.optString("label").ifBlank { null }
+                label = status.optString("label").takeIf { it.isNotBlank() }
             )
         }
     }
