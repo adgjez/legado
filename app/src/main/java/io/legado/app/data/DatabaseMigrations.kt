@@ -20,8 +20,46 @@ object DatabaseMigrations {
             migration_31_32, migration_32_33, migration_33_34, migration_34_35,
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
-            migration_90_91, migration_91_92, migration_93_94,
+            migration_90_91, migration_91_92, migration_93_94, migration_94_95,
         )
+    }
+
+    private val migration_94_95 = object : Migration(94, 95) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_image_groups` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `sortOrder` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_generated_images` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `prompt` TEXT NOT NULL,
+                    `providerId` TEXT NOT NULL,
+                    `providerName` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `localPath` TEXT NOT NULL,
+                    `originalSource` TEXT NOT NULL DEFAULT '',
+                    `favorite` INTEGER NOT NULL DEFAULT 0,
+                    `groupId` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_groupId` ON `ai_generated_images` (`groupId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_favorite` ON `ai_generated_images` (`favorite`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_createdAt` ON `ai_generated_images` (`createdAt`)")
+        }
     }
 
     private val migration_93_94 = object : Migration(93, 94) {

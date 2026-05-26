@@ -36,6 +36,7 @@ class AiChatViewModel : ViewModel() {
         private var activeThinkingMessageId: String? = null
         private var activePendingAssistantMessageId: String? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
+        private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
     }
 
     init {
@@ -247,7 +248,9 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun snapshotForRequest(): List<AiChatMessage> {
-        return messages.filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+        return messages
+            .filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+            .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) }
     }
 
     fun currentContextSummary() = currentSessionSummary()
@@ -352,5 +355,10 @@ class AiChatViewModel : ViewModel() {
         AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.map { session ->
             if (session.id == sessionId) session.copy(contextSummary = summary) else session
         }
+    }
+
+    private fun sanitizeImagePayloadsForRequest(content: String): String {
+        if (!content.contains("data:image", ignoreCase = true)) return content
+        return content.replace(dataImageRegex, "[image omitted]")
     }
 }

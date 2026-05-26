@@ -3,6 +3,8 @@ package io.legado.app.help.ai
 import android.util.Base64
 import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
+import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -21,8 +23,25 @@ object AiImageService {
         prompt: String,
         provider: AiImageProviderConfig? = null
     ): String {
-        val target = provider ?: AppConfig.aiEnabledImageProviders.firstOrNull()
+        val target = resolveProvider(provider)
+        return generateRaw(prompt, target)
+    }
+
+    suspend fun generateAndStore(
+        prompt: String,
+        provider: AiImageProviderConfig? = null
+    ): AiGeneratedImage {
+        val target = resolveProvider(provider)
+        val image = generateRaw(prompt, target)
+        return AiImageGalleryManager.saveGeneratedImage(image, prompt, target)
+    }
+
+    private fun resolveProvider(provider: AiImageProviderConfig?): AiImageProviderConfig {
+        return provider ?: AppConfig.aiEnabledImageProviders.firstOrNull()
             ?: error("未配置可用生图供应商")
+    }
+
+    private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): String {
         return when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateByJs(prompt, target)
             else -> generateByOpenAi(prompt, target)
@@ -54,27 +73,40 @@ object AiImageService {
             put("size", "1024x1024")
             mergeJson(params, ignored = setOf("endpoint"))
         }
-        val response = provider.httpClient().newCallResponse {
-            url("${baseUrl.trimEnd('/')}/images/generations")
-            postJson(payload.toString())
-            addHeader("Accept", "application/json")
-            addHeader("Content-Type", "application/json")
-            provider.apiKey.takeIf { it.isNotBlank() }?.let {
-                addHeader("Authorization", "Bearer $it")
+        val requestUrl = "${baseUrl.trimEnd('/')}/images/generations"
+        val startedAt = System.currentTimeMillis()
+        var status = ""
+        try {
+            val response = provider.httpClient().newCallResponse {
+                url(requestUrl)
+                postJson(payload.toString())
+                addHeader("Accept", "application/json")
+                addHeader("Content-Type", "application/json")
+                provider.apiKey.takeIf { it.isNotBlank() }?.let {
+                    addHeader("Authorization", "Bearer $it")
+                }
+                addHeaders(AiChatService.parseCustomHeaders(provider.headers))
             }
-            addHeaders(AiChatService.parseCustomHeaders(provider.headers))
-        }
-        response.use {
-            val text = it.body?.string().orEmpty()
-            if (!it.isSuccessful) error(text.ifBlank { "${it.code} ${it.message}" })
-            val first = JSONObject(text).optJSONArray("data")?.optJSONObject(0)
-                ?: error("Empty image response")
-            first.optString("url").takeIf { url -> url.isNotBlank() }?.let { url -> return url }
-            first.optString("b64_json").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
-                Base64.decode(b64, Base64.DEFAULT)
-                return "data:image/png;base64,$b64"
+            response.use {
+                status = "${it.code} ${it.message}"
+                val text = it.body?.string().orEmpty()
+                if (!it.isSuccessful) error(text.ifBlank { status })
+                val first = JSONObject(text).optJSONArray("data")?.optJSONObject(0)
+                    ?: error("Empty image response")
+                first.optString("url").takeIf { url -> url.isNotBlank() }?.let { url ->
+                    logRequest(provider, requestUrl, status, startedAt, true)
+                    return url
+                }
+                first.optString("b64_json").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
+                    Base64.decode(b64, Base64.DEFAULT)
+                    logRequest(provider, requestUrl, status, startedAt, true)
+                    return "data:image/png;base64,$b64"
+                }
+                error("No image url or b64_json in response")
             }
-            error("No image url or b64_json in response")
+        } catch (e: Throwable) {
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, e)
+            throw e
         }
     }
 
@@ -93,30 +125,40 @@ object AiImageService {
             put("input", prompt)
             put("tools", JSONArray().put(tool))
         }
-        val response = provider.httpClient().newCallResponse {
-            url("${baseUrl.trimEnd('/')}/responses")
-            postJson(payload.toString())
-            addHeader("Accept", "application/json")
-            addHeader("Content-Type", "application/json")
-            provider.apiKey.takeIf { it.isNotBlank() }?.let {
-                addHeader("Authorization", "Bearer $it")
+        val requestUrl = "${baseUrl.trimEnd('/')}/responses"
+        val startedAt = System.currentTimeMillis()
+        var status = ""
+        try {
+            val response = provider.httpClient().newCallResponse {
+                url(requestUrl)
+                postJson(payload.toString())
+                addHeader("Accept", "application/json")
+                addHeader("Content-Type", "application/json")
+                provider.apiKey.takeIf { it.isNotBlank() }?.let {
+                    addHeader("Authorization", "Bearer $it")
+                }
+                addHeaders(AiChatService.parseCustomHeaders(provider.headers))
             }
-            addHeaders(AiChatService.parseCustomHeaders(provider.headers))
-        }
-        response.use {
-            val text = it.body?.string().orEmpty()
-            if (!it.isSuccessful) error(text.ifBlank { "${it.code} ${it.message}" })
-            val output = JSONObject(text).optJSONArray("output") ?: error("Empty responses output")
-            for (index in 0 until output.length()) {
-                val item = output.optJSONObject(index) ?: continue
-                if (item.optString("type") == "image_generation_call") {
-                    item.optString("result").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
-                        Base64.decode(b64, Base64.DEFAULT)
-                        return "data:image/png;base64,$b64"
+            response.use {
+                status = "${it.code} ${it.message}"
+                val text = it.body?.string().orEmpty()
+                if (!it.isSuccessful) error(text.ifBlank { status })
+                val output = JSONObject(text).optJSONArray("output") ?: error("Empty responses output")
+                for (index in 0 until output.length()) {
+                    val item = output.optJSONObject(index) ?: continue
+                    if (item.optString("type") == "image_generation_call") {
+                        item.optString("result").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
+                            Base64.decode(b64, Base64.DEFAULT)
+                            logRequest(provider, requestUrl, status, startedAt, true)
+                            return "data:image/png;base64,$b64"
+                        }
                     }
                 }
+                error("No image_generation_call result in response")
             }
-            error("No image_generation_call result in response")
+        } catch (e: Throwable) {
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, e)
+            throw e
         }
     }
 
@@ -170,6 +212,28 @@ object AiImageService {
             .readTimeout(timeout, TimeUnit.MILLISECONDS)
             .callTimeout(timeout, TimeUnit.MILLISECONDS)
             .build()
+    }
+
+    private fun logRequest(
+        provider: AiImageProviderConfig,
+        url: String,
+        status: String,
+        startedAt: Long,
+        success: Boolean,
+        throwable: Throwable? = null
+    ) {
+        val elapsed = System.currentTimeMillis() - startedAt
+        val message = buildString {
+            append("AI 生图请求")
+            append(if (success) "成功" else "失败")
+            append("\nurl=").append(url)
+            append("\nprovider=").append(provider.displayName())
+            append("\nmodel=").append(provider.model)
+            append("\ntimeout=").append(provider.validTimeout())
+            append("\nelapsed=").append(elapsed)
+            append("\nstatus=").append(status)
+        }
+        AppLog.put(message, throwable)
     }
 
     private fun JSONObject.mergeJson(extra: JSONObject, ignored: Set<String> = emptySet()) {

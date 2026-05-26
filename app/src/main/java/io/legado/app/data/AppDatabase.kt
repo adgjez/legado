@@ -9,6 +9,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.dao.AiGeneratedImageDao
+import io.legado.app.data.dao.AiImageGroupDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
@@ -34,6 +36,8 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.entities.AiGeneratedImage
+import io.legado.app.data.entities.AiImageGroup
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
@@ -77,7 +81,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 94,
+    version = 95,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -86,7 +90,8 @@ val appDb by lazy {
         HttpTTS::class, Cache::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
-        ParagraphRuleVar::class, ReadMenuCustomButton::class],
+        ParagraphRuleVar::class, ReadMenuCustomButton::class,
+        AiImageGroup::class, AiGeneratedImage::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -166,6 +171,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val serverDao: ServerDao
     abstract val paragraphRuleDao: ParagraphRuleDao
     abstract val readMenuCustomButtonDao: ReadMenuCustomButtonDao
+    abstract val aiImageGroupDao: AiImageGroupDao
+    abstract val aiGeneratedImageDao: AiGeneratedImageDao
 
     companion object {
 

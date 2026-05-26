@@ -30,12 +30,17 @@ object AiImageTool {
                     JSONObject().put("ok", false).put("success", false).put("error", "prompt is empty").toString()
                 } else {
                     runCatching {
+                        val image = AiImageService.generateAndStore(prompt)
                         JSONObject()
                             .put("ok", true)
                             .put("success", true)
                             .put("type", "image")
+                            .put("imageId", image.id)
+                            .put("imagePath", image.localPath)
+                            .put("name", image.name)
                             .put("prompt", prompt)
-                            .put("image", AiImageService.generate(prompt))
+                            .put("provider", image.providerName)
+                            .put("model", image.model)
                             .toString()
                     }.getOrElse {
                         JSONObject()
