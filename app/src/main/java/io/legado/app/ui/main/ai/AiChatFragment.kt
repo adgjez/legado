@@ -180,20 +180,16 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
     }
 
     private fun scrollToPreviousAssistantStart() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
         val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
         val anchor = layoutManager.findFirstVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor - 1 downTo 0).firstOrNull {
-            items.getOrNull(it)?.role == AiChatMessage.Role.ASSISTANT
-        } ?: return
+        val target = adapter.findPreviousAssistantPosition(anchor) ?: return
         layoutManager.scrollToPositionWithOffset(target, 0)
     }
 
     private fun scrollToNextMessageBottom() {
-        val items = viewModel.messagesLiveData.value.orEmpty()
         val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
         val anchor = layoutManager.findLastVisibleItemPosition().coerceAtLeast(0)
-        val target = (anchor + 1 until items.size).firstOrNull() ?: return
+        val target = adapter.findNextMessagePosition(anchor) ?: return
         binding.rvAiMessages.scrollToPosition(target)
         binding.rvAiMessages.post {
             val holder = binding.rvAiMessages.findViewHolderForAdapterPosition(target)

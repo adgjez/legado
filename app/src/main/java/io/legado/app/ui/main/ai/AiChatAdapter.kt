@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -26,6 +27,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
 import io.legado.app.databinding.ItemAiMessageAssistantBinding
 import io.legado.app.databinding.ItemAiMessageUserBinding
+import io.legado.app.databinding.ItemAiProcessChainBinding
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
@@ -37,6 +39,10 @@ import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.ui.main.ai.compose.AiProcessChainCard
+import io.legado.app.ui.main.ai.compose.AiProcessChainStep
+import io.legado.app.ui.main.ai.compose.AiProcessStepType
+import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -49,7 +55,7 @@ class AiChatAdapter(
     private val context: Context
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    private val items = mutableListOf<AiChatMessage>()
+    private val items = mutableListOf<AiChatUiItem>()
     private val expandedProcessIds = mutableSetOf<String>()
     private val markwon: Markwon by lazy {
         Markwon.builder(context)
@@ -66,7 +72,7 @@ class AiChatAdapter(
     }
 
     fun submitList(list: List<AiChatMessage>) {
-        val newItems = list.filterNot { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+        val newItems = buildUiItems(list)
         val oldItems = items.toList()
         val diff = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
             override fun getOldListSize(): Int = oldItems.size
@@ -86,12 +92,23 @@ class AiChatAdapter(
         diff.dispatchUpdatesTo(this)
     }
 
+    fun findPreviousAssistantPosition(anchor: Int): Int? {
+        return (anchor - 1 downTo 0).firstOrNull { items.getOrNull(it)?.isAssistant == true }
+    }
+
+    fun findNextMessagePosition(anchor: Int): Int? {
+        return (anchor + 1 until items.size).firstOrNull()
+    }
+
     override fun getItemId(position: Int): Long = items[position].id.hashCode().toLong()
 
     override fun getItemViewType(position: Int): Int {
-        return when (items[position].role) {
-            AiChatMessage.Role.USER -> TYPE_USER
-            AiChatMessage.Role.ASSISTANT -> TYPE_ASSISTANT
+        return when (val item = items[position]) {
+            is AiChatUiItem.Message -> when (item.message.role) {
+                AiChatMessage.Role.USER -> TYPE_USER
+                AiChatMessage.Role.ASSISTANT -> TYPE_ASSISTANT
+            }
+            is AiChatUiItem.ProcessChain -> TYPE_PROCESS_CHAIN
         }
     }
 
@@ -100,6 +117,10 @@ class AiChatAdapter(
         return when (viewType) {
             TYPE_USER -> UserViewHolder(
                 ItemAiMessageUserBinding.inflate(inflater, parent, false)
+            )
+
+            TYPE_PROCESS_CHAIN -> ProcessChainViewHolder(
+                ItemAiProcessChainBinding.inflate(inflater, parent, false)
             )
 
             else -> AssistantViewHolder(
@@ -111,12 +132,45 @@ class AiChatAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = items[position]
         when (holder) {
-            is UserViewHolder -> holder.bind(item)
-            is AssistantViewHolder -> holder.bind(item)
+            is UserViewHolder -> holder.bind((item as AiChatUiItem.Message).message)
+            is AssistantViewHolder -> holder.bind((item as AiChatUiItem.Message).message)
+            is ProcessChainViewHolder -> holder.bind(item as AiChatUiItem.ProcessChain)
         }
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun buildUiItems(list: List<AiChatMessage>): List<AiChatUiItem> {
+        val result = mutableListOf<AiChatUiItem>()
+        val processBuffer = mutableListOf<AiChatMessage>()
+
+        fun flushProcessBuffer() {
+            if (processBuffer.isEmpty()) return
+            result += AiChatUiItem.ProcessChain(processBuffer.toList())
+            processBuffer.clear()
+        }
+
+        list.filterNot { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+            .forEach { message ->
+                if (message.isProcessMessage()) {
+                    processBuffer += message
+                } else {
+                    flushProcessBuffer()
+                    result += AiChatUiItem.Message(message)
+                }
+            }
+        flushProcessBuffer()
+        return result
+    }
+
+    private fun AiChatMessage.isProcessMessage(): Boolean {
+        if (role != AiChatMessage.Role.ASSISTANT) return false
+        return when (kind ?: AiChatMessage.Kind.TEXT) {
+            AiChatMessage.Kind.THINKING,
+            AiChatMessage.Kind.TOOL -> true
+            else -> false
+        }
+    }
 
     private fun createBubble(
         fillColor: Int,
@@ -542,6 +596,36 @@ class AiChatAdapter(
         }
     }
 
+    private inner class ProcessChainViewHolder(
+        private val binding: ItemAiProcessChainBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        init {
+            binding.processChain.setViewCompositionStrategy(
+                ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool
+            )
+        }
+
+        fun bind(item: AiChatUiItem.ProcessChain) {
+            val steps = item.messages.map(::toProcessStep)
+            binding.processChain.setContent {
+                AiProcessChainCard(
+                    steps = steps,
+                    expandedStepIds = expandedProcessIds,
+                    onToggleStep = { stepId ->
+                        if (!expandedProcessIds.add(stepId)) {
+                            expandedProcessIds.remove(stepId)
+                        }
+                        bindingAdapterPosition
+                            .takeIf { it != RecyclerView.NO_POSITION }
+                            ?.let(::notifyItemChanged)
+                    },
+                    style = aiComposeStyle(context)
+                )
+            }
+        }
+    }
+
     private inner class AssistantViewHolder(
         private val binding: ItemAiMessageAssistantBinding
     ) : RecyclerView.ViewHolder(binding.root) {
@@ -653,6 +737,76 @@ class AiChatAdapter(
         }
     }
 
+    private fun toProcessStep(message: AiChatMessage): AiProcessChainStep {
+        val kind = message.kind ?: AiChatMessage.Kind.TEXT
+        val detail = message.statusDetail?.takeIf { it.isNotBlank() } ?: message.content
+        val summary = processSummary(message, detail)
+        return when (kind) {
+            AiChatMessage.Kind.THINKING -> {
+                val title = normalizeProcessLabel(
+                    message.statusLabel?.takeIf { it.isNotBlank() }
+                        ?: context.getString(
+                            if (message.pending) R.string.ai_chat_thinking else R.string.ai_chat_thinking_done
+                        )
+                )
+                AiProcessChainStep(
+                    id = message.id,
+                    type = AiProcessStepType.Thinking,
+                    title = title,
+                    subtitle = summary,
+                    detail = detail,
+                    pending = message.pending,
+                    success = true,
+                    collapsed = message.collapsed
+                )
+            }
+            AiChatMessage.Kind.TOOL -> {
+                val state = message.statusLabel?.takeIf { it.isNotBlank() } ?: context.getString(
+                    when {
+                        message.pending -> R.string.ai_tool_status_calling
+                        message.statusSuccess -> R.string.ai_tool_status_done
+                        else -> R.string.ai_tool_status_failed
+                    }
+                )
+                val subtitle = if (summary.isNotBlank() && summary != state) {
+                    "$state · $summary"
+                } else {
+                    state
+                }
+                AiProcessChainStep(
+                    id = message.id,
+                    type = AiProcessStepType.Tool,
+                    title = message.statusName?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.ai_tool_default_name),
+                    subtitle = subtitle,
+                    detail = detail,
+                    pending = message.pending,
+                    success = message.statusSuccess,
+                    collapsed = message.collapsed
+                )
+            }
+            else -> AiProcessChainStep(
+                id = message.id,
+                type = AiProcessStepType.Thinking,
+                title = "",
+                subtitle = summary,
+                detail = detail,
+                pending = message.pending,
+                success = true,
+                collapsed = message.collapsed
+            )
+        }
+    }
+
+    private fun normalizeProcessLabel(label: String): String {
+        return label
+            .replace("，点按展开", "")
+            .replace("，点击展开", "")
+            .replace(", tap to expand", "", ignoreCase = true)
+            .replace(" tap to expand", "", ignoreCase = true)
+            .trim()
+    }
+
     private fun processTitle(message: AiChatMessage, expanded: Boolean): String {
         val marker = when {
             message.pending -> "..."
@@ -731,9 +885,29 @@ class AiChatAdapter(
         val prompt: String
     )
 
+    private sealed class AiChatUiItem {
+        abstract val id: String
+        abstract val isAssistant: Boolean
+
+        data class Message(
+            val message: AiChatMessage
+        ) : AiChatUiItem() {
+            override val id: String = message.id
+            override val isAssistant: Boolean = message.role == AiChatMessage.Role.ASSISTANT
+        }
+
+        data class ProcessChain(
+            val messages: List<AiChatMessage>
+        ) : AiChatUiItem() {
+            override val id: String = "process-${messages.firstOrNull()?.id.orEmpty()}"
+            override val isAssistant: Boolean = true
+        }
+    }
+
     private companion object {
         const val TYPE_USER = 1
         const val TYPE_ASSISTANT = 2
+        const val TYPE_PROCESS_CHAIN = 3
         const val searchBookScheme = "legado-search-book://"
         val USER_BUBBLE_COLOR: Int = Color.rgb(149, 236, 105)
         val USER_BUBBLE_STROKE_COLOR: Int = Color.rgb(124, 212, 82)
