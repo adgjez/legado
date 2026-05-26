@@ -37,3 +37,52 @@ data class AiSkillConfig(
     val sourceUrl: String = "",
     val enabled: Boolean = true
 )
+
+@Keep
+data class AiContextSummary(
+    val summary: String = "",
+    val sourceMessageCount: Int = 0,
+    val sourceChars: Int = 0,
+    val summaryChars: Int = 0,
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    val isValid: Boolean
+        get() = summary.isNotBlank() && sourceMessageCount > 0
+}
+
+@Keep
+data class AiPersonaConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val prompt: String,
+    val current: Boolean = false
+)
+
+@Keep
+data class AiImageProviderConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val type: String = TYPE_OPENAI,
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val headers: String = "",
+    val model: String = "",
+    val defaultParamsJson: String = "",
+    val jsLib: String = "",
+    val loginUrl: String = "",
+    val loginUi: String = "",
+    val enabledCookieJar: Boolean = false,
+    val script: String = "",
+    val timeoutMillisecond: Long = 120_000L,
+    val order: Int = 0,
+    val enabled: Boolean = true
+) {
+    fun displayName(): String = name.ifBlank { type }
+
+    fun validTimeout(): Long = timeoutMillisecond.coerceIn(15_000L, 600_000L)
+
+    companion object {
+        const val TYPE_OPENAI = "openai"
+        const val TYPE_JS = "js"
+    }
+}

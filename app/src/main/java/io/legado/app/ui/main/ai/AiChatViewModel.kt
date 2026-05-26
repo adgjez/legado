@@ -72,6 +72,7 @@ class AiChatViewModel : ViewModel() {
         append(pendingMessage)
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
+        var updatedContextSummary = currentSessionSummary()
         activeJob = requestScope.launch {
             val result = runCatching {
                 AiChatService.chatStream(
@@ -85,6 +86,10 @@ class AiChatViewModel : ViewModel() {
                     },
                     onStatus = { status ->
                         targetFor(requestSessionId).upsertStatus(status)
+                    },
+                    contextSummary = updatedContextSummary,
+                    onContextSummary = { summary ->
+                        updatedContextSummary = summary
                     }
                 )
             }
@@ -94,6 +99,7 @@ class AiChatViewModel : ViewModel() {
             result.onSuccess { content ->
                 activePendingContent = ""
                 activeToolMessageIds.clear()
+                updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
                 targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
             }.onFailure { throwable ->
                 activePendingContent = ""
@@ -244,6 +250,8 @@ class AiChatViewModel : ViewModel() {
         return messages.filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
     }
 
+    fun currentContextSummary() = currentSessionSummary()
+
     fun restoreCurrentSession() {
         val sessions = AppConfig.aiChatSessionList
         val session = sessions.firstOrNull { it.id == currentSessionId } ?: sessions.firstOrNull()
@@ -312,7 +320,8 @@ class AiChatViewModel : ViewModel() {
             id = currentSessionId,
             title = resolveSessionTitle(snapshot),
             updatedAt = System.currentTimeMillis(),
-            messages = snapshot
+            messages = snapshot,
+            contextSummary = currentSessionSummary()
         )
         if (index >= 0) {
             history[index] = session
@@ -333,5 +342,15 @@ class AiChatViewModel : ViewModel() {
                 if (it.length > 24) "${it.take(24)}…" else it
             }
             .ifBlank { "AI Chat" }
+    }
+
+    private fun currentSessionSummary() =
+        AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }?.contextSummary
+
+    fun saveContextSummary(sessionId: String, summary: io.legado.app.ui.main.ai.AiContextSummary) {
+        if (!AppConfig.aiContextCompressionEnabled || !summary.isValid) return
+        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.map { session ->
+            if (session.id == sessionId) session.copy(contextSummary = summary) else session
+        }
     }
 }

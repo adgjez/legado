@@ -32,6 +32,7 @@ object AiToolRegistry {
         "reading_ajax",
         "reading_webview",
         "capture_web_requests",
+        "generate_image",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -72,6 +73,7 @@ object AiToolRegistry {
         tools += AiBookSourceTool.resolvedTools()
         tools += AiReadingNetworkTool.resolvedTools()
         tools += AiSettingsTool.resolvedTools()
+        tools += AiImageTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 

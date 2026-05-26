@@ -54,6 +54,24 @@
             android:title="@string/ai_enter_to_send"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiContextCompression"
+            android:summary="@string/ai_context_compression_summary_default"
+            android:title="@string/ai_context_compression"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiPersonaManage"
+            android:summary="@string/ai_persona_manage_summary_empty"
+            android:title="@string/ai_persona_manage"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiImageProviderManage"
+            android:summary="@string/ai_image_provider_summary_empty"
+            android:title="@string/ai_image_provider_manage"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

@@ -33,7 +33,8 @@ data class AiChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val updatedAt: Long = System.currentTimeMillis(),
-    val messages: List<AiChatMessage> = emptyList()
+    val messages: List<AiChatMessage> = emptyList(),
+    val contextSummary: AiContextSummary? = null
 )
 
 @Keep

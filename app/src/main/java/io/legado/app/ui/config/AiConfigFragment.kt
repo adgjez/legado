@@ -24,6 +24,8 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
+import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.utils.postEvent
@@ -75,6 +77,9 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiTavilySearchDepth -> showTavilySearchDepthDialog()
             PreferKey.aiTavilyMaxResults -> showTavilyMaxResultsDialog()
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
+            "aiContextCompression" -> showContextCompressionDialog()
+            "aiPersonaManage" -> showPersonaManageDialog()
+            "aiImageProviderManage" -> showImageProviderManageDialog()
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
         }
@@ -540,6 +545,180 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    private fun showContextCompressionDialog() {
+        val enabledText = if (AppConfig.aiContextCompressionEnabled) "关闭上下文压缩" else "启用上下文压缩"
+        context?.selector(
+            getString(R.string.ai_context_compression),
+            arrayListOf(
+                enabledText,
+                "上下文长度: ${AppConfig.aiContextWindowTokens}",
+                "思考上下文: ${AppConfig.aiThinkingContextTokens}"
+            )
+        ) { _, index ->
+            when (index) {
+                0 -> {
+                    AppConfig.aiContextCompressionEnabled = !AppConfig.aiContextCompressionEnabled
+                    refreshUi()
+                }
+                1 -> showTokenSelector(true)
+                2 -> showTokenSelector(false)
+            }
+        }
+    }
+
+    private fun showTokenSelector(contextWindow: Boolean) {
+        val values = if (contextWindow) {
+            listOf(32_000, 64_000, 128_000, 258_000, 512_000, 1_000_000)
+        } else {
+            listOf(0, 32_000, 64_000, 128_000, 258_000)
+        }
+        context?.selector(
+            if (contextWindow) getString(R.string.ai_context_tokens) else getString(R.string.ai_thinking_context_tokens),
+            values.map { it.toString() }
+        ) { _, index ->
+            if (contextWindow) AppConfig.aiContextWindowTokens = values[index]
+            else AppConfig.aiThinkingContextTokens = values[index]
+            refreshUi()
+        }
+    }
+
+    private fun showPersonaManageDialog() {
+        val personas = AppConfig.aiPersonaList
+        val items = personas.map {
+            if (it.id == AppConfig.aiCurrentPersonaId) "✓ ${it.name}" else it.name
+        } + "新增人格提示词"
+        context?.selector(getString(R.string.ai_persona_manage), items) { _, index ->
+            if (index >= personas.size) {
+                showEditPersonaDialog()
+            } else {
+                val persona = personas[index]
+                context?.selector(persona.name, arrayListOf("设为当前", "编辑", "删除")) { _, action ->
+                    when (action) {
+                        0 -> {
+                            AppConfig.aiCurrentPersonaId = persona.id
+                            refreshUi()
+                        }
+                        1 -> showEditPersonaDialog(persona)
+                        2 -> {
+                            AppConfig.aiPersonaList = AppConfig.aiPersonaList.filterNot { it.id == persona.id }
+                            if (AppConfig.aiCurrentPersonaId == persona.id) AppConfig.aiCurrentPersonaId = null
+                            refreshUi()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showEditPersonaDialog(persona: AiPersonaConfig? = null) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = "第一行作为名称，后面作为人格提示词"
+            editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            editView.minLines = 8
+            editView.setText(
+                persona?.let { "${it.name}\n${it.prompt}" }.orEmpty()
+            )
+        }
+        alert(titleResource = R.string.ai_persona_manage) {
+            customView { binding.root }
+            okButton {
+                val lines = binding.editView.text?.toString().orEmpty().lines()
+                val name = lines.firstOrNull()?.trim().orEmpty()
+                val prompt = lines.drop(1).joinToString("\n").trim()
+                if (name.isBlank() || prompt.isBlank()) return@okButton
+                val updated = persona?.copy(name = name, prompt = prompt)
+                    ?: AiPersonaConfig(name = name, prompt = prompt)
+                AppConfig.aiPersonaList = AppConfig.aiPersonaList
+                    .filterNot { it.id == updated.id } + updated
+                AppConfig.aiCurrentPersonaId = updated.id
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showImageProviderManageDialog() {
+        val providers = AppConfig.aiImageProviderList
+        val items = providers.map {
+            "${if (it.enabled) "✓ " else ""}${it.displayName()} (${it.type})"
+        } + "新增 OpenAI 生图供应商" + "新增 JS 生图规则"
+        context?.selector(getString(R.string.ai_image_provider_manage), items) { _, index ->
+            when {
+                index < providers.size -> showImageProviderActions(providers[index])
+                index == providers.size -> showEditImageProviderDialog(AiImageProviderConfig(name = "", type = AiImageProviderConfig.TYPE_OPENAI))
+                else -> showEditImageProviderDialog(AiImageProviderConfig(name = "", type = AiImageProviderConfig.TYPE_JS))
+            }
+        }
+    }
+
+    private fun showImageProviderActions(provider: AiImageProviderConfig) {
+        context?.selector(provider.displayName(), arrayListOf("启用/停用", "编辑", "删除")) { _, action ->
+            when (action) {
+                0 -> {
+                    AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.map {
+                        if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
+                    }
+                    refreshUi()
+                }
+                1 -> showEditImageProviderDialog(provider)
+                2 -> {
+                    AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.filterNot { it.id == provider.id }
+                    refreshUi()
+                }
+            }
+        }
+    }
+
+    private fun showEditImageProviderDialog(provider: AiImageProviderConfig) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                "名称\nBaseUrl\nApiKey\n模型\nHeaders(JSON，可空)\n默认参数(JSON，可空)"
+            } else {
+                "名称\nJS脚本，需返回图片URL、base64或JSON"
+            }
+            editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            editView.minLines = 8
+            editView.setText(
+                if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                    listOf(
+                        provider.name,
+                        provider.baseUrl,
+                        provider.apiKey,
+                        provider.model,
+                        provider.headers,
+                        provider.defaultParamsJson
+                    ).joinToString("\n")
+                } else {
+                    provider.name + "\n" + provider.script
+                }
+            )
+        }
+        alert(titleResource = R.string.ai_image_provider_manage) {
+            customView { binding.root }
+            okButton {
+                val lines = binding.editView.text?.toString().orEmpty().lines()
+                val name = lines.firstOrNull()?.trim().orEmpty()
+                if (name.isBlank()) return@okButton
+                val updated = if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                    provider.copy(
+                        name = name,
+                        baseUrl = lines.getOrNull(1)?.trim().orEmpty(),
+                        apiKey = lines.getOrNull(2)?.trim().orEmpty(),
+                        model = lines.getOrNull(3)?.trim().orEmpty(),
+                        headers = lines.getOrNull(4)?.trim().orEmpty(),
+                        defaultParamsJson = lines.drop(5).joinToString("\n").trim()
+                    )
+                } else {
+                    provider.copy(name = name, script = lines.drop(1).joinToString("\n").trim())
+                }
+                AppConfig.aiImageProviderList = AppConfig.aiImageProviderList
+                    .filterNot { it.id == updated.id } + updated
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
     private fun showManageNativeToolsDialog() {
         lifecycleScope.launch {
             val tools = runCatching { AiToolRegistry.resolveAllToolNamesForManage() }
@@ -952,6 +1131,26 @@ class AiConfigFragment : PreferenceFragment(),
             AppConfig.aiTavilyMaxResults.toString()
         findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
             getString(R.string.ai_system_prompt_summary)
+        findPreference<Preference>("aiContextCompression")?.summary =
+            if (AppConfig.aiContextCompressionEnabled) {
+                "${AppConfig.aiContextWindowTokens} / ${AppConfig.aiThinkingContextTokens}"
+            } else {
+                getString(R.string.ai_context_compression_summary_default)
+            }
+        findPreference<Preference>("aiPersonaManage")?.summary =
+            AppConfig.aiCurrentPersona?.name
+                ?: getString(R.string.ai_persona_manage_summary_empty)
+        val imageProviders = AppConfig.aiImageProviderList
+        findPreference<Preference>("aiImageProviderManage")?.summary =
+            if (imageProviders.isEmpty()) {
+                getString(R.string.ai_image_provider_summary_empty)
+            } else {
+                getString(
+                    R.string.ai_image_provider_summary,
+                    imageProviders.count { it.enabled },
+                    imageProviders.size
+                )
+            }
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =

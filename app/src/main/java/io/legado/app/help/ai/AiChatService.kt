@@ -8,6 +8,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiProviderConfig
 import org.json.JSONArray
 import org.json.JSONObject
@@ -85,7 +86,10 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit = {},
         onStatus: (JSONObject) -> Unit = {},
-        includeStructuredBlocks: Boolean = true
+        includeStructuredBlocks: Boolean = true,
+        contextSummary: AiContextSummary? = null,
+        onContextSummary: (AiContextSummary) -> Unit = {},
+        onContextStats: (JSONObject) -> Unit = {}
     ): String {
         val provider = AppConfig.aiCurrentProvider
         val modelConfig = AppConfig.aiCurrentModelConfig
@@ -95,7 +99,16 @@ object AiChatService {
         require(model.isNotBlank()) { "Model is empty" }
 
         val tools = runCatching { AiToolRegistry.resolveAvailableTools() }.getOrDefault(emptyList())
-        val conversation = buildConversation(messages)
+        val preparedContext = AiContextManager.prepare(messages, contextSummary)
+        preparedContext.summary?.takeIf { preparedContext.compressed }?.let(onContextSummary)
+        onContextStats(
+            JSONObject().apply {
+                put("compressed", preparedContext.compressed)
+                put("inputTokens", preparedContext.inputTokens)
+                put("limitTokens", preparedContext.limitTokens)
+            }
+        )
+        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
         val requestLog = StringBuilder().apply {
             append("url=${resolveChatUrl(baseUrl)}").append('\n')
             append("model=$model").append('\n')
@@ -542,11 +555,26 @@ object AiChatService {
         }
     }
 
-    private fun buildConversation(messages: List<AiChatMessage>): MutableList<JSONObject> {
+    private fun buildConversation(
+        messages: List<AiChatMessage>,
+        contextSummary: AiContextSummary? = null
+    ): MutableList<JSONObject> {
         val conversation = mutableListOf<JSONObject>()
         conversation += JSONObject().apply {
             put("role", "system")
             put("content", AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
+        }
+        AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { personaPrompt ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", personaPrompt)
+            }
+        }
+        contextSummary?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", "Conversation summary from earlier context:\n$summary")
+            }
         }
         AppConfig.aiEnabledSkills.forEach { skill ->
             conversation += JSONObject().apply {
@@ -580,7 +608,8 @@ object AiChatService {
                 )
             }
         }
-        messages.takeLast(12).forEach { message ->
+        val requestMessages = if (AppConfig.aiContextCompressionEnabled) messages else messages.takeLast(12)
+        requestMessages.forEach { message ->
             conversation += JSONObject().apply {
                 put(
                     "role",
@@ -689,7 +718,7 @@ object AiChatService {
         )
     }
 
-    private fun parseCustomHeaders(rawHeaders: String): Map<String, String> {
+    fun parseCustomHeaders(rawHeaders: String): Map<String, String> {
         val text = rawHeaders.trim()
         if (text.isBlank()) return emptyMap()
         runCatching {

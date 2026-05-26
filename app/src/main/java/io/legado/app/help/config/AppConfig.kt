@@ -27,6 +27,9 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
 import io.legado.app.ui.main.ai.AiChatSession
+import io.legado.app.ui.main.ai.AiContextSummary
+import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
@@ -728,6 +731,58 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             persistAiSkills(normalizeAiSkills(value))
         }
+
+    var aiPersonaList: List<AiPersonaConfig>
+        get() = GSON.fromJsonArray<AiPersonaConfig>(appCtx.getPrefString(PreferKey.aiPersonaList))
+            .getOrDefault(emptyList())
+            .filter { it.id.isNotBlank() && it.name.isNotBlank() && it.prompt.isNotBlank() }
+            .distinctBy { it.id }
+        set(value) {
+            val personas = value
+                .filter { it.id.isNotBlank() && it.name.isNotBlank() && it.prompt.isNotBlank() }
+                .distinctBy { it.id }
+            if (personas.isEmpty()) appCtx.removePref(PreferKey.aiPersonaList)
+            else appCtx.putPrefString(PreferKey.aiPersonaList, GSON.toJson(personas))
+        }
+
+    var aiCurrentPersonaId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentPersonaId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentPersonaId)
+            else appCtx.putPrefString(PreferKey.aiCurrentPersonaId, value)
+        }
+
+    val aiCurrentPersona: AiPersonaConfig?
+        get() = aiPersonaList.firstOrNull { it.id == aiCurrentPersonaId }
+
+    var aiImageProviderList: List<AiImageProviderConfig>
+        get() = GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
+            .getOrDefault(emptyList())
+            .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+            .sortedBy { it.order }
+        set(value) {
+            val providers = value
+                .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+                .distinctBy { it.id }
+                .mapIndexed { index, provider -> provider.copy(order = index) }
+            if (providers.isEmpty()) appCtx.removePref(PreferKey.aiImageProviderList)
+            else appCtx.putPrefString(PreferKey.aiImageProviderList, GSON.toJson(providers))
+        }
+
+    val aiEnabledImageProviders: List<AiImageProviderConfig>
+        get() = aiImageProviderList.filter { it.enabled }
+
+    var aiContextCompressionEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)
+
+    var aiContextWindowTokens: Int
+        get() = appCtx.getPrefInt(PreferKey.aiContextWindowTokens, 258_000).coerceIn(8_000, 2_000_000)
+        set(value) = appCtx.putPrefInt(PreferKey.aiContextWindowTokens, value.coerceIn(8_000, 2_000_000))
+
+    var aiThinkingContextTokens: Int
+        get() = appCtx.getPrefInt(PreferKey.aiThinkingContextTokens, 128_000).coerceIn(0, 1_000_000)
+        set(value) = appCtx.putPrefInt(PreferKey.aiThinkingContextTokens, value.coerceIn(0, 1_000_000))
 
     var aiTavilyEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiTavilyEnabled, false)
