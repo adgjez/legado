@@ -195,6 +195,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         binding.rvAiMessages.layoutManager = LinearLayoutManager(this).apply {
             stackFromEnd = true
         }
+        binding.rvAiMessages.itemAnimator = null
         binding.rvAiMessages.adapter = adapter
         binding.rvAiMessages.setEdgeEffectColor(primaryColor)
         binding.btnScrollPrev.setOnClickListener { scrollToPreviousAssistantStart() }
@@ -263,13 +264,14 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun observeMessages() {
         viewModel.messagesLiveData.observe(this) { messages ->
+            val shouldAutoScroll = shouldAutoScrollMessages()
             adapter.submitList(messages)
             val hasMessages = messages.isNotEmpty()
             binding.rvAiMessages.isVisible = hasMessages
             binding.emptyContainer.isVisible = !hasMessages
-            if (hasMessages) {
+            if (hasMessages && shouldAutoScroll) {
                 binding.rvAiMessages.post {
-                    binding.rvAiMessages.scrollToPosition(messages.lastIndex)
+                    binding.rvAiMessages.scrollToPosition((adapter.itemCount - 1).coerceAtLeast(0))
                 }
             }
         }
@@ -455,6 +457,13 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 binding.rvAiMessages.scrollBy(0, delta)
             }
         }
+    }
+
+    private fun shouldAutoScrollMessages(): Boolean {
+        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return true
+        val total = adapter.itemCount
+        if (total <= 1) return true
+        return layoutManager.findLastVisibleItemPosition() >= total - 2
     }
 
     private fun tintSendButton() {

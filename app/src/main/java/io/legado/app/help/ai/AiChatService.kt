@@ -343,20 +343,13 @@ object AiChatService {
     }
 
     private fun appendStructuredBlocks(content: String, cards: JSONArray, toolEvents: JSONArray): String {
-        if (cards.length() == 0 && toolEvents.length() == 0) return content
+        if (cards.length() == 0) return content
         val payload = JSONObject().apply {
             put("type", "search_book_results")
             put("results", cards)
         }
         return buildString {
             append(content.trimEnd())
-            if (toolEvents.length() > 0) {
-                append("\n\n```legado-tool-events\n")
-                append(JSONObject().apply {
-                    put("events", toolEvents)
-                })
-                append("\n```")
-            }
             if (cards.length() > 0) {
                 append("\n\n```legado-search-results\n")
                 append(payload)

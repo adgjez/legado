@@ -55,6 +55,7 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
         binding.topRow.applyStatusBarPadding(withInitialPadding = true)
         binding.composerContainer.applyNavigationBarMargin(withInitialMargin = true)
         binding.rvAiMessages.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvAiMessages.itemAnimator = null
         binding.rvAiMessages.adapter = adapter
         binding.rvAiMessages.setEdgeEffectColor(primaryColor)
         binding.composerContainer.doOnLayout {
@@ -105,13 +106,14 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
 
     private fun observeMessages() {
         viewModel.messagesLiveData.observe(viewLifecycleOwner) { messages ->
+            val shouldAutoScroll = shouldAutoScrollMessages()
             adapter.submitList(messages)
             val hasMessages = messages.isNotEmpty()
             binding.rvAiMessages.isVisible = hasMessages
             binding.tvAiEmpty.isVisible = !hasMessages
-            if (hasMessages) {
+            if (hasMessages && shouldAutoScroll) {
                 binding.rvAiMessages.post {
-                    binding.rvAiMessages.scrollToPosition(messages.lastIndex)
+                    binding.rvAiMessages.scrollToPosition((adapter.itemCount - 1).coerceAtLeast(0))
                 }
             }
         }
@@ -201,6 +203,13 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
                 binding.rvAiMessages.scrollBy(0, delta)
             }
         }
+    }
+
+    private fun shouldAutoScrollMessages(): Boolean {
+        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return true
+        val total = adapter.itemCount
+        if (total <= 1) return true
+        return layoutManager.findLastVisibleItemPosition() >= total - 2
     }
 
     private fun tintSendButton() {
