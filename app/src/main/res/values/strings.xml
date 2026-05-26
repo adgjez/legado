@@ -675,6 +675,16 @@
     <string name="ai_image_provider_manage">生图供应商</string>
     <string name="ai_image_provider_summary_empty">未配置生图供应商</string>
     <string name="ai_image_provider_summary">已启用 %1$d 个，共 %2$d 个</string>
+    <string name="ai_image_provider_manage_summary">配置 OpenAI 生图接口或 JS 生图规则。AI 对话可通过工具调用或独立生图入口生成图片。</string>
+    <string name="ai_image_provider_openai">OpenAI 生图</string>
+    <string name="ai_image_provider_js">JS 生图规则</string>
+    <string name="ai_image_provider_type">供应商类型</string>
+    <string name="ai_image_params">请求参数 JSON</string>
+    <string name="ai_image_script">生图脚本</string>
+    <string name="ai_image_generate">生图</string>
+    <string name="ai_image_prompt_hint">输入图片提示词</string>
+    <string name="ai_image_generating">正在生成图片...</string>
+    <string name="ai_image_generated">图片已生成</string>
     <string name="ai_tavily_api_key">Tavily API key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">Tap to set your Tavily API key.</string>

@@ -40,6 +40,7 @@ object AiToolRegistry {
 
     private val toolGroupPrefixes = listOf(
         "mcp_" to "MCP",
+        "generate_image" to "生图",
         "query_bookshelf" to "书架",
         "get_bookshelf" to "书架",
         "manage_bookshelf" to "书架",

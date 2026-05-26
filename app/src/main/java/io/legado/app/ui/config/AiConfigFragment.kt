@@ -77,7 +77,8 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
             "aiContextCompression" -> showContextCompressionDialog()
             "aiPersonaManage" -> showPersonaManageDialog()
-            "aiImageProviderManage" -> showImageProviderManageDialog()
+            "aiImageProviderManage" ->
+                startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
         }

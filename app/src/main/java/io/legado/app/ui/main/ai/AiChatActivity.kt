@@ -16,10 +16,13 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.widget.doAfterTextChanged
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityAiChatBinding
+import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -30,7 +33,9 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
+import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.imeHeight
@@ -44,6 +49,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import io.legado.app.utils.ColorUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     fullScreen = false,
@@ -60,6 +68,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     private val composerBaseBottomMargin by lazy { 0 }
     private var modelActionText: TextView? = null
     private var modernMenuPopup: PopupWindow? = null
+    private val waitDialog by lazy { WaitDialog(this) }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
@@ -107,6 +116,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                         },
                         ModernActionPopup.Action(getString(R.string.ai_setting)) {
                             openAiSettings()
+                        },
+                        ModernActionPopup.Action(getString(R.string.ai_image_generate)) {
+                            showImageGenerateDialog()
                         }
                     ),
                     modernMenuPopup
@@ -138,6 +150,41 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         android.content.Intent(this, ConfigActivity::class.java).apply {
             putExtra("configTag", ConfigTag.AI_CONFIG)
         }.also(::startActivity)
+    }
+
+    private fun showImageGenerateDialog() {
+        if (AppConfig.aiEnabledImageProviders.isEmpty()) {
+            toastOnUi(R.string.ai_image_provider_summary_empty)
+            return
+        }
+        val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = getString(R.string.ai_image_prompt_hint)
+            editView.minLines = 4
+        }
+        alert(titleResource = R.string.ai_image_generate) {
+            customView { dialogBinding.root }
+            okButton {
+                val prompt = dialogBinding.editView.text?.toString()?.trim().orEmpty()
+                if (prompt.isNotBlank()) generateImage(prompt)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun generateImage(prompt: String) {
+        waitDialog.setText(R.string.ai_image_generating)
+        waitDialog.show()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { AiImageService.generate(prompt) }
+            }
+            waitDialog.dismiss()
+            result.onSuccess { image ->
+                showDialogFragment(PhotoDialog(image))
+            }.onFailure {
+                toastOnUi(getString(R.string.ai_request_failed, it.localizedMessage ?: it.javaClass.simpleName))
+            }
+        }
     }
 
     private fun initView() {

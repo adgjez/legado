@@ -274,6 +274,13 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.config.AiImageProviderManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.AiImageProviderEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.config.CoverCollectionManageActivity"
             android:launchMode="standard" />
         <activity

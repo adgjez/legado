@@ -31,9 +31,11 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.SearchBookOpenHelper
+import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.showDialogFragment
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -137,6 +139,7 @@ class AiChatAdapter(
 
     private fun parseMessageContent(content: String): ParsedMessage {
         val cards = mutableListOf<SearchBookCard>()
+        val imageCards = mutableListOf<ImageCard>()
         val toolEvents = linkedMapOf<String, ToolEventCard>()
         val withoutToolEvents = toolEventBlockRegex.replace(content) { match ->
             runCatching {
@@ -147,6 +150,9 @@ class AiChatAdapter(
                     val stage = item.optString("stage")
                     val name = item.optString("name").ifBlank { "工具" }
                     if (stage != "result") continue
+                    if (name == "generate_image") {
+                        parseImageToolResult(item.optString("content"))?.let(imageCards::add)
+                    }
                     toolEvents[name] = ToolEventCard(
                         name = name,
                         stage = "done",
@@ -186,7 +192,19 @@ class AiChatAdapter(
         return ParsedMessage(
             visibleContent,
             cards.distinctBy { it.bookUrl },
+            imageCards.distinctBy { it.image },
             toolEvents.values.toList()
+        )
+    }
+
+    private fun parseImageToolResult(content: String): ImageCard? {
+        val payload = runCatching { JSONObject(content) }.getOrNull() ?: return null
+        if (!payload.optBoolean("success", payload.optBoolean("ok", false))) return null
+        val image = payload.optString("image")
+        if (!image.startsWith("http", true) && !image.startsWith("data:image", true)) return null
+        return ImageCard(
+            image = image,
+            prompt = payload.optString("prompt")
         )
     }
 
@@ -207,6 +225,55 @@ class AiChatAdapter(
         if (showSummary) {
             container.addView(createToolSummaryView(events))
         }
+    }
+
+    private fun bindImageCards(binding: ItemAiMessageAssistantBinding, cards: List<ImageCard>) {
+        val container = binding.searchCards
+        if (cards.isEmpty()) return
+        binding.searchCardScroller.isVisible = true
+        cards.forEach { card ->
+            container.addView(createImageCardView(card))
+        }
+    }
+
+    private fun createImageCardView(card: ImageCard): View {
+        val view = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(10.dpToPx(), 9.dpToPx(), 10.dpToPx(), 9.dpToPx())
+            background = GradientDrawable().apply {
+                val fill = ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.08f)
+                cornerRadius = UiCorner.scaledDp(12f)
+                setColor(UiCorner.surfaceColor(fill))
+                setStroke(1.dpToPx(), ColorUtils.adjustAlpha(context.accentColor, 0.18f))
+            }
+            isClickable = true
+            setOnClickListener {
+                (context as? androidx.appcompat.app.AppCompatActivity)
+                    ?.showDialogFragment(PhotoDialog(card.image))
+            }
+            layoutParams = LinearLayout.LayoutParams(180.dpToPx(), 230.dpToPx()).apply {
+                marginEnd = 10.dpToPx()
+            }
+        }
+        view.addView(ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                170.dpToPx()
+            )
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            io.legado.app.help.glide.ImageLoader.load(context, card.image)
+                .error(R.drawable.image_loading_error)
+                .into(this)
+        })
+        view.addView(TextView(context).apply {
+            text = card.prompt.ifBlank { context.getString(R.string.ai_image_generated) }
+            setTextColor(context.secondaryTextColor)
+            textSize = 12.5f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, 8.dpToPx(), 0, 0)
+        })
+        return view
     }
 
     private fun createToolSummaryView(events: List<ToolEventCard>): View {
@@ -476,6 +543,7 @@ class AiChatAdapter(
                 binding.tvMessage.movementMethod = LinkMovementMethod.getInstance()
             }
             bindSearchCards(binding, parsed.searchCards)
+            bindImageCards(binding, parsed.imageCards)
             bindToolEvents(binding, parsed.toolEvents)
         }
     }
@@ -483,6 +551,7 @@ class AiChatAdapter(
     private data class ParsedMessage(
         val content: String,
         val searchCards: List<SearchBookCard>,
+        val imageCards: List<ImageCard>,
         val toolEvents: List<ToolEventCard>
     )
 
@@ -505,6 +574,11 @@ class AiChatAdapter(
         val content: String,
         val success: Boolean,
         val label: String
+    )
+
+    private data class ImageCard(
+        val image: String,
+        val prompt: String
     )
 
     private companion object {

@@ -27,15 +27,19 @@ object AiImageTool {
             execute = { args ->
                 val prompt = args?.optString("prompt").orEmpty().trim()
                 if (prompt.isBlank()) {
-                    JSONObject().put("success", false).put("error", "prompt is empty").toString()
+                    JSONObject().put("ok", false).put("success", false).put("error", "prompt is empty").toString()
                 } else {
                     runCatching {
                         JSONObject()
+                            .put("ok", true)
                             .put("success", true)
+                            .put("type", "image")
+                            .put("prompt", prompt)
                             .put("image", AiImageService.generate(prompt))
                             .toString()
                     }.getOrElse {
                         JSONObject()
+                            .put("ok", false)
                             .put("success", false)
                             .put("error", it.localizedMessage ?: it.javaClass.simpleName)
                             .toString()
