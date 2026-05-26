@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai.compose
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,10 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -129,11 +133,12 @@ private fun AiProcessStepRow(
                 if (step.pending) {
                     ProcessChip(text = "...", style = style)
                 } else {
-                    Text(
-                        text = if (expanded) "v" else ">",
-                        color = style.colors.secondaryText,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp)
+                    ChevronIcon(
+                        expanded = expanded,
+                        tint = style.colors.secondaryText,
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .size(14.dp)
                     )
                 }
             }
@@ -150,14 +155,21 @@ private fun AiProcessStepRow(
                 )
             }
             if (expanded && step.detail.isNotBlank()) {
-                SelectionContainer {
-                    Text(
-                        text = step.detail.trim(),
-                        color = style.colors.secondaryText,
-                        fontSize = 12.5.sp,
-                        lineHeight = 18.sp,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
+                Box(
+                    modifier = Modifier
+                        .padding(top = 7.dp)
+                        .clip(RoundedCornerShape(style.metrics.chipRadius))
+                        .background(style.colors.primaryText.copy(alpha = 0.045f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = step.detail.trim(),
+                            color = style.colors.secondaryText,
+                            fontSize = 12.5.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
             }
         }
@@ -194,6 +206,25 @@ private fun TimelineMarker(
                     .background(style.colors.stroke.copy(alpha = 0.72f))
             )
         }
+    }
+}
+
+@Composable
+private fun ChevronIcon(
+    expanded: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = Stroke(
+            width = 1.8.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        val left = Offset(size.width * 0.24f, size.height * if (expanded) 0.38f else 0.28f)
+        val center = Offset(size.width * 0.50f, size.height * if (expanded) 0.64f else 0.50f)
+        val right = Offset(size.width * 0.76f, size.height * if (expanded) 0.38f else 0.72f)
+        drawLine(tint, left, center, strokeWidth = stroke.width, cap = stroke.cap)
+        drawLine(tint, center, right, strokeWidth = stroke.width, cap = stroke.cap)
     }
 }
 

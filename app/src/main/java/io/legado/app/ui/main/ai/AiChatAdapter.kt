@@ -631,11 +631,7 @@ class AiChatAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(message: AiChatMessage) {
-            when (message.kind ?: AiChatMessage.Kind.TEXT) {
-                AiChatMessage.Kind.THINKING,
-                AiChatMessage.Kind.TOOL -> bindProcess(message)
-                else -> bindText(message)
-            }
+            bindText(message)
         }
 
         private fun bindText(message: AiChatMessage) {
@@ -667,73 +663,6 @@ class AiChatAdapter(
             bindSearchCards(binding, parsed.searchCards)
             bindImageCards(binding, parsed.imageCards)
             bindToolEvents(binding, parsed.toolEvents)
-        }
-
-        private fun bindProcess(message: AiChatMessage) {
-            val expanded = message.pending || !message.collapsed || message.id in expandedProcessIds
-            val detail = message.statusDetail?.takeIf { it.isNotBlank() } ?: message.content
-            val title = processTitle(message, expanded)
-            binding.messageContainer.minimumWidth = 220.dpToPx()
-            binding.tvMessage.isVisible = true
-            binding.tvMessage.background = createProcessBubble(message)
-            binding.tvMessage.setTextColor(CHAT_BUBBLE_TEXT_COLOR)
-            binding.tvMessage.alpha = if (message.pending) 0.82f else 1f
-            binding.tvMessage.linksClickable = false
-            binding.tvMessage.movementMethod = null
-            binding.tvMessage.setTextIsSelectable(expanded && detail.isNotBlank())
-            binding.tvMessage.text = if (expanded) {
-                buildString {
-                    append(title)
-                    detail.trim().takeIf { it.isNotBlank() }?.let {
-                        append("\n\n")
-                        append(it)
-                    }
-                }
-            } else {
-                buildString {
-                    append(title)
-                    processSummary(message, detail).takeIf { it.isNotBlank() }?.let {
-                        append('\n')
-                        append(it)
-                    }
-                }
-            }
-            binding.tvMessage.setOnLongClickListener(null)
-            binding.tvMessage.setOnClickListener {
-                if (!message.pending) {
-                    if (message.id in expandedProcessIds) {
-                        expandedProcessIds.remove(message.id)
-                    } else {
-                        expandedProcessIds.add(message.id)
-                    }
-                    bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let(::notifyItemChanged)
-                }
-            }
-            bindSearchCards(binding, emptyList())
-            val imageCard = if ((message.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TOOL) {
-                parseImageToolResult(message.content)
-            } else {
-                null
-            }
-            bindImageCards(binding, listOfNotNull(imageCard))
-            bindToolEvents(binding, emptyList())
-        }
-    }
-
-    private fun createProcessBubble(message: AiChatMessage): GradientDrawable {
-        val base = when (message.kind ?: AiChatMessage.Kind.TEXT) {
-            AiChatMessage.Kind.TOOL -> ColorUtils.blendColors(context.backgroundColor, context.accentColor, 0.07f)
-            else -> ColorUtils.blendColors(context.backgroundColor, Color.rgb(96, 125, 139), 0.08f)
-        }
-        val stroke = if ((message.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TOOL && !message.statusSuccess) {
-            ContextCompat.getColor(context, R.color.md_red_500)
-        } else {
-            context.accentColor
-        }
-        return GradientDrawable().apply {
-            cornerRadius = UiCorner.scaledDp(16f)
-            setColor(UiCorner.surfaceColor(base))
-            setStroke(1.dpToPx(), ColorUtils.adjustAlpha(stroke, 0.18f))
         }
     }
 
@@ -805,32 +734,6 @@ class AiChatAdapter(
             .replace(", tap to expand", "", ignoreCase = true)
             .replace(" tap to expand", "", ignoreCase = true)
             .trim()
-    }
-
-    private fun processTitle(message: AiChatMessage, expanded: Boolean): String {
-        val marker = when {
-            message.pending -> "..."
-            expanded -> "[-]"
-            else -> "[+]"
-        }
-        return when (message.kind ?: AiChatMessage.Kind.TEXT) {
-            AiChatMessage.Kind.THINKING -> {
-                val label = message.statusLabel?.takeIf { it.isNotBlank() } ?: context.getString(R.string.ai_chat_thinking_done)
-                "$marker $label"
-            }
-            AiChatMessage.Kind.TOOL -> {
-                val name = message.statusName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.ai_tool_default_name)
-                val state = message.statusLabel?.takeIf { it.isNotBlank() } ?: context.getString(
-                    when {
-                        message.pending -> R.string.ai_tool_status_calling
-                        message.statusSuccess -> R.string.ai_tool_status_done
-                        else -> R.string.ai_tool_status_failed
-                    }
-                )
-                "$marker $name · $state"
-            }
-            else -> ""
-        }
     }
 
     private fun processSummary(message: AiChatMessage, detail: String): String {
