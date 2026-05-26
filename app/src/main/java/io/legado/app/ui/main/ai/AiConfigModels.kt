@@ -9,8 +9,13 @@ data class AiProviderConfig(
     val name: String,
     val baseUrl: String,
     val apiKey: String = "",
-    val headers: String? = ""
+    val headers: String? = "",
+    val apiMode: String = AI_API_MODE_CHAT_COMPLETIONS,
+    val promptCache: Boolean = false
 )
+
+const val AI_API_MODE_CHAT_COMPLETIONS = "chat_completions"
+const val AI_API_MODE_RESPONSES = "responses"
 
 @Keep
 data class AiModelConfig(

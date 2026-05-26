@@ -267,6 +267,13 @@
             android:name=".ui.config.LibraryContainerManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.config.AiProviderManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.AiProviderEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.config.CoverCollectionManageActivity"
             android:launchMode="standard" />
         <activity

@@ -642,6 +642,14 @@
     <string name="ai_provider_saved">已保存提供商</string>
     <string name="ai_provider_removed">已删除提供商</string>
     <string name="ai_model">模型</string>
+    <string name="ai_provider_manage_title">供应商管理</string>
+    <string name="ai_provider_config">供应商配置</string>
+    <string name="ai_model_manage">模型管理</string>
+    <string name="ai_provider_manage_summary">按供应商管理模型，点击供应商可进入编辑和模型管理。</string>
+    <string name="ai_provider_mode_chat">Chat Completions</string>
+    <string name="ai_provider_mode_responses">Responses</string>
+    <string name="ai_api_mode">接口模式</string>
+    <string name="ai_enable_prompt_cache_key">启用提示词缓存标记</string>
     <string name="ai_base_url">Base URL</string>
     <string name="ai_base_url_summary">Compatible endpoint base address</string>
     <string name="ai_api_key">API Key</string>

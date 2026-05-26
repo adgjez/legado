@@ -82,42 +82,9 @@
         app:layout="@layout/view_preference_category">
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiAddProvider"
-            android:summary="@string/ai_add_provider_summary"
-            android:title="@string/ai_add_provider"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiManageProviders"
             android:summary="@string/ai_no_providers"
             android:title="@string/ai_manage_providers"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_model"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiAddModel"
-            android:summary="@string/ai_add_model_summary"
-            android:title="@string/ai_add_model"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiFetchModels"
-            android:summary="@string/ai_fetch_models_summary"
-            android:title="@string/ai_fetch_models"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiManageModels"
-            android:summary="@string/ai_no_models"
-            android:title="@string/ai_manage_models"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>

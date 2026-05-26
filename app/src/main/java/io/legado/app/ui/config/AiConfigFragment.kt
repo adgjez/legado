@@ -1,5 +1,6 @@
 package io.legado.app.ui.config
 
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.InputType
@@ -63,11 +64,8 @@ class AiConfigFragment : PreferenceFragment(),
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
-            "aiAddProvider" -> showEditProviderDialog()
-            "aiManageProviders" -> showManageProvidersDialog()
-            "aiAddModel" -> showAddModelOptionsDialog()
-            "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
-            "aiManageModels" -> showManageModelsDialog()
+            "aiAddProvider", "aiManageProviders", "aiAddModel", "aiFetchModels", "aiManageModels" ->
+                startActivity(Intent(requireContext(), AiProviderManageActivity::class.java))
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
