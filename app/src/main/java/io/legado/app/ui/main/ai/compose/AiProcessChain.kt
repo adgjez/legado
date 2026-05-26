@@ -1,0 +1,215 @@
+package io.legado.app.ui.main.ai.compose
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+@Immutable
+data class AiProcessChainStep(
+    val id: String,
+    val type: AiProcessStepType,
+    val title: String,
+    val subtitle: String,
+    val detail: String,
+    val pending: Boolean,
+    val success: Boolean,
+    val collapsed: Boolean
+)
+
+enum class AiProcessStepType {
+    Thinking,
+    Tool
+}
+
+@Composable
+fun AiProcessChainCard(
+    steps: List<AiProcessChainStep>,
+    expandedStepIds: Set<String>,
+    onToggleStep: (String) -> Unit,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier
+) {
+    if (steps.isEmpty()) return
+    val hasFailedStep = steps.any { !it.success }
+    val surface = if (steps.any { it.type == AiProcessStepType.Tool }) {
+        style.colors.toolSurface
+    } else {
+        style.colors.processSurface
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(style.metrics.cardRadius),
+        color = surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            style.metrics.strokeWidth,
+            if (hasFailedStep) style.colors.danger.copy(alpha = 0.28f) else style.colors.stroke
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            steps.forEachIndexed { index, step ->
+                val expanded = step.pending || !step.collapsed || step.id in expandedStepIds
+                AiProcessStepRow(
+                    step = step,
+                    expanded = expanded,
+                    isLast = index == steps.lastIndex,
+                    style = style,
+                    onToggle = {
+                        if (!step.pending) {
+                            onToggleStep(step.id)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiProcessStepRow(
+    step: AiProcessChainStep,
+    expanded: Boolean,
+    isLast: Boolean,
+    style: AiComposeStyle,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.chipRadius))
+            .clickable(enabled = !step.pending, onClick = onToggle)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        TimelineMarker(
+            step = step,
+            isLast = isLast,
+            style = style
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = step.title,
+                    color = style.colors.primaryText,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (step.pending) {
+                    ProcessChip(text = "...", style = style)
+                } else {
+                    Text(
+                        text = if (expanded) "v" else ">",
+                        color = style.colors.secondaryText,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+            val summary = step.subtitle.ifBlank { step.detail.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty() }
+            if (!expanded && summary.isNotBlank()) {
+                Text(
+                    text = summary,
+                    color = style.colors.secondaryText,
+                    fontSize = 12.5.sp,
+                    lineHeight = 17.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            if (expanded && step.detail.isNotBlank()) {
+                SelectionContainer {
+                    Text(
+                        text = step.detail.trim(),
+                        color = style.colors.secondaryText,
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineMarker(
+    step: AiProcessChainStep,
+    isLast: Boolean,
+    style: AiComposeStyle
+) {
+    val markerColor = when {
+        !step.success -> style.colors.danger
+        step.type == AiProcessStepType.Tool -> style.colors.accent
+        else -> style.colors.secondaryText.copy(alpha = 0.72f)
+    }
+    Column(
+        modifier = Modifier.width(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .size(if (step.pending) 10.dp else 8.dp)
+                .background(markerColor, CircleShape)
+        )
+        if (!isLast) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .width(1.dp)
+                    .height(32.dp)
+                    .background(style.colors.stroke.copy(alpha = 0.72f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProcessChip(text: String, style: AiComposeStyle) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(style.metrics.chipRadius))
+            .background(style.colors.accent.copy(alpha = 0.12f))
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            color = style.colors.accent,
+            fontSize = 11.sp,
+            lineHeight = 13.sp
+        )
+    }
+}
