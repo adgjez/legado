@@ -8,6 +8,7 @@ plugins {
 
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
+    alias libs.plugins.kotlin.compose
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
@@ -84,6 +85,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        compose = true
         viewBinding = true
     }
     buildTypes {
@@ -217,6 +219,12 @@ dependencies {
     implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3)
 
     //google
     implementation(libs.material)
@@ -331,6 +339,7 @@ dependencies {
     //epubLib集成到应用内
     // 椒盐歌词
     implementation(libs.lyricViewx)
+    debugImplementation(libs.androidx.compose.ui.tooling)
     // sora-editor代码编辑器,更丰富的编辑功能
     implementation(platform(libs.soraEditor.bom))
     implementation(libs.soraEditor.core)
