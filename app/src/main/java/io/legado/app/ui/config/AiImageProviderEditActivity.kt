@@ -67,7 +67,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         etApiKey.setText(provider?.apiKey.orEmpty())
         etModel.setText(provider?.model.orEmpty())
         etHeaders.setText(provider?.headers.orEmpty())
-        etTimeout.setText((provider?.timeoutMillisecond ?: 120_000L).toString())
+        etTimeout.setText((provider?.validTimeout() ?: 300_000L).toString())
         cbEnabled.isChecked = provider?.enabled ?: true
         paramsText = provider?.defaultParamsJson.orEmpty()
         scriptText = provider?.script.orEmpty()
@@ -130,7 +130,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             defaultParamsJson = paramsText.ifBlank { defaultParams() },
             jsLib = jsLibText,
             script = scriptText,
-            timeoutMillisecond = binding.etTimeout.text?.toString()?.toLongOrNull() ?: 120_000L,
+            timeoutMillisecond = binding.etTimeout.text?.toString()?.toLongOrNull() ?: 300_000L,
             enabled = binding.cbEnabled.isChecked
         )
         AppConfig.aiImageProviderList = AppConfig.aiImageProviderList

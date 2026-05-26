@@ -84,7 +84,10 @@ data class AiImageProviderConfig(
 ) {
     fun displayName(): String = name.ifBlank { type }
 
-    fun validTimeout(): Long = timeoutMillisecond.coerceIn(15_000L, 600_000L)
+    fun validTimeout(): Long {
+        val normalized = timeoutMillisecond.takeIf { it > 0L } ?: 300_000L
+        return normalized.coerceIn(60_000L, 600_000L)
+    }
 
     companion object {
         const val TYPE_OPENAI = "openai"
