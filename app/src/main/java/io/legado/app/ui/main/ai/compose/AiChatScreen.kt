@@ -94,7 +94,6 @@ fun AiChatRoute(
     viewModel: AiChatViewModel,
     lifecycleOwner: LifecycleOwner,
     compactHeader: Boolean,
-    applyStatusPadding: Boolean,
     refreshToken: Int,
     actions: AiChatScreenActions
 ) {
@@ -118,7 +117,6 @@ fun AiChatRoute(
         requesting = requesting,
         modelLabel = modelLabel,
         compactHeader = compactHeader,
-        applyStatusPadding = applyStatusPadding,
         actions = actions
     )
 }
@@ -129,7 +127,6 @@ fun AiChatScreen(
     requesting: Boolean,
     modelLabel: String,
     compactHeader: Boolean,
-    applyStatusPadding: Boolean,
     actions: AiChatScreenActions
 ) {
     val context = LocalContext.current
@@ -160,7 +157,7 @@ fun AiChatScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(if (applyStatusPadding) Modifier.statusBarsPadding() else Modifier)
+                .statusBarsPadding()
         ) {
             AiChatTopBar(
                 modelLabel = modelLabel,
@@ -168,7 +165,12 @@ fun AiChatScreen(
                 style = style,
                 actions = actions
             )
-            Box(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
                 if (uiItems.isEmpty()) {
                     AiEmptyState(style = style)
                 } else {
@@ -179,7 +181,7 @@ fun AiChatScreen(
                             start = 14.dp,
                             top = 10.dp,
                             end = 14.dp,
-                            bottom = 110.dp
+                            bottom = 96.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -296,47 +298,49 @@ private fun AiChatTopBar(
                 modifier = Modifier.size(21.dp)
             )
         }
-        IconButton(onClick = { menuExpanded = true }) {
-            Text(
-                text = "...",
-                color = style.colors.primaryText,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.ai_new_chat)) },
-                onClick = {
-                    menuExpanded = false
-                    actions.onNewChat()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.ai_chat_history)) },
-                onClick = {
-                    menuExpanded = false
-                    actions.onOpenHistory()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.ai_setting)) },
-                onClick = {
-                    menuExpanded = false
-                    actions.onOpenSettings()
-                }
-            )
-            actions.onGenerateImage?.let { generate ->
+        Box {
+            IconButton(onClick = { menuExpanded = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = null,
+                    tint = style.colors.primaryText,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_image_generate)) },
+                    text = { Text(stringResource(R.string.ai_new_chat)) },
                     onClick = {
                         menuExpanded = false
-                        generate()
+                        actions.onNewChat()
                     }
                 )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.ai_chat_history)) },
+                    onClick = {
+                        menuExpanded = false
+                        actions.onOpenHistory()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.ai_setting)) },
+                    onClick = {
+                        menuExpanded = false
+                        actions.onOpenSettings()
+                    }
+                )
+                actions.onGenerateImage?.let { generate ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.ai_image_generate)) },
+                        onClick = {
+                            menuExpanded = false
+                            generate()
+                        }
+                    )
+                }
             }
         }
     }

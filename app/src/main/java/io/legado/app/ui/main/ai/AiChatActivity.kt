@@ -50,7 +50,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 viewModel = viewModel,
                 lifecycleOwner = this,
                 compactHeader = false,
-                applyStatusPadding = false,
                 refreshToken = refreshToken.intValue,
                 actions = AiChatScreenActions(
                     onSend = ::dispatchSend,

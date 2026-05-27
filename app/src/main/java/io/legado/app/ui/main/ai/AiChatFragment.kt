@@ -43,7 +43,6 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
                 viewModel = viewModel,
                 lifecycleOwner = viewLifecycleOwner,
                 compactHeader = true,
-                applyStatusPadding = true,
                 refreshToken = refreshToken.intValue,
                 actions = AiChatScreenActions(
                     onSend = ::dispatchSend,
