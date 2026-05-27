@@ -57,11 +57,10 @@
                 android:clickable="false"
                 android:focusable="false" />
 
-            <View
+            <androidx.compose.ui.platform.ComposeView
                 android:id="@+id/bottom_navigation_shell_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@drawable/bg_liquid_glass_shell_overlay"
                 android:clickable="false"
                 android:focusable="false" />
 
@@ -81,11 +80,10 @@
                     android:clickable="false"
                     android:focusable="false" />
 
-                <View
+                <androidx.compose.ui.platform.ComposeView
                     android:id="@+id/bottom_navigation_indicator_overlay"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="@drawable/bg_liquid_glass_indicator_overlay"
                     android:clickable="false"
                     android:focusable="false" />
 
@@ -121,11 +119,10 @@
                 android:clickable="false"
                 android:focusable="false" />
 
-            <View
+            <androidx.compose.ui.platform.ComposeView
                 android:id="@+id/search_button_shell_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="@drawable/bg_liquid_glass_circle_shell_overlay"
                 android:clickable="false"
                 android:focusable="false" />
 

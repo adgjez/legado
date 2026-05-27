@@ -482,6 +482,31 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         contentContainer.invalidate()
     }
 
+    private fun bottomBarGlassSpec(
+        mode: String,
+        cornerRadius: Float,
+        oval: Boolean,
+        selected: Boolean = false
+    ): MainBottomBarGlassSpec {
+        val level = when (mode) {
+            "frosted" -> AppConfig.frostedGlassLevel / 100f
+            "glass" -> AppConfig.liquidGlassLevel / 100f
+            "solid" -> AppConfig.liquidGlassLevel / 100f
+            else -> 1f
+        }
+        return MainBottomBarGlassSpec(
+            mode = mode,
+            baseColor = bottomBackground,
+            accentColor = primaryColor,
+            borderColor = bottomBarBorderColor(),
+            cornerRadiusPx = cornerRadius,
+            oval = oval,
+            selected = selected,
+            level = level,
+            night = AppConfig.isNightTheme
+        )
+    }
+
     private fun refreshBottomNavigationConfig() {
         val signature = NavigationBarIconConfig.currentSignature(AppConfig.isNightTheme)
         if (bottomNavigationConfigSignature == signature) {
@@ -1207,17 +1232,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 searchButtonGlassView.visibility = android.view.View.GONE
                 bottomNavigationShellOverlay.visibility = android.view.View.VISIBLE
                 searchButtonShellOverlay.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
-                bottomNavigationShellOverlay.background = if (standardMode) {
-                    createStandardBottomShellDrawable()
-                } else {
-                    createEInkBottomShellDrawable(
-                        cornerRadius = bottomBarCornerRadius,
+                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = if (standardMode) "standard" else "eink",
+                        cornerRadius = if (standardMode) 0f else bottomBarCornerRadius,
                         oval = false
                     )
-                }
-                searchButtonShellOverlay.background = createEInkBottomShellDrawable(
-                    cornerRadius = searchButtonCornerRadius,
-                    oval = true
+                )
+                searchButtonShellOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "eink",
+                        cornerRadius = searchButtonCornerRadius,
+                        oval = true
+                    )
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 searchButton.setBackgroundColor(Color.TRANSPARENT)
@@ -1235,10 +1262,23 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 bottomNavigationIndicatorContainer.alpha = 1f
                 bottomNavigationIndicatorContainer.scaleX = 1f
                 bottomNavigationIndicatorContainer.scaleY = 1f
-                bottomNavigationShellOverlay.background = createStandardBottomShellDrawable()
+                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "standard",
+                        cornerRadius = 0f,
+                        oval = false
+                    )
+                )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
-                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
+                bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "solid",
+                        cornerRadius = bottomIndicatorCornerRadius,
+                        oval = false,
+                        selected = true
+                    )
+                )
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
@@ -1252,18 +1292,31 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 bottomNavigationIndicatorContainer.alpha = 1f
                 bottomNavigationIndicatorContainer.scaleX = 1f
                 bottomNavigationIndicatorContainer.scaleY = 1f
-                bottomNavigationShellOverlay.background = createSolidBottomShellDrawable(
-                    cornerRadius = bottomBarCornerRadius,
-                    oval = false
+                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "solid",
+                        cornerRadius = bottomBarCornerRadius,
+                        oval = false
+                    )
                 )
-                searchButtonShellOverlay.background = createSolidBottomShellDrawable(
-                    cornerRadius = searchButtonCornerRadius,
-                    oval = true
+                searchButtonShellOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "solid",
+                        cornerRadius = searchButtonCornerRadius,
+                        oval = true
+                    )
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
                 syncSearchButtonTint()
-                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
+                bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
+                    bottomBarGlassSpec(
+                        mode = "solid",
+                        cornerRadius = bottomIndicatorCornerRadius,
+                        oval = false,
+                        selected = true
+                    )
+                )
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
@@ -1309,23 +1362,29 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             } else {
                 (72f + glassLevel * 34f).dpToPx()
             }
-            bottomNavigationShellOverlay.background = createLiquidGlassShellDrawable(
-                glassLevel = glassLevel,
-                cornerRadius = bottomBarCornerRadius,
-                oval = false,
-                selected = false
+            bottomNavigationShellOverlay.setMainBottomBarGlassContent(
+                bottomBarGlassSpec(
+                    mode = effectMode,
+                    cornerRadius = bottomBarCornerRadius,
+                    oval = false,
+                    selected = false
+                )
             )
-            searchButtonShellOverlay.background = createLiquidGlassShellDrawable(
-                glassLevel = glassLevel,
-                cornerRadius = searchButtonCornerRadius,
-                oval = true,
-                selected = false
+            searchButtonShellOverlay.setMainBottomBarGlassContent(
+                bottomBarGlassSpec(
+                    mode = effectMode,
+                    cornerRadius = searchButtonCornerRadius,
+                    oval = true,
+                    selected = false
+                )
             )
-            bottomNavigationIndicatorOverlay.background = createLiquidGlassShellDrawable(
-                glassLevel = glassLevel,
-                cornerRadius = bottomIndicatorCornerRadius,
-                oval = false,
-                selected = true
+            bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
+                bottomBarGlassSpec(
+                    mode = effectMode,
+                    cornerRadius = bottomIndicatorCornerRadius,
+                    oval = false,
+                    selected = true
+                )
             )
             if (!liquidGlassReady || !contentContainer.isLaidOut || !bottomControls.isLaidOut) {
                 contentContainer.doOnPreDraw {
