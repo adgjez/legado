@@ -9,12 +9,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -29,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -192,6 +195,7 @@ private fun MainBottomTabsGlass(
     val itemWeight = 1f / state.tabs.size.coerceAtLeast(1)
     Box(
         modifier = modifier
+            .shadow(10.dp, shape, clip = false)
             .clip(shape)
             .drawLiquidGlass(
                 state = state,
@@ -203,58 +207,61 @@ private fun MainBottomTabsGlass(
             .layerBackdrop(tabsBackdrop)
             .padding(horizontal = 6.dp, vertical = 6.dp)
     ) {
-        val targetOffset = animateDpAsState(
-            targetValue = ((LocalConfiguration.current.screenWidthDp.dp - 40.dp - 10.dp - 56.dp - 12.dp) * itemWeight * selectedIndex),
-            label = "mainBottomSelection"
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(itemWeight)
-                .height(44.dp)
-                .align(Alignment.CenterStart)
-                .padding(start = targetOffset.value)
-                .drawLiquidGlass(
-                    state = state,
-                    backdrop = selectedBackdrop,
-                    shape = RoundedCornerShape(38.dp),
-                    surfaceColor = accent,
-                    selected = true
-                )
-        )
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            state.tabs.forEach { tab ->
-                val selected = tab == state.selectedTab
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(36.dp))
-                        .clickable {
-                            if (selected) actions.onReselectTab(tab) else actions.onSelectTab(tab)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(tab.iconRes),
-                        contentDescription = stringResource(tab.titleRes),
-                        tint = if (selected) textColor else secondary,
-                        modifier = Modifier.size(24.dp)
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val itemWidth = maxWidth / state.tabs.size.coerceAtLeast(1)
+            val targetOffset = animateDpAsState(
+                targetValue = itemWidth * selectedIndex,
+                label = "mainBottomSelection"
+            )
+            Box(
+                modifier = Modifier
+                    .offset(x = targetOffset.value)
+                    .width(itemWidth)
+                    .height(44.dp)
+                    .align(Alignment.CenterStart)
+                    .drawLiquidGlass(
+                        state = state,
+                        backdrop = selectedBackdrop,
+                        shape = RoundedCornerShape(38.dp),
+                        surfaceColor = accent,
+                        selected = true
                     )
-                    if (tab == MainComposeTab.Bookshelf && state.updateCount > 0) {
-                        Text(
-                            text = state.updateCount.coerceAtMost(99).toString(),
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(start = 22.dp)
-                                .background(accent, CircleShape)
-                                .padding(horizontal = 5.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                state.tabs.forEach { tab ->
+                    val selected = tab == state.selectedTab
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(36.dp))
+                            .clickable {
+                                if (selected) actions.onReselectTab(tab) else actions.onSelectTab(tab)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(tab.iconRes),
+                            contentDescription = stringResource(tab.titleRes),
+                            tint = if (selected) textColor else secondary,
+                            modifier = Modifier.size(24.dp)
                         )
+                        if (tab == MainComposeTab.Bookshelf && state.updateCount > 0) {
+                            Text(
+                                text = state.updateCount.coerceAtMost(99).toString(),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(start = 22.dp)
+                                    .background(accent, CircleShape)
+                                    .padding(horizontal = 5.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -274,6 +281,7 @@ private fun MainSearchGlassButton(
 ) {
     Box(
         modifier = modifier
+            .shadow(10.dp, CircleShape, clip = false)
             .clip(CircleShape)
             .drawLiquidGlass(
                 state = state,
