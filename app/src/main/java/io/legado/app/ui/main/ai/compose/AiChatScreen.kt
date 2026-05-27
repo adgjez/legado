@@ -428,8 +428,8 @@ private fun AiAssistantMessageRow(
                 when (part) {
                     is AiMessagePartUi.Text -> AiAssistantTextPart(part, style)
                     is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview)
-                    is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style)
-                    is AiMessagePartUi.Images -> AiImageInlinePart(part, style)
+                    is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
+                    is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
                 }
             }
         }
@@ -473,24 +473,59 @@ private fun AiProcessPart(
 }
 
 @Composable
-private fun AiSearchBookInlinePart(part: AiMessagePartUi.SearchBooks, style: AiComposeStyle) {
+private fun AiSearchBookInlinePart(
+    part: AiMessagePartUi.SearchBooks,
+    style: AiComposeStyle,
+    onToolPreview: (AiToolDisplayPayload) -> Unit
+) {
     AiInfoPill(
         text = "书籍结果 ${part.books.size} 条",
-        style = style
+        style = style,
+        onClick = {
+            onToolPreview(
+                AiToolDisplayPayload(
+                    type = AiToolPreviewType.BookResults,
+                    title = "书籍结果",
+                    summary = "共 ${part.books.size} 条",
+                    raw = "",
+                    books = part.books
+                )
+            )
+        }
     )
 }
 
 @Composable
-private fun AiImageInlinePart(part: AiMessagePartUi.Images, style: AiComposeStyle) {
+private fun AiImageInlinePart(
+    part: AiMessagePartUi.Images,
+    style: AiComposeStyle,
+    onToolPreview: (AiToolDisplayPayload) -> Unit
+) {
     AiInfoPill(
         text = "图片结果 ${part.images.size} 张",
-        style = style
+        style = style,
+        onClick = {
+            onToolPreview(
+                AiToolDisplayPayload(
+                    type = AiToolPreviewType.ImageResult,
+                    title = "图片结果",
+                    summary = "共 ${part.images.size} 张",
+                    raw = "",
+                    images = part.images
+                )
+            )
+        }
     )
 }
 
 @Composable
-private fun AiInfoPill(text: String, style: AiComposeStyle) {
+private fun AiInfoPill(
+    text: String,
+    style: AiComposeStyle,
+    onClick: () -> Unit
+) {
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(style.metrics.chipRadius),
         color = style.colors.accent.copy(alpha = 0.10f)
     ) {
