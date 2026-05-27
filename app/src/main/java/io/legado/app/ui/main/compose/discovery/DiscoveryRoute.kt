@@ -26,22 +26,63 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flowOn
 
 @Composable
 fun DiscoveryRoute(
-    state: DiscoveryUiState,
+    state: DiscoveryUiState = DiscoveryUiState(),
     modifier: Modifier = Modifier,
     callbacks: DiscoveryCallbacks = DiscoveryCallbacks(),
 ) {
-    DiscoveryScreen(state = state, modifier = modifier, callbacks = callbacks)
+    val sources by produceState<List<BookSourcePart>>(initialValue = state.sources) {
+        appDb.bookSourceDao.flowExplore()
+            .flowOn(Dispatchers.IO)
+            .collectLatest { value = it }
+    }
+    var selectedSourceUrl by rememberSaveable(state.selectedSourceUrl) {
+        mutableStateOf(state.selectedSourceUrl)
+    }
+    LaunchedEffect(sources) {
+        if (sources.isEmpty()) {
+            selectedSourceUrl = null
+            return@LaunchedEffect
+        }
+        if (selectedSourceUrl == null || sources.none { it.bookSourceUrl == selectedSourceUrl }) {
+            selectedSourceUrl = sources.first().bookSourceUrl
+        }
+    }
+    val routeState = remember(state, sources, selectedSourceUrl) {
+        state.copy(
+            sources = sources,
+            selectedSourceUrl = selectedSourceUrl,
+            isLoadingSources = false,
+            emptyMessage = "当前发现页只接入了本地源列表，内容加载会在后续迁移接上"
+        )
+    }
+    DiscoveryScreen(state = routeState, modifier = modifier, callbacks = callbacks.copy(
+        onSourceClick = { source ->
+            selectedSourceUrl = source.bookSourceUrl
+            callbacks.onSourceClick(source)
+        }
+    ))
 }
 
 @Composable
@@ -113,12 +154,12 @@ private fun DiscoveryHeader(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Discovery",
+                text = "发现",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = state.currentSource?.bookSourceName ?: "Select a source",
+                text = state.currentSource?.bookSourceName ?: "选择书源",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
@@ -126,7 +167,7 @@ private fun DiscoveryHeader(
             )
         }
         TextButton(onClick = onRefresh) {
-            Text("Refresh")
+            Text("刷新")
         }
     }
 }
@@ -145,7 +186,7 @@ private fun DiscoverySourceStrip(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Sources",
+                text = "书源",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -160,7 +201,7 @@ private fun DiscoverySourceStrip(
             }
         }
         if (sources.isEmpty()) {
-            DiscoveryMessage(text = "No discovery source")
+            DiscoveryMessage(text = "暂无发现书源")
         } else {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -219,7 +260,7 @@ private fun DiscoverySourceChip(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = source.bookSourceGroup?.takeIf { it.isNotBlank() } ?: "No group",
+                text = source.bookSourceGroup?.takeIf { it.isNotBlank() } ?: "未分组",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -250,14 +291,14 @@ private fun DiscoveryCurrentPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = state.currentSource?.getDisPlayNameGroup() ?: "No source selected",
+                        text = state.currentSource?.getDisPlayNameGroup() ?: "未选择书源",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = state.currentTag?.title ?: "All tags",
+                        text = state.currentTag?.title ?: "全部分类",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -266,7 +307,7 @@ private fun DiscoveryCurrentPanel(
                 }
                 state.currentSource?.let { source ->
                     TextButton(onClick = { callbacks.onSearchInSource(source) }) {
-                        Text("Search")
+                        Text("搜索")
                     }
                 }
             }
@@ -343,14 +384,14 @@ private fun DiscoveryBookRow(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = book.name.ifBlank { "Untitled" },
+                        text = book.name.ifBlank { "未命名" },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = book.author.ifBlank { "Unknown author" },
+                        text = book.author.ifBlank { "未知作者" },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,

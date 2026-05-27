@@ -27,22 +27,63 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flowOn
 
 @Composable
 fun RssRoute(
-    state: RssUiState,
+    state: RssUiState = RssUiState(),
     modifier: Modifier = Modifier,
     callbacks: RssCallbacks = RssCallbacks(),
 ) {
-    RssScreen(state = state, modifier = modifier, callbacks = callbacks)
+    val sources by produceState<List<RssSource>>(initialValue = state.sources) {
+        appDb.rssSourceDao.flowEnabled()
+            .flowOn(Dispatchers.IO)
+            .collectLatest { value = it }
+    }
+    var selectedSourceUrl by rememberSaveable(state.selectedSourceUrl) {
+        mutableStateOf(state.selectedSourceUrl)
+    }
+    LaunchedEffect(sources) {
+        if (sources.isEmpty()) {
+            selectedSourceUrl = null
+            return@LaunchedEffect
+        }
+        if (selectedSourceUrl == null || sources.none { it.sourceUrl == selectedSourceUrl }) {
+            selectedSourceUrl = sources.first().sourceUrl
+        }
+    }
+    val routeState = remember(state, sources, selectedSourceUrl) {
+        state.copy(
+            sources = sources,
+            selectedSourceUrl = selectedSourceUrl,
+            isLoadingSources = false,
+            emptyMessage = "当前订阅页只接入了本地源列表，文章加载会在后续迁移接上"
+        )
+    }
+    RssScreen(state = routeState, modifier = modifier, callbacks = callbacks.copy(
+        onSourceClick = { source ->
+            selectedSourceUrl = source.sourceUrl
+            callbacks.onSourceClick(source)
+        }
+    ))
 }
 
 @Composable
@@ -127,7 +168,7 @@ private fun RssHeader(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = state.currentSource?.sourceName ?: "Select a source",
+                text = state.currentSource?.sourceName ?: "选择订阅源",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
@@ -135,7 +176,7 @@ private fun RssHeader(
             )
         }
         TextButton(onClick = onRefresh) {
-            Text("Refresh")
+            Text("刷新")
         }
     }
 }
@@ -154,7 +195,7 @@ private fun RssSourceStrip(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Sources",
+                text = "订阅源",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -169,7 +210,7 @@ private fun RssSourceStrip(
             }
         }
         if (sources.isEmpty()) {
-            RssMessage(text = "No RSS source")
+            RssMessage(text = "暂无订阅源")
         } else {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -228,7 +269,7 @@ private fun RssSourceChip(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = source.sourceGroup?.takeIf { it.isNotBlank() } ?: "No group",
+                text = source.sourceGroup?.takeIf { it.isNotBlank() } ?: "未分组",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -259,14 +300,14 @@ private fun RssCurrentPanel(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = state.currentSource?.getDisplayNameGroup() ?: "No source selected",
+                        text = state.currentSource?.getDisplayNameGroup() ?: "未选择订阅源",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = state.currentCategory?.title ?: "All categories",
+                        text = state.currentCategory?.title ?: "全部分类",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -275,7 +316,7 @@ private fun RssCurrentPanel(
                 }
                 state.currentSource?.takeIf { !it.searchUrl.isNullOrBlank() }?.let { source ->
                     TextButton(onClick = { callbacks.onSearchInSource(source) }) {
-                        Text("Search")
+                        Text("搜索")
                     }
                 }
             }
@@ -342,18 +383,18 @@ private fun RssLegacyWebSourcePanel(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Legacy web RSS",
+                    text = "网页订阅源",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "This module does not embed WebView.",
+                    text = "此类源会打开原有网页订阅页面。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             Button(onClick = { onOpenLegacyWebSource(source) }) {
-                Text("Open")
+                Text("打开")
             }
         }
     }

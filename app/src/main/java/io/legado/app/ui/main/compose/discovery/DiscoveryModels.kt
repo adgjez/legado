@@ -22,7 +22,7 @@ data class DiscoveryUiState(
     val isLoadingSources: Boolean = false,
     val isLoadingBooks: Boolean = false,
     val errorMessage: String? = null,
-    val emptyMessage: String = "No discovery results",
+    val emptyMessage: String = "暂无发现内容",
     val contentPaddingTop: Dp = Dp.Unspecified,
     val contentPaddingBottom: Dp = Dp.Unspecified,
 ) {

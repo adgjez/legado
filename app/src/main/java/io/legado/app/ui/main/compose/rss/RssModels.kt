@@ -22,7 +22,7 @@ data class RssUiState(
     val isLoadingSources: Boolean = false,
     val isLoadingArticles: Boolean = false,
     val errorMessage: String? = null,
-    val emptyMessage: String = "No RSS articles",
+    val emptyMessage: String = "暂无订阅文章",
     val contentPaddingTop: Dp = Dp.Unspecified,
     val contentPaddingBottom: Dp = Dp.Unspecified,
 ) {
