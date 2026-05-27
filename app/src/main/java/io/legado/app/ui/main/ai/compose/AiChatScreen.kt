@@ -318,6 +318,13 @@ private fun AiChatTopBar(
                     actions.onOpenHistory()
                 }
             )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.ai_setting)) },
+                onClick = {
+                    menuExpanded = false
+                    actions.onOpenSettings()
+                }
+            )
             actions.onGenerateImage?.let { generate ->
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.ai_image_generate)) },
