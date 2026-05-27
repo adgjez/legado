@@ -61,11 +61,11 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
         refreshToken.intValue += 1
     }
 
-    private fun dispatchSend(content: String) {
-        if (content.isBlank() || viewModel.isRequesting) return
+    private fun dispatchSend(content: String): Boolean {
+        if (content.isBlank() || viewModel.isRequesting) return false
         if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
             toastOnUi(R.string.ai_missing_config)
-            return
+            return false
         }
         viewModel.startRequest(
             userContent = content.trim(),
@@ -73,6 +73,7 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
             cancelledText = getString(R.string.ai_chat_cancelled),
             failureMessage = { getString(R.string.ai_request_failed, it) }
         )
+        return true
     }
 
     private fun cancelCurrentRequest() {
@@ -114,6 +115,10 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
     }
 
     private fun showModelSelectorDialog() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
         val models = AppConfig.aiModelConfigList
         if (models.isEmpty()) {
             toastOnUi(R.string.ai_no_models)

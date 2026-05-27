@@ -39,6 +39,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -87,7 +88,7 @@ import android.widget.TextView
 
 @Stable
 data class AiChatScreenActions(
-    val onSend: (String) -> Unit,
+    val onSend: (String) -> Boolean,
     val onStop: () -> Unit,
     val onOpenSettings: () -> Unit,
     val onNewChat: () -> Unit,
@@ -119,10 +120,12 @@ fun AiChatRoute(
     val modelLabel = remember(refreshToken, messages.size, requesting) {
         AppConfig.aiCurrentModelConfig?.modelId ?: ""
     }
+    val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
     AiChatScreen(
         messages = messages,
         requesting = requesting,
         modelLabel = modelLabel,
+        enterToSend = enterToSend,
         compactHeader = compactHeader,
         actions = actions
     )
@@ -133,6 +136,7 @@ fun AiChatScreen(
     messages: List<AiChatMessage>,
     requesting: Boolean,
     modelLabel: String,
+    enterToSend: Boolean,
     compactHeader: Boolean,
     actions: AiChatScreenActions
 ) {
@@ -168,6 +172,7 @@ fun AiChatScreen(
         ) {
             AiChatTopBar(
                 modelLabel = modelLabel,
+                requesting = requesting,
                 compactHeader = compactHeader,
                 style = style,
                 actions = actions
@@ -205,6 +210,7 @@ fun AiChatScreen(
         }
         AiComposer(
             requesting = requesting,
+            enterToSend = enterToSend,
             style = style,
             actions = actions,
             modifier = Modifier
@@ -247,6 +253,7 @@ fun AiChatScreen(
 @Composable
 private fun AiChatTopBar(
     modelLabel: String,
+    requesting: Boolean,
     compactHeader: Boolean,
     style: AiComposeStyle,
     actions: AiChatScreenActions
@@ -284,12 +291,13 @@ private fun AiChatTopBar(
         if (modelLabel.isNotBlank()) {
             Surface(
                 onClick = actions.onSelectModel,
+                enabled = !requesting,
                 shape = RoundedCornerShape(style.metrics.chipRadius),
-                color = style.colors.accent.copy(alpha = 0.10f)
+                color = style.colors.accent.copy(alpha = if (requesting) 0.06f else 0.10f)
             ) {
                 Text(
                     text = modelLabel,
-                    color = style.colors.accent,
+                    color = if (requesting) style.colors.secondaryText else style.colors.accent,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -718,11 +726,18 @@ private fun AiJumpButton(
 @Composable
 private fun AiComposer(
     requesting: Boolean,
+    enterToSend: Boolean,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
     modifier: Modifier = Modifier
 ) {
-    var text by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    fun submitDraft() {
+        val content = text.trim()
+        if (!requesting && content.isNotEmpty() && actions.onSend(content)) {
+            text = ""
+        }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -752,15 +767,11 @@ private fun AiComposer(
                     onValueChange = { text = it },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
-                        imeAction = ImeAction.Send
+                        imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default
                     ),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            val content = text.trim()
-                            if (!requesting && content.isNotEmpty()) {
-                                text = ""
-                                actions.onSend(content)
-                            }
+                            if (enterToSend) submitDraft()
                         }
                     ),
                     textStyle = TextStyle(
@@ -776,11 +787,7 @@ private fun AiComposer(
                     if (requesting) {
                         actions.onStop()
                     } else {
-                        val content = text.trim()
-                        if (content.isNotEmpty()) {
-                            text = ""
-                            actions.onSend(content)
-                        }
+                        submitDraft()
                     }
                 },
                 enabled = requesting || text.isNotBlank(),
