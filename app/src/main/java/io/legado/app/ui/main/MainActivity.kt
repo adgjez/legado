@@ -431,7 +431,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 view.bottomPadding = 0
                 applyBottomNavigationShape(standardMode = true)
             } else {
-                view.bottomPadding = height + 14.dpToPx()
+                view.bottomPadding = maxOf(height, 18.dpToPx()) + 6.dpToPx()
                 applyBottomNavigationShape(standardMode = false)
             }
             windowInsets.inset(0, 0, 0, height)
@@ -1343,14 +1343,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 (5f + glassLevel * 14f).dpToPx()
             }
             val tintAlpha = if (frostedMode) {
-                0.12f + glassLevel * 0.18f
+                0.07f + glassLevel * 0.12f
             } else {
-                0.05f + glassLevel * 0.10f
+                0.025f + glassLevel * 0.07f
             }
             val dispersion = if (frostedMode) {
-                (0.18f + glassLevel * 0.16f).coerceAtMost(0.42f)
+                (0.12f + glassLevel * 0.12f).coerceAtMost(0.30f)
             } else {
-                0.46f + glassLevel * 0.32f
+                0.24f + glassLevel * 0.18f
             }
             val refractionHeight = if (frostedMode) {
                 (12f + glassLevel * 10f).dpToPx()
