@@ -193,7 +193,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private var bottomNavigationConfigSignature: String? = null
     private var bottomNavigationInset = 0
-    private val composeMainEnabled = true
+    private val composeMainEnabled: Boolean
+        get() = AppConfig.composeMainEnabled
     private val composeSelectedTab = mutableStateOf(MainComposeTab.Bookshelf)
     private val composeUpdateCount = mutableIntStateOf(0)
     private val sidebarTouchSlop by lazy {

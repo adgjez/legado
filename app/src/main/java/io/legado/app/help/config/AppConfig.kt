@@ -796,6 +796,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiEnterToSend, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiEnterToSend, value)
 
+    var composeMainEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.composeMainEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.composeMainEnabled, value)
+
     var aiEnabledToolNames: Set<String>
         get() = appCtx.getPrefStringSet(PreferKey.aiEnabledToolNames, mutableSetOf())
             ?.filter { it.isNotBlank() }
