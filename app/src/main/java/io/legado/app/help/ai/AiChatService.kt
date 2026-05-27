@@ -103,13 +103,15 @@ object AiChatService {
         val tools = runCatching {
             if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
         }.getOrDefault(emptyList())
-        val preparedContext = AiContextManager.prepare(messages, contextSummary)
+        val reserveTokens = estimateStaticRequestTokens(messages, tools)
+        val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
         preparedContext.summary?.takeIf { preparedContext.compressed }?.let(onContextSummary)
         onContextStats(
             JSONObject().apply {
                 put("compressed", preparedContext.compressed)
                 put("inputTokens", preparedContext.inputTokens)
                 put("limitTokens", preparedContext.limitTokens)
+                put("reserveTokens", reserveTokens)
             }
         )
         val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
@@ -673,6 +675,20 @@ object AiChatService {
             }
         }
         return conversation
+    }
+
+    private fun estimateStaticRequestTokens(messages: List<AiChatMessage>, tools: List<AiResolvedTool>): Int {
+        val systemTokens = AiContextManager.estimateTokens(AppConfig.aiSystemPrompt)
+        val personaTokens = AiContextManager.estimateTokens(AppConfig.aiCurrentPersona?.prompt.orEmpty())
+        val skillTokens = AppConfig.aiEnabledSkills.sumOf {
+            AiContextManager.estimateTokens(it.name) +
+                AiContextManager.estimateTokens(it.description) +
+                AiContextManager.estimateTokens(it.sourceUrl) +
+                AiContextManager.estimateTokens(it.content)
+        }
+        val bookshelfHintTokens = if (requiresBookshelfTool(messages)) 180 else 0
+        val toolTokens = tools.sumOf { AiContextManager.estimateTokens(it.definition.toString()) + 16 }
+        return systemTokens + personaTokens + skillTokens + bookshelfHintTokens + toolTokens + 256
     }
 
     private fun stripSearchResultBlocks(content: String): String {
