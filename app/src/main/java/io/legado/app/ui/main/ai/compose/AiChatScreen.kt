@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai.compose
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -405,17 +407,19 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
                 bottomStart = 20.dp,
                 bottomEnd = 8.dp
             ),
-            color = Color(0xff95ec69.toInt()),
+            color = style.colors.userBubble,
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                Color(0xff7cd452.toInt())
+                style.colors.userBubbleStroke
             ),
-            modifier = Modifier.fillMaxWidth(0.82f)
+            modifier = Modifier
+                .fillMaxWidth(0.82f)
+                .animateContentSize()
         ) {
             SelectionContainer {
                 Text(
                     text = message.content,
-                    color = Color(0xff202020.toInt()),
+                    color = style.colors.userText,
                     fontSize = 15.sp,
                     lineHeight = 21.sp,
                     modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
@@ -461,11 +465,13 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
             bottomEnd = 20.dp
         ),
         color = style.colors.assistantBubble,
-        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke)
+        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke),
+        modifier = Modifier.animateContentSize()
     ) {
         SelectionContainer {
             AiMarkdownText(
                 content = part.content,
+                style = style,
                 modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
             )
         }
@@ -556,6 +562,7 @@ private fun AiInfoPill(
 @Composable
 private fun AiMarkdownText(
     content: String,
+    style: AiComposeStyle,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -581,7 +588,11 @@ private fun AiMarkdownText(
             }
         },
         update = { textView ->
+            textView.setTextColor(style.colors.primaryText.toArgb())
+            textView.setLinkTextColor(style.colors.accent.toArgb())
             markwon.setMarkdown(textView, content.ifBlank { " " })
+            textView.setTextColor(style.colors.primaryText.toArgb())
+            textView.setLinkTextColor(style.colors.accent.toArgb())
             installSearchBookLinks(textView)
             textView.movementMethod = LinkMovementMethod.getInstance()
         }

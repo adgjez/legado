@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai.compose
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -66,7 +67,9 @@ fun AiProcessTimelineCard(
     val activeStep = steps.firstOrNull { it.pending } ?: steps.last()
     val hasFailedStep = steps.any { !it.success }
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.toolSurface,
         tonalElevation = 0.dp,
@@ -76,7 +79,11 @@ fun AiProcessTimelineCard(
             if (hasFailedStep) style.colors.danger.copy(alpha = 0.28f) else style.colors.stroke
         )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .animateContentSize()
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -310,7 +317,9 @@ fun AiProcessChainCard(
         style.colors.processSurface
     }
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
         color = surface,
         tonalElevation = 0.dp,

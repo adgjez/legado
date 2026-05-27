@@ -9,11 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.utils.ColorUtils
 
 @Immutable
@@ -26,6 +22,9 @@ data class AiComposeColors(
     val cardSurface: Color,
     val composerSurface: Color,
     val composerStroke: Color,
+    val userBubble: Color,
+    val userBubbleStroke: Color,
+    val userText: Color,
     val assistantBubble: Color,
     val assistantBubbleStroke: Color,
     val processSurface: Color,
@@ -49,53 +48,59 @@ data class AiComposeStyle(
 
 @Stable
 fun aiComposeStyle(context: Context): AiComposeStyle {
+    val night = AppConfig.isNightTheme
     val pageBackground = ContextCompat.getColor(
         context,
-        if (AppConfig.isNightTheme) R.color.md_grey_900 else R.color.white
+        if (night) R.color.md_grey_900 else R.color.white
     )
-    val background = if (context.backgroundColor == android.graphics.Color.TRANSPARENT) {
-        pageBackground
-    } else {
-        context.backgroundColor
-    }
+    val background = pageBackground
     val accent = context.accentColor
-    val baseIsLight = ColorUtils.isColorLight(pageBackground)
+    val baseIsLight = !night
+    val primaryText = if (night) 0xfff2f3f5.toInt() else 0xff202124.toInt()
+    val secondaryText = if (night) 0xffaeb4bc.toInt() else 0xff6b7178.toInt()
     val cardSurface = if (baseIsLight) {
-        ColorUtils.blendColors(pageBackground, ContextCompat.getColor(context, R.color.background_card), 0.72f)
+        0xfff7f8fa.toInt()
     } else {
-        ColorUtils.blendColors(pageBackground, ContextCompat.getColor(context, R.color.white), 0.12f)
+        0xff24262b.toInt()
     }
-    val composerSurface = ColorUtils.adjustAlpha(
-        ColorUtils.blendColors(pageBackground, accent, if (baseIsLight) 0.08f else 0.18f),
-        if (baseIsLight) 0.96f else 0.88f
+    val composerSurface = if (baseIsLight) {
+        ColorUtils.blendColors(0xffffffff.toInt(), accent, 0.06f)
+    } else {
+        ColorUtils.blendColors(0xff22252a.toInt(), accent, 0.10f)
+    }
+    val assistantBubble = if (baseIsLight) 0xffffffff.toInt() else 0xff2a2d33.toInt()
+    val userBubble = ColorUtils.blendColors(
+        if (baseIsLight) 0xffffffff.toInt() else 0xff202329.toInt(),
+        accent,
+        if (baseIsLight) 0.18f else 0.28f
     )
-    val processSurface = ColorUtils.blendColors(background, 0xff607d8b.toInt(), 0.08f)
-    val toolSurface = ColorUtils.blendColors(background, accent, 0.07f)
-    val stroke = if (UiCorner.effectMode() == "solid") {
-        ColorUtils.adjustAlpha(accent, 0.18f)
-    } else {
-        UiCorner.effectStrokeColor(background)
-    }
+    val userText = if (ColorUtils.isColorLight(userBubble)) 0xff202124.toInt() else 0xffffffff.toInt()
+    val processSurface = if (baseIsLight) 0xfff1f4f7.toInt() else 0xff242a31.toInt()
+    val toolSurface = ColorUtils.blendColors(cardSurface, accent, if (baseIsLight) 0.08f else 0.14f)
+    val stroke = if (baseIsLight) 0x1f000000 else 0x24ffffff
     return AiComposeStyle(
         colors = AiComposeColors(
             accent = Color(accent),
             background = Color(background),
             pageBackground = Color(pageBackground),
-            primaryText = Color(context.primaryTextColor),
-            secondaryText = Color(context.secondaryTextColor),
-            cardSurface = Color(UiCorner.surfaceColor(cardSurface)),
-            composerSurface = Color(UiCorner.surfaceColor(composerSurface)),
+            primaryText = Color(primaryText),
+            secondaryText = Color(secondaryText),
+            cardSurface = Color(cardSurface),
+            composerSurface = Color(composerSurface),
             composerStroke = Color(ColorUtils.adjustAlpha(accent, if (baseIsLight) 0.18f else 0.24f)),
-            assistantBubble = Color(0xfff8f8f8),
-            assistantBubbleStroke = Color(0xffe2e2e2),
-            processSurface = Color(UiCorner.surfaceColor(processSurface)),
-            toolSurface = Color(UiCorner.surfaceColor(toolSurface)),
+            userBubble = Color(userBubble),
+            userBubbleStroke = Color(ColorUtils.adjustAlpha(accent, if (baseIsLight) 0.28f else 0.36f)),
+            userText = Color(userText),
+            assistantBubble = Color(assistantBubble),
+            assistantBubbleStroke = Color(stroke),
+            processSurface = Color(processSurface),
+            toolSurface = Color(toolSurface),
             stroke = Color(stroke),
             danger = Color(0xfff44336.toInt())
         ),
         metrics = AiComposeMetrics(
-            cardRadius = (UiCorner.scaledDp(16f) / context.resources.displayMetrics.density).dp,
-            chipRadius = (UiCorner.scaledDp(10f) / context.resources.displayMetrics.density).dp,
+            cardRadius = 18.dp,
+            chipRadius = 11.dp,
             strokeWidth = 1.dp
         )
     )
