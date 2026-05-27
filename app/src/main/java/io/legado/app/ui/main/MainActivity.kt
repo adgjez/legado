@@ -196,6 +196,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             setupBottomGlass()
         }
     }
+    private var bottomGlassLastGestureRefresh = 0L
     private var mergedDiscoveryLongClickView: View? = null
     private var sideNavigationOpen = false
     private val hideBottomIndicatorRunnable = Runnable {
@@ -588,13 +589,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             return true
         }
         val handled = super.dispatchTouchEvent(ev)
-        if ((ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL)
-            && !isStandardBottomMode()
-            && !isSidebarMode()
-        ) {
-            scheduleBottomGlassSetup(delayMillis = 64L)
+        if (!isStandardBottomMode() && !isSidebarMode()) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_MOVE -> scheduleBottomGlassSetupDuringGesture()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleBottomGlassSetup(delayMillis = 32L)
+            }
         }
         return handled
+    }
+
+    private fun scheduleBottomGlassSetupDuringGesture() {
+        val now = System.currentTimeMillis()
+        if (now - bottomGlassLastGestureRefresh < 96L) {
+            return
+        }
+        bottomGlassLastGestureRefresh = now
+        scheduleBottomGlassSetup()
     }
 
     private fun handleSidebarSwipe(ev: MotionEvent): Boolean {
@@ -712,6 +722,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             0
         )
+        updateBottomControlsMargin(if (standardMode) 0 else bottomFloatingMargin(bottomNavigationInset))
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
             NavigationBarView.LABEL_VISIBILITY_UNLABELED
         } else {
