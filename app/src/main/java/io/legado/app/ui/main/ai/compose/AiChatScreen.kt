@@ -2,6 +2,7 @@ package io.legado.app.ui.main.ai.compose
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -24,14 +26,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -42,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -53,9 +55,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import io.legado.app.R
@@ -309,39 +314,71 @@ private fun AiChatTopBar(
                     modifier = Modifier.size(21.dp)
                 )
             }
-            DropdownMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_new_chat)) },
-                    onClick = {
-                        menuExpanded = false
-                        actions.onNewChat()
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_chat_history)) },
-                    onClick = {
-                        menuExpanded = false
-                        actions.onOpenHistory()
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.ai_setting)) },
-                    onClick = {
-                        menuExpanded = false
-                        actions.onOpenSettings()
-                    }
-                )
-                actions.onGenerateImage?.let { generate ->
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.ai_image_generate)) },
-                        onClick = {
-                            menuExpanded = false
-                            generate()
+            if (menuExpanded) {
+                AiModernTopMenu(
+                    style = style,
+                    actions = buildList {
+                        add(AiTopMenuAction(stringResource(R.string.ai_new_chat)) { actions.onNewChat() })
+                        add(AiTopMenuAction(stringResource(R.string.ai_chat_history)) { actions.onOpenHistory() })
+                        add(AiTopMenuAction(stringResource(R.string.ai_setting)) { actions.onOpenSettings() })
+                        actions.onGenerateImage?.let { generate ->
+                            add(AiTopMenuAction(stringResource(R.string.ai_image_generate), generate))
                         }
-                    )
+                    },
+                    onDismiss = { menuExpanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Immutable
+private data class AiTopMenuAction(
+    val title: String,
+    val invoke: () -> Unit
+)
+
+@Composable
+private fun AiModernTopMenu(
+    style: AiComposeStyle,
+    actions: List<AiTopMenuAction>,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        alignment = Alignment.TopEnd,
+        offset = IntOffset(0, 44),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.assistantBubble,
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke),
+            modifier = Modifier.widthIn(min = 132.dp)
+        ) {
+            Column(modifier = Modifier.padding(6.dp)) {
+                actions.forEach { action ->
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = 132.dp)
+                            .clip(RoundedCornerShape(style.metrics.chipRadius))
+                            .clickable {
+                                onDismiss()
+                                action.invoke()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = action.title,
+                            color = style.colors.primaryText,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
