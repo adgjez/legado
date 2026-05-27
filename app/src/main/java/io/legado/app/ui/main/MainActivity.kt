@@ -483,6 +483,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         cornerRadius: Float,
         oval: Boolean,
         selected: Boolean = false,
+        backdropImage: ImageBitmap? = null,
         backdropTarget: View? = null
     ): MainBottomBarGlassSpec {
         val level = when (mode) {
@@ -490,6 +491,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             "glass" -> AppConfig.liquidGlassLevel / 100f
             "solid" -> AppConfig.liquidGlassLevel / 100f
             else -> 1f
+        }
+        val offset = if (backdropImage != null && backdropTarget != null) {
+            bottomControlsOffsetOf(backdropTarget)
+        } else {
+            0f to 0f
         }
         return MainBottomBarGlassSpec(
             mode = mode,
@@ -501,8 +507,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             selected = selected,
             level = level,
             night = AppConfig.isNightTheme,
-            backdropImage = backdropTarget?.let { captureBottomBackdrop(it) }
+            backdropImage = backdropImage ?: backdropTarget?.let { captureBottomBackdrop(it) },
+            backdropOffsetX = offset.first,
+            backdropOffsetY = offset.second
         )
+    }
+
+    private fun bottomControlsOffsetOf(target: View): Pair<Float, Float> {
+        if (!binding.bottomControls.isLaidOut || !target.isLaidOut) {
+            return 0f to 0f
+        }
+        val rootLocation = IntArray(2)
+        val targetLocation = IntArray(2)
+        binding.bottomControls.getLocationInWindow(rootLocation)
+        target.getLocationInWindow(targetLocation)
+        return (targetLocation[0] - rootLocation[0]).toFloat() to
+                (targetLocation[1] - rootLocation[1]).toFloat()
     }
 
     private fun captureBottomBackdrop(target: View): ImageBitmap? {
@@ -1308,6 +1328,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun setupBottomGlass() {
         binding.run {
             val standardMode = isStandardBottomMode()
+            val controlsBackdrop = captureBottomBackdrop(bottomControls)
             if (AppConfig.isEInkMode) {
                 bottomNavigationIndicatorContainer.visibility = View.GONE
                 bottomNavigationShellOverlay.visibility = View.VISIBLE
@@ -1317,6 +1338,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                         mode = if (standardMode) "standard" else "eink",
                         cornerRadius = if (standardMode) 0f else bottomBarCornerRadius,
                         oval = false,
+                        backdropImage = controlsBackdrop,
                         backdropTarget = bottomNavigationShellOverlay
                     )
                 )
@@ -1325,6 +1347,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                         mode = "eink",
                         cornerRadius = searchButtonCornerRadius,
                         oval = true,
+                        backdropImage = controlsBackdrop,
                         backdropTarget = searchButtonShellOverlay
                     )
                 )
@@ -1346,6 +1369,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                         mode = "standard",
                         cornerRadius = 0f,
                         oval = false,
+                        backdropImage = controlsBackdrop,
                         backdropTarget = bottomNavigationShellOverlay
                     )
                 )
@@ -1358,6 +1382,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                         cornerRadius = bottomIndicatorCornerRadius,
                         oval = false,
                         selected = true,
+                        backdropImage = controlsBackdrop,
                         backdropTarget = bottomNavigationIndicatorOverlay
                     )
                 )
@@ -1370,7 +1395,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationIndicatorContainer.scaleX = 1f
             bottomNavigationIndicatorContainer.scaleY = 1f
             bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
-            searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
+            searchButton.setBackgroundColor(Color.TRANSPARENT)
             syncSearchButtonTint()
             bottomNavigationShellOverlay.setMainBottomBarGlassContent(
                 bottomBarGlassSpec(
@@ -1378,6 +1403,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     cornerRadius = bottomBarCornerRadius,
                     oval = false,
                     selected = false,
+                    backdropImage = controlsBackdrop,
                     backdropTarget = bottomNavigationShellOverlay
                 )
             )
@@ -1387,6 +1413,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     cornerRadius = searchButtonCornerRadius,
                     oval = true,
                     selected = false,
+                    backdropImage = controlsBackdrop,
                     backdropTarget = searchButtonShellOverlay
                 )
             )
@@ -1397,6 +1424,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     cornerRadius = bottomIndicatorCornerRadius,
                     oval = false,
                     selected = true,
+                    backdropImage = controlsBackdrop,
                     backdropTarget = bottomNavigationIndicatorOverlay
                 )
             )
