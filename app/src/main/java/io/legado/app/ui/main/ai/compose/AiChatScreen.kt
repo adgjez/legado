@@ -35,9 +35,11 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -47,12 +49,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import io.legado.app.R
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatViewModel
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.linkify.LinkifyPlugin
+import kotlinx.coroutines.launch
+import android.net.Uri
+import android.text.Spannable
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.text.style.URLSpan
+import android.view.View
+import android.widget.TextView
 
 @Stable
 data class AiChatScreenActions(
@@ -111,6 +131,7 @@ fun AiChatScreen(
     val context = LocalContext.current
     val style = aiComposeStyle(context)
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     val uiItems = remember(context, messages) {
         buildAiChatUiItems(context, messages)
     }
@@ -174,6 +195,27 @@ fun AiChatScreen(
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 14.dp)
         )
+        if (uiItems.size > 1) {
+            AiJumpButtons(
+                style = style,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(end = 16.dp, bottom = 92.dp),
+                onPrevious = {
+                    val current = listState.firstVisibleItemIndex
+                    val target = (current - 1).coerceAtLeast(0)
+                    coroutineScope.launch { listState.animateScrollToItem(target) }
+                },
+                onNext = {
+                    val current = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                        ?: listState.firstVisibleItemIndex
+                    val target = (current + 1).coerceAtMost(uiItems.lastIndex)
+                    coroutineScope.launch { listState.animateScrollToItem(target) }
+                }
+            )
+        }
     }
 }
 
@@ -387,11 +429,8 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
         border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke)
     ) {
         SelectionContainer {
-            Text(
-                text = part.content,
-                color = Color(0xff202020.toInt()),
-                fontSize = 15.sp,
-                lineHeight = 21.sp,
+            AiMarkdownText(
+                content = part.content,
                 modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
             )
         }
@@ -454,6 +493,120 @@ private fun AiInfoPill(text: String, style: AiComposeStyle) {
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
+    }
+}
+
+@Composable
+private fun AiMarkdownText(
+    content: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TaskListPlugin.create(context))
+            .usePlugin(HtmlPlugin.create())
+            .usePlugin(LinkifyPlugin.create())
+            .build()
+    }
+    AndroidView(
+        modifier = modifier,
+        factory = {
+            TextView(it).apply {
+                textSize = 15f
+                setTextColor(android.graphics.Color.rgb(32, 32, 32))
+                setLineSpacing(2f, 1f)
+                linksClickable = true
+                movementMethod = LinkMovementMethod.getInstance()
+                setTextIsSelectable(true)
+            }
+        },
+        update = { textView ->
+            markwon.setMarkdown(textView, content.ifBlank { " " })
+            installSearchBookLinks(textView)
+            textView.movementMethod = LinkMovementMethod.getInstance()
+        }
+    )
+}
+
+private fun installSearchBookLinks(textView: TextView) {
+    val spannable = textView.text as? Spannable ?: return
+    val spans = spannable.getSpans(0, spannable.length, URLSpan::class.java)
+    spans.forEach { span ->
+        val url = span.url
+        if (!url.startsWith(searchBookScheme)) return@forEach
+        val start = spannable.getSpanStart(span)
+        val end = spannable.getSpanEnd(span)
+        val flags = spannable.getSpanFlags(span)
+        spannable.removeSpan(span)
+        spannable.setSpan(object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                val uri = Uri.parse(url)
+                val book = SearchBook(
+                    name = uri.getQueryParameter("name").orEmpty(),
+                    author = uri.getQueryParameter("author").orEmpty(),
+                    bookUrl = uri.getQueryParameter("bookUrl").orEmpty(),
+                    origin = uri.getQueryParameter("origin").orEmpty(),
+                    originName = uri.getQueryParameter("originName").orEmpty()
+                )
+                if (book.bookUrl.isBlank() || book.origin.isBlank()) return
+                SearchBookOpenHelper.open(
+                    widget.context,
+                    book,
+                    uri.getQueryParameter("target") == "video"
+                )
+            }
+
+            override fun updateDrawState(ds: TextPaint) {
+                super.updateDrawState(ds)
+                ds.isUnderlineText = false
+            }
+        }, start, end, flags)
+    }
+}
+
+@Composable
+private fun AiJumpButtons(
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        AiJumpButton(style = style, rotation = 180f, onClick = onPrevious)
+        AiJumpButton(style = style, rotation = 0f, onClick = onNext)
+    }
+}
+
+@Composable
+private fun AiJumpButton(
+    style: AiComposeStyle,
+    rotation: Float,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = style.colors.cardSurface,
+        shadowElevation = 6.dp,
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+        modifier = Modifier.size(40.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_drop_down),
+                contentDescription = null,
+                tint = style.colors.primaryText,
+                modifier = Modifier
+                    .size(22.dp)
+                    .then(Modifier.graphicsLayer(rotationZ = rotation))
+            )
+        }
     }
 }
 
@@ -533,3 +686,5 @@ private fun AiComposer(
         }
     }
 }
+
+private const val searchBookScheme = "legado-search-book://"
