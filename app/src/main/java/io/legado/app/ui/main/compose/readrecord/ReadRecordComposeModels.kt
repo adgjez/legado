@@ -4,7 +4,7 @@ import androidx.compose.runtime.Immutable
 
 @Immutable
 data class ReadRecordUiState(
-    val title: String = "Read records",
+    val title: String = "阅读记录",
     val subtitle: String = "",
     val overview: List<ReadRecordMetricUi> = emptyList(),
     val goal: ReadRecordGoalUi? = null,
@@ -13,7 +13,7 @@ data class ReadRecordUiState(
     val rankItems: List<ReadRecordRankUi> = emptyList(),
     val dailyRecords: List<ReadRecordDailyUi> = emptyList(),
     val componentOrder: List<ReadRecordComponentUi> = ReadRecordComponentUi.entries,
-    val emptyHint: String = "No read records yet"
+    val emptyHint: String = "暂无阅读记录"
 ) {
     val hasContent: Boolean
         get() = overview.isNotEmpty() ||
@@ -34,13 +34,13 @@ data class ReadRecordMetricUi(
 
 @Immutable
 data class ReadRecordGoalUi(
-    val title: String = "Daily goal",
+    val title: String = "今日目标",
     val userName: String = "",
     val progress: Float = 0f,
     val currentText: String,
     val targetText: String,
     val helper: String = "",
-    val actionText: String = "Edit"
+    val actionText: String = "编辑"
 ) {
     val normalizedProgress: Float
         get() = progress.coerceIn(0f, 1f)

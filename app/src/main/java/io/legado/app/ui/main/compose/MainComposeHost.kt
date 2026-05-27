@@ -3,11 +3,7 @@ package io.legado.app.ui.main.compose
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
@@ -21,12 +17,10 @@ import io.legado.app.ui.main.compose.bookshelf.rememberBookshelfScrollController
 import io.legado.app.ui.main.compose.discovery.DiscoveryCallbacks
 import io.legado.app.ui.main.compose.discovery.DiscoveryRoute
 import io.legado.app.ui.main.compose.discovery.DiscoveryUiState
-import io.legado.app.ui.main.compose.my.MyPageActions
-import io.legado.app.ui.main.compose.my.MyPageUiState
-import io.legado.app.ui.main.compose.my.MyScreen
+import io.legado.app.ui.main.compose.my.MyRoute
+import io.legado.app.ui.main.compose.my.MyRouteCallbacks
 import io.legado.app.ui.main.compose.readrecord.ReadRecordActions
-import io.legado.app.ui.main.compose.readrecord.ReadRecordScreen
-import io.legado.app.ui.main.compose.readrecord.ReadRecordUiState
+import io.legado.app.ui.main.compose.readrecord.ReadRecordRoute
 import io.legado.app.ui.main.compose.rss.RssCallbacks
 import io.legado.app.ui.main.compose.rss.RssRoute
 import io.legado.app.ui.main.compose.rss.RssUiState
@@ -41,6 +35,7 @@ data class MainComposeHostActions(
     val onOpenSearchBook: (SearchBook) -> Unit = {},
     val onOpenRssArticle: (RssArticle) -> Unit = {},
     val onOpenRssSource: (RssSource) -> Unit = {},
+    val onOpenBookUrl: (String) -> Unit = {},
     val onOpenMyItem: (String) -> Unit = {},
     val onReadRecordMore: () -> Unit = {}
 )
@@ -56,7 +51,6 @@ fun MainComposeHost(
     val tabs = rememberMainComposeTabs()
     val safeSelectedTab = selectedTab.takeIf { it in tabs } ?: tabs.first()
     val bookshelfScrollController = rememberBookshelfScrollController()
-    var mySearchQuery by rememberSaveable { mutableStateOf("") }
 
     MaterialTheme {
         MainComposeRoute(
@@ -115,24 +109,18 @@ fun MainComposeHost(
                     )
                 )
 
-                MainComposeTab.ReadRecord -> ReadRecordScreen(
-                    state = ReadRecordUiState(
-                        title = "阅读记录",
-                        emptyHint = "暂无阅读记录"
-                    ),
+                MainComposeTab.ReadRecord -> ReadRecordRoute(
                     actions = ReadRecordActions(
+                        onOpenBook = { actions.onOpenBookUrl(it.id) },
+                        onBookLongClick = { actions.onOpenBookUrl(it.id) },
+                        onRankItemClick = { actions.onOpenBookUrl(it.id) },
                         onMoreClick = actions.onReadRecordMore
                     )
                 )
 
-                MainComposeTab.My -> MyScreen(
-                    state = MyPageUiState(
-                        title = "我的",
-                        searchQuery = mySearchQuery
-                    ),
-                    actions = MyPageActions(
-                        onSearchQueryChange = { mySearchQuery = it },
-                        onItemClick = { actions.onOpenMyItem(it.key) }
+                MainComposeTab.My -> MyRoute(
+                    callbacks = MyRouteCallbacks(
+                        onItemClick = actions.onOpenMyItem
                     )
                 )
             }

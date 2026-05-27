@@ -177,7 +177,7 @@ private fun ReadRecordHeader(
             }
         }
         Text(
-            text = "Options",
+            text = "组件",
             color = style.colors.accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
@@ -191,7 +191,7 @@ private fun ReadRecordHeader(
 
 @Composable
 private fun OverviewSection(metrics: List<ReadRecordMetricUi>, style: ReadRecordComposeStyle) {
-    SectionBlock(title = "Overview", style = style) {
+    SectionBlock(title = "概览", style = style) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             metrics.chunked(2).forEach { rowItems ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -265,7 +265,7 @@ private fun GoalCard(goal: ReadRecordGoalUi, style: ReadRecordComposeStyle, onCl
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = goal.userName.ifBlank { "浠婃棩闃呰" },
+                    text = goal.userName.ifBlank { "今日阅读" },
                     color = style.colors.primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -333,7 +333,7 @@ private fun GoalRing(progress: Float, style: ReadRecordComposeStyle, modifier: M
 
 @Composable
 private fun HeatmapSection(cells: List<ReadRecordHeatmapCellUi>, style: ReadRecordComposeStyle) {
-    SectionBlock(title = "Heatmap", style = style) {
+    SectionBlock(title = "阅读热力", style = style) {
         ReadRecordHeatmap(
             cells = cells,
             style = style,
@@ -384,7 +384,7 @@ private fun RecentBooksSection(
     onClick: (ReadRecordBookUi) -> Unit,
     onLongClick: (ReadRecordBookUi) -> Unit
 ) {
-    SectionBlock(title = "Recent reading", style = style) {
+    SectionBlock(title = "最近在读", style = style) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(books, key = { it.id }) { book ->
                 RecentBookCard(
@@ -424,7 +424,7 @@ private fun RecentBookCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = book.title.take(1).ifBlank { "B" },
+                    text = book.title.take(1).ifBlank { "书" },
                     color = style.colors.accent,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold
@@ -450,7 +450,7 @@ private fun RecentBookCard(
                 )
             }
             Text(
-                text = listOf(book.progressText, book.lastReadText).filter { it.isNotBlank() }.joinToString(" 路 "),
+                text = listOf(book.progressText, book.lastReadText).filter { it.isNotBlank() }.joinToString(" · "),
                 color = style.colors.secondaryText,
                 fontSize = 11.sp,
                 maxLines = 1,
@@ -468,7 +468,7 @@ private fun RankingSection(
     onShowAll: () -> Unit,
     onClick: (ReadRecordRankUi) -> Unit
 ) {
-    SectionBlock(title = "Reading rank", style = style, trailing = "All", onTrailingClick = onShowAll) {
+    SectionBlock(title = "阅读排行", style = style, trailing = "全部", onTrailingClick = onShowAll) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items.take(5).forEachIndexed { index, item ->
                 RankRow(index = index, item = item, style = style, onClick = { onClick(item) })
@@ -541,7 +541,7 @@ private fun RankRow(index: Int, item: ReadRecordRankUi, style: ReadRecordCompose
 
 @Composable
 private fun DailyRecordsSection(records: List<ReadRecordDailyUi>, style: ReadRecordComposeStyle) {
-    SectionBlock(title = "Daily records", style = style) {
+    SectionBlock(title = "每日记录", style = style) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             records.take(7).forEach { record ->
                 Row(

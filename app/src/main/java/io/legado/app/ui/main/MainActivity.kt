@@ -523,6 +523,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     onOpenSearchBook = ::openComposeSearchBook,
                     onOpenRssArticle = ::openComposeRssArticle,
                     onOpenRssSource = ::openComposeRssSource,
+                    onOpenBookUrl = ::openComposeBookUrl,
                     onOpenMyItem = ::openComposeMyItem,
                     onReadRecordMore = {
                         startActivity<ReadRecordActivity>()
@@ -579,6 +580,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             putExtra("name", book.name)
             putExtra("author", book.author)
             putExtra("bookUrl", book.bookUrl)
+        }
+    }
+
+    private fun openComposeBookUrl(bookUrl: String) {
+        if (bookUrl.isBlank()) return
+        lifecycleScope.launch {
+            val book = withContext(IO) { appDb.bookDao.getBook(bookUrl) } ?: return@launch
+            openComposeBook(book)
         }
     }
 

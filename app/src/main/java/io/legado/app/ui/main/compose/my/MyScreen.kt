@@ -105,7 +105,7 @@ private fun MyHeader(
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = "Help",
+                text = "帮助",
                 color = style.colors.accent,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -163,7 +163,7 @@ private fun SearchBox(
                     Box(contentAlignment = Alignment.CenterStart) {
                         if (query.isBlank()) {
                             Text(
-                                text = "Search settings",
+                                text = "搜索设置",
                                 color = style.colors.secondaryText,
                                 fontSize = 14.sp,
                                 maxLines = 1
@@ -176,7 +176,7 @@ private fun SearchBox(
             if (query.isNotBlank()) {
                 Icon(
                     painter = painterResource(R.drawable.ic_close_x),
-                    contentDescription = "Clear search",
+                    contentDescription = "清空搜索",
                     tint = style.colors.secondaryText,
                     modifier = Modifier
                         .size(22.dp)
