@@ -19,6 +19,13 @@
 
     </FrameLayout>
 
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/main_compose_root"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/transparent"
+        android:visibility="gone" />
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_controls"
         android:layout_width="match_parent"
