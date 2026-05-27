@@ -33,8 +33,11 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.get
@@ -55,7 +58,11 @@ import io.legado.app.constant.AppConst.appInfo
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.RssArticle
+import io.legado.app.data.entities.RssSource
+import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityMainBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppCloudStorage
@@ -73,6 +80,8 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.about.AboutActivity
+import io.legado.app.ui.about.ReadRecordActivity
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.about.loadReadRecordAvatar
@@ -80,14 +89,35 @@ import io.legado.app.ui.about.loadReadRecordCover
 import io.legado.app.ui.association.ImportBookSourceDialog
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.association.ImportRssSourceDialog
+import io.legado.app.ui.book.SearchBookOpenHelper
+import io.legado.app.ui.book.bookmark.AllBookmarkActivity
+import io.legado.app.ui.book.cache.CacheManageActivity
+import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
 import io.legado.app.ui.main.ai.AiChatActivity
+import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
+import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
+import io.legado.app.ui.config.BookInfoManageActivity
+import io.legado.app.ui.config.BubbleManageActivity
+import io.legado.app.ui.config.ConfigActivity
+import io.legado.app.ui.config.ConfigTag
+import io.legado.app.ui.config.NavigationBarManageActivity
+import io.legado.app.ui.config.ThemeManageActivity
+import io.legado.app.ui.dict.rule.DictRuleActivity
+import io.legado.app.ui.file.FileManageActivity
+import io.legado.app.ui.main.compose.MainComposeHost
+import io.legado.app.ui.main.compose.MainComposeHostActions
+import io.legado.app.ui.main.compose.MainComposeTab
+import io.legado.app.ui.replace.ReplaceRuleActivity
+import io.legado.app.ui.rss.article.RssSortActivity
+import io.legado.app.ui.rss.read.ReadRssActivity
+import io.legado.app.ui.rss.source.manage.RssSourceActivity
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
@@ -102,6 +132,8 @@ import io.legado.app.utils.setHuaweiDisplayCutoutShortEdgesCompat
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
+import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.ColorUtils as AppColorUtils
@@ -161,6 +193,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private var bottomNavigationConfigSignature: String? = null
     private var bottomNavigationInset = 0
+    private val composeMainEnabled = true
+    private val composeSelectedTab = mutableStateOf(MainComposeTab.Bookshelf)
+    private val composeUpdateCount = mutableIntStateOf(0)
     private val sidebarTouchSlop by lazy {
         ViewConfiguration.get(this).scaledTouchSlop
     }
@@ -245,9 +280,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upBottomMenu()
         initView()
+        if (composeMainEnabled) {
+            initComposeMain()
+        }
         onBackPressedDispatcher.addCallback(this) {
             if (isSidebarMode() && sideNavigationOpen) {
                 closeSideNavigation()
+                return@addCallback
+            }
+            if (composeMainEnabled && composeSelectedTab.value != MainComposeTab.Bookshelf) {
+                selectComposeTab(MainComposeTab.Bookshelf)
                 return@addCallback
             }
             if (pagePosition != 0) {
@@ -305,8 +347,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onResume() {
         super.onResume()
-        refreshBottomNavigationConfig()
-        scheduleBottomGlassSetup(delayMillis = 64L)
+        if (!composeMainEnabled) {
+            refreshBottomNavigationConfig()
+            scheduleBottomGlassSetup(delayMillis = 64L)
+        }
         if (isSidebarMode()) {
             updateSideGoalHeader()
         }
@@ -314,8 +358,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun upBackgroundImage() {
         super.upBackgroundImage()
-        binding.root.post {
-            scheduleBottomGlassSetup(delayMillis = 32L)
+        if (!composeMainEnabled) {
+            binding.root.post {
+                scheduleBottomGlassSetup(delayMillis = 32L)
+            }
         }
     }
 
@@ -449,6 +495,150 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         bindMergedDiscoveryLongClick()
         applyBottomLayoutMode()
+    }
+
+    private fun initComposeMain() = binding.run {
+        selectComposeTab(composeTabForPosition(pagePosition))
+        contentContainer.isVisible = false
+        bottomControls.isVisible = false
+        sideNavigationScrim.isVisible = false
+        sideNavigationPanel.isVisible = false
+        mainComposeRoot.isVisible = true
+        mainComposeRoot.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        mainComposeRoot.setContent {
+            MainComposeHost(
+                selectedTab = composeSelectedTab.value,
+                updateCount = composeUpdateCount.intValue,
+                onTabSelected = ::selectComposeTab,
+                actions = MainComposeHostActions(
+                    onOpenSearch = ::openMainSearch,
+                    onOpenAi = ::openMainAiAssistant,
+                    onOpenBook = ::openComposeBook,
+                    onOpenBookInfo = ::openComposeBookInfo,
+                    onRefreshBooks = { books ->
+                        viewModel.upToc(books, AppConfig.onlyUpdateRead)
+                    },
+                    onOpenSearchBook = ::openComposeSearchBook,
+                    onOpenRssArticle = ::openComposeRssArticle,
+                    onOpenRssSource = ::openComposeRssSource,
+                    onOpenMyItem = ::openComposeMyItem,
+                    onReadRecordMore = {
+                        startActivity<ReadRecordActivity>()
+                    }
+                )
+            )
+        }
+    }
+
+    private fun selectComposeTab(tab: MainComposeTab) {
+        composeSelectedTab.value = tab
+        composePositionForTab(tab)?.let { pagePosition = it }
+    }
+
+    private fun composeTabForPosition(position: Int): MainComposeTab {
+        return when (realPositions.getOrNull(position)) {
+            idExplore -> MainComposeTab.Discovery
+            idRss -> MainComposeTab.Rss
+            idReadRecord -> MainComposeTab.ReadRecord
+            idMy -> MainComposeTab.My
+            else -> MainComposeTab.Bookshelf
+        }
+    }
+
+    private fun composePositionForTab(tab: MainComposeTab): Int? {
+        val targetId = when (tab) {
+            MainComposeTab.Bookshelf -> idBookshelf
+            MainComposeTab.Discovery -> idExplore
+            MainComposeTab.Rss -> idRss
+            MainComposeTab.ReadRecord -> idReadRecord
+            MainComposeTab.My -> idMy
+        }
+        return realPositions.take(bottomMenuCount).indexOf(targetId).takeIf { it >= 0 }
+    }
+
+    private fun openMainSearch() {
+        startActivity(Intent(this, SearchActivity::class.java))
+    }
+
+    private fun openMainAiAssistant() {
+        if (AppConfig.aiAssistantEnabled) {
+            startActivity(Intent(this, AiChatActivity::class.java))
+        } else {
+            toastOnUi(R.string.ai_enable_summary)
+        }
+    }
+
+    private fun openComposeBook(book: Book) {
+        startActivityForBook(book)
+    }
+
+    private fun openComposeBookInfo(book: Book) {
+        startActivity<BookInfoActivity> {
+            putExtra("name", book.name)
+            putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
+        }
+    }
+
+    private fun openComposeSearchBook(book: SearchBook) {
+        SearchBookOpenHelper.open(
+            this,
+            book,
+            SearchBookOpenHelper.isVideoResult(book)
+        )
+    }
+
+    private fun openComposeRssArticle(article: RssArticle) {
+        ReadRssActivity.start(
+            this,
+            article.origin,
+            article.title,
+            article.link,
+            article.sort
+        )
+    }
+
+    private fun openComposeRssSource(source: RssSource) {
+        startActivity<RssSortActivity> {
+            putExtra("sourceUrl", source.sourceUrl)
+        }
+    }
+
+    private fun openComposeMyItem(key: String) {
+        when (key) {
+            "bookSourceManage" -> startActivity<BookSourceActivity>()
+            "rssSourceManage" -> startActivity<RssSourceActivity>()
+            "replaceManage" -> startActivity<ReplaceRuleActivity>()
+            "dictRuleManage" -> startActivity<DictRuleActivity>()
+            "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
+            "bookmark" -> startActivity<AllBookmarkActivity>()
+            "setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.OTHER_CONFIG)
+            }
+            "web_dav_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.BACKUP_CONFIG)
+            }
+            "cacheManage" -> startActivity<CacheManageActivity>()
+            "theme_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.THEME_CONFIG)
+            }
+            "theme_manage" -> startActivity<ThemeManageActivity>()
+            "navigation_bar_manage" -> startActivity<NavigationBarManageActivity>()
+            "book_info_manage" -> startActivity<BookInfoManageActivity>()
+            "bubble_manage" -> startActivity<BubbleManageActivity>()
+            "coverConfig" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.COVER_CONFIG)
+            }
+            "ai_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.AI_CONFIG)
+            }
+            "fileManage" -> startActivity<FileManageActivity>()
+            "readRecord" -> startActivity<ReadRecordActivity>()
+            "about" -> startActivity<AboutActivity>()
+            "exit" -> finish()
+        }
     }
 
     private fun bottomFloatingMargin(navigationBarHeight: Int): Int {
@@ -1888,6 +2078,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun observeLiveBus() {
         viewModel.onUpBooksLiveData.observe(this) {
+            composeUpdateCount.intValue = it
+            if (composeMainEnabled) {
+                return@observe
+            }
             if (onUpBooksBadgeView == null) {
                 onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
             }
@@ -1898,15 +2092,23 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         observeEvent<Boolean>(EventBus.NAVIGATION_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                refreshBottomNavigationConfig()
+                if (composeMainEnabled) {
+                    initComposeMain()
+                } else {
+                    refreshBottomNavigationConfig()
+                }
             }
         }
         observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                refreshMainTopBars(binding.root)
-                binding.root.post {
+                if (composeMainEnabled) {
+                    initComposeMain()
+                } else {
                     refreshMainTopBars(binding.root)
-                    scheduleBottomGlassSetup(delayMillis = 96L)
+                    binding.root.post {
+                        refreshMainTopBars(binding.root)
+                        scheduleBottomGlassSetup(delayMillis = 96L)
+                    }
                 }
             }
         }
@@ -1922,7 +2124,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 updateAiFloatingBall()
                 if (it) {
                     pagePosition = resolveHomePagePosition().coerceIn(0, bottomMenuCount - 1)
-                    viewPagerMain.setCurrentItem(pagePosition, false)
+                    if (composeMainEnabled) {
+                        selectComposeTab(composeTabForPosition(pagePosition))
+                    } else {
+                        viewPagerMain.setCurrentItem(pagePosition, false)
+                    }
+                }
+                if (composeMainEnabled) {
+                    initComposeMain()
                 }
             }
         }
