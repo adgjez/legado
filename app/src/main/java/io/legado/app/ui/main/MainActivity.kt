@@ -420,6 +420,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun initView() = binding.run {
         val initialPage = resolveHomePagePosition()
         pagePosition = initialPage
+        if (composeMainEnabled) {
+            contentContainer.isVisible = false
+            bottomControls.isVisible = false
+            sideNavigationScrim.isVisible = false
+            sideNavigationPanel.isVisible = false
+            return@run
+        }
         viewPagerMain.setEdgeEffectColor(primaryColor)
         viewPagerMain.offscreenPageLimit = (bottomMenuCount - 1).coerceAtLeast(1)
         viewPagerMain.adapter = adapter
