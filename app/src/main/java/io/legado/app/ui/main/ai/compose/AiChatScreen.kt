@@ -439,28 +439,8 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
 
 @Composable
 private fun AiProcessPart(part: AiMessagePartUi.ProcessChain, style: AiComposeStyle) {
-    var expandedStepIds by remember(part.id) { mutableStateOf(emptySet<String>()) }
-    AiProcessChainCard(
-        steps = part.steps.map {
-            AiProcessChainStep(
-                id = it.id,
-                type = it.type,
-                title = it.title,
-                subtitle = it.subtitle,
-                detail = it.detail,
-                pending = it.pending,
-                success = it.success,
-                collapsed = it.collapsed
-            )
-        },
-        expandedStepIds = expandedStepIds,
-        onToggleStep = { stepId ->
-            expandedStepIds = if (stepId in expandedStepIds) {
-                expandedStepIds - stepId
-            } else {
-                expandedStepIds + stepId
-            }
-        },
+    AiProcessTimelineCard(
+        steps = part.steps,
         style = style
     )
 }
