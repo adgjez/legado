@@ -9,6 +9,8 @@ import io.legado.app.help.http.postJson
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
+import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
+import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiProviderConfig
 import org.json.JSONArray
 import org.json.JSONObject
@@ -97,6 +99,8 @@ object AiChatService {
         val modelConfig = AppConfig.aiCurrentModelConfig
         val baseUrl = provider?.baseUrl?.trim().orEmpty()
         val model = modelConfig?.modelId?.trim().orEmpty()
+        val apiMode = normalizeApiMode(provider?.apiMode)
+        val chatUrl = resolveChatUrl(baseUrl, apiMode)
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         require(model.isNotBlank()) { "Model is empty" }
 
@@ -116,8 +120,9 @@ object AiChatService {
         )
         val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
         val requestLog = StringBuilder().apply {
-            append("url=${resolveChatUrl(baseUrl)}").append('\n')
+            append("url=$chatUrl").append('\n')
             append("model=$model").append('\n')
+            append("apiMode=$apiMode").append('\n')
             append("provider=${provider?.name.orEmpty()}").append('\n')
             append("tools=${tools.joinToString { it.name }}").append('\n')
         }
@@ -125,6 +130,8 @@ object AiChatService {
         return runCatching {
             executeToolLoop(
                 baseUrl = baseUrl,
+                chatUrl = chatUrl,
+                apiMode = apiMode,
                 model = model,
                 providerApiKey = provider?.apiKey.orEmpty(),
                 providerHeaders = provider?.headers.orEmpty(),
@@ -151,6 +158,8 @@ object AiChatService {
 
     private suspend fun executeToolLoop(
         baseUrl: String,
+        chatUrl: String,
+        apiMode: String,
         model: String,
         providerApiKey: String,
         providerHeaders: String,
@@ -180,7 +189,8 @@ object AiChatService {
                 }
             )
             val assistantTurn = requestCompletionStream(
-                baseUrl = baseUrl,
+                chatUrl = chatUrl,
+                apiMode = apiMode,
                 model = model,
                 providerApiKey = providerApiKey,
                 providerHeaders = providerHeaders,
@@ -278,9 +288,15 @@ object AiChatService {
                     }
                 )
                 conversation += JSONObject().apply {
-                    put("role", "tool")
-                    put("tool_call_id", toolCall.id)
-                    put("content", result)
+                    if (apiMode == AI_API_MODE_RESPONSES) {
+                        put("type", "function_call_output")
+                        put("call_id", toolCall.id)
+                        put("output", result)
+                    } else {
+                        put("role", "tool")
+                        put("tool_call_id", toolCall.id)
+                        put("content", result)
+                    }
                 }
             }
         }
@@ -292,7 +308,8 @@ object AiChatService {
             )
         }
         val finalTurn = requestCompletionStream(
-            baseUrl = baseUrl,
+            chatUrl = chatUrl,
+            apiMode = apiMode,
             model = model,
             providerApiKey = providerApiKey,
             providerHeaders = providerHeaders,
@@ -404,7 +421,8 @@ object AiChatService {
     }
 
     private suspend fun requestCompletionStream(
-        baseUrl: String,
+        chatUrl: String,
+        apiMode: String,
         model: String,
         providerApiKey: String,
         providerHeaders: String,
@@ -415,11 +433,11 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit
     ): AssistantTurn {
-        val requestBody = buildRequestBody(messages, model, tools, stream = true)
+        val requestBody = buildRequestBody(messages, model, tools, stream = true, apiMode = apiMode)
         requestLog.append("round=").append(round).append('\n')
             .append("request=").append(requestBody).append('\n')
         val response = aiChatHttpClient().newCallResponse {
-            url(resolveChatUrl(baseUrl))
+            url(chatUrl)
             addHeader("Accept", "text/event-stream, application/json")
             addHeader("Content-Type", "application/json")
             providerApiKey.trim().takeIf { it.isNotBlank() }?.let {
@@ -459,9 +477,17 @@ object AiChatService {
                     if (rawLine.startsWith("data:")) {
                         val payload = rawLine.removePrefix("data:").trim()
                         if (payload == "[DONE]") break
-                        consumeStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        if (apiMode == AI_API_MODE_RESPONSES) {
+                            consumeResponsesStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        } else {
+                            consumeStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        }
                     } else if (rawLine.startsWith("{")) {
-                        consumeStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        if (apiMode == AI_API_MODE_RESPONSES) {
+                            consumeResponsesStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        } else {
+                            consumeStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                        }
                     }
                 }
             }
@@ -481,7 +507,11 @@ object AiChatService {
                     return AssistantTurn(
                         visibleFallback,
                         emptyList(),
-                        buildAssistantRawMessage(visibleFallback, emptyList(), reasoningRendered.toString()),
+                        if (apiMode == AI_API_MODE_RESPONSES) {
+                            buildResponsesRawMessage(visibleFallback, emptyList())
+                        } else {
+                            buildAssistantRawMessage(visibleFallback, emptyList(), reasoningRendered.toString())
+                        },
                         reasoningRendered.toString()
                     )
                 }
@@ -489,7 +519,11 @@ object AiChatService {
             return AssistantTurn(
                 content = rendered.toString(),
                 toolCalls = toolCalls,
-                rawMessage = buildAssistantRawMessage(rendered.toString(), toolCalls, reasoningRendered.toString()),
+                rawMessage = if (apiMode == AI_API_MODE_RESPONSES) {
+                    buildResponsesRawMessage(rendered.toString(), toolCalls)
+                } else {
+                    buildAssistantRawMessage(rendered.toString(), toolCalls, reasoningRendered.toString())
+                },
                 reasoningContent = reasoningRendered.toString()
             )
         }
@@ -499,8 +533,12 @@ object AiChatService {
         messages: List<JSONObject>,
         model: String,
         tools: List<AiResolvedTool>,
-        stream: Boolean
+        stream: Boolean,
+        apiMode: String
     ): String {
+        if (apiMode == AI_API_MODE_RESPONSES) {
+            return buildResponsesRequestBody(messages, model, tools, stream)
+        }
         return JSONObject().apply {
             put("model", model)
             put("stream", stream)
@@ -514,6 +552,269 @@ object AiChatService {
                 put("tool_choice", "auto")
             }
         }.toString()
+    }
+
+    private fun buildResponsesRequestBody(
+        messages: List<JSONObject>,
+        model: String,
+        tools: List<AiResolvedTool>,
+        stream: Boolean
+    ): String {
+        return JSONObject().apply {
+            put("model", model)
+            put("stream", stream)
+            put("input", buildResponsesInput(messages))
+            if (tools.isNotEmpty()) {
+                put("tools", JSONArray().apply {
+                    tools.forEach { tool ->
+                        responsesToolDefinition(tool.definition)?.let(::put)
+                    }
+                })
+                put("tool_choice", "auto")
+            }
+        }.toString()
+    }
+
+    private fun buildResponsesInput(messages: List<JSONObject>): JSONArray {
+        val input = JSONArray()
+        messages.forEach { message ->
+            when (message.optString("type")) {
+                "responses_output" -> {
+                    val items = message.optJSONArray("items") ?: JSONArray()
+                    for (index in 0 until items.length()) {
+                        items.optJSONObject(index)?.let(input::put)
+                    }
+                }
+                "function_call", "function_call_output" -> input.put(message)
+                else -> appendResponsesMessage(input, message)
+            }
+        }
+        return input
+    }
+
+    private fun appendResponsesMessage(input: JSONArray, message: JSONObject) {
+        val role = message.optString("role")
+        if (role == "tool") {
+            input.put(JSONObject().apply {
+                put("type", "function_call_output")
+                put("call_id", message.optString("tool_call_id"))
+                put("output", message.optString("content"))
+            })
+            return
+        }
+        val content = message.optString("content")
+        if (content.isNotBlank() && content != "null") {
+            input.put(JSONObject().apply {
+                put("role", role.ifBlank { "user" })
+                put("content", content)
+            })
+        }
+        val toolCalls = message.optJSONArray("tool_calls") ?: return
+        for (index in 0 until toolCalls.length()) {
+            val toolCall = toolCalls.optJSONObject(index) ?: continue
+            val function = toolCall.optJSONObject("function") ?: continue
+            input.put(JSONObject().apply {
+                put("type", "function_call")
+                put("call_id", toolCall.optString("id").ifBlank { "call_$index" })
+                put("name", function.optString("name"))
+                put("arguments", extractToolArguments(function.opt("arguments")))
+            })
+        }
+    }
+
+    private fun responsesToolDefinition(definition: JSONObject): JSONObject? {
+        val function = definition.optJSONObject("function") ?: definition
+        val name = function.optString("name").takeIf { it.isNotBlank() } ?: return null
+        return JSONObject().apply {
+            put("type", "function")
+            put("name", name)
+            put("description", function.optString("description"))
+            put("parameters", function.optJSONObject("parameters") ?: JSONObject().put("type", "object"))
+        }
+    }
+
+    private fun consumeResponsesStreamPayload(
+        payload: String,
+        rawRendered: StringBuilder,
+        rendered: StringBuilder,
+        reasoningRendered: StringBuilder,
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit
+    ) {
+        extractError(payload).takeIf { it.isNotBlank() }?.let {
+            throw IllegalStateException(it)
+        }
+        val root = JSONObject(payload)
+        val type = root.optString("type")
+        when {
+            type.contains("reasoning", ignoreCase = true) && type.endsWith(".delta") -> {
+                appendReasoningDelta(extractContentText(root.opt("delta")), reasoningRendered, onThinking)
+            }
+            type == "response.output_text.delta" || type.endsWith(".output_text.delta") -> {
+                appendVisibleDelta(extractContentText(root.opt("delta")), rawRendered, rendered, onPartial, onThinking)
+            }
+            type == "response.function_call_arguments.delta" || type.endsWith(".function_call_arguments.delta") -> {
+                appendResponsesToolDelta(root, toolCallBuilders)
+            }
+            type == "response.function_call_arguments.done" || type.endsWith(".function_call_arguments.done") -> {
+                applyResponsesToolItem(root, toolCallBuilders)
+            }
+            type == "response.output_item.added" || type == "response.output_item.done" -> {
+                root.optJSONObject("item")?.let { item ->
+                    applyResponsesOutputItem(item, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                }
+            }
+            type == "response.completed" -> {
+                root.optJSONObject("response")
+                    ?.optJSONArray("output")
+                    ?.let { output ->
+                        applyResponsesOutputArray(output, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                    }
+            }
+            type == "response.failed" || type == "response.incomplete" -> {
+                val message = root.optJSONObject("response")
+                    ?.optJSONObject("error")
+                    ?.optString("message")
+                    .orEmpty()
+                    .ifBlank { root.optJSONObject("error")?.optString("message").orEmpty() }
+                    .ifBlank { type }
+                throw IllegalStateException(message)
+            }
+            type.isBlank() -> {
+                root.optJSONArray("output")?.let { output ->
+                    applyResponsesOutputArray(output, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                } ?: run {
+                    val text = extractResponsesText(root)
+                    if (text.isNotBlank()) {
+                        appendVisibleDelta(text, rawRendered, rendered, onPartial, onThinking)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun appendVisibleDelta(
+        delta: String,
+        rawRendered: StringBuilder,
+        rendered: StringBuilder,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit
+    ) {
+        if (delta.isEmpty()) return
+        rawRendered.append(delta)
+        val visibleText = stripInlineThinking(rawRendered.toString(), onThinking)
+        if (visibleText != rendered.toString()) {
+            rendered.clear()
+            rendered.append(visibleText)
+            onPartial(visibleText)
+        }
+    }
+
+    private fun appendReasoningDelta(
+        delta: String,
+        reasoningRendered: StringBuilder,
+        onThinking: (String) -> Unit
+    ) {
+        if (delta.isBlank()) return
+        reasoningRendered.append(delta)
+        onThinking(delta)
+    }
+
+    private fun appendResponsesToolDelta(
+        root: JSONObject,
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>
+    ) {
+        val builder = responsesToolBuilder(
+            toolCallBuilders = toolCallBuilders,
+            callId = root.optString("call_id").ifBlank { root.optString("item_id") },
+            outputIndex = root.optInt("output_index", -1)
+        )
+        root.optString("call_id").takeIf { it.isNotBlank() }?.let { builder.id = it }
+        root.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+        extractContentText(root.opt("delta")).takeIf { it.isNotEmpty() }?.let {
+            builder.arguments.append(it)
+        }
+    }
+
+    private fun applyResponsesToolItem(
+        item: JSONObject,
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>
+    ) {
+        val builder = responsesToolBuilder(
+            toolCallBuilders = toolCallBuilders,
+            callId = item.optString("call_id").ifBlank { item.optString("id") },
+            outputIndex = item.optInt("output_index", -1)
+        )
+        item.optString("call_id").ifBlank { item.optString("id") }
+            .takeIf { it.isNotBlank() }
+            ?.let { builder.id = it }
+        item.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+        val arguments = extractToolArguments(item.opt("arguments"))
+        if (arguments != "{}" && builder.arguments.isBlank()) {
+            builder.arguments.append(arguments)
+        }
+    }
+
+    private fun applyResponsesOutputArray(
+        output: JSONArray,
+        rawRendered: StringBuilder,
+        rendered: StringBuilder,
+        reasoningRendered: StringBuilder,
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit
+    ) {
+        for (index in 0 until output.length()) {
+            output.optJSONObject(index)?.let { item ->
+                if (!item.has("output_index")) item.put("output_index", index)
+                applyResponsesOutputItem(item, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+            }
+        }
+    }
+
+    private fun applyResponsesOutputItem(
+        item: JSONObject,
+        rawRendered: StringBuilder,
+        rendered: StringBuilder,
+        reasoningRendered: StringBuilder,
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit
+    ) {
+        when (item.optString("type")) {
+            "function_call" -> applyResponsesToolItem(item, toolCallBuilders)
+            "message" -> {
+                if (rendered.isBlank()) {
+                    extractResponsesText(item).takeIf { it.isNotBlank() }?.let {
+                        appendVisibleDelta(it, rawRendered, rendered, onPartial, onThinking)
+                    }
+                }
+            }
+            "reasoning" -> {
+                extractResponsesReasoning(item).takeIf { it.isNotBlank() }?.let {
+                    appendReasoningDelta(it, reasoningRendered, onThinking)
+                }
+            }
+        }
+    }
+
+    private fun responsesToolBuilder(
+        toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
+        callId: String,
+        outputIndex: Int
+    ): ToolCallBuilder {
+        if (callId.isNotBlank()) {
+            toolCallBuilders.entries.firstOrNull { it.value.id == callId }?.let {
+                return it.value
+            }
+        }
+        val key = if (outputIndex >= 0) {
+            outputIndex
+        } else {
+            (toolCallBuilders.keys.maxOrNull() ?: -1) + 1
+        }
+        return toolCallBuilders.getOrPut(key) { ToolCallBuilder(id = callId) }
     }
 
     private fun consumeStreamPayload(
@@ -597,6 +898,47 @@ object AiChatService {
                     }
                 )
             }
+        }
+    }
+
+    private fun buildResponsesRawMessage(
+        content: String,
+        toolCalls: List<ToolCall>
+    ): JSONObject {
+        return JSONObject().apply {
+            put("type", "responses_output")
+            put(
+                "items",
+                JSONArray().apply {
+                    if (content.isNotBlank()) {
+                        put(
+                            JSONObject().apply {
+                                put("type", "message")
+                                put("role", "assistant")
+                                put(
+                                    "content",
+                                    JSONArray().put(
+                                        JSONObject().apply {
+                                            put("type", "output_text")
+                                            put("text", content)
+                                        }
+                                    )
+                                )
+                            }
+                        )
+                    }
+                    toolCalls.forEach { toolCall ->
+                        put(
+                            JSONObject().apply {
+                                put("type", "function_call")
+                                put("call_id", toolCall.id)
+                                put("name", toolCall.name)
+                                put("arguments", toolCall.arguments)
+                            }
+                        )
+                    }
+                }
+            )
         }
     }
 
@@ -803,10 +1145,27 @@ object AiChatService {
             .toMap()
     }
 
-    private fun resolveChatUrl(baseUrl: String): String {
+    private fun normalizeApiMode(apiMode: String?): String {
+        return if (apiMode == AI_API_MODE_RESPONSES) {
+            AI_API_MODE_RESPONSES
+        } else {
+            AI_API_MODE_CHAT_COMPLETIONS
+        }
+    }
+
+    private fun resolveChatUrl(baseUrl: String, apiMode: String): String {
         val normalized = baseUrl.trim().trimEnd('/')
+        if (apiMode == AI_API_MODE_RESPONSES) {
+            return when {
+                normalized.endsWith("/responses") -> normalized
+                normalized.endsWith("/chat/completions") -> normalized.removeSuffix("/chat/completions") + "/responses"
+                normalized.endsWith("/v1") -> "$normalized/responses"
+                else -> "$normalized/v1/responses"
+            }
+        }
         return when {
             normalized.endsWith("/chat/completions") -> normalized
+            normalized.endsWith("/responses") -> normalized.removeSuffix("/responses") + "/chat/completions"
             normalized.endsWith("/v1") -> "$normalized/chat/completions"
             else -> "$normalized/v1/chat/completions"
         }
@@ -817,6 +1176,7 @@ object AiChatService {
         return when {
             normalized.endsWith("/models") -> normalized
             normalized.endsWith("/chat/completions") -> normalized.removeSuffix("/chat/completions") + "/models"
+            normalized.endsWith("/responses") -> normalized.removeSuffix("/responses") + "/models"
             normalized.endsWith("/v1") -> "$normalized/models"
             else -> "$normalized/v1/models"
         }
@@ -833,11 +1193,44 @@ object AiChatService {
 
     private fun extractContent(body: String): String {
         val root = JSONObject(body)
+        root.optJSONArray("output")?.let { output ->
+            return buildString {
+                for (index in 0 until output.length()) {
+                    val item = output.optJSONObject(index) ?: continue
+                    append(extractResponsesText(item))
+                }
+            }
+        }
         val choices = root.optJSONArray("choices") ?: return root.optString("response")
         val first = choices.optJSONObject(0) ?: return ""
         val message = first.optJSONObject("message")
         return extractContentText(message?.opt("content"))
             .ifBlank { first.optString("text") }
+    }
+
+    private fun extractResponsesText(item: JSONObject): String {
+        item.optString("output_text").takeIf { it.isNotBlank() }?.let { return it }
+        item.optString("text").takeIf { it.isNotBlank() }?.let { return it }
+        val content = item.optJSONArray("content") ?: return ""
+        return buildString {
+            for (index in 0 until content.length()) {
+                val part = content.optJSONObject(index) ?: continue
+                if (part.optString("type") == "output_text" || part.has("text")) {
+                    append(part.optString("text"))
+                }
+            }
+        }
+    }
+
+    private fun extractResponsesReasoning(item: JSONObject): String {
+        item.optString("summary_text").takeIf { it.isNotBlank() }?.let { return it }
+        val summary = item.optJSONArray("summary") ?: return ""
+        return buildString {
+            for (index in 0 until summary.length()) {
+                val part = summary.optJSONObject(index) ?: continue
+                append(part.optString("text"))
+            }
+        }
     }
 
     private fun extractContentText(content: Any?): String {
