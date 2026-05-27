@@ -1800,6 +1800,8 @@ function login() {
     <string name="ai_tool_call">Calling tool: %1$s\nArguments: %2$s</string>
     <string name="ai_tool_result">Tool result: %1$s\n%2$s</string>
     <string name="ai_tool_default_name">Tool</string>
+    <string name="ai_tool_book_source_search">Book source search</string>
+    <string name="ai_tool_web_search">Web search</string>
     <string name="ai_tool_status_calling">Calling</string>
     <string name="ai_tool_status_done">Completed</string>
     <string name="ai_tool_status_failed">Failed</string>

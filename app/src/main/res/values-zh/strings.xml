@@ -1577,6 +1577,8 @@
     <string name="ai_tool_call">调用工具：%1$s\n参数：%2$s</string>
     <string name="ai_tool_result">工具返回：%1$s\n%2$s</string>
     <string name="ai_tool_default_name">工具</string>
+    <string name="ai_tool_book_source_search">书源搜索</string>
+    <string name="ai_tool_web_search">联网搜索</string>
     <string name="ai_tool_status_calling">调用中</string>
     <string name="ai_tool_status_done">调用完成</string>
     <string name="ai_tool_status_failed">调用失败</string>

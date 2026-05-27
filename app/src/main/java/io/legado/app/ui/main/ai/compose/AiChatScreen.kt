@@ -111,8 +111,8 @@ fun AiChatScreen(
     val context = LocalContext.current
     val style = aiComposeStyle(context)
     val listState = rememberLazyListState()
-    val visibleMessages = remember(messages) {
-        messages.filterNot { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+    val uiItems = remember(context, messages) {
+        buildAiChatUiItems(context, messages)
     }
     val shouldAutoScroll by remember {
         derivedStateOf {
@@ -121,9 +121,9 @@ fun AiChatScreen(
             total <= 1 || (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 2
         }
     }
-    LaunchedEffect(visibleMessages.size, visibleMessages.lastOrNull()?.updatedAt, requesting) {
-        if (visibleMessages.isNotEmpty() && shouldAutoScroll) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
+    LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, requesting) {
+        if (uiItems.isNotEmpty() && shouldAutoScroll) {
+            listState.animateScrollToItem(uiItems.lastIndex)
         }
     }
     Box(
@@ -143,7 +143,7 @@ fun AiChatScreen(
                 actions = actions
             )
             Box(modifier = Modifier.weight(1f)) {
-                if (visibleMessages.isEmpty()) {
+                if (uiItems.isEmpty()) {
                     AiEmptyState(style = style)
                 } else {
                     LazyColumn(
@@ -157,8 +157,8 @@ fun AiChatScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(visibleMessages, key = { it.id }) { message ->
-                            AiLegacyMessageRow(message = message, style = style)
+                        items(uiItems, key = { it.id }) { item ->
+                            AiMessageRow(item = item, style = style)
                         }
                     }
                 }
@@ -312,29 +312,36 @@ private fun AiEmptyState(style: AiComposeStyle) {
 }
 
 @Composable
-private fun AiLegacyMessageRow(message: AiChatMessage, style: AiComposeStyle) {
-    val isUser = message.role == AiChatMessage.Role.USER
+private fun AiMessageRow(item: AiChatUiItem, style: AiComposeStyle) {
+    when (item) {
+        is AiChatUiItem.User -> AiUserMessageRow(item, style)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style)
+    }
+}
+
+@Composable
+private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = Arrangement.End
     ) {
         Surface(
             shape = RoundedCornerShape(
                 topStart = 20.dp,
                 topEnd = 20.dp,
-                bottomStart = if (isUser) 20.dp else 8.dp,
-                bottomEnd = if (isUser) 8.dp else 20.dp
+                bottomStart = 20.dp,
+                bottomEnd = 8.dp
             ),
-            color = if (isUser) Color(0xff95ec69.toInt()) else style.colors.assistantBubble,
+            color = Color(0xff95ec69.toInt()),
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                if (isUser) Color(0xff7cd452.toInt()) else style.colors.assistantBubbleStroke
+                Color(0xff7cd452.toInt())
             ),
-            modifier = Modifier.fillMaxWidth(if (isUser) 0.82f else 0.92f)
+            modifier = Modifier.fillMaxWidth(0.82f)
         ) {
             SelectionContainer {
                 Text(
-                    text = message.content.ifBlank { if (message.pending) "..." else " " },
+                    text = message.content,
                     color = Color(0xff202020.toInt()),
                     fontSize = 15.sp,
                     lineHeight = 21.sp,
@@ -342,6 +349,111 @@ private fun AiLegacyMessageRow(message: AiChatMessage, style: AiComposeStyle) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AiAssistantMessageRow(message: AiChatUiItem.Assistant, style: AiComposeStyle) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(0.94f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            message.parts.forEach { part ->
+                when (part) {
+                    is AiMessagePartUi.Text -> AiAssistantTextPart(part, style)
+                    is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style)
+                    is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style)
+                    is AiMessagePartUi.Images -> AiImageInlinePart(part, style)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyle) {
+    Surface(
+        shape = RoundedCornerShape(
+            topStart = 20.dp,
+            topEnd = 20.dp,
+            bottomStart = 8.dp,
+            bottomEnd = 20.dp
+        ),
+        color = style.colors.assistantBubble,
+        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke)
+    ) {
+        SelectionContainer {
+            Text(
+                text = part.content,
+                color = Color(0xff202020.toInt()),
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiProcessPart(part: AiMessagePartUi.ProcessChain, style: AiComposeStyle) {
+    var expandedStepIds by remember(part.id) { mutableStateOf(emptySet<String>()) }
+    AiProcessChainCard(
+        steps = part.steps.map {
+            AiProcessChainStep(
+                id = it.id,
+                type = it.type,
+                title = it.title,
+                subtitle = it.subtitle,
+                detail = it.detail,
+                pending = it.pending,
+                success = it.success,
+                collapsed = it.collapsed
+            )
+        },
+        expandedStepIds = expandedStepIds,
+        onToggleStep = { stepId ->
+            expandedStepIds = if (stepId in expandedStepIds) {
+                expandedStepIds - stepId
+            } else {
+                expandedStepIds + stepId
+            }
+        },
+        style = style
+    )
+}
+
+@Composable
+private fun AiSearchBookInlinePart(part: AiMessagePartUi.SearchBooks, style: AiComposeStyle) {
+    AiInfoPill(
+        text = "书籍结果 ${part.books.size} 条",
+        style = style
+    )
+}
+
+@Composable
+private fun AiImageInlinePart(part: AiMessagePartUi.Images, style: AiComposeStyle) {
+    AiInfoPill(
+        text = "图片结果 ${part.images.size} 张",
+        style = style
+    )
+}
+
+@Composable
+private fun AiInfoPill(text: String, style: AiComposeStyle) {
+    Surface(
+        shape = RoundedCornerShape(style.metrics.chipRadius),
+        color = style.colors.accent.copy(alpha = 0.10f)
+    ) {
+        Text(
+            text = text,
+            color = style.colors.accent,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
     }
 }
 
