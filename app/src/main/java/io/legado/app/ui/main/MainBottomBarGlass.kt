@@ -36,9 +36,7 @@ data class MainBottomBarGlassSpec(
     val selected: Boolean,
     val level: Float,
     val night: Boolean,
-    val backdropImage: ImageBitmap?,
-    val backdropOffsetX: Float = 0f,
-    val backdropOffsetY: Float = 0f
+    val backdropImage: ImageBitmap?
 )
 
 fun ComposeView.setMainBottomBarGlassContent(spec: MainBottomBarGlassSpec) {
@@ -58,10 +56,7 @@ private fun MainBottomBarGlassSurface(spec: MainBottomBarGlassSpec) {
     val surfaceBrush = Brush.verticalGradient(colors)
     val backdrop = rememberCanvasBackdrop {
         spec.backdropImage?.let {
-            drawImage(
-                image = it,
-                topLeft = Offset(-spec.backdropOffsetX, -spec.backdropOffsetY)
-            )
+            drawImage(it)
         } ?: drawBottomBarBackdropSeed(spec)
     }
     Box(
@@ -109,28 +104,15 @@ private fun bottomBarSurfaceModifier(
     val density = LocalDensity.current
     val level = spec.level.coerceIn(0f, 1f)
     val blurRadius = with(density) {
-        when {
-            spec.mode == "frosted" -> (18f + level * 18f).dp.toPx()
-            spec.selected -> (5f + level * 9f).dp.toPx()
-            spec.oval -> (7f + level * 10f).dp.toPx()
-            else -> (6f + level * 8f).dp.toPx()
-        }
+        (if (spec.mode == "frosted") 18f + level * 18f else 8f + level * 12f).dp.toPx()
     }
     val lensHeight = with(density) {
-        when {
-            spec.mode == "frosted" -> (10f + level * 10f).dp.toPx()
-            spec.selected -> (12f + level * 14f).dp.toPx()
-            spec.oval -> (18f + level * 20f).dp.toPx()
-            else -> (20f + level * 22f).dp.toPx()
-        }
+        (if (spec.mode == "frosted") 8f + level * 8f else 12f + level * 14f).dp.toPx()
     }
-    val lensAmount = with(density) {
-        when {
-            spec.mode == "frosted" -> (12f + level * 12f).dp.toPx()
-            spec.selected -> (16f + level * 18f).dp.toPx()
-            spec.oval -> (28f + level * 32f).dp.toPx()
-            else -> (30f + level * 36f).dp.toPx()
-        }
+    val lensAmount = if (spec.mode == "frosted") {
+        (0.08f + level * 0.12f).coerceAtMost(0.24f)
+    } else {
+        (0.18f + level * 0.24f).coerceAtMost(0.46f)
     }
     return Modifier.drawBackdrop(
         backdrop = backdrop,
@@ -214,9 +196,9 @@ private fun bottomBarGlassColors(spec: MainBottomBarGlassSpec): List<Color> {
             (0.08f + level * 0.12f + selectedBoost).coerceAtMost(0.28f)
         )
         else -> listOf(
-            (0.08f + level * 0.10f + selectedBoost).coerceAtMost(0.24f),
-            (0.06f + level * 0.08f + selectedBoost).coerceAtMost(0.20f),
-            (0.04f + level * 0.06f + selectedBoost).coerceAtMost(0.16f)
+            (0.12f + level * 0.14f + selectedBoost).coerceAtMost(0.34f),
+            (0.09f + level * 0.12f + selectedBoost).coerceAtMost(0.28f),
+            (0.06f + level * 0.10f + selectedBoost).coerceAtMost(0.22f)
         )
     }
     return alpha.map { Color(ColorUtils.adjustAlpha(tintedSurface, it)) }
