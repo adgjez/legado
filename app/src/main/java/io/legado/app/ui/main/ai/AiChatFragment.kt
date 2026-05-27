@@ -1,30 +1,20 @@
 package io.legado.app.ui.main.ai
 
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.View
-import android.view.inputmethod.EditorInfo
-import androidx.core.content.ContextCompat
-import androidx.core.view.doOnLayout
-import androidx.core.view.isVisible
-import androidx.core.widget.doAfterTextChanged
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.databinding.FragmentAiChatBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
 import io.legado.app.ui.main.MainFragmentInterface
-import io.legado.app.utils.applyNavigationBarMargin
-import io.legado.app.utils.applyStatusBarPadding
-import io.legado.app.utils.dpToPx
-import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.ui.main.ai.compose.AiChatRoute
+import io.legado.app.ui.main.ai.compose.AiChatScreenActions
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -42,103 +32,44 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
 
     private val binding by viewBinding(FragmentAiChatBinding::bind)
     private val viewModel by viewModels<AiChatViewModel>()
-    private val adapter by lazy { AiChatAdapter(requireContext()) }
+    private val refreshToken = mutableIntStateOf(0)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        initView()
-        observeMessages()
-        updateComposerState()
-    }
-
-    private fun initView() {
-        applyPageBackground()
-        binding.topRow.applyStatusBarPadding(withInitialPadding = true)
-        binding.composerContainer.applyNavigationBarMargin(withInitialMargin = true)
-        binding.rvAiMessages.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvAiMessages.itemAnimator = null
-        binding.rvAiMessages.adapter = adapter
-        binding.rvAiMessages.setEdgeEffectColor(primaryColor)
-        binding.composerContainer.doOnLayout {
-            updateMessagesBottomPadding()
-        }
-        binding.btnScrollPrev.setOnClickListener { scrollToPreviousAssistantStart() }
-        binding.btnScrollNext.setOnClickListener { scrollToNextMessageBottom() }
-        binding.btnAiSettings.setOnClickListener {
-            startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.AI_CONFIG)
-            }
-        }
-        binding.btnAiSend.setOnClickListener {
-            if (viewModel.isRequesting) {
-                cancelCurrentRequest()
-            } else {
-                dispatchSend()
-            }
-        }
-        binding.etAiInput.doAfterTextChanged {
-            updateComposerState()
-            updateMessagesBottomPadding()
-        }
-        binding.etAiInput.setOnEditorActionListener { _, actionId, event ->
-            val isSendAction = actionId == EditorInfo.IME_ACTION_SEND
-            val isEnterKey = event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN
-            if (AppConfig.aiEnterToSend && (isSendAction || isEnterKey)) {
-                dispatchSend()
-                true
-            } else {
-                false
-            }
-        }
-        tintSendButton()
-        binding.composerContainer.elevation = 8.dpToPx().toFloat()
-        binding.etAiInput.setTextColor(primaryTextColor)
-        binding.etAiInput.setHintTextColor(secondaryTextColor)
-    }
-
-    private fun applyPageBackground() {
-        binding.root.setBackgroundColor(
-            ContextCompat.getColor(
-                requireContext(),
-                if (AppConfig.isNightTheme) R.color.md_grey_900 else R.color.white
-            )
+        binding.composeRoot.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
-    }
-
-    private fun observeMessages() {
-        viewModel.messagesLiveData.observe(viewLifecycleOwner) { messages ->
-            val shouldAutoScroll = shouldAutoScrollMessages()
-            adapter.submitList(messages)
-            val hasMessages = messages.isNotEmpty()
-            binding.rvAiMessages.isVisible = hasMessages
-            binding.tvAiEmpty.isVisible = !hasMessages
-            if (hasMessages && shouldAutoScroll) {
-                binding.rvAiMessages.post {
-                    binding.rvAiMessages.scrollToPosition((adapter.itemCount - 1).coerceAtLeast(0))
-                }
-            }
-        }
-        viewModel.requestingLiveData.observe(viewLifecycleOwner) { requesting ->
-            if (requesting) {
-                hideThinkingPanel()
-            } else {
-                hideThinkingPanel()
-            }
-            updateComposerState()
+        binding.composeRoot.setContent {
+            AiChatRoute(
+                viewModel = viewModel,
+                lifecycleOwner = viewLifecycleOwner,
+                compactHeader = true,
+                applyStatusPadding = true,
+                refreshToken = refreshToken.intValue,
+                actions = AiChatScreenActions(
+                    onSend = ::dispatchSend,
+                    onStop = ::cancelCurrentRequest,
+                    onOpenSettings = ::openAiSettings,
+                    onNewChat = ::startNewChat,
+                    onOpenHistory = ::openHistory,
+                    onSelectModel = ::showModelSelectorDialog
+                )
+            )
         }
     }
 
-    private fun dispatchSend() {
-        val content = binding.etAiInput.text?.toString()?.trim().orEmpty()
-        if (content.isEmpty() || viewModel.isRequesting) {
-            return
-        }
+    override fun onResume() {
+        super.onResume()
+        refreshToken.intValue += 1
+    }
+
+    private fun dispatchSend(content: String) {
+        if (content.isBlank() || viewModel.isRequesting) return
         if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
             toastOnUi(R.string.ai_missing_config)
             return
         }
-        binding.etAiInput.text?.clear()
         viewModel.startRequest(
-            userContent = content,
+            userContent = content.trim(),
             thinkingText = getString(R.string.ai_chat_thinking),
             cancelledText = getString(R.string.ai_chat_cancelled),
             failureMessage = { getString(R.string.ai_request_failed, it) }
@@ -149,66 +80,57 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
         viewModel.stopRequest(getString(R.string.ai_chat_cancelled))
     }
 
-    private fun updateComposerState() {
-        val hasInput = binding.etAiInput.text?.isNotBlank() == true
-        binding.etAiInput.isEnabled = true
-        binding.btnAiSend.isEnabled = viewModel.isRequesting || hasInput
-        binding.btnAiSend.alpha = if (binding.btnAiSend.isEnabled) 1f else 0.48f
-        binding.btnAiSend.contentDescription = getString(
-            if (viewModel.isRequesting) R.string.ai_chat_stop else R.string.ai_chat_send
-        )
-        binding.btnAiSend.setImageResource(
-            if (viewModel.isRequesting) R.drawable.ic_stop_black_24dp else R.drawable.ic_arrow_right
-        )
-    }
-
-    private fun updateMessagesBottomPadding() {
-        val composerBottom = (binding.composerContainer.layoutParams as? android.view.ViewGroup.MarginLayoutParams)
-            ?.bottomMargin ?: 0
-        val extraBottom = binding.composerContainer.height + composerBottom + 18.dpToPx()
-        binding.rvAiMessages.setPadding(
-            binding.rvAiMessages.paddingLeft,
-            binding.rvAiMessages.paddingTop,
-            binding.rvAiMessages.paddingRight,
-            extraBottom
-        )
-    }
-
-    private fun hideThinkingPanel() {
-        binding.thinkingPanel.isVisible = false
-        binding.thinkingScroll.isVisible = false
-    }
-
-    private fun scrollToPreviousAssistantStart() {
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findFirstVisibleItemPosition().coerceAtLeast(0)
-        val target = adapter.findPreviousAssistantPosition(anchor) ?: return
-        layoutManager.scrollToPositionWithOffset(target, 0)
-    }
-
-    private fun scrollToNextMessageBottom() {
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return
-        val anchor = layoutManager.findLastVisibleItemPosition().coerceAtLeast(0)
-        val target = adapter.findNextMessagePosition(anchor) ?: return
-        binding.rvAiMessages.scrollToPosition(target)
-        binding.rvAiMessages.post {
-            val holder = binding.rvAiMessages.findViewHolderForAdapterPosition(target)
-            val bottom = holder?.itemView?.bottom ?: return@post
-            val delta = bottom - binding.rvAiMessages.height
-            if (delta > 0) {
-                binding.rvAiMessages.scrollBy(0, delta)
-            }
+    private fun openAiSettings() {
+        startActivity<ConfigActivity> {
+            putExtra("configTag", ConfigTag.AI_CONFIG)
         }
     }
 
-    private fun shouldAutoScrollMessages(): Boolean {
-        val layoutManager = binding.rvAiMessages.layoutManager as? LinearLayoutManager ?: return true
-        val total = adapter.itemCount
-        if (total <= 1) return true
-        return layoutManager.findLastVisibleItemPosition() >= total - 2
+    private fun startNewChat() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        viewModel.startNewSession()
+        refreshToken.intValue += 1
     }
 
-    private fun tintSendButton() {
-        binding.btnAiSend.backgroundTintList = android.content.res.ColorStateList.valueOf(accentColor)
+    private fun openHistory() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        val sessions = viewModel.historySessions()
+        if (sessions.isEmpty()) {
+            toastOnUi(R.string.ai_history_empty)
+            return
+        }
+        requireContext().selector(
+            getString(R.string.ai_chat_history),
+            sessions.map { it.title }
+        ) { _, _, index ->
+            viewModel.loadSession(sessions[index].id)
+            refreshToken.intValue += 1
+        }
+    }
+
+    private fun showModelSelectorDialog() {
+        val models = AppConfig.aiModelConfigList
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_no_models)
+            return
+        }
+        val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+        requireContext().selector(
+            getString(R.string.ai_current_model),
+            models.map { model ->
+                providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                    ?.let { "${model.modelId} · $it" }
+                    ?: model.modelId
+            }
+        ) { _, _, index ->
+            AppConfig.aiCurrentModelId = models[index].id
+            refreshToken.intValue += 1
+        }
     }
 }
