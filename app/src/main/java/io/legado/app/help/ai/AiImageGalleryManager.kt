@@ -23,6 +23,7 @@ object AiImageGalleryManager {
     const val DEFAULT_GROUP_ID = "default"
     private const val DEFAULT_GROUP_NAME = "默认分组"
     private const val TEMP_KEEP_DAYS = 3L
+    private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
 
     private val imageDir: File
         get() = File(appCtx.filesDir, "ai_images").apply { mkdirs() }
@@ -30,11 +31,14 @@ object AiImageGalleryManager {
     suspend fun saveGeneratedImage(
         imageSource: String,
         prompt: String,
-        provider: AiImageProviderConfig
+        provider: AiImageProviderConfig,
+        model: String? = null
     ): AiGeneratedImage = withContext(Dispatchers.IO) {
         ensureDefaultGroup()
         cleanupExpiredTemporary()
         val bytes = readImageBytes(imageSource, provider)
+        if (bytes.isEmpty()) error("Empty image body")
+        if (bytes.size > MAX_IMAGE_BYTES) error("Image is too large: ${bytes.size} bytes")
         val id = UUID.randomUUID().toString()
         val ext = detectExtension(bytes, imageSource)
         val file = File(imageDir, "$id.$ext")
@@ -46,13 +50,18 @@ object AiImageGalleryManager {
             prompt = prompt,
             providerId = provider.id,
             providerName = provider.displayName(),
-            model = provider.model.ifBlank { if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" },
+            model = model?.takeIf { it.isNotBlank() }
+                ?: provider.model.ifBlank { if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" },
             localPath = file.absolutePath,
             originalSource = sourceSummary(imageSource),
             createdAt = now,
             updatedAt = now
         )
-        appDb.aiGeneratedImageDao.insert(image)
+        runCatching {
+            appDb.aiGeneratedImageDao.insert(image)
+        }.onFailure {
+            runCatching { file.delete() }
+        }.getOrThrow()
         image
     }
 
@@ -62,6 +71,7 @@ object AiImageGalleryManager {
             deleteImageFile(image)
             appDb.aiGeneratedImageDao.delete(image.id)
         }
+        reconcileStorage()
     }
 
     fun ensureDefaultGroup() {
@@ -94,7 +104,12 @@ object AiImageGalleryManager {
     }
 
     fun getImage(id: String): AiGeneratedImage? {
-        return appDb.aiGeneratedImageDao.get(id)
+        val image = appDb.aiGeneratedImageDao.get(id) ?: return null
+        if (!File(image.localPath).isFile) {
+            appDb.aiGeneratedImageDao.delete(id)
+            return null
+        }
+        return image
     }
 
     fun listImages(filter: GalleryFilter): List<AiGeneratedImage> {
@@ -104,7 +119,11 @@ object AiImageGalleryManager {
             GalleryFilter.TEMPORARY -> appDb.aiGeneratedImageDao.temporary()
             GalleryFilter.FAVORITE -> appDb.aiGeneratedImageDao.favorites()
             is GalleryFilter.GROUP -> appDb.aiGeneratedImageDao.byGroup(filter.groupId)
-        }.filter { File(it.localPath).isFile }
+        }.filter { image ->
+            val exists = File(image.localPath).isFile
+            if (!exists) appDb.aiGeneratedImageDao.delete(image.id)
+            exists
+        }
     }
 
     fun renameImage(id: String, name: String) {
@@ -114,8 +133,21 @@ object AiImageGalleryManager {
 
     fun setFavorite(id: String, favorite: Boolean, groupId: String?) {
         ensureDefaultGroup()
-        val targetGroupId = if (favorite) groupId ?: DEFAULT_GROUP_ID else null
+        val targetGroupId = if (favorite) {
+            groupId?.takeIf { appDb.aiImageGroupDao.get(it) != null } ?: DEFAULT_GROUP_ID
+        } else {
+            null
+        }
         appDb.aiGeneratedImageDao.setFavorite(id, favorite, targetGroupId, System.currentTimeMillis())
+    }
+
+    fun deleteGroup(id: String) {
+        if (id == DEFAULT_GROUP_ID) return
+        ensureDefaultGroup()
+        appDb.runInTransaction {
+            appDb.aiGeneratedImageDao.moveGroup(id, DEFAULT_GROUP_ID, System.currentTimeMillis())
+            appDb.aiImageGroupDao.delete(id)
+        }
     }
 
     fun deleteImage(id: String) {
@@ -146,12 +178,33 @@ object AiImageGalleryManager {
                 addHeaders(AiChatService.parseCustomHeaders(provider.headers))
             }.use { response ->
                 if (!response.isSuccessful) error("${response.code} ${response.message}")
-                return response.body?.bytes() ?: error("Empty image body")
+                return response.body.bytes()
             }
         }
         val file = File(imageSource)
         if (file.isFile) return file.readBytes()
         error("Unsupported image result")
+    }
+
+    private fun reconcileStorage() {
+        val images = appDb.aiGeneratedImageDao.all()
+        images.forEach { image ->
+            if (!File(image.localPath).isFile) {
+                appDb.aiGeneratedImageDao.delete(image.id)
+            }
+        }
+        val validPaths = images
+            .asSequence()
+            .mapNotNull { runCatching { File(it.localPath).canonicalPath }.getOrNull() }
+            .toSet()
+        imageDir.listFiles()
+            ?.filter { it.isFile }
+            ?.forEach { file ->
+                val canonicalPath = runCatching { file.canonicalPath }.getOrNull() ?: return@forEach
+                if (canonicalPath !in validPaths) {
+                    runCatching { file.delete() }
+                }
+            }
     }
 
     private fun AiImageProviderConfig.imageDownloadClient(): OkHttpClient {

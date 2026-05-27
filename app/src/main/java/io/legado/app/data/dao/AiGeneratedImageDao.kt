@@ -33,6 +33,9 @@ interface AiGeneratedImageDao {
     @Query("update ai_generated_images set favorite = :favorite, groupId = :groupId, updatedAt = :updatedAt where id = :id")
     fun setFavorite(id: String, favorite: Boolean, groupId: String?, updatedAt: Long)
 
+    @Query("update ai_generated_images set groupId = :targetGroupId, updatedAt = :updatedAt where groupId = :sourceGroupId and favorite = 1")
+    fun moveGroup(sourceGroupId: String, targetGroupId: String, updatedAt: Long)
+
     @Query("delete from ai_generated_images where id = :id")
     fun delete(id: String)
 

@@ -12,19 +12,27 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
+import org.mozilla.javascript.NativeArray
+import org.mozilla.javascript.NativeObject
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object AiImageService {
 
+    private data class ImageGenerationResult(
+        val source: String,
+        val model: String
+    )
+
     suspend fun generate(
         prompt: String,
         provider: AiImageProviderConfig? = null
     ): String {
         val target = resolveProvider(provider)
-        return generateRaw(prompt, target)
+        return generateRaw(prompt, target).source
     }
 
     suspend fun generateAndStore(
@@ -33,7 +41,7 @@ object AiImageService {
     ): AiGeneratedImage {
         val target = resolveProvider(provider)
         val image = generateRaw(prompt, target)
-        return AiImageGalleryManager.saveGeneratedImage(image, prompt, target)
+        return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model)
     }
 
     private fun resolveProvider(provider: AiImageProviderConfig?): AiImageProviderConfig {
@@ -41,14 +49,14 @@ object AiImageService {
             ?: error("未配置可用生图供应商")
     }
 
-    private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): String {
+    private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): ImageGenerationResult {
         return when (target.type) {
             AiImageProviderConfig.TYPE_JS -> generateByJs(prompt, target)
             else -> generateByOpenAi(prompt, target)
         }
     }
 
-    private suspend fun generateByOpenAi(prompt: String, provider: AiImageProviderConfig): String {
+    private suspend fun generateByOpenAi(prompt: String, provider: AiImageProviderConfig): ImageGenerationResult {
         val baseUrl = normalizeBaseUrl(provider.baseUrl)
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         val params = runCatching { JSONObject(provider.defaultParamsJson.ifBlank { "{}" }) }
@@ -65,13 +73,15 @@ object AiImageService {
         provider: AiImageProviderConfig,
         baseUrl: String,
         params: JSONObject
-    ): String {
+    ): ImageGenerationResult {
+        val effectiveModel = params.optString("model")
+            .ifBlank { provider.model.ifBlank { "gpt-image-1" } }
         val payload = JSONObject().apply {
-            put("model", provider.model.ifBlank { "gpt-image-1" })
+            put("model", effectiveModel)
             put("prompt", prompt)
             put("n", 1)
             put("size", "1024x1024")
-            mergeJson(params, ignored = setOf("endpoint"))
+            mergeJson(params, ignored = setOf("endpoint", "model", "prompt"))
         }
         val requestUrl = "${baseUrl.trimEnd('/')}/images/generations"
         val startedAt = System.currentTimeMillis()
@@ -89,23 +99,23 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body?.string().orEmpty()
+                val text = it.body.string()
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val first = JSONObject(text).optJSONArray("data")?.optJSONObject(0)
                     ?: error("Empty image response")
                 first.optString("url").takeIf { url -> url.isNotBlank() }?.let { url ->
-                    logRequest(provider, requestUrl, status, startedAt, true)
-                    return url
+                    logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
+                    return ImageGenerationResult(url, effectiveModel)
                 }
                 first.optString("b64_json").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
                     Base64.decode(b64, Base64.DEFAULT)
-                    logRequest(provider, requestUrl, status, startedAt, true)
-                    return "data:image/png;base64,$b64"
+                    logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
+                    return ImageGenerationResult("data:image/png;base64,$b64", effectiveModel)
                 }
                 error("No image url or b64_json in response")
             }
         } catch (e: Throwable) {
-            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, e)
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
             throw e
         }
     }
@@ -115,15 +125,22 @@ object AiImageService {
         provider: AiImageProviderConfig,
         baseUrl: String,
         params: JSONObject
-    ): String {
+    ): ImageGenerationResult {
+        val effectiveModel = params.optString("model")
+            .ifBlank { provider.model.ifBlank { "gpt-5" } }
         val tool = JSONObject().apply {
             put("type", "image_generation")
-            mergeJson(params, ignored = setOf("endpoint", "model", "input", "tools", "stream"))
+            params.optJSONObject("tool")?.let { mergeJson(it) }
+            mergeJson(
+                params,
+                ignored = setOf("endpoint", "model", "input", "tools", "stream", "response", "tool")
+            )
         }
         val payload = JSONObject().apply {
-            put("model", provider.model.ifBlank { "gpt-5" })
+            put("model", effectiveModel)
             put("input", prompt)
             put("tools", JSONArray().put(tool))
+            params.optJSONObject("response")?.let { mergeJson(it) }
         }
         val requestUrl = "${baseUrl.trimEnd('/')}/responses"
         val startedAt = System.currentTimeMillis()
@@ -141,7 +158,7 @@ object AiImageService {
             }
             response.use {
                 status = "${it.code} ${it.message}"
-                val text = it.body?.string().orEmpty()
+                val text = it.body.string()
                 if (!it.isSuccessful) error(text.ifBlank { status })
                 val output = JSONObject(text).optJSONArray("output") ?: error("Empty responses output")
                 for (index in 0 until output.length()) {
@@ -149,48 +166,48 @@ object AiImageService {
                     if (item.optString("type") == "image_generation_call") {
                         item.optString("result").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
                             Base64.decode(b64, Base64.DEFAULT)
-                            logRequest(provider, requestUrl, status, startedAt, true)
-                            return "data:image/png;base64,$b64"
+                            logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
+                            return ImageGenerationResult("data:image/png;base64,$b64", effectiveModel)
                         }
                     }
                 }
                 error("No image_generation_call result in response")
             }
         } catch (e: Throwable) {
-            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, e)
+            logRequest(provider, requestUrl, status.ifBlank { e.javaClass.simpleName }, startedAt, false, effectiveModel, e)
             throw e
         }
     }
 
-    private suspend fun generateByJs(prompt: String, provider: AiImageProviderConfig): String {
+    private suspend fun generateByJs(prompt: String, provider: AiImageProviderConfig): ImageGenerationResult {
         val script = provider.script.trim()
         if (script.isBlank()) error("JS script is empty")
-        val result = RhinoScriptEngine.eval(
-            buildString {
-                if (provider.jsLib.isNotBlank()) append(provider.jsLib).append('\n')
-                append(script).append('\n')
-                append(
-                    """
-                    ;(function(){
-                        if (typeof generate === 'function') return generate(prompt, provider);
-                        if (typeof run === 'function') return run(prompt, provider);
-                        if (typeof result !== 'undefined') return result;
-                        return null;
-                    })();
-                    """.trimIndent()
-                )
-            },
-            RhinoScriptEngine.getRuntimeScope(
-                buildScriptBindings { bindings ->
-                    bindings["prompt"] = prompt
-                    bindings["provider"] = provider
-                }
-            ),
-            currentCoroutineContext()
-        )?.toString().orEmpty().trim()
-        return result
-            .takeIf { it.startsWith("http", true) || it.startsWith("data:image", true) }
-            ?: error("JS image provider needs a returned url or data:image result")
+        val result = withTimeout(provider.validTimeout()) {
+            RhinoScriptEngine.eval(
+                buildString {
+                    if (provider.jsLib.isNotBlank()) append(provider.jsLib).append('\n')
+                    append(script).append('\n')
+                    append(
+                        """
+                        ;(function(){
+                            if (typeof generate === 'function') return generate(prompt, provider);
+                            if (typeof run === 'function') return run(prompt, provider);
+                            if (typeof result !== 'undefined') return result;
+                            return null;
+                        })();
+                        """.trimIndent()
+                    )
+                },
+                RhinoScriptEngine.getRuntimeScope(
+                    buildScriptBindings { bindings ->
+                        bindings["prompt"] = prompt
+                        bindings["provider"] = provider
+                    }
+                ),
+                currentCoroutineContext()
+            )
+        }
+        return ImageGenerationResult(normalizeImageResult(result), provider.model.ifBlank { "JS" })
     }
 
     private fun normalizeBaseUrl(raw: String): String {
@@ -220,6 +237,7 @@ object AiImageService {
         status: String,
         startedAt: Long,
         success: Boolean,
+        model: String = provider.model,
         throwable: Throwable? = null
     ) {
         val elapsed = System.currentTimeMillis() - startedAt
@@ -228,7 +246,7 @@ object AiImageService {
             append(if (success) "成功" else "失败")
             append("\nurl=").append(url)
             append("\nprovider=").append(provider.displayName())
-            append("\nmodel=").append(provider.model)
+            append("\nmodel=").append(model)
             append("\ntimeout=").append(provider.validTimeout())
             append("\nelapsed=").append(elapsed)
             append("\nstatus=").append(status)
@@ -240,5 +258,94 @@ object AiImageService {
         extra.keys().forEach { key ->
             if (key !in ignored) put(key, extra.opt(key))
         }
+    }
+
+    private fun normalizeImageResult(result: Any?): String {
+        return when (result) {
+            null -> error("Empty JS image result")
+            is String -> normalizeImageString(result)
+            is JSONObject -> imageFromJson(result)
+            is JSONArray -> imageFromArray(result)
+            is NativeObject -> imageFromJson(result.toJSONObject())
+            is NativeArray -> imageFromArray(result.toJSONArray())
+            else -> normalizeImageString(result.toString())
+        }
+    }
+
+    private fun normalizeImageString(raw: String): String {
+        val text = raw.trim()
+        if (text.isBlank() || text == "null" || text == "undefined") error("Empty JS image result")
+        if (text.startsWith("http", true) || text.startsWith("data:image", true)) return text
+        if (text.startsWith("{")) return imageFromJson(JSONObject(text))
+        if (text.startsWith("[")) return imageFromArray(JSONArray(text))
+        if (looksLikeImageBase64(text)) return "data:image/png;base64,$text"
+        error("JS image provider needs a returned url, data:image, base64, or JSON image result")
+    }
+
+    private fun imageFromJson(json: JSONObject): String {
+        listOf("url", "imageUrl", "image", "result", "src").forEach { key ->
+            json.optString(key).takeIf { it.isNotBlank() }?.let { return normalizeImageString(it) }
+        }
+        listOf("b64_json", "base64", "b64").forEach { key ->
+            json.optString(key).takeIf { it.isNotBlank() }?.let { return "data:image/png;base64,$it" }
+        }
+        json.optJSONArray("data")?.let { return imageFromArray(it) }
+        json.optJSONObject("data")?.let { return imageFromJson(it) }
+        error("No image url or base64 field in JS image result")
+    }
+
+    private fun imageFromArray(array: JSONArray): String {
+        for (index in 0 until array.length()) {
+            runCatching {
+                when (val item = array.opt(index)) {
+                    is JSONObject -> imageFromJson(item)
+                    is String -> normalizeImageString(item)
+                    else -> null
+                }
+            }.getOrNull()?.let { return it }
+        }
+        error("No image item in JS image result")
+    }
+
+    private fun NativeObject.toJSONObject(): JSONObject {
+        return JSONObject().apply {
+            ids.forEach { key ->
+                val name = key.toString()
+                val value = get(name, this@toJSONObject)
+                put(name, nativeToJsonValue(value))
+            }
+        }
+    }
+
+    private fun NativeArray.toJSONArray(): JSONArray {
+        return JSONArray().apply {
+            ids.forEach { key ->
+                val index = key.toString().toIntOrNull() ?: return@forEach
+                put(index, nativeToJsonValue(get(index, this@toJSONArray)))
+            }
+        }
+    }
+
+    private fun nativeToJsonValue(value: Any?): Any {
+        return when (value) {
+            null -> JSONObject.NULL
+            is NativeObject -> value.toJSONObject()
+            is NativeArray -> value.toJSONArray()
+            is Number, is Boolean, is String -> value
+            else -> value.toString()
+        }
+    }
+
+    private fun looksLikeImageBase64(text: String): Boolean {
+        val payload = text.filterNot { it.isWhitespace() }
+        if (payload.length < 100 || !payload.matches(Regex("[A-Za-z0-9+/=_-]+"))) return false
+        return runCatching {
+            val bytes = Base64.decode(payload, Base64.DEFAULT)
+            bytes.size >= 8 && (
+                bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "\u0089PNG" ||
+                    (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) ||
+                    bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "RIFF"
+                )
+        }.getOrDefault(false)
     }
 }
