@@ -213,7 +213,6 @@ dependencies {
     implementation(libs.fragment.ktx)
     implementation(libs.preference.ktx)
     implementation(libs.androidx.constraintlayout)
-    implementation(libs.liquidglass)
     implementation(libs.kyant.backdrop)
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.recyclerview)

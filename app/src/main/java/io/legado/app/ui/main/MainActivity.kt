@@ -34,7 +34,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
 import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
@@ -44,7 +43,6 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager.widget.ViewPager
-import com.qmdeve.liquidglass.widget.LiquidGlassView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
@@ -62,7 +60,6 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
@@ -104,7 +101,6 @@ import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.windowSize
 import io.legado.app.utils.ColorUtils as AppColorUtils
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -191,11 +187,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
-    private var liquidGlassReady = false
-    private val boundLiquidGlassViewIds = hashSetOf<Int>()
-    private val liquidGlassSetupRunnable = Runnable {
+    private val bottomGlassSetupRunnable = Runnable {
         if (!isFinishing && !isDestroyed) {
-            setupLiquidGlass()
+            setupBottomGlass()
         }
     }
     private var mergedDiscoveryLongClickView: View? = null
@@ -316,8 +310,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun upBackgroundImage() {
         super.upBackgroundImage()
         binding.root.post {
-            syncLiquidGlassSampleBackground()
-            scheduleLiquidGlassSetup(delayMillis = 32L)
+            scheduleBottomGlassSetup(delayMillis = 32L)
         }
     }
 
@@ -410,12 +403,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             true
         }
-        syncLiquidGlassSampleBackground()
-        scheduleLiquidGlassSetup()
-        contentContainer.doOnPreDraw {
-            liquidGlassReady = true
-            scheduleLiquidGlassSetup(delayMillis = 32L)
-        }
+        scheduleBottomGlassSetup()
         bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -456,32 +444,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         applyBottomLayoutMode()
     }
 
-    private fun scheduleLiquidGlassSetup(delayMillis: Long = 0L) {
-        binding.bottomControls.removeCallbacks(liquidGlassSetupRunnable)
+    private fun scheduleBottomGlassSetup(delayMillis: Long = 0L) {
+        binding.bottomControls.removeCallbacks(bottomGlassSetupRunnable)
         if (delayMillis > 0L) {
-            binding.bottomControls.postDelayed(liquidGlassSetupRunnable, delayMillis)
+            binding.bottomControls.postDelayed(bottomGlassSetupRunnable, delayMillis)
         } else {
-            binding.bottomControls.post(liquidGlassSetupRunnable)
+            binding.bottomControls.post(bottomGlassSetupRunnable)
         }
-    }
-
-    private fun syncLiquidGlassSampleBackground() = binding.run {
-        val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
-            runCatching {
-                ThemeConfig.getBgImage(this@MainActivity, windowManager.windowSize)
-            }.getOrNull()
-        } else {
-            null
-        }
-        if (wallpaper != null) {
-            liquidGlassSampleBackground.background = wallpaper
-        } else {
-            liquidGlassSampleBackground.setBackgroundColor(
-                ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
-            )
-        }
-        liquidGlassSampleBackground.invalidate()
-        contentContainer.invalidate()
     }
 
     private fun bottomBarGlassSpec(
@@ -518,7 +487,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         applyBottomNavigationIcons()
         applyBottomLayoutMode()
-        scheduleLiquidGlassSetup()
+        scheduleBottomGlassSetup()
         binding.bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -1278,16 +1247,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         sideNavigationLockedGravity = null
     }
 
-    private fun setupLiquidGlass() {
+    private fun setupBottomGlass() {
         binding.run {
             val standardMode = isStandardBottomMode()
             if (AppConfig.isEInkMode) {
-                bottomNavigationGlassView.visibility = android.view.View.GONE
-                bottomNavigationIndicatorContainer.visibility = android.view.View.GONE
-                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
-                searchButtonGlassView.visibility = android.view.View.GONE
-                bottomNavigationShellOverlay.visibility = android.view.View.VISIBLE
-                searchButtonShellOverlay.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
+                bottomNavigationIndicatorContainer.visibility = View.GONE
+                bottomNavigationShellOverlay.visibility = View.VISIBLE
+                searchButtonShellOverlay.visibility = if (standardMode) View.GONE else View.VISIBLE
                 bottomNavigationShellOverlay.setMainBottomBarGlassContent(
                     bottomBarGlassSpec(
                         mode = if (standardMode) "standard" else "eink",
@@ -1309,10 +1275,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             val effectMode = AppConfig.bottomBarEffectMode
             if (standardMode) {
-                bottomNavigationGlassView.visibility = android.view.View.GONE
-                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
-                searchButtonGlassView.visibility = android.view.View.GONE
-                searchButtonShellOverlay.visibility = android.view.View.GONE
+                searchButtonShellOverlay.visibility = View.GONE
                 bottomNavigationShellOverlay.isVisible = true
                 bottomNavigationIndicatorContainer.isVisible = true
                 bottomNavigationIndicatorContainer.alpha = 1f
@@ -1338,86 +1301,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
-            if (effectMode == "solid") {
-                bottomNavigationGlassView.visibility = android.view.View.GONE
-                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
-                searchButtonGlassView.visibility = android.view.View.GONE
-                bottomNavigationShellOverlay.isVisible = true
-                searchButtonShellOverlay.isVisible = !standardMode
-                bottomNavigationIndicatorContainer.isVisible = true
-                bottomNavigationIndicatorContainer.alpha = 1f
-                bottomNavigationIndicatorContainer.scaleX = 1f
-                bottomNavigationIndicatorContainer.scaleY = 1f
-                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "solid",
-                        cornerRadius = bottomBarCornerRadius,
-                        oval = false
-                    )
-                )
-                searchButtonShellOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "solid",
-                        cornerRadius = searchButtonCornerRadius,
-                        oval = true
-                    )
-                )
-                bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
-                if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
-                syncSearchButtonTint()
-                bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "solid",
-                        cornerRadius = bottomIndicatorCornerRadius,
-                        oval = false,
-                        selected = true
-                    )
-                )
-                updateBottomNavigationIndicator(animate = false)
-                return
-            }
-            bottomNavigationIndicatorContainer.isVisible = true
-            bottomNavigationIndicatorContainer.alpha = 0f
-            bottomNavigationIndicatorContainer.scaleX = 0.82f
-            bottomNavigationIndicatorContainer.scaleY = 0.82f
             bottomNavigationShellOverlay.isVisible = true
-            searchButtonShellOverlay.isVisible = !standardMode
+            searchButtonShellOverlay.isVisible = true
+            bottomNavigationIndicatorContainer.isVisible = true
+            bottomNavigationIndicatorContainer.alpha = 1f
+            bottomNavigationIndicatorContainer.scaleX = 1f
+            bottomNavigationIndicatorContainer.scaleY = 1f
             bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
-            if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
+            searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
             syncSearchButtonTint()
-            bottomNavigationGlassView.visibility = android.view.View.VISIBLE
-            bottomNavigationIndicatorGlassView.visibility = android.view.View.VISIBLE
-            searchButtonGlassView.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
-            val glassLevel = when (effectMode) {
-                "frosted" -> AppConfig.frostedGlassLevel / 100f
-                else -> AppConfig.liquidGlassLevel / 100f
-            }
-            val frostedMode = effectMode == "frosted"
-            val blurRadius = if (frostedMode) {
-                (10f + glassLevel * 24f).dpToPx()
-            } else {
-                (5f + glassLevel * 14f).dpToPx()
-            }
-            val tintAlpha = if (frostedMode) {
-                0.10f + glassLevel * 0.14f
-            } else {
-                0.04f + glassLevel * 0.09f
-            }
-            val dispersion = if (frostedMode) {
-                (0.16f + glassLevel * 0.14f).coerceAtMost(0.36f)
-            } else {
-                0.34f + glassLevel * 0.24f
-            }
-            val refractionHeight = if (frostedMode) {
-                (12f + glassLevel * 10f).dpToPx()
-            } else {
-                (18f + glassLevel * 14f).dpToPx()
-            }
-            val refractionOffset = if (frostedMode) {
-                (36f + glassLevel * 18f).dpToPx()
-            } else {
-                (72f + glassLevel * 34f).dpToPx()
-            }
             bottomNavigationShellOverlay.setMainBottomBarGlassContent(
                 bottomBarGlassSpec(
                     mode = effectMode,
@@ -1442,48 +1334,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     selected = true
                 )
             )
-            if (!liquidGlassReady || !contentContainer.isLaidOut || !bottomControls.isLaidOut) {
-                contentContainer.doOnPreDraw {
-                    liquidGlassReady = true
-                    scheduleLiquidGlassSetup(delayMillis = 32L)
-                }
-                return
-            }
-            setupLiquidGlassView(
-                liquidGlassView = bottomNavigationGlassView,
-                cornerRadius = bottomBarCornerRadius,
-                refractionHeight = refractionHeight,
-                refractionOffset = refractionOffset,
-                blurRadius = blurRadius,
-                dispersion = dispersion,
-                tintAlpha = tintAlpha,
-                elasticEnabled = true,
-                touchEffectEnabled = true
-            )
-            if (!standardMode) {
-                setupLiquidGlassView(
-                    liquidGlassView = searchButtonGlassView,
-                    cornerRadius = searchButtonCornerRadius,
-                    refractionHeight = refractionHeight,
-                    refractionOffset = refractionOffset,
-                    blurRadius = blurRadius,
-                    dispersion = (dispersion + 0.02f).coerceAtMost(1f),
-                    tintAlpha = tintAlpha,
-                    elasticEnabled = true,
-                    touchEffectEnabled = true
-                )
-            }
-            setupLiquidGlassView(
-                liquidGlassView = bottomNavigationIndicatorGlassView,
-                cornerRadius = bottomIndicatorCornerRadius,
-                refractionHeight = (refractionHeight * 0.9f).coerceAtLeast(16f.dpToPx()),
-                refractionOffset = (refractionOffset * 0.72f).coerceAtLeast(46f.dpToPx()),
-                blurRadius = (blurRadius * 0.78f).coerceAtLeast(5f.dpToPx()),
-                dispersion = (dispersion + 0.03f).coerceAtMost(1f),
-                tintAlpha = (tintAlpha + 0.02f).coerceAtMost(0.24f),
-                elasticEnabled = true,
-                touchEffectEnabled = true
-            )
+            updateBottomNavigationIndicator(animate = false)
         }
     }
 
@@ -1517,36 +1368,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             setColor(AppColorUtils.withAlpha(baseColor, alpha))
             bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
-        }
-    }
-
-    private fun createStandardBottomShellDrawable(): GradientDrawable {
-        val baseColor = bottomBackground
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 0f
-            setColor(baseColor)
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
-        }
-    }
-
-    private fun createEInkBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
-        val baseColor = bottomBackground
-        return GradientDrawable().apply {
-            shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
-            if (!oval) {
-                this.cornerRadius = cornerRadius
-            }
-            setColor(baseColor)
-            setStroke(1.dpToPx(), AppColorUtils.withAlpha(Color.BLACK, 0.42f))
-        }
-    }
-
-    private fun createSolidBottomIndicatorDrawable(): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = bottomIndicatorCornerRadius
-            setColor(primaryColor)
         }
     }
 
@@ -1677,72 +1498,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         )
     }
 
-    private fun createLiquidGlassShellDrawable(
-        glassLevel: Float,
-        cornerRadius: Float,
-        oval: Boolean,
-        selected: Boolean
-    ): GradientDrawable {
-        val baseColor = bottomBackground
-        val isLight = AppColorUtils.isColorLight(baseColor)
-        val surfaceColor = if (isLight) {
-            AppColorUtils.blendColors(baseColor, Color.WHITE, 0.72f)
-        } else {
-            AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
-        }
-        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
-        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
-        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
-        val selectedBoost = if (selected) 0.08f else 0f
-        return GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(
-                AppColorUtils.withAlpha(surfaceColor, startAlpha + selectedBoost),
-                AppColorUtils.withAlpha(surfaceColor, centerAlpha + selectedBoost),
-                AppColorUtils.withAlpha(surfaceColor, endAlpha + selectedBoost)
-            )
-        ).apply {
-            shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
-            if (!oval) {
-                setCornerRadius(cornerRadius)
-            }
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
-        }
-    }
-
     private fun bottomBarBorderColor(): Int? {
         return NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config.borderColor
-    }
-
-    private fun setupLiquidGlassView(
-        liquidGlassView: LiquidGlassView,
-        cornerRadius: Float,
-        refractionHeight: Float,
-        refractionOffset: Float,
-        blurRadius: Float,
-        dispersion: Float,
-        tintAlpha: Float,
-        elasticEnabled: Boolean,
-        touchEffectEnabled: Boolean,
-    ) {
-        if (boundLiquidGlassViewIds.add(liquidGlassView.id)) {
-            liquidGlassView.bind(binding.contentContainer)
-        }
-        liquidGlassView.setCornerRadius(cornerRadius)
-        liquidGlassView.setRefractionHeight(refractionHeight)
-        liquidGlassView.setRefractionOffset(refractionOffset)
-        liquidGlassView.setDispersion(dispersion)
-        liquidGlassView.setBlurRadius(blurRadius)
-        liquidGlassView.setTintAlpha(tintAlpha)
-        liquidGlassView.setTintColorRed(0.70f)
-        liquidGlassView.setTintColorGreen(0.79f)
-        liquidGlassView.setTintColorBlue(0.86f)
-        liquidGlassView.setDraggableEnabled(false)
-        liquidGlassView.setElasticEnabled(elasticEnabled)
-        liquidGlassView.setTouchEffectEnabled(touchEffectEnabled)
-        liquidGlassView.isClickable = false
-        liquidGlassView.isFocusable = false
-        liquidGlassView.invalidate()
     }
 
     private fun updateBottomNavigationIndicator(animate: Boolean) {
@@ -2084,7 +1841,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 refreshMainTopBars(binding.root)
                 binding.root.post {
                     refreshMainTopBars(binding.root)
-                    scheduleLiquidGlassSetup(delayMillis = 96L)
+                    scheduleBottomGlassSetup(delayMillis = 96L)
                 }
             }
         }
