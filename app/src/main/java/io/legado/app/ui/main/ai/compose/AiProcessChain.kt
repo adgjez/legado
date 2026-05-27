@@ -1,6 +1,12 @@
 package io.legado.app.ui.main.ai.compose
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -68,8 +74,7 @@ fun AiProcessTimelineCard(
     val hasFailedStep = steps.any { !it.success }
     Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(),
+            .fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.toolSurface,
         tonalElevation = 0.dp,
@@ -80,9 +85,7 @@ fun AiProcessTimelineCard(
         )
     ) {
         Column(
-            modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 12.dp)
-                .animateContentSize()
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -124,15 +127,12 @@ fun AiProcessTimelineCard(
                     )
                 }
             }
-            if (expanded) {
-                MiniStepPolyline(
-                    steps = steps,
-                    style = style,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp, bottom = 4.dp)
-                        .height(26.dp)
-                )
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(tween(90)) + expandVertically(tween(140)),
+                exit = shrinkVertically(tween(110)) + fadeOut(tween(70))
+            ) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
                 steps.forEachIndexed { index, step ->
                     val stepExpanded = step.pending || !step.collapsed || step.id in expandedStepIds
                     AiProcessTimelineRow(
@@ -153,6 +153,7 @@ fun AiProcessTimelineCard(
                         }
                     )
                 }
+                }
             }
         }
     }
@@ -172,48 +173,6 @@ private fun StepCountChip(count: Int, style: AiComposeStyle) {
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold
         )
-    }
-}
-
-@Composable
-private fun MiniStepPolyline(
-    steps: List<AiProcessStepUi>,
-    style: AiComposeStyle,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        if (steps.isEmpty()) return@Canvas
-        val gap = if (steps.size <= 1) 0f else size.width / (steps.size - 1)
-        val yLow = size.height * 0.68f
-        val yHigh = size.height * 0.32f
-        val points = steps.mapIndexed { index, step ->
-            Offset(
-                x = if (steps.size == 1) size.width / 2f else gap * index,
-                y = if (step.type == AiProcessStepType.Tool) yHigh else yLow
-            )
-        }
-        points.zipWithNext().forEach { (start, end) ->
-            drawLine(
-                color = style.colors.stroke,
-                start = start,
-                end = end,
-                strokeWidth = 1.4.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-        points.forEachIndexed { index, point ->
-            val step = steps[index]
-            drawCircle(
-                color = when {
-                    !step.success -> style.colors.danger
-                    step.pending -> style.colors.accent
-                    step.type == AiProcessStepType.Tool -> style.colors.accent.copy(alpha = 0.72f)
-                    else -> style.colors.secondaryText.copy(alpha = 0.56f)
-                },
-                radius = if (step.pending) 4.2.dp.toPx() else 3.2.dp.toPx(),
-                center = point
-            )
-        }
     }
 }
 
