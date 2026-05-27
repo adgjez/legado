@@ -109,10 +109,12 @@ private fun bottomBarSurfaceModifier(
     val lensHeight = with(density) {
         (if (spec.mode == "frosted") 8f + level * 8f else 12f + level * 14f).dp.toPx()
     }
-    val lensAmount = if (spec.mode == "frosted") {
-        (0.08f + level * 0.12f).coerceAtMost(0.24f)
-    } else {
-        (0.18f + level * 0.24f).coerceAtMost(0.46f)
+    val lensAmount = with(density) {
+        if (spec.mode == "frosted") {
+            (10f + level * 10f).dp.toPx()
+        } else {
+            (18f + level * 22f).dp.toPx()
+        }
     }
     return Modifier.drawBackdrop(
         backdrop = backdrop,
