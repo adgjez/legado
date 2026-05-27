@@ -34,6 +34,8 @@ class AiChatViewModel : ViewModel() {
         private var activeViewModel: AiChatViewModel? = null
         private var activePendingContent: String = ""
         private var activeThinkingMessageId: String? = null
+        private var activeThinkingKey: String? = null
+        private var activeThinkingLabel: String? = null
         private var activePendingAssistantMessageId: String? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
@@ -61,6 +63,8 @@ class AiChatViewModel : ViewModel() {
         val requestSessionId = currentSessionId
         activeViewModel = this
         activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
         activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
@@ -155,7 +159,9 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun upsertThinkingStatus(thinkingTitle: String, thinking: String) {
-        val messageId = activeThinkingMessageId ?: createThinkingMessage("thinking")
+        if (thinking.isBlank()) return
+        val messageId = activeThinkingMessageId
+            ?: createThinkingMessage(activeThinkingKey ?: "thinking", activeThinkingLabel ?: thinkingTitle)
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
             val current = messages[index].content
@@ -182,13 +188,23 @@ class AiChatViewModel : ViewModel() {
         val stage = status.optString("stage")
         val key = status.optString("key").ifBlank { "thinking" }
         when (stage) {
-            "start" -> createThinkingMessage(key, status.optString("label").ifBlank { pendingThinkingLabel })
-            "finish" -> finishActiveThinking(
-                fallback = status.optString("fallback"),
-                content = status.optString("content"),
-                removeIfBlank = status.optBoolean("removeIfBlank", false),
-                label = status.optString("label").takeIf { it.isNotBlank() }
-            )
+            "start" -> {
+                activeThinkingKey = key
+                activeThinkingLabel = status.optString("label").ifBlank { pendingThinkingLabel }
+            }
+            "finish" -> {
+                val content = status.optString("content")
+                val label = status.optString("label").takeIf { it.isNotBlank() }
+                if (activeThinkingMessageId == null && content.isNotBlank()) {
+                    createThinkingMessage(key, label ?: activeThinkingLabel ?: pendingThinkingLabel)
+                }
+                finishActiveThinking(
+                    fallback = status.optString("fallback"),
+                    content = content,
+                    removeIfBlank = status.optBoolean("removeIfBlank", false),
+                    label = label
+                )
+            }
         }
     }
 
@@ -215,21 +231,27 @@ class AiChatViewModel : ViewModel() {
         removeIfBlank: Boolean = false,
         label: String? = null
     ) {
-        val messageId = activeThinkingMessageId ?: return
+        val messageId = activeThinkingMessageId ?: run {
+            activeThinkingKey = null
+            activeThinkingLabel = null
+            return
+        }
         val index = messages.indexOfFirst { it.id == messageId }
         if (index < 0) {
             activeThinkingMessageId = null
+            activeThinkingKey = null
+            activeThinkingLabel = null
             return
         }
         val current = messages[index]
         val finalContent = content.takeIf { it.isNotBlank() }
             ?: current.content.takeIf { it.isNotBlank() }
             ?: fallback.orEmpty()
-        if (removeIfBlank && finalContent.isBlank()) {
+        if (finalContent.isBlank()) {
             messages.removeAt(index)
         } else {
             messages[index] = current.copy(
-                content = finalContent.ifBlank { pendingThinkingLabel },
+                content = finalContent,
                 pending = false,
                 collapsed = true,
                 statusLabel = label ?: current.statusLabel,
@@ -237,6 +259,8 @@ class AiChatViewModel : ViewModel() {
             )
         }
         activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
         publish()
     }
 
