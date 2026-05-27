@@ -5,6 +5,7 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.drawable.Drawable
@@ -32,6 +33,8 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.get
@@ -303,6 +306,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onResume() {
         super.onResume()
         refreshBottomNavigationConfig()
+        scheduleBottomGlassSetup(delayMillis = 64L)
         if (isSidebarMode()) {
             updateSideGoalHeader()
         }
@@ -420,9 +424,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationInset = height
             if (isStandardBottomMode()) {
                 view.bottomPadding = 0
+                updateBottomControlsMargin(0)
                 applyBottomNavigationShape(standardMode = true)
             } else {
-                view.bottomPadding = bottomFloatingPadding(height)
+                view.bottomPadding = 0
+                updateBottomControlsMargin(bottomFloatingMargin(height))
                 applyBottomNavigationShape(standardMode = false)
             }
             windowInsets.inset(0, 0, 0, height)
@@ -445,20 +451,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         applyBottomLayoutMode()
     }
 
-    private fun bottomFloatingPadding(navigationBarHeight: Int): Int {
+    private fun bottomFloatingMargin(navigationBarHeight: Int): Int {
         val baseHeight = binding.root.height.takeIf { it > 0 }
             ?: resources.displayMetrics.heightPixels
-        val minInset = resources.getFraction(
-            R.fraction.main_bottom_controls_min_window_inset_ratio,
+        val visualGap = resources.getFraction(
+            R.fraction.main_bottom_controls_floating_gap_ratio,
             baseHeight,
             baseHeight
         ).roundToInt()
-        val extraGap = resources.getFraction(
-            R.fraction.main_bottom_controls_extra_floating_gap_ratio,
-            baseHeight,
-            baseHeight
-        ).roundToInt()
-        return maxOf(navigationBarHeight, minInset) + extraGap
+        return navigationBarHeight + visualGap
+    }
+
+    private fun updateBottomControlsMargin(bottomMargin: Int) {
+        val params = binding.bottomControls.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        if (params.bottomMargin == bottomMargin) return
+        params.bottomMargin = bottomMargin
+        binding.bottomControls.layoutParams = params
     }
 
     private fun scheduleBottomGlassSetup(delayMillis: Long = 0L) {
@@ -474,7 +482,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         mode: String,
         cornerRadius: Float,
         oval: Boolean,
-        selected: Boolean = false
+        selected: Boolean = false,
+        backdropTarget: View? = null
     ): MainBottomBarGlassSpec {
         val level = when (mode) {
             "frosted" -> AppConfig.frostedGlassLevel / 100f
@@ -491,8 +500,33 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             oval = oval,
             selected = selected,
             level = level,
-            night = AppConfig.isNightTheme
+            night = AppConfig.isNightTheme,
+            backdropImage = backdropTarget?.let { captureBottomBackdrop(it) }
         )
+    }
+
+    private fun captureBottomBackdrop(target: View): ImageBitmap? {
+        val source = binding.contentContainer
+        if (!source.isLaidOut || !target.isLaidOut || target.width <= 0 || target.height <= 0) {
+            return null
+        }
+        val sourceLocation = IntArray(2)
+        val targetLocation = IntArray(2)
+        source.getLocationInWindow(sourceLocation)
+        target.getLocationInWindow(targetLocation)
+        val left = targetLocation[0] - sourceLocation[0]
+        val top = targetLocation[1] - sourceLocation[1]
+        if (left >= source.width || top >= source.height || left + target.width <= 0 || top + target.height <= 0) {
+            return null
+        }
+        return runCatching {
+            Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                Canvas(bitmap).apply {
+                    translate(-left.toFloat(), -top.toFloat())
+                    source.draw(this)
+                }
+            }.asImageBitmap()
+        }.getOrNull()
     }
 
     private fun refreshBottomNavigationConfig() {
@@ -533,7 +567,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (handleSidebarSwipe(ev)) {
             return true
         }
-        return super.dispatchTouchEvent(ev)
+        val handled = super.dispatchTouchEvent(ev)
+        if ((ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL)
+            && !isStandardBottomMode()
+            && !isSidebarMode()
+        ) {
+            scheduleBottomGlassSetup(delayMillis = 64L)
+        }
+        return handled
     }
 
     private fun handleSidebarSwipe(ev: MotionEvent): Boolean {
@@ -649,7 +690,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             bottomControls.paddingTop,
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
-            if (standardMode) 0 else bottomControls.paddingBottom
+            0
         )
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
             NavigationBarView.LABEL_VISIBILITY_UNLABELED
@@ -1275,14 +1316,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     bottomBarGlassSpec(
                         mode = if (standardMode) "standard" else "eink",
                         cornerRadius = if (standardMode) 0f else bottomBarCornerRadius,
-                        oval = false
+                        oval = false,
+                        backdropTarget = bottomNavigationShellOverlay
                     )
                 )
                 searchButtonShellOverlay.setMainBottomBarGlassContent(
                     bottomBarGlassSpec(
                         mode = "eink",
                         cornerRadius = searchButtonCornerRadius,
-                        oval = true
+                        oval = true,
+                        backdropTarget = searchButtonShellOverlay
                     )
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
@@ -1302,20 +1345,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     bottomBarGlassSpec(
                         mode = "standard",
                         cornerRadius = 0f,
-                        oval = false
+                        oval = false,
+                        backdropTarget = bottomNavigationShellOverlay
                     )
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
+                updateBottomNavigationIndicator(animate = false)
                 bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
                     bottomBarGlassSpec(
                         mode = "solid",
                         cornerRadius = bottomIndicatorCornerRadius,
                         oval = false,
-                        selected = true
+                        selected = true,
+                        backdropTarget = bottomNavigationIndicatorOverlay
                     )
                 )
-                updateBottomNavigationIndicator(animate = false)
                 return
             }
             bottomNavigationShellOverlay.isVisible = true
@@ -1332,7 +1377,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     mode = effectMode,
                     cornerRadius = bottomBarCornerRadius,
                     oval = false,
-                    selected = false
+                    selected = false,
+                    backdropTarget = bottomNavigationShellOverlay
                 )
             )
             searchButtonShellOverlay.setMainBottomBarGlassContent(
@@ -1340,18 +1386,20 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     mode = effectMode,
                     cornerRadius = searchButtonCornerRadius,
                     oval = true,
-                    selected = false
+                    selected = false,
+                    backdropTarget = searchButtonShellOverlay
                 )
             )
+            updateBottomNavigationIndicator(animate = false)
             bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
                 bottomBarGlassSpec(
                     mode = effectMode,
                     cornerRadius = bottomIndicatorCornerRadius,
                     oval = false,
-                    selected = true
+                    selected = true,
+                    backdropTarget = bottomNavigationIndicatorOverlay
                 )
             )
-            updateBottomNavigationIndicator(animate = false)
         }
     }
 
@@ -1984,6 +2032,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)
+            scheduleBottomGlassSetup(delayMillis = 96L)
         }
 
     }

@@ -1,13 +1,13 @@
 package io.legado.app.ui.main
 
 import android.os.Build
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,10 +35,12 @@ data class MainBottomBarGlassSpec(
     val oval: Boolean,
     val selected: Boolean,
     val level: Float,
-    val night: Boolean
+    val night: Boolean,
+    val backdropImage: ImageBitmap?
 )
 
 fun ComposeView.setMainBottomBarGlassContent(spec: MainBottomBarGlassSpec) {
+    setBackgroundColor(android.graphics.Color.TRANSPARENT)
     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
     setContent {
         MainBottomBarGlassSurface(spec = spec)
@@ -53,25 +55,32 @@ private fun MainBottomBarGlassSurface(spec: MainBottomBarGlassSpec) {
     val borderColor = spec.borderColor?.let { Color(it) }
     val surfaceBrush = Brush.verticalGradient(colors)
     val backdrop = rememberCanvasBackdrop {
-        drawBottomBarBackdropSeed(spec)
+        spec.backdropImage?.let {
+            drawImage(it)
+        } ?: drawBottomBarBackdropSeed(spec)
     }
-    Box(modifier = Modifier.fillMaxSize()) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawBottomBarBackdropSeed(spec)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(bottomBarSurfaceModifier(spec, backdrop, shape, surfaceBrush))
-                .then(
-                    if (borderColor != null) {
-                        Modifier.border(1.dp, borderColor, shape)
-                    } else {
-                        Modifier
-                    }
-                )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(bottomBarSurfaceModifier(spec, backdrop, shape, surfaceBrush))
+            .then(
+                if (borderColor != null) {
+                    Modifier.border(1.dp, borderColor, shape)
+                } else {
+                    Modifier
+                }
+            )
+    )
+}
+
+private fun glassHighlightBrush(spec: MainBottomBarGlassSpec): Brush {
+    return Brush.verticalGradient(
+        listOf(
+            Color.White.copy(alpha = if (spec.night) 0.07f else 0.16f),
+            Color.White.copy(alpha = if (spec.night) 0.02f else 0.05f),
+            Color.Transparent
         )
-    }
+    )
 }
 
 @Composable
@@ -88,6 +97,7 @@ private fun bottomBarSurfaceModifier(
             effects = {},
             onDrawSurface = {
                 drawRect(surfaceBrush)
+                drawRect(glassHighlightBrush(spec))
             }
         )
     }
@@ -123,15 +133,7 @@ private fun bottomBarSurfaceModifier(
         },
         onDrawSurface = {
             drawRect(surfaceBrush)
-            val lightAlpha = if (spec.night) 0.10f else 0.22f
-            drawRect(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = lightAlpha),
-                        Color.Transparent
-                    )
-                )
-            )
+            drawRect(glassHighlightBrush(spec))
         }
     )
 }
@@ -189,14 +191,14 @@ private fun bottomBarGlassColors(spec: MainBottomBarGlassSpec): List<Color> {
             listOf(solid, solid, solid)
         }
         "frosted" -> listOf(
-            (0.26f + level * 0.24f + selectedBoost).coerceAtMost(0.60f),
-            (0.20f + level * 0.21f + selectedBoost).coerceAtMost(0.52f),
-            (0.15f + level * 0.18f + selectedBoost).coerceAtMost(0.44f)
+            (0.14f + level * 0.16f + selectedBoost).coerceAtMost(0.40f),
+            (0.11f + level * 0.14f + selectedBoost).coerceAtMost(0.34f),
+            (0.08f + level * 0.12f + selectedBoost).coerceAtMost(0.28f)
         )
         else -> listOf(
-            (0.22f + level * 0.24f + selectedBoost).coerceAtMost(0.54f),
-            (0.17f + level * 0.21f + selectedBoost).coerceAtMost(0.46f),
-            (0.12f + level * 0.18f + selectedBoost).coerceAtMost(0.38f)
+            (0.12f + level * 0.14f + selectedBoost).coerceAtMost(0.34f),
+            (0.09f + level * 0.12f + selectedBoost).coerceAtMost(0.28f),
+            (0.06f + level * 0.10f + selectedBoost).coerceAtMost(0.22f)
         )
     }
     return alpha.map { Color(ColorUtils.adjustAlpha(tintedSurface, it)) }

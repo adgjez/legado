@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <fraction name="main_bottom_controls_min_window_inset_ratio">2.25%</fraction>
-    <fraction name="main_bottom_controls_extra_floating_gap_ratio">0.45%</fraction>
+    <fraction name="main_bottom_controls_floating_gap_ratio">1.60%</fraction>
     <fraction name="main_content_bottom_bar_extra_padding_ratio">0.25%</fraction>
 </resources>
