@@ -298,7 +298,9 @@ private fun parseToolDisplayPayload(
     val name = message.statusName.orEmpty()
     val raw = message.statusDetail?.takeIf { it.isNotBlank() } ?: message.content
     if (raw.isBlank()) return null
-    val root = runCatching { JSONObject(raw) }.getOrNull()
+    val contentRoot = runCatching { JSONObject(message.content) }.getOrNull()
+    val rawRoot = runCatching { JSONObject(raw) }.getOrNull()
+    val root = contentRoot ?: rawRoot
     return when (name) {
         "search_book_source" -> {
             val books = root?.optJSONArray("results")?.let { array ->
