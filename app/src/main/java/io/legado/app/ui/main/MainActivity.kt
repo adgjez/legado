@@ -6,6 +6,7 @@ import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
@@ -19,6 +20,7 @@ import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.ViewOutlineProvider
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -687,6 +689,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         bottomNavigationGlass.layoutParams = bottomNavigationGlass.layoutParams.apply {
             height = if (standardMode) standardContentHeight + bottomNavigationInset else floatingContentHeight
         }
+        applyBottomNavigationShadowOutline(standardMode)
         ConstraintSet().apply {
             clone(bottomControls)
             clear(R.id.bottom_navigation_glass, ConstraintSet.END)
@@ -704,6 +707,59 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 connect(R.id.bottom_navigation_glass, ConstraintSet.TOP, R.id.search_button_container, ConstraintSet.TOP)
             }
             applyTo(bottomControls)
+        }
+    }
+
+    private fun applyBottomNavigationShadowOutline(standardMode: Boolean) = binding.run {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return@run
+        }
+        if (standardMode) {
+            bottomNavigationGlass.elevation = 0f
+            bottomNavigationGlass.translationZ = 0f
+            bottomNavigationGlass.outlineProvider = ViewOutlineProvider.BACKGROUND
+            searchButtonContainer.elevation = 0f
+            searchButtonContainer.translationZ = 0f
+            searchButtonContainer.outlineProvider = ViewOutlineProvider.BACKGROUND
+        } else {
+            bottomNavigationGlass.elevation = resources.getDimension(R.dimen.main_bottom_bar_elevation)
+            bottomNavigationGlass.translationZ = 0f
+            bottomNavigationGlass.clipToOutline = false
+            bottomNavigationGlass.outlineProvider = roundedBottomOutlineProvider(
+                radius = bottomBarCornerRadius,
+                oval = false,
+                alpha = if (AppConfig.isNightTheme) 0.18f else 0.24f
+            )
+            searchButtonContainer.elevation = resources.getDimension(R.dimen.main_search_button_elevation)
+            searchButtonContainer.translationZ = 0f
+            searchButtonContainer.clipToOutline = false
+            searchButtonContainer.outlineProvider = roundedBottomOutlineProvider(
+                radius = searchButtonCornerRadius,
+                oval = true,
+                alpha = if (AppConfig.isNightTheme) 0.20f else 0.26f
+            )
+        }
+        bottomNavigationGlass.invalidateOutline()
+        searchButtonContainer.invalidateOutline()
+    }
+
+    private fun roundedBottomOutlineProvider(
+        radius: Float,
+        oval: Boolean,
+        alpha: Float
+    ): ViewOutlineProvider {
+        return object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                val width = if (view.width > 0) view.width else view.measuredWidth
+                val height = if (view.height > 0) view.height else view.measuredHeight
+                if (width <= 0 || height <= 0) return
+                if (oval) {
+                    outline.setOval(0, 0, width, height)
+                } else {
+                    outline.setRoundRect(0, 0, width, height, radius)
+                }
+                outline.alpha = alpha.coerceIn(0f, 1f)
+            }
         }
     }
 
@@ -1343,14 +1399,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 (5f + glassLevel * 14f).dpToPx()
             }
             val tintAlpha = if (frostedMode) {
-                0.07f + glassLevel * 0.12f
+                0.10f + glassLevel * 0.14f
             } else {
-                0.025f + glassLevel * 0.07f
+                0.04f + glassLevel * 0.09f
             }
             val dispersion = if (frostedMode) {
-                (0.12f + glassLevel * 0.12f).coerceAtMost(0.30f)
+                (0.16f + glassLevel * 0.14f).coerceAtMost(0.36f)
             } else {
-                0.24f + glassLevel * 0.18f
+                0.34f + glassLevel * 0.24f
             }
             val refractionHeight = if (frostedMode) {
                 (12f + glassLevel * 10f).dpToPx()
@@ -1411,7 +1467,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     refractionHeight = refractionHeight,
                     refractionOffset = refractionOffset,
                     blurRadius = blurRadius,
-                    dispersion = (dispersion + 0.04f).coerceAtMost(1f),
+                    dispersion = (dispersion + 0.02f).coerceAtMost(1f),
                     tintAlpha = tintAlpha,
                     elasticEnabled = true,
                     touchEffectEnabled = true
@@ -1423,8 +1479,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 refractionHeight = (refractionHeight * 0.9f).coerceAtLeast(16f.dpToPx()),
                 refractionOffset = (refractionOffset * 0.72f).coerceAtLeast(46f.dpToPx()),
                 blurRadius = (blurRadius * 0.78f).coerceAtLeast(5f.dpToPx()),
-                dispersion = (dispersion + 0.08f).coerceAtMost(1f),
-                tintAlpha = (tintAlpha + 0.05f).coerceAtMost(0.28f),
+                dispersion = (dispersion + 0.03f).coerceAtMost(1f),
+                tintAlpha = (tintAlpha + 0.02f).coerceAtMost(0.24f),
                 elasticEnabled = true,
                 touchEffectEnabled = true
             )

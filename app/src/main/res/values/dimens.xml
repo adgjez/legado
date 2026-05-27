@@ -42,7 +42,7 @@
     <dimen name="main_bottom_controls_bottom_padding">12dp</dimen>
     <dimen name="main_bottom_bar_height">52dp</dimen>
     <dimen name="main_bottom_bar_gap">10dp</dimen>
-    <dimen name="main_bottom_bar_elevation">12dp</dimen>
+    <dimen name="main_bottom_bar_elevation">8dp</dimen>
     <dimen name="main_bottom_bar_corner_radius">26dp</dimen>
     <dimen name="main_bottom_nav_horizontal_padding">6dp</dimen>
     <dimen name="main_bottom_nav_icon_size">25dp</dimen>
@@ -57,7 +57,7 @@
     <dimen name="main_ai_floating_ball_size">52dp</dimen>
     <dimen name="main_ai_floating_ball_icon_padding">13dp</dimen>
     <dimen name="main_ai_floating_ball_safe_margin">24dp</dimen>
-    <dimen name="main_search_button_elevation">14dp</dimen>
+    <dimen name="main_search_button_elevation">10dp</dimen>
     <dimen name="main_search_button_icon_size">24dp</dimen>
     <dimen name="main_content_bottom_bar_padding">90dp</dimen>
     <dimen name="main_sidebar_panel_padding_horizontal">18dp</dimen>
