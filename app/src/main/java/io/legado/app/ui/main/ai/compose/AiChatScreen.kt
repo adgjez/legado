@@ -132,6 +132,7 @@ fun AiChatScreen(
     val style = aiComposeStyle(context)
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     val uiItems = remember(context, messages) {
         buildAiChatUiItems(context, messages)
     }
@@ -179,7 +180,11 @@ fun AiChatScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(uiItems, key = { it.id }) { item ->
-                            AiMessageRow(item = item, style = style)
+                            AiMessageRow(
+                                item = item,
+                                style = style,
+                                onToolPreview = { toolPreviewPayload = it }
+                            )
                         }
                     }
                 }
@@ -214,6 +219,13 @@ fun AiChatScreen(
                     val target = (current + 1).coerceAtMost(uiItems.lastIndex)
                     coroutineScope.launch { listState.animateScrollToItem(target) }
                 }
+            )
+        }
+        toolPreviewPayload?.let { payload ->
+            AiToolPreviewDialog(
+                payload = payload,
+                style = style,
+                onDismiss = { toolPreviewPayload = null }
             )
         }
     }
@@ -354,10 +366,14 @@ private fun AiEmptyState(style: AiComposeStyle) {
 }
 
 @Composable
-private fun AiMessageRow(item: AiChatUiItem, style: AiComposeStyle) {
+private fun AiMessageRow(
+    item: AiChatUiItem,
+    style: AiComposeStyle,
+    onToolPreview: (AiToolDisplayPayload) -> Unit
+) {
     when (item) {
         is AiChatUiItem.User -> AiUserMessageRow(item, style)
-        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview)
     }
 }
 
@@ -395,7 +411,11 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
 }
 
 @Composable
-private fun AiAssistantMessageRow(message: AiChatUiItem.Assistant, style: AiComposeStyle) {
+private fun AiAssistantMessageRow(
+    message: AiChatUiItem.Assistant,
+    style: AiComposeStyle,
+    onToolPreview: (AiToolDisplayPayload) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
@@ -407,7 +427,7 @@ private fun AiAssistantMessageRow(message: AiChatUiItem.Assistant, style: AiComp
             message.parts.forEach { part ->
                 when (part) {
                     is AiMessagePartUi.Text -> AiAssistantTextPart(part, style)
-                    is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style)
+                    is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview)
                     is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style)
                     is AiMessagePartUi.Images -> AiImageInlinePart(part, style)
                 }
@@ -438,10 +458,17 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
 }
 
 @Composable
-private fun AiProcessPart(part: AiMessagePartUi.ProcessChain, style: AiComposeStyle) {
+private fun AiProcessPart(
+    part: AiMessagePartUi.ProcessChain,
+    style: AiComposeStyle,
+    onToolPreview: (AiToolDisplayPayload) -> Unit
+) {
     AiProcessTimelineCard(
         steps = part.steps,
-        style = style
+        style = style,
+        onToolClick = { step ->
+            step.payload?.let(onToolPreview)
+        }
     )
 }
 
