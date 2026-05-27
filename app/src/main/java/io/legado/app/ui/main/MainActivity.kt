@@ -351,7 +351,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             refreshBottomNavigationConfig()
             scheduleBottomGlassSetup(delayMillis = 64L)
         }
-        if (isSidebarMode()) {
+        if (!composeMainEnabled && isSidebarMode()) {
             updateSideGoalHeader()
         }
     }

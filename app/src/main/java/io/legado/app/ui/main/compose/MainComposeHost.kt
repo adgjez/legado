@@ -57,7 +57,7 @@ fun MainComposeHost(
             state = MainComposeUiState(
                 selectedTab = safeSelectedTab,
                 tabs = tabs,
-                bottomBarMode = AppConfig.bottomBarLayoutMode,
+                bottomBarMode = AppConfig.bottomBarLayoutMode.takeUnless { it == "sidebar" } ?: "floating",
                 effectMode = AppConfig.bottomBarEffectMode,
                 glassLevel = (
                     if (AppConfig.bottomBarEffectMode == "frosted") {
