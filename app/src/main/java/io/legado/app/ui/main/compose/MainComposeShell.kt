@@ -62,13 +62,14 @@ import io.legado.app.lib.theme.secondaryTextColor
 enum class MainComposeTab(
     val key: String,
     @StringRes val titleRes: Int,
-    @DrawableRes val iconRes: Int
+    @DrawableRes val normalIconRes: Int,
+    @DrawableRes val selectedIconRes: Int
 ) {
-    Bookshelf("bookshelf", R.string.bookshelf, R.drawable.ic_bottom_books),
-    Discovery("discovery", R.string.discovery, R.drawable.ic_bottom_explore),
-    Rss("rss", R.string.rss, R.drawable.ic_bottom_rss_feed),
-    ReadRecord("readRecord", R.string.side_nav_stats, R.drawable.ic_bottom_read_record),
-    My("my", R.string.my, R.drawable.ic_bottom_person)
+    Bookshelf("bookshelf", R.string.bookshelf, R.drawable.ic_bottom_books_e, R.drawable.ic_bottom_books_s),
+    Discovery("discovery", R.string.discovery, R.drawable.ic_bottom_explore_e, R.drawable.ic_bottom_explore_s),
+    Rss("rss", R.string.rss, R.drawable.ic_bottom_rss_feed_e, R.drawable.ic_bottom_rss_feed_s),
+    ReadRecord("readRecord", R.string.side_nav_stats, R.drawable.ic_bottom_read_record_e, R.drawable.ic_bottom_read_record_s),
+    My("my", R.string.my, R.drawable.ic_bottom_person_e, R.drawable.ic_bottom_person_s)
 }
 
 @Immutable
@@ -245,7 +246,7 @@ private fun MainBottomTabsGlass(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(tab.iconRes),
+                            painter = painterResource(if (selected) tab.selectedIconRes else tab.normalIconRes),
                             contentDescription = stringResource(tab.titleRes),
                             tint = if (selected) textColor else secondary,
                             modifier = Modifier.size(24.dp)
