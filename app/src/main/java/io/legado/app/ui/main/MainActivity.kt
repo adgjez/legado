@@ -114,6 +114,7 @@ import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.hours
 
 /**
@@ -421,7 +422,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 view.bottomPadding = 0
                 applyBottomNavigationShape(standardMode = true)
             } else {
-                view.bottomPadding = maxOf(height, 18.dpToPx()) + 6.dpToPx()
+                view.bottomPadding = bottomFloatingPadding(height)
                 applyBottomNavigationShape(standardMode = false)
             }
             windowInsets.inset(0, 0, 0, height)
@@ -442,6 +443,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         bindMergedDiscoveryLongClick()
         applyBottomLayoutMode()
+    }
+
+    private fun bottomFloatingPadding(navigationBarHeight: Int): Int {
+        val baseHeight = binding.root.height.takeIf { it > 0 }
+            ?: resources.displayMetrics.heightPixels
+        val minInset = resources.getFraction(
+            R.fraction.main_bottom_controls_min_window_inset_ratio,
+            baseHeight,
+            baseHeight
+        ).roundToInt()
+        val extraGap = resources.getFraction(
+            R.fraction.main_bottom_controls_extra_floating_gap_ratio,
+            baseHeight,
+            baseHeight
+        ).roundToInt()
+        return maxOf(navigationBarHeight, minInset) + extraGap
     }
 
     private fun scheduleBottomGlassSetup(delayMillis: Long = 0L) {
