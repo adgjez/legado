@@ -708,22 +708,21 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun updateAiFloatingBall(): Unit = binding.run {
-        val shouldShow = isStandardBottomMode() && AppConfig.aiAssistantEnabled && !isSidebarMode()
-        if (!shouldShow) {
+        if (!shouldShowAiFloatingBall()) {
             aiFloatingBall?.removeCallbacks(aiFloatingBallAttachRunnable)
             aiFloatingBall?.isVisible = false
             return
         }
         val ball = aiFloatingBall ?: createAiFloatingBall().also {
             aiFloatingBall = it
+            it.isVisible = false
             root.addView(it)
         }
-        ball.isVisible = true
-        ball.bringToFront()
-        ball.post {
-            placeAiFloatingBall(ball, animate = false, attached = true)
-            scheduleAiFloatingBallAttach()
-        }
+        showAiFloatingBallWhenReady(ball)
+    }
+
+    private fun shouldShowAiFloatingBall(): Boolean {
+        return isStandardBottomMode() && AppConfig.aiAssistantEnabled && !isSidebarMode()
     }
 
     private fun createAiFloatingBall(): FrameLayout {
@@ -760,10 +759,26 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         aiFloatingBall?.postDelayed(aiFloatingBallAttachRunnable, 3000L)
     }
 
-    private fun placeAiFloatingBall(ball: View, animate: Boolean, attached: Boolean) = binding.run {
+    private fun showAiFloatingBallWhenReady(ball: View, retryCount: Int = 0) {
+        ball.bringToFront()
+        if (placeAiFloatingBall(ball, animate = false, attached = true)) {
+            ball.isVisible = true
+            scheduleAiFloatingBallAttach()
+            return
+        }
+        ball.isVisible = false
+        if (retryCount >= 3) return
+        ball.post {
+            if (aiFloatingBall === ball && shouldShowAiFloatingBall()) {
+                showAiFloatingBallWhenReady(ball, retryCount + 1)
+            }
+        }
+    }
+
+    private fun placeAiFloatingBall(ball: View, animate: Boolean, attached: Boolean): Boolean = binding.run {
         val parentWidth = root.width
         val parentHeight = root.height
-        if (parentWidth <= 0 || parentHeight <= 0 || ball.width <= 0 || ball.height <= 0) return@run
+        if (parentWidth <= 0 || parentHeight <= 0 || ball.width <= 0 || ball.height <= 0) return@run false
         val side = getPrefInt(PreferKey.aiFloatingBallSide, 1).coerceIn(0, 1)
         val yPercent = getPrefInt(PreferKey.aiFloatingBallYPercent, 50).coerceIn(8, 92)
         val hiddenOffset = if (attached) (ball.width * 0.5f) else 0f
@@ -782,6 +797,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             ball.x = targetX
             ball.y = targetY
         }
+        true
     }
 
     private inner class AiFloatingBallTouchListener(private val target: View) : View.OnTouchListener {

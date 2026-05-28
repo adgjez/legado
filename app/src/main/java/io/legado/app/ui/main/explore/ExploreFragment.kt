@@ -588,7 +588,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             searchTexts = {
                 listOfNotNull(it.bookSourceName, it.bookSourceUrl, it.bookSourceGroup)
             },
-            itemKey = { it.bookSourceUrl }
+            itemKey = { it.bookSourceUrl },
+            showTitle = false
         ) {
             selectDiscoverSource(it)
         }
