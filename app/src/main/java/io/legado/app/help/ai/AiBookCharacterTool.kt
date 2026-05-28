@@ -50,6 +50,7 @@ object AiBookCharacterTool {
         put("appearance", stringProp("角色形象描述。"))
         put("personality", stringProp("角色性格描述。"))
         put("biography", stringProp("角色生平。"))
+        put("roleLevel", intProp("角色重要度：0 普通角色，1 重要角色，2 主角。"))
     }
 
     private fun deleteCharacterDefinition() = function(
@@ -122,6 +123,8 @@ object AiBookCharacterTool {
             appearance = optText(args, "appearance") ?: old?.appearance.orEmpty(),
             personality = optText(args, "personality") ?: old?.personality.orEmpty(),
             biography = optText(args, "biography") ?: old?.biography.orEmpty(),
+            roleLevel = (args?.takeIf { it.has("roleLevel") }?.optInt("roleLevel") ?: old?.roleLevel ?: BookCharacter.ROLE_NORMAL)
+                .coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN),
             sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxCharacterOrder(book.bookUrl) ?: -1) + 1),
             createdAt = old?.createdAt?.takeIf { it > 0 } ?: now,
             updatedAt = now
@@ -265,6 +268,8 @@ object AiBookCharacterTool {
             put("appearance", character.appearance)
             put("personality", character.personality)
             put("biography", character.biography)
+            put("roleLevel", character.roleLevel)
+            put("roleLabel", character.roleLabel())
             put("updatedAt", character.updatedAt)
         }
     }

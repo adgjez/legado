@@ -37,6 +37,8 @@ data class BookCharacter(
     @ColumnInfo(defaultValue = "")
     var biography: String = "",
     @ColumnInfo(defaultValue = "0")
+    var roleLevel: Int = ROLE_NORMAL,
+    @ColumnInfo(defaultValue = "0")
     var sortOrder: Int = 0,
     @ColumnInfo(defaultValue = "0")
     var createdAt: Long = System.currentTimeMillis(),
@@ -45,4 +47,16 @@ data class BookCharacter(
 ) : Parcelable {
 
     fun displayName(): String = name.ifBlank { "未命名角色" }
+
+    fun roleLabel(): String = when (roleLevel) {
+        ROLE_MAIN -> "主角"
+        ROLE_IMPORTANT -> "重要角色"
+        else -> "普通角色"
+    }
+
+    companion object {
+        const val ROLE_NORMAL = 0
+        const val ROLE_IMPORTANT = 1
+        const val ROLE_MAIN = 2
+    }
 }

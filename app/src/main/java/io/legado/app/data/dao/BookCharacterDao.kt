@@ -14,10 +14,10 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface BookCharacterDao {
 
-    @Query("SELECT * FROM book_characters WHERE bookUrl = :bookUrl ORDER BY sortOrder ASC, id ASC")
+    @Query("SELECT * FROM book_characters WHERE bookUrl = :bookUrl ORDER BY roleLevel DESC, sortOrder ASC, id ASC")
     fun flowCharacters(bookUrl: String): Flow<List<BookCharacter>>
 
-    @Query("SELECT * FROM book_characters WHERE bookUrl = :bookUrl ORDER BY sortOrder ASC, id ASC")
+    @Query("SELECT * FROM book_characters WHERE bookUrl = :bookUrl ORDER BY roleLevel DESC, sortOrder ASC, id ASC")
     fun characters(bookUrl: String): List<BookCharacter>
 
     @Query("SELECT * FROM book_characters WHERE id = :id")

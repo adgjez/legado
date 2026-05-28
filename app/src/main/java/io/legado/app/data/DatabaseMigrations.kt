@@ -21,8 +21,14 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
-            migration_95_96,
+            migration_95_96, migration_96_97,
         )
+    }
+
+    private val migration_96_97 = object : Migration(96, 97) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `roleLevel` INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     private val migration_95_96 = object : Migration(95, 96) {
