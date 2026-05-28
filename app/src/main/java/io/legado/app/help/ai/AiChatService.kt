@@ -12,6 +12,8 @@ import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiProviderConfig
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
@@ -21,6 +23,8 @@ object AiChatService {
 
     private const val MAX_TOOL_ROUNDS = 12
     private const val MAX_SEARCH_RESULT_CARDS = 8
+    private const val DEFAULT_TOOL_TIMEOUT_MILLIS = 120_000L
+    private const val IMAGE_TOOL_TIMEOUT_MILLIS = 300_000L
 
     private data class ToolCall(
         val id: String,
@@ -423,13 +427,26 @@ object AiChatService {
         }
         return runCatching {
             val arguments = toolCall.arguments.trim().takeIf { it.isNotBlank() }?.let(::JSONObject)
-            resolvedTool.execute(arguments)
+            withTimeout(toolTimeoutMillis(toolCall.name)) {
+                resolvedTool.execute(arguments)
+            }
         }.getOrElse { throwable ->
             JSONObject().apply {
                 put("ok", false)
-                put("error", throwable.message ?: throwable.javaClass.simpleName)
+                put(
+                    "error",
+                    if (throwable is TimeoutCancellationException) {
+                        "Tool timed out after ${toolTimeoutMillis(toolCall.name)} ms"
+                    } else {
+                        throwable.message ?: throwable.javaClass.simpleName
+                    }
+                )
             }.toString()
         }
+    }
+
+    private fun toolTimeoutMillis(name: String): Long {
+        return if (name == "generate_image") IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
     }
 
     private suspend fun requestCompletionStream(

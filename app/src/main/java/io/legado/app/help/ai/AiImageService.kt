@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit
 
 object AiImageService {
 
+    private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
+
     private data class ImageGenerationResult(
         val source: String,
         val model: String
@@ -108,7 +110,7 @@ object AiImageService {
                     return ImageGenerationResult(url, effectiveModel)
                 }
                 first.optString("b64_json").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
-                    Base64.decode(b64, Base64.DEFAULT)
+                    ensureBase64ImageWithinLimit(b64)
                     logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
                     return ImageGenerationResult("data:image/png;base64,$b64", effectiveModel)
                 }
@@ -165,7 +167,7 @@ object AiImageService {
                     val item = output.optJSONObject(index) ?: continue
                     if (item.optString("type") == "image_generation_call") {
                         item.optString("result").takeIf { b64 -> b64.isNotBlank() }?.let { b64 ->
-                            Base64.decode(b64, Base64.DEFAULT)
+                            ensureBase64ImageWithinLimit(b64)
                             logRequest(provider, requestUrl, status, startedAt, true, effectiveModel)
                             return ImageGenerationResult("data:image/png;base64,$b64", effectiveModel)
                         }
@@ -339,13 +341,38 @@ object AiImageService {
     private fun looksLikeImageBase64(text: String): Boolean {
         val payload = text.filterNot { it.isWhitespace() }
         if (payload.length < 100 || !payload.matches(Regex("[A-Za-z0-9+/=_-]+"))) return false
+        if (estimateBase64Bytes(payload) > MAX_IMAGE_BYTES) return false
         return runCatching {
-            val bytes = Base64.decode(payload, Base64.DEFAULT)
+            val bytes = decodeBase64Sample(payload)
             bytes.size >= 8 && (
                 bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "\u0089PNG" ||
                     (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) ||
                     bytes.copyOfRange(0, 4).toString(Charsets.ISO_8859_1) == "RIFF"
                 )
         }.getOrDefault(false)
+    }
+
+    private fun ensureBase64ImageWithinLimit(text: String) {
+        val payload = text.filterNot { it.isWhitespace() }
+        val estimatedBytes = estimateBase64Bytes(payload)
+        if (estimatedBytes > MAX_IMAGE_BYTES) error("Image is too large: $estimatedBytes bytes")
+    }
+
+    private fun estimateBase64Bytes(payload: String): Long {
+        return payload.length.toLong() * 3L / 4L
+    }
+
+    private fun decodeBase64Sample(payload: String): ByteArray {
+        val sample = payload.take(64).padBase64()
+        return runCatching {
+            Base64.decode(sample, Base64.DEFAULT)
+        }.getOrElse {
+            Base64.decode(sample, Base64.URL_SAFE)
+        }
+    }
+
+    private fun String.padBase64(): String {
+        val remainder = length % 4
+        return if (remainder == 0) this else this + "=".repeat(4 - remainder)
     }
 }

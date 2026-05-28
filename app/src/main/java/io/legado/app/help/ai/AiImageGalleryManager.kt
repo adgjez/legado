@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import splitties.init.appCtx
 import java.io.File
+import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -36,13 +37,24 @@ object AiImageGalleryManager {
     ): AiGeneratedImage = withContext(Dispatchers.IO) {
         ensureDefaultGroup()
         cleanupExpiredTemporary()
-        val bytes = readImageBytes(imageSource, provider)
-        if (bytes.isEmpty()) error("Empty image body")
-        if (bytes.size > MAX_IMAGE_BYTES) error("Image is too large: ${bytes.size} bytes")
         val id = UUID.randomUUID().toString()
-        val ext = detectExtension(bytes, imageSource)
+        val tempFile = File(imageDir, "$id.tmp")
+        val byteCount = runCatching {
+            writeImageToTempFile(imageSource, provider, tempFile)
+        }.onFailure {
+            runCatching { tempFile.delete() }
+        }.getOrThrow()
+        if (byteCount <= 0L) {
+            runCatching { tempFile.delete() }
+            error("Empty image body")
+        }
+        val header = readHeaderBytes(tempFile)
+        val ext = detectExtension(header, imageSource)
         val file = File(imageDir, "$id.$ext")
-        file.writeBytes(bytes)
+        if (!tempFile.renameTo(file)) {
+            tempFile.copyTo(file, overwrite = true)
+            tempFile.delete()
+        }
         val now = System.currentTimeMillis()
         val image = AiGeneratedImage(
             id = id,
@@ -167,23 +179,77 @@ object AiImageGalleryManager {
         }
     }
 
-    private suspend fun readImageBytes(
+    private suspend fun writeImageToTempFile(
         imageSource: String,
-        provider: AiImageProviderConfig
-    ): ByteArray {
-        imageSource.decodeBase64DataUrlBytes()?.let { return it }
+        provider: AiImageProviderConfig,
+        target: File
+    ): Long {
+        estimateBase64DataUrlBytes(imageSource)?.let { estimatedBytes ->
+            if (estimatedBytes > MAX_IMAGE_BYTES) {
+                error("Image is too large: $estimatedBytes bytes")
+            }
+        }
+        imageSource.decodeBase64DataUrlBytes()?.let { bytes ->
+            if (bytes.size > MAX_IMAGE_BYTES) error("Image is too large: ${bytes.size} bytes")
+            target.writeBytes(bytes)
+            return bytes.size.toLong()
+        }
         if (URLUtil.isValidUrl(imageSource)) {
             provider.imageDownloadClient().newCallResponse {
                 url(imageSource)
                 addHeaders(AiChatService.parseCustomHeaders(provider.headers))
             }.use { response ->
                 if (!response.isSuccessful) error("${response.code} ${response.message}")
-                return response.body.bytes()
+                response.body.contentLength().takeIf { it > MAX_IMAGE_BYTES }?.let {
+                    error("Image is too large: $it bytes")
+                }
+                return copyToFileLimited(response.body.byteStream(), target)
             }
         }
         val file = File(imageSource)
-        if (file.isFile) return file.readBytes()
+        if (file.isFile) {
+            if (file.length() > MAX_IMAGE_BYTES) error("Image is too large: ${file.length()} bytes")
+            return copyToFileLimited(file.inputStream(), target)
+        }
         error("Unsupported image result")
+    }
+
+    private fun copyToFileLimited(input: InputStream, target: File): Long {
+        var copied = 0L
+        target.outputStream().use { output ->
+            input.use {
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = it.read(buffer)
+                    if (read < 0) break
+                    copied += read
+                    if (copied > MAX_IMAGE_BYTES) error("Image is too large: $copied bytes")
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+        return copied
+    }
+
+    private fun readHeaderBytes(file: File): ByteArray {
+        val header = ByteArray(16)
+        val count = file.inputStream().use { it.read(header) }
+        return if (count > 0) header.copyOf(count) else ByteArray(0)
+    }
+
+    private fun estimateBase64DataUrlBytes(source: String): Long? {
+        val clean = source.trim()
+        val payload = when {
+            clean.startsWith("data:", ignoreCase = true) -> {
+                val commaIndex = clean.indexOf(',')
+                if (commaIndex < 0 || !clean.substring(0, commaIndex).contains(";base64", true)) return null
+                clean.substring(commaIndex + 1).substringBefore(",{")
+            }
+            clean.startsWith("data64:", ignoreCase = true) -> clean.substringAfter(':').substringBefore(",{")
+            else -> return null
+        }.filterNot { it.isWhitespace() }
+        if (payload.isBlank()) return null
+        return payload.length.toLong() * 3L / 4L
     }
 
     private fun reconcileStorage() {
