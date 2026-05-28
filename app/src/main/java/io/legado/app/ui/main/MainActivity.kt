@@ -31,10 +31,10 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
-import androidx.core.view.isAttachedToWindow
 import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
 import androidx.core.view.postDelayed
@@ -1678,7 +1678,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         touchEffectEnabled: Boolean,
     ) {
         ensureLiquidGlassAttachListener(liquidGlassView)
-        if (!liquidGlassView.isAttachedToWindow || !binding.contentContainer.isAttachedToWindow) {
+        if (!ViewCompat.isAttachedToWindow(liquidGlassView) || !ViewCompat.isAttachedToWindow(binding.contentContainer)) {
             boundLiquidGlassViewIds.remove(liquidGlassView.id)
             liquidGlassView.post {
                 if (!isFinishing && !isDestroyed) {
