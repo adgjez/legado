@@ -618,6 +618,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 notifyAppliedIfNeeded(it)
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
+                enqueueUploadIfNeeded(it)
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -687,7 +688,17 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun enqueueUpload(entry: NavigationBarIconConfig.Entry) {
-        val queued = WebDavTaskManager.enqueueUpload(
+        val queued = enqueueUploadTask(entry)
+        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+    }
+
+    private fun enqueueUploadIfNeeded(entry: NavigationBarIconConfig.Entry): Boolean {
+        if (!AppConfig.syncThemePackages) return false
+        return enqueueUploadTask(entry)
+    }
+
+    private fun enqueueUploadTask(entry: NavigationBarIconConfig.Entry): Boolean {
+        return WebDavTaskManager.enqueueUpload(
             key = "navigation_bar_upload:${entry.config.isNightMode}:${entry.dirName}",
             name = entry.config.name,
             type = WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD,
@@ -695,7 +706,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         ) {
             NavigationBarIconConfig.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
-        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
     }
 
     private fun observeWebDavTasks() {

@@ -515,6 +515,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 }
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
+                enqueueUploadIfNeeded(it)
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -557,7 +558,17 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     }
 
     private fun enqueueUpload(entry: TopBarConfig.Entry) {
-        val queued = WebDavTaskManager.enqueueUpload(
+        val queued = enqueueUploadTask(entry)
+        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+    }
+
+    private fun enqueueUploadIfNeeded(entry: TopBarConfig.Entry): Boolean {
+        if (!AppConfig.syncThemePackages) return false
+        return enqueueUploadTask(entry)
+    }
+
+    private fun enqueueUploadTask(entry: TopBarConfig.Entry): Boolean {
+        return WebDavTaskManager.enqueueUpload(
             key = "top_bar_upload:${entry.config.isNightMode}:${entry.dirName}",
             name = entry.config.name,
             type = WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD,
@@ -565,7 +576,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         ) {
             TopBarConfig.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
-        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
     }
 
     private fun observeWebDavTasks() {

@@ -2166,7 +2166,7 @@ Selected text or question:
     <string name="webdav_account_manage">WebDAV account</string>
     <string name="webdav_account_manage_summary">Configure server address, account, and password</string>
     <string name="sync_theme_packages">Sync cloud themes</string>
-    <string name="sync_theme_packages_summary">Theme management syncs cloud theme packages in the background when enabled</string>
+    <string name="sync_theme_packages_summary">When enabled, saved themes, top bars, and bottom bars sync to cloud in the background</string>
     <string name="cloud_storage">&#20113;&#23384;&#20648;</string>
     <string name="cloud_storage_config_required">&#35831;&#20808;&#22635;&#20889;&#24403;&#21069;&#20113;&#23384;&#20648;&#37197;&#32622;</string>
     <string name="s3_container_manage">&#31649;&#29702; S3 &#23481;&#22120;</string>

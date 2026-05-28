@@ -2051,7 +2051,7 @@
     <string name="webdav_account_manage">WebDAV 账号配置</string>
     <string name="webdav_account_manage_summary">配置服务器地址、账号和密钥</string>
     <string name="sync_theme_packages">同步云端主题</string>
-    <string name="sync_theme_packages_summary">开启后主题管理会后台同步云端主题包</string>
+    <string name="sync_theme_packages_summary">开启后保存主题、顶栏、底栏时会后台同步到云端</string>
     <string name="s3_container_manage">管理 S3 容器</string>
     <string name="s3_container_manage_summary">添加、编辑、测试和设置备份用 S3 容器</string>
     <string name="s3_auto_switch_container">自动切换 S3 容器</string>
