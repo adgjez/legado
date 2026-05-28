@@ -768,8 +768,9 @@ class AiConfigFragment : PreferenceFragment(),
             "阅读网络" -> 3
             "联网搜索" -> 4
             "AI 生图" -> 5
-            "设置" -> 6
-            "MCP 工具" -> 7
+            "角色资料" -> 6
+            "设置" -> 7
+            "MCP 工具" -> 8
             else -> 8
         }
     }

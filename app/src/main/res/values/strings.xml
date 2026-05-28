@@ -2044,6 +2044,7 @@ Book: %1$s
 Author: %2$s
 Source: %3$s
 Current chapter: %4$s (chapter %5$d)
+bookUrl: %7$s
 
 Selected text or question:
 %6$s</string>

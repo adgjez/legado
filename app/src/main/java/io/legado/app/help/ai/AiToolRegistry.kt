@@ -39,6 +39,12 @@ object AiToolRegistry {
         "reading_webview",
         "capture_web_requests",
         "generate_image",
+        "list_book_characters",
+        "upsert_book_character",
+        "delete_book_character",
+        "list_book_character_relations",
+        "upsert_book_character_relation",
+        "delete_book_character_relation",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -66,6 +72,12 @@ object AiToolRegistry {
         "capture_web_requests" to "抓包网络请求",
         "search_web_tavily" to "联网搜索",
         "generate_image" to "生成图片",
+        "list_book_characters" to "读取角色资料",
+        "upsert_book_character" to "新增或更新角色",
+        "delete_book_character" to "删除角色",
+        "list_book_character_relations" to "读取角色关系网",
+        "upsert_book_character_relation" to "新增或更新角色关系",
+        "delete_book_character_relation" to "删除角色关系",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -93,6 +105,12 @@ object AiToolRegistry {
         "capture_web_requests" to "阅读网络",
         "search_web_tavily" to "联网搜索",
         "generate_image" to "AI 生图",
+        "list_book_characters" to "角色资料",
+        "upsert_book_character" to "角色资料",
+        "delete_book_character" to "角色资料",
+        "list_book_character_relations" to "角色资料",
+        "upsert_book_character_relation" to "角色资料",
+        "delete_book_character_relation" to "角色资料",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -128,6 +146,7 @@ object AiToolRegistry {
         tools += AiReadingNetworkTool.resolvedTools()
         tools += AiSettingsTool.resolvedTools()
         tools += AiImageTool.resolvedTools()
+        tools += AiBookCharacterTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 

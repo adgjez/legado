@@ -637,7 +637,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             context.sourceName.ifBlank { resources.getString(R.string.unknown) },
             context.chapterTitle.ifBlank { resources.getString(R.string.unknown) },
             context.chapterIndex + 1,
-            question
+            question,
+            context.bookUrl
         )
     }
 
