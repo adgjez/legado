@@ -50,7 +50,7 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="@id/search_button_container">
 
-            <com.qmdeve.liquidglass.widget.LiquidGlassView
+            <io.legado.app.ui.widget.StableLiquidGlassView
                 android:id="@+id/bottom_navigation_glass_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
@@ -74,7 +74,7 @@
                 android:clickable="false"
                 android:focusable="false">
 
-                <com.qmdeve.liquidglass.widget.LiquidGlassView
+                <io.legado.app.ui.widget.StableLiquidGlassView
                     android:id="@+id/bottom_navigation_indicator_glass_view"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
@@ -114,7 +114,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <com.qmdeve.liquidglass.widget.LiquidGlassView
+            <io.legado.app.ui.widget.StableLiquidGlassView
                 android:id="@+id/search_button_glass_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
