@@ -274,7 +274,15 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             return
         }
         if (base.localDir == null && entry != null && base.source == TopBarConfig.Source.REMOTE) {
-            toastOnUi(R.string.navigation_bar_download_first)
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) { TopBarConfig.download(base, cloudContainerId, CLOUD_SCOPE) }
+                }.onSuccess {
+                    showEditDialog(it)
+                }.onFailure {
+                    toastOnUi(it.localizedMessage)
+                }
+            }
             return
         }
         editingEntry = base
@@ -583,10 +591,13 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             WebDavTaskManager.states.collectLatest { states ->
                 states.values
                     .filter { it.type == WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD }
-                    .filter { it.status == WebDavTaskStatus.COMPLETED }
+                    .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
                         if (handledWebDavTasks.add("${state.key}:${state.status}")) {
                             loadPackages()
+                            if (state.status == WebDavTaskStatus.FAILED) {
+                                toastOnUi(getString(R.string.theme_sync_failed, state.message))
+                            }
                         }
                     }
             }
@@ -651,6 +662,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()
+                enqueueUploadIfNeeded(it)
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
