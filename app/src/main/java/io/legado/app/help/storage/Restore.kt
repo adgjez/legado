@@ -14,7 +14,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
@@ -29,7 +32,6 @@ import io.legado.app.data.entities.RuleSub
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.data.entities.BaseSource
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.lib.cloud.S3ContainerManager
@@ -215,6 +217,7 @@ object Restore {
                 }
             }
         }
+        restoreBookCharacters(path)
         File(path, "servers.json").takeIf {
             it.exists()
         }?.runCatching {
@@ -350,6 +353,72 @@ object Restore {
             }
             ThemeConfig.applyDayNight(appCtx)
         }
+    }
+
+    private fun restoreBookCharacters(path: String) {
+        val characters = fileToListT<BookCharacter>(path, Backup.bookCharactersFileName) ?: return
+        kotlin.runCatching {
+            restoreBookCharacterAvatars(path)
+            val idMap = hashMapOf<Long, Long>()
+            characters.forEach { character ->
+                val oldId = character.id
+                val normalized = character.copy(
+                    avatar = restoreBookCharacterAvatarPath(character.avatar),
+                    updatedAt = character.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+                )
+                val exists = appDb.bookCharacterDao.getCharacter(normalized.bookUrl, normalized.name)
+                val newId = if (exists != null) {
+                    appDb.bookCharacterDao.updateCharacter(normalized.copy(id = exists.id))
+                    exists.id
+                } else {
+                    appDb.bookCharacterDao.insertCharacter(normalized.copy(id = 0L))
+                }
+                if (oldId > 0L) {
+                    idMap[oldId] = newId
+                }
+            }
+            fileToListT<BookCharacterRelation>(path, Backup.bookCharacterRelationsFileName)
+                ?.forEach { relation ->
+                    val fromId = idMap[relation.fromCharacterId] ?: return@forEach
+                    val toId = idMap[relation.toCharacterId] ?: return@forEach
+                    val saving = relation.copy(
+                        id = 0L,
+                        fromCharacterId = fromId,
+                        toCharacterId = toId,
+                        relationName = relation.relationName.ifBlank { "关系" },
+                        updatedAt = relation.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+                    )
+                    val exists = appDb.bookCharacterDao.getRelation(
+                        saving.bookUrl,
+                        saving.fromCharacterId,
+                        saving.toCharacterId,
+                        saving.relationName
+                    )
+                    if (exists != null) {
+                        appDb.bookCharacterDao.updateRelation(saving.copy(id = exists.id))
+                    } else {
+                        appDb.bookCharacterDao.insertRelation(saving)
+                    }
+                }
+        }.onFailure {
+            AppLog.put("恢复角色资料出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun restoreBookCharacterAvatars(path: String) {
+        val sourceDir = File(path, Backup.bookCharacterAvatarsDirName)
+        if (!sourceDir.exists() || !sourceDir.isDirectory) return
+        val targetDir = appCtx.externalFiles.getFile("bookCharacters", "avatars")
+        copyDir(sourceDir, targetDir)
+    }
+
+    private fun restoreBookCharacterAvatarPath(avatar: String): String {
+        if (avatar.isBlank() || avatar.startsWith("http", ignoreCase = true)) {
+            return avatar
+        }
+        val fileName = File(avatar).name.takeIf { it.isNotBlank() } ?: return avatar
+        val restoredFile = appCtx.externalFiles.getFile("bookCharacters", "avatars", fileName)
+        return restoredFile.takeIf { it.exists() }?.absolutePath ?: avatar
     }
 
     private fun restoreSourceRuntime(path: String) {

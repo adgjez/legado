@@ -20,6 +20,9 @@ interface BookCharacterDao {
     @Query("SELECT * FROM book_characters WHERE bookUrl = :bookUrl ORDER BY roleLevel DESC, sortOrder ASC, id ASC")
     fun characters(bookUrl: String): List<BookCharacter>
 
+    @Query("SELECT * FROM book_characters ORDER BY bookUrl ASC, roleLevel DESC, sortOrder ASC, id ASC")
+    fun allCharacters(): List<BookCharacter>
+
     @Query("SELECT * FROM book_characters WHERE id = :id")
     fun getCharacter(id: Long): BookCharacter?
 
@@ -47,8 +50,28 @@ interface BookCharacterDao {
     @Query("SELECT * FROM book_character_relations WHERE bookUrl = :bookUrl ORDER BY sortOrder ASC, id ASC")
     fun relations(bookUrl: String): List<BookCharacterRelation>
 
+    @Query("SELECT * FROM book_character_relations ORDER BY bookUrl ASC, sortOrder ASC, id ASC")
+    fun allRelations(): List<BookCharacterRelation>
+
     @Query("SELECT * FROM book_character_relations WHERE id = :id")
     fun getRelation(id: Long): BookCharacterRelation?
+
+    @Query(
+        """
+        SELECT * FROM book_character_relations
+        WHERE bookUrl = :bookUrl
+          AND fromCharacterId = :fromCharacterId
+          AND toCharacterId = :toCharacterId
+          AND relationName = :relationName
+        LIMIT 1
+        """
+    )
+    fun getRelation(
+        bookUrl: String,
+        fromCharacterId: Long,
+        toCharacterId: Long,
+        relationName: String
+    ): BookCharacterRelation?
 
     @Query("SELECT MAX(sortOrder) FROM book_character_relations WHERE bookUrl = :bookUrl")
     fun maxRelationOrder(bookUrl: String): Int?

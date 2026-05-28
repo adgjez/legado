@@ -64,6 +64,9 @@ object Backup {
         appCtx.filesDir.getFile("backup").createFolderIfNotExist().absolutePath
     }
     val zipFilePath = "${appCtx.externalFiles.absolutePath}${File.separator}tmp_backup.zip"
+    internal const val bookCharactersFileName = "bookCharacters.json"
+    internal const val bookCharacterRelationsFileName = "bookCharacterRelations.json"
+    internal const val bookCharacterAvatarsDirName = "bookCharacterAvatars"
 
     private const val TAG = "Backup"
 
@@ -85,6 +88,8 @@ object Backup {
             "httpTTS.json",
             "keyboardAssists.json",
             "dictRule.json",
+            bookCharactersFileName,
+            bookCharacterRelationsFileName,
             "servers.json",
             DirectLinkUpload.ruleFileName,
             ReadBookConfig.configFileName,
@@ -168,6 +173,9 @@ object Backup {
         writeListToJson(appDb.httpTTSDao.all, "httpTTS.json", backupPath)
         writeListToJson(appDb.keyboardAssistsDao.all, "keyboardAssists.json", backupPath)
         writeListToJson(appDb.dictRuleDao.all, "dictRule.json", backupPath)
+        writeListToJson(appDb.bookCharacterDao.allCharacters(), bookCharactersFileName, backupPath)
+        writeListToJson(appDb.bookCharacterDao.allRelations(), bookCharacterRelationsFileName, backupPath)
+        exportBookCharacterAvatars()
         GSON.toJson(appDb.serverDao.all).let { json ->
             aes.runCatching {
                 encryptBase64(json)
@@ -250,6 +258,7 @@ object Backup {
         for (i in 0 until paths.size) {
             paths[i] = backupPath + File.separator + paths[i]
         }
+        File(backupPath, bookCharacterAvatarsDirName).takeIf { it.exists() }?.let { paths.add(it.absolutePath) }
         FileUtils.delete(zipFilePath)
         FileUtils.delete(zipFilePath.replace("tmp_", ""))
         val backupFileName = if (AppConfig.onlyLatestBackup) {
@@ -351,6 +360,35 @@ object Backup {
             sourceVariable = sourceVariable,
             sourceValues = sourceValues
         )
+    }
+
+    private fun exportBookCharacterAvatars() {
+        val sourceDir = appCtx.externalFiles.getFile("bookCharacters", "avatars")
+        if (!sourceDir.exists() || !sourceDir.isDirectory) {
+            return
+        }
+        val targetDir = File(backupPath, bookCharacterAvatarsDirName)
+        sourceDir.listFiles()?.takeIf { it.isNotEmpty() } ?: return
+        kotlin.runCatching {
+            copyDir(sourceDir, targetDir)
+        }.onFailure {
+            AppLog.put("备份角色头像出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun copyDir(source: File, target: File) {
+        if (!target.exists()) {
+            target.mkdirs()
+        }
+        source.listFiles()?.forEach { file ->
+            val targetFile = File(target, file.name)
+            if (file.isDirectory) {
+                copyDir(file, targetFile)
+            } else {
+                targetFile.parentFile?.mkdirs()
+                file.copyTo(targetFile, overwrite = true)
+            }
+        }
     }
 
     private suspend fun writeListToJson(list: List<Any>, fileName: String, path: String) {
