@@ -12,6 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiImageGroupDao
 import io.legado.app.data.dao.BookChapterDao
+import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookSourceDao
@@ -40,6 +41,8 @@ import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiImageGroup
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookParagraphRule
 import io.legado.app.data.entities.BookSource
@@ -81,7 +84,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 95,
+    version = 96,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -91,7 +94,8 @@ val appDb by lazy {
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
-        AiImageGroup::class, AiGeneratedImage::class],
+        AiImageGroup::class, AiGeneratedImage::class,
+        BookCharacter::class, BookCharacterRelation::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -150,6 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookGroupDao: BookGroupDao
     abstract val bookSourceDao: BookSourceDao
     abstract val bookChapterDao: BookChapterDao
+    abstract val bookCharacterDao: BookCharacterDao
     abstract val replaceRuleDao: ReplaceRuleDao
     abstract val searchBookDao: SearchBookDao
     abstract val searchKeywordDao: SearchKeywordDao

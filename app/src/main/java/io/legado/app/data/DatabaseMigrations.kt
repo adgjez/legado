@@ -21,7 +21,56 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
+            migration_95_96,
         )
+    }
+
+    private val migration_95_96 = object : Migration(95, 96) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_characters` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `name` TEXT NOT NULL DEFAULT '',
+                    `avatar` TEXT NOT NULL DEFAULT '',
+                    `identity` TEXT NOT NULL DEFAULT '',
+                    `skills` TEXT NOT NULL DEFAULT '',
+                    `attributes` TEXT NOT NULL DEFAULT '',
+                    `appearance` TEXT NOT NULL DEFAULT '',
+                    `personality` TEXT NOT NULL DEFAULT '',
+                    `biography` TEXT NOT NULL DEFAULT '',
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_characters_bookUrl` ON `book_characters` (`bookUrl`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_book_characters_bookUrl_name` ON `book_characters` (`bookUrl`, `name`)")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_character_relations` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `fromCharacterId` INTEGER NOT NULL DEFAULT 0,
+                    `toCharacterId` INTEGER NOT NULL DEFAULT 0,
+                    `relationName` TEXT NOT NULL DEFAULT '',
+                    `relationType` TEXT NOT NULL DEFAULT '',
+                    `description` TEXT NOT NULL DEFAULT '',
+                    `strength` INTEGER NOT NULL DEFAULT 50,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`fromCharacterId`) REFERENCES `book_characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`toCharacterId`) REFERENCES `book_characters`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_character_relations_bookUrl` ON `book_character_relations` (`bookUrl`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_character_relations_fromCharacterId` ON `book_character_relations` (`fromCharacterId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_character_relations_toCharacterId` ON `book_character_relations` (`toCharacterId`)")
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_book_character_relations_bookUrl_fromCharacterId_toCharacterId_relationName` ON `book_character_relations` (`bookUrl`, `fromCharacterId`, `toCharacterId`, `relationName`)")
+        }
     }
 
     private val migration_94_95 = object : Migration(94, 95) {
