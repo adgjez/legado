@@ -214,7 +214,7 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>() {
                 textSize = 15f
                 setTextColor(primaryTextColor)
                 setPadding(0, 6.dpToPx(), 0, 0)
-                lineSpacing = 3.dpToPx().toFloat()
+                setLineSpacing(3.dpToPx().toFloat(), 1f)
             })
         }.also {
             it.layoutParams = LinearLayout.LayoutParams(
