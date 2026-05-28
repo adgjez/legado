@@ -107,9 +107,20 @@ class BookCharacterManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             binding.tvSummary.text = if (items.isEmpty()) {
                 "还没有角色，点击底部按钮添加。"
             } else {
-                "共 ${items.size} 个角色，点击卡片展开详情。"
+                "共 ${items.size} 个角色，点击卡片查看角色卡。"
             }
             adapter.items = items
+        }
+    }
+
+    private fun openCard(id: Long) {
+        if (bookUrl.isBlank() || id <= 0L) {
+            toastOnUi("当前角色不存在")
+            return
+        }
+        startActivity<BookCharacterCardActivity> {
+            putExtra(EXTRA_BOOK_URL, bookUrl)
+            putExtra(EXTRA_CHARACTER_ID, id)
         }
     }
 
@@ -151,26 +162,12 @@ class BookCharacterManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
-    private fun summary(character: BookCharacter, expanded: Boolean): String {
-        if (!expanded) {
-            return listOf(character.identity, character.skills, character.attributes)
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
-                .ifBlank { "点击展开角色卡片" }
-        }
-        return buildString {
-            appendLine(fieldLine("身份", character.identity))
-            appendLine(fieldLine("技能", character.skills))
-            appendLine(fieldLine("属性", character.attributes))
-            appendLine(fieldLine("形象", character.appearance))
-            appendLine(fieldLine("性格", character.personality))
-            append(fieldLine("生平", character.biography))
-        }.trim()
-    }
-
-    private fun fieldLine(label: String, value: String): String {
-        return "$label：${value.ifBlank { "未填写" }}"
+    private fun summary(character: BookCharacter): String {
+        return listOf(character.identity, character.skills, character.attributes)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+            .ifBlank { "点击查看角色卡片" }
     }
 
     private inner class CharacterAdapter : RecyclerView.Adapter<CharacterAdapter.Holder>() {
@@ -197,7 +194,6 @@ class BookCharacterManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
         inner class Holder(private val itemBinding: ItemThemePackageBinding) : RecyclerView.ViewHolder(itemBinding.root) {
             fun bind(character: BookCharacter) = itemBinding.run {
-                val expanded = expandedId == character.id
                 root.background = UiCorner.panelRounded(
                     this@BookCharacterManageActivity,
                     ContextCompat.getColor(this@BookCharacterManageActivity, R.color.background_card),
@@ -210,15 +206,15 @@ class BookCharacterManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     .error(R.drawable.ic_bottom_person)
                     .into(ivPreview)
                 tvName.text = character.displayName()
-                tvSource.text = character.identity.ifBlank { "角色" }
-                tvInfo.text = summary(character, expanded)
-                tvInfo.isSingleLine = !expanded
-                tvInfo.maxLines = if (expanded) 12 else 1
+                tvSource.text = character.roleLabel()
+                tvInfo.text = summary(character)
+                tvInfo.isSingleLine = true
+                tvInfo.maxLines = 1
                 tvName.applyUiSectionTitleStyle(this@BookCharacterManageActivity)
                 tvInfo.applyUiLabelStyle(this@BookCharacterManageActivity)
                 tvInfo.setTextColor(secondaryTextColor)
                 tvSource.setTextColor(secondaryTextColor)
-                btnApply.text = "关系"
+                btnApply.text = "查看"
                 btnEdit.text = "编辑"
                 btnMore.text = "删除"
                 listOf(btnApply, btnEdit, btnMore).forEach {
@@ -232,11 +228,8 @@ class BookCharacterManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 btnApply.setTextColor(accentColor)
                 btnEdit.setTextColor(primaryTextColor)
                 btnMore.setTextColor(primaryTextColor)
-                root.setOnClickListener {
-                    expandedId = if (expanded) 0L else character.id
-                    notifyItemChanged(bindingAdapterPosition)
-                }
-                btnApply.setOnClickListener { openRelations() }
+                root.setOnClickListener { openCard(character.id) }
+                btnApply.setOnClickListener { openCard(character.id) }
                 btnEdit.setOnClickListener { openEdit(character.id) }
                 btnMore.setOnClickListener { delete(character) }
             }

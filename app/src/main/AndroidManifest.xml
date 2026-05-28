@@ -305,6 +305,9 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.book.character.BookCharacterCardActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.book.character.BookCharacterRelationActivity"
             android:launchMode="standard" />
         <!-- 搜索界面 -->

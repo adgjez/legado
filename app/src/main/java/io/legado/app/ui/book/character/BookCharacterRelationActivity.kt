@@ -42,6 +42,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.TitleBar
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -117,7 +118,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         networkView = CharacterNetworkView(this).apply {
             setPadding(16.dpToPx(), 8.dpToPx(), 16.dpToPx(), 8.dpToPx())
             onRelationClick = { relation -> editRelation(relation) }
-            onCharacterClick = { character -> showCharacterCard(character) }
+            onCharacterClick = { character -> openCharacterCard(character) }
         }
         root.addView(networkView, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -287,19 +288,10 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         }
     }
 
-    private fun showCharacterCard(character: BookCharacter) {
-        alert(character.displayName()) {
-            setMessage(
-                listOf(
-                    "身份：${character.identity.ifBlank { "未填写" }}",
-                    "技能：${character.skills.ifBlank { "未填写" }}",
-                    "属性：${character.attributes.ifBlank { "未填写" }}",
-                    "形象：${character.appearance.ifBlank { "未填写" }}",
-                    "性格：${character.personality.ifBlank { "未填写" }}",
-                    "生平：${character.biography.ifBlank { "未填写" }}"
-                ).joinToString("\n")
-            )
-            okButton()
+    private fun openCharacterCard(character: BookCharacter) {
+        startActivity<BookCharacterCardActivity> {
+            putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, bookUrl)
+            putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, character.id)
         }
     }
 
