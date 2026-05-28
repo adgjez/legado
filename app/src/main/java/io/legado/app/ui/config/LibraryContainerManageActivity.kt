@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -302,7 +303,8 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private fun showExportResult(value: String, decryptKey: String?) {
         val isUrl = value.startsWith("http://", true) || value.startsWith("https://", true)
         val keyText = decryptKey.orEmpty()
-        alert(if (isUrl) getString(R.string.upload_url) else getString(R.string.export_success)) {
+        val dialog = AndroidAlertBuilder(this).apply {
+            setTitle(if (isUrl) getString(R.string.upload_url) else getString(R.string.export_success))
             setMessage(buildString {
                 if (isUrl) {
                     append(value)
@@ -311,34 +313,48 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 append("解密密钥：\n")
                 append(keyText)
             })
-            positiveButton("复制密钥") {
+            positiveButton("复制密钥", null)
+            if (isUrl) {
+                neutralButton("复制URL", null)
+            }
+            negativeButton(R.string.cancel)
+        }.build()
+        dialog.setOnShowListener {
+            dialog.applyTint()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
                 sendToClip(keyText)
                 toastOnUi(R.string.copy_complete)
             }
             if (isUrl) {
-                neutralButton("复制URL") {
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
                     sendToClip(value)
                     toastOnUi(R.string.copy_complete)
                 }
             }
-            negativeButton(R.string.cancel)
         }
+        dialog.show()
     }
 
     private fun showEditDialog(item: LibraryContainerConfig?) {
-        if (item?.lockedImported == true) {
-            toastOnUi("加密导入的书库容器不允许编辑")
-            return
-        }
+        val locked = item?.lockedImported == true
         editingSourceUrls = item?.sourceUrls.orEmpty().toMutableSet()
         val dialogBinding = DialogLibraryContainerEditBinding.inflate(LayoutInflater.from(this))
         dialogBinding.bind(item)
         val settingsView = buildLibrarySettings(item)
         dialogBinding.layoutLibrary.addView(settingsView)
+        if (locked) {
+            applyLockedImportedEditMode(dialogBinding)
+        }
         setupEditDialogStyle(dialogBinding)
         setupEditGroups(dialogBinding)
         val dialog = AndroidAlertBuilder(this).apply {
-            setTitle(if (item == null) "添加书库容器" else "编辑书库容器")
+            setTitle(
+                when {
+                    item == null -> "添加书库容器"
+                    locked -> "编辑同步书源"
+                    else -> "编辑书库容器"
+                }
+            )
             customView { dialogBinding.root }
             onDismiss {
                 editingSourceUrls = mutableSetOf()
@@ -374,6 +390,24 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         editCapacity.setText(capacityMbToGbText(container?.capacityMb ?: DEFAULT_CAPACITY_MB))
         cbPathStyle.isChecked = container?.pathStyle ?: true
         cbEnabled.isChecked = container?.enabled ?: true
+    }
+
+    private fun applyLockedImportedEditMode(binding: DialogLibraryContainerEditBinding) = binding.run {
+        editName.isEnabled = false
+        listOf(
+            editEndpoint,
+            editBucket,
+            editAccessKey,
+            editSecretKey,
+            editCapacity,
+            editPrefix,
+            editRegion,
+            editSessionToken
+        ).forEach { it.isEnabled = false }
+        cbEnabled.isEnabled = false
+        cbPathStyle.isEnabled = false
+        btnConnectionGroup.visibility = View.GONE
+        btnAdvancedGroup.visibility = View.GONE
     }
 
     private fun setupEditDialogStyle(binding: DialogLibraryContainerEditBinding) = binding.run {
@@ -453,13 +487,15 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             addView(TextView(context).apply {
-                text = "书库设置"
+                text = if (item?.lockedImported == true) "指定同步书源" else "书库设置"
                 applyUiSectionTitleStyle(context)
                 setPadding(0, 12.dp, 0, 6.dp)
             })
-            addView(passwordInput)
-            addView(minUploadInput)
-            addView(dailyUploadLimitInput)
+            if (item?.lockedImported != true) {
+                addView(passwordInput)
+                addView(minUploadInput)
+                addView(dailyUploadLimitInput)
+            }
             addView(TextView(context).apply {
                 text = "读取策略"
                 applyUiLabelStyle(context)
@@ -507,6 +543,13 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     private fun saveDialogItem(oldItem: LibraryContainerConfig?, binding: DialogLibraryContainerEditBinding): LibraryContainerConfig? {
+        if (oldItem?.lockedImported == true) {
+            val saved = LibraryContainerManager.upsert(
+                oldItem.copy(sourceUrls = editingSourceUrls.toSet(), lockedImported = true)
+            )
+            reload()
+            return saved
+        }
         val parsed = S3Config.parseAddress(
             binding.editEndpoint.text?.toString().orEmpty(),
             binding.editBucket.text?.toString().orEmpty(),
@@ -557,6 +600,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 sourceUrls = editingSourceUrls.toSet(),
                 minUploadChars = minUploadChars,
                 dailyUploadLimit = dailyUploadLimit,
+                lockedImported = oldItem?.lockedImported == true
             )
         )
         reload()
@@ -565,7 +609,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
     private fun showActions(item: LibraryContainerConfig) {
         val actions = if (item.lockedImported) {
-            listOf(Action.DELETE)
+            listOf(Action.EDIT, Action.DELETE)
         } else {
             listOf(
                 Action.EDIT,
@@ -711,7 +755,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         override fun registerListener(holder: ItemViewHolder, binding: ItemS3ContainerBinding) {
             holder.itemView.setOnClickListener {
                 getItem(holder.bindingAdapterPosition - getHeaderCount())?.let {
-                    if (it.lockedImported) showActions(it) else showEditDialog(it)
+                    showEditDialog(it)
                 }
             }
         }
