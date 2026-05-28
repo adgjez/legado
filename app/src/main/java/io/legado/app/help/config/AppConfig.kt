@@ -788,10 +788,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiTavilyEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiTavilyEnabled, value)
 
-    var aiShowToolSummary: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiShowToolSummary, false)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiShowToolSummary, value)
-
     var aiEnterToSend: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiEnterToSend, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiEnterToSend, value)

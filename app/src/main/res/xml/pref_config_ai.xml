@@ -34,13 +34,6 @@
             android:title="@string/ai_skill_prompt"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiShowToolSummary"
-            android:defaultValue="false"
-            android:summary="@string/ai_show_tool_summary_summary"
-            android:title="@string/ai_show_tool_summary"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.Preference
             android:key="aiManageNativeTools"
             android:summary="@string/ai_manage_native_tools_summary"

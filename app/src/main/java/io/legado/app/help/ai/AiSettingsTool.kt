@@ -36,7 +36,6 @@ object AiSettingsTool {
         SettingDef(PreferKey.mergeDiscoveryRss, "boolean"),
         SettingDef(PreferKey.defaultHomePage, "string", values = setOf("bookshelf", "explore", "rss", "my")),
         SettingDef(PreferKey.aiAssistantEnabled, "boolean"),
-        SettingDef(PreferKey.aiShowToolSummary, "boolean"),
         SettingDef(PreferKey.aiEnterToSend, "boolean"),
         SettingDef(PreferKey.aiTavilyEnabled, "boolean"),
         SettingDef(PreferKey.aiTavilyTopic, "string", values = setOf("general", "news", "finance")),
@@ -264,7 +263,6 @@ object AiSettingsTool {
 
             "ai" -> listOf(
                 PreferKey.aiAssistantEnabled,
-                PreferKey.aiShowToolSummary,
                 PreferKey.aiEnterToSend,
                 PreferKey.aiTavilyEnabled,
                 PreferKey.aiTavilyTopic,

@@ -613,20 +613,16 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     private fun showEditPersonaDialog(persona: AiPersonaConfig? = null) {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "第一行作为名称，后面作为人格提示词"
-            editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            editView.minLines = 8
-            editView.setText(
-                persona?.let { "${it.name}\n${it.prompt}" }.orEmpty()
-            )
-        }
+        val dialogView = layoutInflater.inflate(R.layout.dialog_ai_persona_edit, null)
+        val editName = dialogView.findViewById<android.widget.EditText>(R.id.edit_persona_name)
+        val editPrompt = dialogView.findViewById<android.widget.EditText>(R.id.edit_persona_prompt)
+        editName.setText(persona?.name.orEmpty())
+        editPrompt.setText(persona?.prompt.orEmpty())
         alert(titleResource = R.string.ai_persona_manage) {
-            customView { binding.root }
+            customView { dialogView }
             okButton {
-                val lines = binding.editView.text?.toString().orEmpty().lines()
-                val name = lines.firstOrNull()?.trim().orEmpty()
-                val prompt = lines.drop(1).joinToString("\n").trim()
+                val name = editName.text?.toString()?.trim().orEmpty()
+                val prompt = editPrompt.text?.toString()?.trim().orEmpty()
                 if (name.isBlank() || prompt.isBlank()) return@okButton
                 val updated = persona?.copy(name = name, prompt = prompt)
                     ?: AiPersonaConfig(name = name, prompt = prompt)
@@ -730,15 +726,22 @@ class AiConfigFragment : PreferenceFragment(),
                 return@launch
             }
             val enabled = AppConfig.aiEnabledToolNames.toMutableSet()
-            val checked = BooleanArray(tools.size) {
-                val name = tools[it]
-                if (enabled.isEmpty()) name in AiToolRegistry.defaultEnabledTools else name in enabled
-            }
-            val labels = tools.map(::toolDisplayName).toTypedArray()
-            alert(getString(R.string.ai_manage_native_tools)) {
-                multiChoiceItems(labels, checked) { _, which, isChecked ->
-                    if (isChecked) enabled.add(tools[which]) else enabled.remove(tools[which])
+            val groupedTools = tools.groupBy { AiToolRegistry.groupLabelOfTool(it) }
+                .toSortedMap(compareBy { groupOrder(it) })
+            val displayItems = mutableListOf<ToolDisplayItem>()
+            groupedTools.forEach { (group, groupTools) ->
+                displayItems.add(ToolDisplayItem.Header(toolGroupZh(group)))
+                groupTools.sorted().forEach { toolName ->
+                    val isEnabled = if (enabled.isEmpty()) {
+                        toolName in AiToolRegistry.defaultEnabledTools
+                    } else {
+                        toolName in enabled
+                    }
+                    displayItems.add(ToolDisplayItem.Tool(toolName, toolNameZh(toolName), isEnabled))
                 }
+            }
+            alert(getString(R.string.ai_manage_native_tools)) {
+                customView { createToolListView(displayItems, enabled) }
                 okButton {
                     AppConfig.aiEnabledToolNames = enabled
                     refreshUi()
@@ -756,6 +759,20 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    private fun groupOrder(group: String): Int {
+        return when (group) {
+            "书架" -> 0
+            "书源" -> 1
+            "阅读" -> 2
+            "阅读网络" -> 3
+            "联网搜索" -> 4
+            "生图" -> 5
+            "设置" -> 6
+            "MCP" -> 7
+            else -> 8
+        }
+    }
+
     private fun toolDisplayName(name: String): String {
         val group = AiToolRegistry.groupLabelOfTool(name)
         return "[${toolGroupZh(group)}] ${toolNameZh(name)}"
@@ -767,7 +784,9 @@ class AiConfigFragment : PreferenceFragment(),
             "书架" -> "书架"
             "书源" -> "书源"
             "阅读" -> "阅读"
+            "阅读网络" -> "阅读网络"
             "联网搜索" -> "联网搜索"
+            "生图" -> "AI生图"
             "设置" -> "设置"
             else -> "其他"
         }
@@ -791,7 +810,11 @@ class AiConfigFragment : PreferenceFragment(),
             "update_book_source" -> "更新书源"
             "fetch_source_html" -> "抓取网页源码"
             "debug_book_source" -> "调试书源规则"
+            "reading_ajax" -> "网页Ajax请求"
+            "reading_webview" -> "网页WebView请求"
+            "capture_web_requests" -> "捕获网页请求"
             "search_web_tavily" -> "Tavily 联网搜索"
+            "generate_image" -> "AI生图"
             "get_app_settings" -> "读取设置项"
             "set_app_setting" -> "修改单个设置"
             "set_app_settings_batch" -> "批量修改设置"
@@ -1172,5 +1195,51 @@ class AiConfigFragment : PreferenceFragment(),
         if (notifyMain || (!canEnable && storedEnabled)) {
             postEvent(EventBus.NOTIFY_MAIN, false)
         }
+    }
+
+    private sealed class ToolDisplayItem {
+        data class Header(val title: String) : ToolDisplayItem()
+        data class Tool(val name: String, val displayName: String, var isEnabled: Boolean) : ToolDisplayItem()
+    }
+
+    private fun createToolListView(
+        items: List<ToolDisplayItem>,
+        enabled: MutableSet<String>
+    ): android.widget.ScrollView {
+        val scrollView = android.widget.ScrollView(requireContext())
+        val linearLayout = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val dp8 = (8 * resources.displayMetrics.density).toInt()
+            val dp16 = (16 * resources.displayMetrics.density).toInt()
+            setPadding(dp16, dp8, dp16, dp8)
+        }
+        items.forEach { item ->
+            when (item) {
+                is ToolDisplayItem.Header -> {
+                    val headerView = android.widget.TextView(requireContext()).apply {
+                        text = item.title
+                        textSize = 16f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        val dp16 = (16 * resources.displayMetrics.density).toInt()
+                        val dp8 = (8 * resources.displayMetrics.density).toInt()
+                        setPadding(0, dp16, 0, dp8)
+                    }
+                    linearLayout.addView(headerView)
+                }
+                is ToolDisplayItem.Tool -> {
+                    val checkBox = android.widget.CheckBox(requireContext()).apply {
+                        text = item.displayName
+                        isChecked = item.isEnabled
+                        setOnCheckedChangeListener { _, isChecked ->
+                            item.isEnabled = isChecked
+                            if (isChecked) enabled.add(item.name) else enabled.remove(item.name)
+                        }
+                    }
+                    linearLayout.addView(checkBox)
+                }
+            }
+        }
+        scrollView.addView(linearLayout)
+        return scrollView
     }
 }
