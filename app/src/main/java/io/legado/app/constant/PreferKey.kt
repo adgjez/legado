@@ -72,7 +72,6 @@ object PreferKey {
     const val aiContextCompressionEnabled = "aiContextCompressionEnabled"
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"
-    const val aiShowToolSummary = "aiShowToolSummary"
     const val aiEnterToSend = "aiEnterToSend"
     const val aiEnabledToolNames = "aiEnabledToolNames"
     const val aiTavilyEnabled = "aiTavilyEnabled"

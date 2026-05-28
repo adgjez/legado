@@ -11,6 +11,12 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
+    data class ToolMeta(
+        val name: String,
+        val label: String,
+        val group: String
+    )
+
     val defaultEnabledTools = setOf(
         "query_bookshelf",
         "get_bookshelf_book_info",
@@ -38,14 +44,43 @@ object AiToolRegistry {
         "set_app_settings_batch"
     )
 
-    private val toolGroupPrefixes = listOf(
-        "mcp_" to "MCP",
-        "generate_image" to "生图",
+    private val nativeToolLabels = mapOf(
+        "query_bookshelf" to "查询书架书籍",
+        "get_bookshelf_book_info" to "读取书籍详情",
+        "manage_bookshelf_group" to "管理书架分组",
+        "manage_bookshelf_tag" to "管理书架标签",
+        "set_bookshelf_book_group" to "设置书籍分组",
+        "set_bookshelf_book_tags" to "设置书籍标签",
+        "query_read_records" to "查询阅读记录",
+        "list_book_chapters" to "读取章节目录",
+        "read_book_chapter_content" to "读取章节正文",
+        "list_book_sources" to "列出书源",
+        "search_book_source" to "搜索书源内容",
+        "create_book_source" to "创建书源",
+        "get_book_source" to "读取书源详情",
+        "update_book_source" to "更新书源",
+        "fetch_source_html" to "抓取网页源码",
+        "debug_book_source" to "调试书源规则",
+        "reading_ajax" to "阅读网络请求",
+        "reading_webview" to "阅读 WebView",
+        "capture_web_requests" to "抓包网络请求",
+        "search_web_tavily" to "联网搜索",
+        "generate_image" to "生成图片",
+        "get_app_settings" to "读取应用设置",
+        "set_app_setting" to "修改应用设置",
+        "set_app_settings_batch" to "批量修改设置"
+    )
+
+    private val nativeToolGroups = mapOf(
         "query_bookshelf" to "书架",
-        "get_bookshelf" to "书架",
-        "manage_bookshelf" to "书架",
-        "set_bookshelf" to "书架",
+        "get_bookshelf_book_info" to "书架",
+        "manage_bookshelf_group" to "书架",
+        "manage_bookshelf_tag" to "书架",
+        "set_bookshelf_book_group" to "书架",
+        "set_bookshelf_book_tags" to "书架",
         "query_read_records" to "书架",
+        "list_book_chapters" to "阅读",
+        "read_book_chapter_content" to "阅读",
         "list_book_sources" to "书源",
         "search_book_source" to "书源",
         "create_book_source" to "书源",
@@ -56,15 +91,33 @@ object AiToolRegistry {
         "reading_ajax" to "阅读网络",
         "reading_webview" to "阅读网络",
         "capture_web_requests" to "阅读网络",
-        "list_book_chapters" to "阅读",
-        "read_book_chapter_content" to "阅读",
         "search_web_tavily" to "联网搜索",
+        "generate_image" to "AI 生图",
         "get_app_settings" to "设置",
-        "set_app_setting" to "设置"
+        "set_app_setting" to "设置",
+        "set_app_settings_batch" to "设置"
     )
 
     fun groupLabelOfTool(name: String): String {
-        return toolGroupPrefixes.firstOrNull { name.startsWith(it.first) }?.second ?: "其他"
+        return when {
+            name.startsWith("mcp_") -> "MCP 工具"
+            else -> nativeToolGroups[name] ?: "其他"
+        }
+    }
+
+    fun displayNameOfTool(name: String): String {
+        return when {
+            name.startsWith("mcp_") -> name.removePrefix("mcp_").ifBlank { name }
+            else -> nativeToolLabels[name] ?: name
+        }
+    }
+
+    fun metaOfTool(name: String): ToolMeta {
+        return ToolMeta(
+            name = name,
+            label = displayNameOfTool(name),
+            group = groupLabelOfTool(name)
+        )
     }
 
     private fun nativeResolvedTools(): List<AiResolvedTool> {
