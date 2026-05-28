@@ -107,6 +107,9 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        val promptCacheKey = provider
+            ?.takeIf { it.promptCache }
+            ?.let { buildPromptCacheKey(it, model) }
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         require(model.isNotBlank()) { "Model is empty" }
 
@@ -160,6 +163,7 @@ object AiChatService {
                 onThinking = onThinking,
                 onStatus = onStatus,
                 includeStructuredBlocks = includeStructuredBlocks,
+                promptCacheKey = promptCacheKey,
                 useAllTools = useAllTools
             )
         }.getOrElse { throwable ->
@@ -188,6 +192,7 @@ object AiChatService {
         onThinking: (String) -> Unit,
         onStatus: (JSONObject) -> Unit,
         includeStructuredBlocks: Boolean,
+        promptCacheKey: String?,
         useAllTools: Boolean
     ): String {
         val toolMap = tools.associateBy { it.name }
@@ -214,6 +219,7 @@ object AiChatService {
                 providerHeaders = providerHeaders,
                 messages = conversation,
                 tools = tools,
+                promptCacheKey = promptCacheKey,
                 requestLog = requestLog,
                 round = roundNo,
                 onPartial = onPartial,
@@ -333,6 +339,7 @@ object AiChatService {
             providerHeaders = providerHeaders,
             messages = conversation,
             tools = emptyList(),
+            promptCacheKey = promptCacheKey,
             requestLog = requestLog,
             round = MAX_TOOL_ROUNDS + 1,
             onPartial = onPartial,
@@ -459,12 +466,20 @@ object AiChatService {
         providerHeaders: String,
         messages: List<JSONObject>,
         tools: List<AiResolvedTool>,
+        promptCacheKey: String?,
         requestLog: StringBuilder,
         round: Int,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit
     ): AssistantTurn {
-        val requestBody = buildRequestBody(messages, model, tools, stream = true, apiMode = apiMode)
+        val requestBody = buildRequestBody(
+            messages = messages,
+            model = model,
+            tools = tools,
+            stream = true,
+            apiMode = apiMode,
+            promptCacheKey = promptCacheKey
+        )
         requestLog.append("round=").append(round).append('\n')
             .append("request=").append(safeDebugPayload(requestBody)).append('\n')
         val response = aiChatHttpClient().newCallResponse {
@@ -565,14 +580,16 @@ object AiChatService {
         model: String,
         tools: List<AiResolvedTool>,
         stream: Boolean,
-        apiMode: String
+        apiMode: String,
+        promptCacheKey: String?
     ): String {
         if (apiMode == AI_API_MODE_RESPONSES) {
-            return buildResponsesRequestBody(messages, model, tools, stream)
+            return buildResponsesRequestBody(messages, model, tools, stream, promptCacheKey)
         }
         return JSONObject().apply {
             put("model", model)
             put("stream", stream)
+            promptCacheKey?.let { put("prompt_cache_key", it) }
             put("messages", JSONArray().apply {
                 messages.forEach { put(it) }
             })
@@ -589,11 +606,13 @@ object AiChatService {
         messages: List<JSONObject>,
         model: String,
         tools: List<AiResolvedTool>,
-        stream: Boolean
+        stream: Boolean,
+        promptCacheKey: String?
     ): String {
         return JSONObject().apply {
             put("model", model)
             put("stream", stream)
+            promptCacheKey?.let { put("prompt_cache_key", it) }
             put("input", buildResponsesInput(messages))
             if (tools.isNotEmpty()) {
                 put("tools", JSONArray().apply {
@@ -1202,6 +1221,13 @@ object AiChatService {
         } else {
             AI_API_MODE_CHAT_COMPLETIONS
         }
+    }
+
+    private fun buildPromptCacheKey(provider: AiProviderConfig, model: String): String {
+        val raw = "${provider.id}:${model}".lowercase()
+        return raw.replace(Regex("[^a-z0-9._:-]"), "_")
+            .take(128)
+            .ifBlank { provider.id.take(64) }
     }
 
     private fun resolveChatUrl(baseUrl: String, apiMode: String): String {
