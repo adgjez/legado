@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -37,8 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -70,6 +69,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -358,21 +358,68 @@ fun CharacterListCard(
                 )
             }
             var expanded by remember { mutableStateOf(false) }
-            Box {
-                TextButton(onClick = { expanded = true }) {
-                    Text("更多", color = style.colors.subText)
-                }
-                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(text = { Text("编辑") }, onClick = {
+            TextButton(onClick = { expanded = true }) {
+                Text("更多", color = style.colors.subText)
+            }
+            if (expanded) {
+                CharacterMoreDialog(
+                    character = character,
+                    onDismiss = { expanded = false },
+                    onEdit = {
                         expanded = false
                         onEdit()
-                    })
-                    DropdownMenuItem(text = { Text("删除") }, onClick = {
+                    },
+                    onDelete = {
                         expanded = false
                         onDelete()
-                    })
-                }
+                    }
+                )
             }
+        }
+    }
+}
+
+@Composable
+private fun CharacterMoreDialog(
+    character: BookCharacter,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val style = rememberCharacterStyle()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(style.radius),
+        containerColor = style.colors.card,
+        title = { Text(character.displayName(), color = style.colors.text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                MoreActionRow("编辑角色", "修改头像、身份、技能和生平", onEdit)
+                MoreActionRow("删除角色", "同时删除与此角色相关的关系", onDelete, danger = true)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭", color = style.colors.accent) } }
+    )
+}
+
+@Composable
+private fun MoreActionRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    val style = rememberCharacterStyle()
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = if (danger) style.colors.danger.copy(alpha = 0.09f) else style.colors.page,
+        shape = RoundedCornerShape(style.smallRadius)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(title, color = if (danger) style.colors.danger else style.colors.text, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = style.colors.subText, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
         }
     }
 }
@@ -419,47 +466,104 @@ fun CharacterCardScreen(
 @Composable
 private fun CharacterHeroCard(character: BookCharacter) {
     val style = rememberCharacterStyle()
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = style.colors.cardAlt,
-        shape = RoundedCornerShape(style.radius)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.radius))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        style.colors.cardAlt,
+                        style.colors.card,
+                        style.colors.page
+                    )
+                )
+            )
+            .padding(18.dp)
     ) {
-        Box {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawCircle(
-                    color = style.colors.accent.copy(alpha = 0.18f),
-                    radius = size.minDimension * 0.42f,
-                    center = Offset(size.width * 0.86f, size.height * 0.12f)
-                )
-                drawCircle(
-                    color = style.colors.accent.copy(alpha = 0.10f),
-                    radius = size.minDimension * 0.30f,
-                    center = Offset(size.width * 0.08f, size.height * 0.92f)
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = style.colors.page.copy(alpha = 0.72f),
+                    shape = CircleShape,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
+                ) {
+                    CharacterAvatar(character.avatar, character.displayName(), 96)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp)
+                ) {
+                    Text(
+                        text = character.displayName(),
+                        color = style.colors.text,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        modifier = Modifier.padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RolePill(character.roleLabel(), compact = false)
+                        character.identity.takeIf { it.isNotBlank() }?.let {
+                            InfoPill(it, maxWidth = 150.dp)
+                        }
+                    }
+                }
             }
-            Column(
-                modifier = Modifier.padding(22.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CharacterAvatar(character.avatar, character.displayName(), 112)
-                Text(
-                    text = character.displayName(),
-                    color = style.colors.text,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-                RolePill(character.roleLabel(), compact = false, modifier = Modifier.padding(top = 10.dp))
-                Text(
-                    text = character.identity.ifBlank { character.summaryText() },
-                    color = style.colors.subText,
-                    fontSize = 14.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 14.dp)
-                )
+            val highlights = listOf(
+                "技能" to character.skills,
+                "属性" to character.attributes
+            ).filter { it.second.isNotBlank() }
+            if (highlights.isNotEmpty()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    highlights.forEach { (label, value) ->
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            color = style.colors.page.copy(alpha = 0.58f),
+                            shape = RoundedCornerShape(style.smallRadius),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(label, color = style.colors.subText, fontSize = 12.sp)
+                                Text(
+                                    value,
+                                    color = style.colors.text,
+                                    fontSize = 14.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 5.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun InfoPill(text: String, maxWidth: androidx.compose.ui.unit.Dp) {
+    val style = rememberCharacterStyle()
+    Surface(
+        modifier = Modifier.widthIn(max = maxWidth),
+        color = style.colors.page.copy(alpha = 0.60f),
+        shape = RoundedCornerShape(style.smallRadius),
+        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
+    ) {
+        Text(
+            text = text,
+            color = style.colors.subText,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -978,10 +1082,13 @@ private fun RelationDetailDialog(
     onDismiss: () -> Unit,
     onEdit: () -> Unit
 ) {
+    val style = rememberCharacterStyle()
     val from = characters.firstOrNull { it.id == relation.fromCharacterId }?.displayName().orEmpty()
     val to = characters.firstOrNull { it.id == relation.toCharacterId }?.displayName().orEmpty()
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(style.radius),
+        containerColor = style.colors.card,
         title = { Text(relation.displayName()) },
         text = {
             Column {
@@ -1008,9 +1115,15 @@ private fun RelationEditSheet(
     onDismiss: () -> Unit
 ) {
     var editing by remember(draft) { mutableStateOf(draft) }
+    var selectingTarget by remember { mutableStateOf<RelationSelectTarget?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        val style = rememberCharacterStyle()
+    val style = rememberCharacterStyle()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = style.radius, topEnd = style.radius),
+        containerColor = style.colors.page
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1028,13 +1141,13 @@ private fun RelationEditSheet(
                 )
             }
             item {
-                CharacterDropdown("角色 A", characters, editing.fromCharacterId) {
-                    editing = editing.copy(fromCharacterId = it)
+                CharacterSelectField("角色 A", characters.firstOrNull { it.id == editing.fromCharacterId }) {
+                    selectingTarget = RelationSelectTarget.FROM
                 }
             }
             item {
-                CharacterDropdown("角色 B", characters, editing.toCharacterId) {
-                    editing = editing.copy(toCharacterId = it)
+                CharacterSelectField("角色 B", characters.firstOrNull { it.id == editing.toCharacterId }) {
+                    selectingTarget = RelationSelectTarget.TO
                 }
             }
             item { CharacterTextField("关系名称", editing.relationName, { editing = editing.copy(relationName = it) }, singleLine = true) }
@@ -1062,44 +1175,143 @@ private fun RelationEditSheet(
             }
         }
     }
+    selectingTarget?.let { target ->
+        CharacterSelectDialog(
+            title = if (target == RelationSelectTarget.FROM) "选择角色 A" else "选择角色 B",
+            characters = characters,
+            selectedId = if (target == RelationSelectTarget.FROM) editing.fromCharacterId else editing.toCharacterId,
+            onDismiss = { selectingTarget = null },
+            onSelect = { id ->
+                editing = if (target == RelationSelectTarget.FROM) {
+                    editing.copy(fromCharacterId = id)
+                } else {
+                    editing.copy(toCharacterId = id)
+                }
+                selectingTarget = null
+            }
+        )
+    }
 }
 
 @Composable
-private fun CharacterDropdown(
+private fun CharacterSelectField(
     label: String,
-    characters: List<BookCharacter>,
-    selectedId: Long,
-    onSelect: (Long) -> Unit
+    selected: BookCharacter?,
+    onClick: () -> Unit
 ) {
     val style = rememberCharacterStyle()
-    var expanded by remember { mutableStateOf(false) }
-    val selected = characters.firstOrNull { it.id == selectedId } ?: characters.firstOrNull()
     Column {
         Text(label, color = style.colors.subText, fontSize = 13.sp)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 6.dp)
-                .clickable { expanded = true },
+                .clickable(onClick = onClick),
             color = style.colors.card,
             shape = RoundedCornerShape(style.smallRadius),
             border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
         ) {
-            Text(
-                text = selected?.displayName() ?: "请选择角色",
-                color = style.colors.text,
-                modifier = Modifier.padding(14.dp)
-            )
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            characters.forEach {
-                DropdownMenuItem(text = { Text(it.displayName()) }, onClick = {
-                    expanded = false
-                    onSelect(it.id)
-                })
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (selected != null) {
+                    CharacterAvatar(selected.avatar, selected.displayName(), 38)
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = if (selected != null) 10.dp else 0.dp)
+                ) {
+                    Text(
+                        text = selected?.displayName() ?: "请选择角色",
+                        color = style.colors.text,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    selected?.identity?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = style.colors.subText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                Text("更换", color = style.colors.accent, fontSize = 13.sp)
             }
         }
     }
+}
+
+private enum class RelationSelectTarget {
+    FROM, TO
+}
+
+@Composable
+private fun CharacterSelectDialog(
+    title: String,
+    characters: List<BookCharacter>,
+    selectedId: Long,
+    onDismiss: () -> Unit,
+    onSelect: (Long) -> Unit
+) {
+    val style = rememberCharacterStyle()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(style.radius),
+        containerColor = style.colors.card,
+        title = { Text(title, color = style.colors.text) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(characters, key = { it.id }) { character ->
+                    val selected = character.id == selectedId
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(character.id) },
+                        color = if (selected) style.colors.accent.copy(alpha = 0.14f) else style.colors.page,
+                        shape = RoundedCornerShape(style.smallRadius),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (selected) style.colors.accent else style.colors.stroke
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CharacterAvatar(character.avatar, character.displayName(), 44)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 12.dp)
+                            ) {
+                                Text(
+                                    character.displayName(),
+                                    color = style.colors.text,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    character.identity.ifBlank { character.roleLabel() },
+                                    color = style.colors.subText,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (selected) {
+                                Text("已选", color = style.colors.accent, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭", color = style.colors.accent) } }
+    )
 }
 
 @Composable
