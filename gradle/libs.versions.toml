@@ -7,7 +7,7 @@ appcompat = "1.7.1"
 colorpicker = "1.1.0"
 constraintlayout = "2.2.1"
 core = "1.17.0"
-backdrop = "2.0.0-alpha03"
+liquidglass = "1.0.3"
 lottie = "6.6.6"
 flexbox = "3.0.0"
 fragment = "1.8.9"
@@ -93,7 +93,7 @@ androidx-annotation = { group = "androidx.annotation", name = "annotation", vers
 androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
-kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
+liquidglass = { module = "com.qmdeve.liquidglass:core", version.ref = "liquidglass" }
 lottie = { module = "com.airbnb.android:lottie", version.ref = "lottie" }
 
 

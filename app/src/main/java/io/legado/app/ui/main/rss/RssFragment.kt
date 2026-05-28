@@ -68,7 +68,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * 订阅页面
@@ -645,17 +644,10 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     private fun applyWebContainerBottomPadding() {
         val initialPadding = binding.rssWebContainer.paddingBottom
-        val baseHeight = binding.root.height.takeIf { it > 0 }
-            ?: resources.displayMetrics.heightPixels
-        val extraPadding = resources.getFraction(
-            R.fraction.main_content_bottom_bar_extra_padding_ratio,
-            baseHeight,
-            baseHeight
-        ).roundToInt()
         val webBottomSpace =
             resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding) +
                 resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height) +
-                extraPadding
+                5.dpToPx()
         binding.rssWebContainer.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             view.setPadding(
                 view.paddingLeft,

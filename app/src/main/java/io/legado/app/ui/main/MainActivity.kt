@@ -5,9 +5,7 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Outline
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
@@ -21,7 +19,6 @@ import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.view.ViewOutlineProvider
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -33,13 +30,9 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
 import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
@@ -49,6 +42,7 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager.widget.ViewPager
+import com.qmdeve.liquidglass.widget.LiquidGlassView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
@@ -58,11 +52,7 @@ import io.legado.app.constant.AppConst.appInfo
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.data.entities.RssArticle
-import io.legado.app.data.entities.RssSource
-import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ActivityMainBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppCloudStorage
@@ -70,6 +60,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
@@ -80,8 +71,6 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.about.AboutActivity
-import io.legado.app.ui.about.ReadRecordActivity
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.about.loadReadRecordAvatar
@@ -89,35 +78,14 @@ import io.legado.app.ui.about.loadReadRecordCover
 import io.legado.app.ui.association.ImportBookSourceDialog
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.association.ImportRssSourceDialog
-import io.legado.app.ui.book.SearchBookOpenHelper
-import io.legado.app.ui.book.bookmark.AllBookmarkActivity
-import io.legado.app.ui.book.cache.CacheManageActivity
-import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.BookshelfFragment1
 import io.legado.app.ui.main.bookshelf.style2.BookshelfFragment2
 import io.legado.app.ui.main.ai.AiChatActivity
-import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.main.explore.ExploreFragment
 import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
-import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
-import io.legado.app.ui.config.BookInfoManageActivity
-import io.legado.app.ui.config.BubbleManageActivity
-import io.legado.app.ui.config.ConfigActivity
-import io.legado.app.ui.config.ConfigTag
-import io.legado.app.ui.config.NavigationBarManageActivity
-import io.legado.app.ui.config.ThemeManageActivity
-import io.legado.app.ui.dict.rule.DictRuleActivity
-import io.legado.app.ui.file.FileManageActivity
-import io.legado.app.ui.main.compose.MainComposeHost
-import io.legado.app.ui.main.compose.MainComposeHostActions
-import io.legado.app.ui.main.compose.MainComposeTab
-import io.legado.app.ui.replace.ReplaceRuleActivity
-import io.legado.app.ui.rss.article.RssSortActivity
-import io.legado.app.ui.rss.read.ReadRssActivity
-import io.legado.app.ui.rss.source.manage.RssSourceActivity
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
@@ -132,10 +100,9 @@ import io.legado.app.utils.setHuaweiDisplayCutoutShortEdgesCompat
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.startActivity
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.utils.ColorUtils as AppColorUtils
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -149,7 +116,6 @@ import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.hours
 
 /**
@@ -193,10 +159,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private var bottomNavigationConfigSignature: String? = null
     private var bottomNavigationInset = 0
-    private val composeMainEnabled: Boolean
-        get() = AppConfig.composeMainEnabled
-    private val composeSelectedTab = mutableStateOf(MainComposeTab.Bookshelf)
-    private val composeUpdateCount = mutableIntStateOf(0)
     private val sidebarTouchSlop by lazy {
         ViewConfiguration.get(this).scaledTouchSlop
     }
@@ -227,9 +189,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
-    private val bottomGlassSetupRunnable = Runnable {
+    private var liquidGlassReady = false
+    private val boundLiquidGlassViewIds = hashSetOf<Int>()
+    private val liquidGlassSetupRunnable = Runnable {
         if (!isFinishing && !isDestroyed) {
-            setupBottomGlass()
+            setupLiquidGlass()
         }
     }
     private var mergedDiscoveryLongClickView: View? = null
@@ -281,16 +245,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         upBottomMenu()
         initView()
-        if (composeMainEnabled) {
-            initComposeMain()
-        }
         onBackPressedDispatcher.addCallback(this) {
             if (isSidebarMode() && sideNavigationOpen) {
                 closeSideNavigation()
-                return@addCallback
-            }
-            if (composeMainEnabled && composeSelectedTab.value != MainComposeTab.Bookshelf) {
-                selectComposeTab(MainComposeTab.Bookshelf)
                 return@addCallback
             }
             if (pagePosition != 0) {
@@ -348,21 +305,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onResume() {
         super.onResume()
-        if (!composeMainEnabled) {
-            refreshBottomNavigationConfig()
-            scheduleBottomGlassSetup(delayMillis = 64L)
-        }
-        if (!composeMainEnabled && isSidebarMode()) {
+        refreshBottomNavigationConfig()
+        if (isSidebarMode()) {
             updateSideGoalHeader()
         }
     }
 
     override fun upBackgroundImage() {
         super.upBackgroundImage()
-        if (!composeMainEnabled) {
-            binding.root.post {
-                scheduleBottomGlassSetup(delayMillis = 32L)
-            }
+        binding.root.post {
+            syncLiquidGlassSampleBackground()
+            scheduleLiquidGlassSetup(delayMillis = 32L)
         }
     }
 
@@ -421,13 +374,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun initView() = binding.run {
         val initialPage = resolveHomePagePosition()
         pagePosition = initialPage
-        if (composeMainEnabled) {
-            contentContainer.isVisible = false
-            bottomControls.isVisible = false
-            sideNavigationScrim.isVisible = false
-            sideNavigationPanel.isVisible = false
-            return@run
-        }
         viewPagerMain.setEdgeEffectColor(primaryColor)
         viewPagerMain.offscreenPageLimit = (bottomMenuCount - 1).coerceAtLeast(1)
         viewPagerMain.adapter = adapter
@@ -462,7 +408,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             true
         }
-        scheduleBottomGlassSetup()
+        syncLiquidGlassSampleBackground()
+        scheduleLiquidGlassSetup()
+        contentContainer.doOnPreDraw {
+            liquidGlassReady = true
+            scheduleLiquidGlassSetup(delayMillis = 32L)
+        }
         bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -478,11 +429,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationInset = height
             if (isStandardBottomMode()) {
                 view.bottomPadding = 0
-                updateBottomControlsMargin(0)
                 applyBottomNavigationShape(standardMode = true)
             } else {
-                view.bottomPadding = 0
-                updateBottomControlsMargin(bottomFloatingMargin(height))
+                view.bottomPadding = height + 14.dpToPx()
                 applyBottomNavigationShape(standardMode = false)
             }
             windowInsets.inset(0, 0, 0, height)
@@ -505,235 +454,32 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         applyBottomLayoutMode()
     }
 
-    private fun initComposeMain() = binding.run {
-        selectComposeTab(composeTabForPosition(pagePosition))
-        contentContainer.isVisible = false
-        bottomControls.isVisible = false
-        sideNavigationScrim.isVisible = false
-        sideNavigationPanel.isVisible = false
-        mainComposeRoot.isVisible = true
-        mainComposeRoot.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
-        )
-        mainComposeRoot.setContent {
-            MainComposeHost(
-                selectedTab = composeSelectedTab.value,
-                updateCount = composeUpdateCount.intValue,
-                onTabSelected = ::selectComposeTab,
-                actions = MainComposeHostActions(
-                    onOpenSearch = ::openMainSearch,
-                    onOpenAi = ::openMainAiAssistant,
-                    onOpenBook = ::openComposeBook,
-                    onOpenBookInfo = ::openComposeBookInfo,
-                    onRefreshBooks = { books ->
-                        viewModel.upToc(books, AppConfig.onlyUpdateRead)
-                    },
-                    onOpenSearchBook = ::openComposeSearchBook,
-                    onOpenRssArticle = ::openComposeRssArticle,
-                    onOpenRssSource = ::openComposeRssSource,
-                    onOpenBookUrl = ::openComposeBookUrl,
-                    onOpenMyItem = ::openComposeMyItem,
-                    onReadRecordMore = {
-                        startActivity<ReadRecordActivity>()
-                    }
-                )
+    private fun scheduleLiquidGlassSetup(delayMillis: Long = 0L) {
+        binding.bottomControls.removeCallbacks(liquidGlassSetupRunnable)
+        if (delayMillis > 0L) {
+            binding.bottomControls.postDelayed(liquidGlassSetupRunnable, delayMillis)
+        } else {
+            binding.bottomControls.post(liquidGlassSetupRunnable)
+        }
+    }
+
+    private fun syncLiquidGlassSampleBackground() = binding.run {
+        val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
+            runCatching {
+                ThemeConfig.getBgImage(this@MainActivity, windowManager.windowSize)
+            }.getOrNull()
+        } else {
+            null
+        }
+        if (wallpaper != null) {
+            liquidGlassSampleBackground.background = wallpaper
+        } else {
+            liquidGlassSampleBackground.setBackgroundColor(
+                ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
             )
         }
-    }
-
-    private fun selectComposeTab(tab: MainComposeTab) {
-        composeSelectedTab.value = tab
-        composePositionForTab(tab)?.let { pagePosition = it }
-    }
-
-    private fun composeTabForPosition(position: Int): MainComposeTab {
-        return when (realPositions.getOrNull(position)) {
-            idExplore -> MainComposeTab.Discovery
-            idRss -> MainComposeTab.Rss
-            idReadRecord -> MainComposeTab.ReadRecord
-            idMy -> MainComposeTab.My
-            else -> MainComposeTab.Bookshelf
-        }
-    }
-
-    private fun composePositionForTab(tab: MainComposeTab): Int? {
-        val targetId = when (tab) {
-            MainComposeTab.Bookshelf -> idBookshelf
-            MainComposeTab.Discovery -> idExplore
-            MainComposeTab.Rss -> idRss
-            MainComposeTab.ReadRecord -> idReadRecord
-            MainComposeTab.My -> idMy
-        }
-        return realPositions.take(bottomMenuCount).indexOf(targetId).takeIf { it >= 0 }
-    }
-
-    private fun openMainSearch() {
-        startActivity(Intent(this, SearchActivity::class.java))
-    }
-
-    private fun openMainAiAssistant() {
-        if (AppConfig.aiAssistantEnabled) {
-            startActivity(Intent(this, AiChatActivity::class.java))
-        } else {
-            toastOnUi(R.string.ai_enable_summary)
-        }
-    }
-
-    private fun openComposeBook(book: Book) {
-        startActivityForBook(book)
-    }
-
-    private fun openComposeBookInfo(book: Book) {
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-        }
-    }
-
-    private fun openComposeBookUrl(bookUrl: String) {
-        if (bookUrl.isBlank()) return
-        lifecycleScope.launch {
-            val book = withContext(IO) { appDb.bookDao.getBook(bookUrl) } ?: return@launch
-            openComposeBook(book)
-        }
-    }
-
-    private fun openComposeSearchBook(book: SearchBook) {
-        SearchBookOpenHelper.open(
-            this,
-            book,
-            SearchBookOpenHelper.isVideoResult(book)
-        )
-    }
-
-    private fun openComposeRssArticle(article: RssArticle) {
-        ReadRssActivity.start(
-            this,
-            article.origin,
-            article.title,
-            article.link,
-            article.sort
-        )
-    }
-
-    private fun openComposeRssSource(source: RssSource) {
-        startActivity<RssSortActivity> {
-            putExtra("sourceUrl", source.sourceUrl)
-        }
-    }
-
-    private fun openComposeMyItem(key: String) {
-        when (key) {
-            "bookSourceManage" -> startActivity<BookSourceActivity>()
-            "rssSourceManage" -> startActivity<RssSourceActivity>()
-            "replaceManage" -> startActivity<ReplaceRuleActivity>()
-            "dictRuleManage" -> startActivity<DictRuleActivity>()
-            "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
-            "bookmark" -> startActivity<AllBookmarkActivity>()
-            "setting" -> startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.OTHER_CONFIG)
-            }
-            "web_dav_setting" -> startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.BACKUP_CONFIG)
-            }
-            "cacheManage" -> startActivity<CacheManageActivity>()
-            "theme_setting" -> startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.THEME_CONFIG)
-            }
-            "theme_manage" -> startActivity<ThemeManageActivity>()
-            "navigation_bar_manage" -> startActivity<NavigationBarManageActivity>()
-            "book_info_manage" -> startActivity<BookInfoManageActivity>()
-            "bubble_manage" -> startActivity<BubbleManageActivity>()
-            "coverConfig" -> startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.COVER_CONFIG)
-            }
-            "ai_setting" -> startActivity<ConfigActivity> {
-                putExtra("configTag", ConfigTag.AI_CONFIG)
-            }
-            "fileManage" -> startActivity<FileManageActivity>()
-            "readRecord" -> startActivity<ReadRecordActivity>()
-            "about" -> startActivity<AboutActivity>()
-            "exit" -> finish()
-        }
-    }
-
-    private fun bottomFloatingMargin(navigationBarHeight: Int): Int {
-        val baseHeight = binding.root.height.takeIf { it > 0 }
-            ?: resources.displayMetrics.heightPixels
-        val visualGap = resources.getFraction(
-            R.fraction.main_bottom_controls_floating_gap_ratio,
-            baseHeight,
-            baseHeight
-        ).roundToInt()
-        return navigationBarHeight + visualGap
-    }
-
-    private fun updateBottomControlsMargin(bottomMargin: Int) {
-        val params = binding.bottomControls.layoutParams as? ViewGroup.MarginLayoutParams ?: return
-        if (params.bottomMargin == bottomMargin) return
-        params.bottomMargin = bottomMargin
-        binding.bottomControls.layoutParams = params
-    }
-
-    private fun scheduleBottomGlassSetup(delayMillis: Long = 0L) {
-        binding.bottomControls.removeCallbacks(bottomGlassSetupRunnable)
-        if (delayMillis > 0L) {
-            binding.bottomControls.postDelayed(bottomGlassSetupRunnable, delayMillis)
-        } else {
-            binding.bottomControls.post(bottomGlassSetupRunnable)
-        }
-    }
-
-    private fun bottomBarGlassSpec(
-        mode: String,
-        cornerRadius: Float,
-        oval: Boolean,
-        selected: Boolean = false,
-        backdropTarget: View? = null
-    ): MainBottomBarGlassSpec {
-        val level = when (mode) {
-            "frosted" -> AppConfig.frostedGlassLevel / 100f
-            "glass" -> AppConfig.liquidGlassLevel / 100f
-            "solid" -> AppConfig.liquidGlassLevel / 100f
-            else -> 1f
-        }
-        return MainBottomBarGlassSpec(
-            mode = mode,
-            baseColor = bottomBackground,
-            accentColor = primaryColor,
-            borderColor = bottomBarBorderColor(),
-            cornerRadiusPx = cornerRadius,
-            oval = oval,
-            selected = selected,
-            level = level,
-            night = AppConfig.isNightTheme,
-            backdropImage = backdropTarget?.let { captureBottomBackdrop(it) }
-        )
-    }
-
-    private fun captureBottomBackdrop(target: View): ImageBitmap? {
-        val source = binding.contentContainer
-        if (!source.isLaidOut || !target.isLaidOut || target.width <= 0 || target.height <= 0) {
-            return null
-        }
-        val sourceLocation = IntArray(2)
-        val targetLocation = IntArray(2)
-        source.getLocationInWindow(sourceLocation)
-        target.getLocationInWindow(targetLocation)
-        val left = targetLocation[0] - sourceLocation[0]
-        val top = targetLocation[1] - sourceLocation[1]
-        if (left >= source.width || top >= source.height || left + target.width <= 0 || top + target.height <= 0) {
-            return null
-        }
-        return runCatching {
-            Bitmap.createBitmap(target.width, target.height, Bitmap.Config.ARGB_8888).also { bitmap ->
-                Canvas(bitmap).apply {
-                    translate(-left.toFloat(), -top.toFloat())
-                    source.draw(this)
-                }
-            }.asImageBitmap()
-        }.getOrNull()
+        liquidGlassSampleBackground.invalidate()
+        contentContainer.invalidate()
     }
 
     private fun refreshBottomNavigationConfig() {
@@ -745,7 +491,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         applyBottomNavigationIcons()
         applyBottomLayoutMode()
-        scheduleBottomGlassSetup()
+        scheduleLiquidGlassSetup()
         binding.bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -774,14 +520,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (handleSidebarSwipe(ev)) {
             return true
         }
-        val handled = super.dispatchTouchEvent(ev)
-        if ((ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL)
-            && !isStandardBottomMode()
-            && !isSidebarMode()
-        ) {
-            scheduleBottomGlassSetup(delayMillis = 64L)
-        }
-        return handled
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun handleSidebarSwipe(ev: MotionEvent): Boolean {
@@ -897,7 +636,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             bottomControls.paddingTop,
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
-            0
+            if (standardMode) 0 else bottomControls.paddingBottom
         )
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
             NavigationBarView.LABEL_VISIBILITY_UNLABELED
@@ -923,7 +662,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         bottomNavigationGlass.layoutParams = bottomNavigationGlass.layoutParams.apply {
             height = if (standardMode) standardContentHeight + bottomNavigationInset else floatingContentHeight
         }
-        applyBottomNavigationShadowOutline(standardMode)
         ConstraintSet().apply {
             clone(bottomControls)
             clear(R.id.bottom_navigation_glass, ConstraintSet.END)
@@ -941,59 +679,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 connect(R.id.bottom_navigation_glass, ConstraintSet.TOP, R.id.search_button_container, ConstraintSet.TOP)
             }
             applyTo(bottomControls)
-        }
-    }
-
-    private fun applyBottomNavigationShadowOutline(standardMode: Boolean) = binding.run {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return@run
-        }
-        if (standardMode) {
-            bottomNavigationGlass.elevation = 0f
-            bottomNavigationGlass.translationZ = 0f
-            bottomNavigationGlass.outlineProvider = ViewOutlineProvider.BACKGROUND
-            searchButtonContainer.elevation = 0f
-            searchButtonContainer.translationZ = 0f
-            searchButtonContainer.outlineProvider = ViewOutlineProvider.BACKGROUND
-        } else {
-            bottomNavigationGlass.elevation = resources.getDimension(R.dimen.main_bottom_bar_elevation)
-            bottomNavigationGlass.translationZ = 0f
-            bottomNavigationGlass.clipToOutline = false
-            bottomNavigationGlass.outlineProvider = roundedBottomOutlineProvider(
-                radius = bottomBarCornerRadius,
-                oval = false,
-                alpha = if (AppConfig.isNightTheme) 0.18f else 0.24f
-            )
-            searchButtonContainer.elevation = resources.getDimension(R.dimen.main_search_button_elevation)
-            searchButtonContainer.translationZ = 0f
-            searchButtonContainer.clipToOutline = false
-            searchButtonContainer.outlineProvider = roundedBottomOutlineProvider(
-                radius = searchButtonCornerRadius,
-                oval = true,
-                alpha = if (AppConfig.isNightTheme) 0.20f else 0.26f
-            )
-        }
-        bottomNavigationGlass.invalidateOutline()
-        searchButtonContainer.invalidateOutline()
-    }
-
-    private fun roundedBottomOutlineProvider(
-        radius: Float,
-        oval: Boolean,
-        alpha: Float
-    ): ViewOutlineProvider {
-        return object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                val width = if (view.width > 0) view.width else view.measuredWidth
-                val height = if (view.height > 0) view.height else view.measuredHeight
-                if (width <= 0 || height <= 0) return
-                if (oval) {
-                    outline.setOval(0, 0, width, height)
-                } else {
-                    outline.setRoundRect(0, 0, width, height, radius)
-                }
-                outline.alpha = alpha.coerceIn(0f, 1f)
-            }
         }
     }
 
@@ -1512,28 +1197,27 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         sideNavigationLockedGravity = null
     }
 
-    private fun setupBottomGlass() {
+    private fun setupLiquidGlass() {
         binding.run {
             val standardMode = isStandardBottomMode()
             if (AppConfig.isEInkMode) {
-                bottomNavigationIndicatorContainer.visibility = View.GONE
-                bottomNavigationShellOverlay.visibility = View.VISIBLE
-                searchButtonShellOverlay.visibility = if (standardMode) View.GONE else View.VISIBLE
-                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = if (standardMode) "standard" else "eink",
-                        cornerRadius = if (standardMode) 0f else bottomBarCornerRadius,
-                        oval = false,
-                        backdropTarget = bottomNavigationShellOverlay
+                bottomNavigationGlassView.visibility = android.view.View.GONE
+                bottomNavigationIndicatorContainer.visibility = android.view.View.GONE
+                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
+                searchButtonGlassView.visibility = android.view.View.GONE
+                bottomNavigationShellOverlay.visibility = android.view.View.VISIBLE
+                searchButtonShellOverlay.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
+                bottomNavigationShellOverlay.background = if (standardMode) {
+                    createStandardBottomShellDrawable()
+                } else {
+                    createEInkBottomShellDrawable(
+                        cornerRadius = bottomBarCornerRadius,
+                        oval = false
                     )
-                )
-                searchButtonShellOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "eink",
-                        cornerRadius = searchButtonCornerRadius,
-                        oval = true,
-                        backdropTarget = searchButtonShellOverlay
-                    )
+                }
+                searchButtonShellOverlay.background = createEInkBottomShellDrawable(
+                    cornerRadius = searchButtonCornerRadius,
+                    oval = true
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 searchButton.setBackgroundColor(Color.TRANSPARENT)
@@ -1542,70 +1226,148 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             val effectMode = AppConfig.bottomBarEffectMode
             if (standardMode) {
-                searchButtonShellOverlay.visibility = View.GONE
+                bottomNavigationGlassView.visibility = android.view.View.GONE
+                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
+                searchButtonGlassView.visibility = android.view.View.GONE
+                searchButtonShellOverlay.visibility = android.view.View.GONE
                 bottomNavigationShellOverlay.isVisible = true
                 bottomNavigationIndicatorContainer.isVisible = true
                 bottomNavigationIndicatorContainer.alpha = 1f
                 bottomNavigationIndicatorContainer.scaleX = 1f
                 bottomNavigationIndicatorContainer.scaleY = 1f
-                bottomNavigationShellOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "standard",
-                        cornerRadius = 0f,
-                        oval = false,
-                        backdropTarget = bottomNavigationShellOverlay
-                    )
-                )
+                bottomNavigationShellOverlay.background = createStandardBottomShellDrawable()
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
+                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
                 updateBottomNavigationIndicator(animate = false)
-                bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
-                    bottomBarGlassSpec(
-                        mode = "solid",
-                        cornerRadius = bottomIndicatorCornerRadius,
-                        oval = false,
-                        selected = true,
-                        backdropTarget = bottomNavigationIndicatorOverlay
-                    )
-                )
                 return
             }
-            bottomNavigationShellOverlay.isVisible = true
-            searchButtonShellOverlay.isVisible = true
-            bottomNavigationIndicatorContainer.isVisible = true
-            bottomNavigationIndicatorContainer.alpha = 1f
-            bottomNavigationIndicatorContainer.scaleX = 1f
-            bottomNavigationIndicatorContainer.scaleY = 1f
-            bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
-            searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
-            syncSearchButtonTint()
-            bottomNavigationShellOverlay.setMainBottomBarGlassContent(
-                bottomBarGlassSpec(
-                    mode = effectMode,
+            if (effectMode == "solid") {
+                bottomNavigationGlassView.visibility = android.view.View.GONE
+                bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
+                searchButtonGlassView.visibility = android.view.View.GONE
+                bottomNavigationShellOverlay.isVisible = true
+                searchButtonShellOverlay.isVisible = !standardMode
+                bottomNavigationIndicatorContainer.isVisible = true
+                bottomNavigationIndicatorContainer.alpha = 1f
+                bottomNavigationIndicatorContainer.scaleX = 1f
+                bottomNavigationIndicatorContainer.scaleY = 1f
+                bottomNavigationShellOverlay.background = createSolidBottomShellDrawable(
                     cornerRadius = bottomBarCornerRadius,
-                    oval = false,
-                    selected = false,
-                    backdropTarget = bottomNavigationShellOverlay
+                    oval = false
                 )
-            )
-            searchButtonShellOverlay.setMainBottomBarGlassContent(
-                bottomBarGlassSpec(
-                    mode = effectMode,
+                searchButtonShellOverlay.background = createSolidBottomShellDrawable(
                     cornerRadius = searchButtonCornerRadius,
-                    oval = true,
-                    selected = false,
-                    backdropTarget = searchButtonShellOverlay
+                    oval = true
                 )
+                bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
+                if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
+                syncSearchButtonTint()
+                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
+                updateBottomNavigationIndicator(animate = false)
+                return
+            }
+            bottomNavigationIndicatorContainer.isVisible = true
+            bottomNavigationIndicatorContainer.alpha = 0f
+            bottomNavigationIndicatorContainer.scaleX = 0.82f
+            bottomNavigationIndicatorContainer.scaleY = 0.82f
+            bottomNavigationShellOverlay.isVisible = true
+            searchButtonShellOverlay.isVisible = !standardMode
+            bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
+            if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
+            syncSearchButtonTint()
+            bottomNavigationGlassView.visibility = android.view.View.VISIBLE
+            bottomNavigationIndicatorGlassView.visibility = android.view.View.VISIBLE
+            searchButtonGlassView.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
+            val glassLevel = when (effectMode) {
+                "frosted" -> AppConfig.frostedGlassLevel / 100f
+                else -> AppConfig.liquidGlassLevel / 100f
+            }
+            val frostedMode = effectMode == "frosted"
+            val blurRadius = if (frostedMode) {
+                (10f + glassLevel * 24f).dpToPx()
+            } else {
+                (5f + glassLevel * 14f).dpToPx()
+            }
+            val tintAlpha = if (frostedMode) {
+                0.12f + glassLevel * 0.18f
+            } else {
+                0.05f + glassLevel * 0.10f
+            }
+            val dispersion = if (frostedMode) {
+                (0.18f + glassLevel * 0.16f).coerceAtMost(0.42f)
+            } else {
+                0.46f + glassLevel * 0.32f
+            }
+            val refractionHeight = if (frostedMode) {
+                (12f + glassLevel * 10f).dpToPx()
+            } else {
+                (18f + glassLevel * 14f).dpToPx()
+            }
+            val refractionOffset = if (frostedMode) {
+                (36f + glassLevel * 18f).dpToPx()
+            } else {
+                (72f + glassLevel * 34f).dpToPx()
+            }
+            bottomNavigationShellOverlay.background = createLiquidGlassShellDrawable(
+                glassLevel = glassLevel,
+                cornerRadius = bottomBarCornerRadius,
+                oval = false,
+                selected = false
             )
-            updateBottomNavigationIndicator(animate = false)
-            bottomNavigationIndicatorOverlay.setMainBottomBarGlassContent(
-                bottomBarGlassSpec(
-                    mode = effectMode,
-                    cornerRadius = bottomIndicatorCornerRadius,
-                    oval = false,
-                    selected = true,
-                    backdropTarget = bottomNavigationIndicatorOverlay
+            searchButtonShellOverlay.background = createLiquidGlassShellDrawable(
+                glassLevel = glassLevel,
+                cornerRadius = searchButtonCornerRadius,
+                oval = true,
+                selected = false
+            )
+            bottomNavigationIndicatorOverlay.background = createLiquidGlassShellDrawable(
+                glassLevel = glassLevel,
+                cornerRadius = bottomIndicatorCornerRadius,
+                oval = false,
+                selected = true
+            )
+            if (!liquidGlassReady || !contentContainer.isLaidOut || !bottomControls.isLaidOut) {
+                contentContainer.doOnPreDraw {
+                    liquidGlassReady = true
+                    scheduleLiquidGlassSetup(delayMillis = 32L)
+                }
+                return
+            }
+            setupLiquidGlassView(
+                liquidGlassView = bottomNavigationGlassView,
+                cornerRadius = bottomBarCornerRadius,
+                refractionHeight = refractionHeight,
+                refractionOffset = refractionOffset,
+                blurRadius = blurRadius,
+                dispersion = dispersion,
+                tintAlpha = tintAlpha,
+                elasticEnabled = true,
+                touchEffectEnabled = true
+            )
+            if (!standardMode) {
+                setupLiquidGlassView(
+                    liquidGlassView = searchButtonGlassView,
+                    cornerRadius = searchButtonCornerRadius,
+                    refractionHeight = refractionHeight,
+                    refractionOffset = refractionOffset,
+                    blurRadius = blurRadius,
+                    dispersion = (dispersion + 0.04f).coerceAtMost(1f),
+                    tintAlpha = tintAlpha,
+                    elasticEnabled = true,
+                    touchEffectEnabled = true
                 )
+            }
+            setupLiquidGlassView(
+                liquidGlassView = bottomNavigationIndicatorGlassView,
+                cornerRadius = bottomIndicatorCornerRadius,
+                refractionHeight = (refractionHeight * 0.9f).coerceAtLeast(16f.dpToPx()),
+                refractionOffset = (refractionOffset * 0.72f).coerceAtLeast(46f.dpToPx()),
+                blurRadius = (blurRadius * 0.78f).coerceAtLeast(5f.dpToPx()),
+                dispersion = (dispersion + 0.08f).coerceAtMost(1f),
+                tintAlpha = (tintAlpha + 0.05f).coerceAtMost(0.28f),
+                elasticEnabled = true,
+                touchEffectEnabled = true
             )
         }
     }
@@ -1640,6 +1402,36 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             setColor(AppColorUtils.withAlpha(baseColor, alpha))
             bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+        }
+    }
+
+    private fun createStandardBottomShellDrawable(): GradientDrawable {
+        val baseColor = bottomBackground
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 0f
+            setColor(baseColor)
+            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+        }
+    }
+
+    private fun createEInkBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
+        val baseColor = bottomBackground
+        return GradientDrawable().apply {
+            shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
+            if (!oval) {
+                this.cornerRadius = cornerRadius
+            }
+            setColor(baseColor)
+            setStroke(1.dpToPx(), AppColorUtils.withAlpha(Color.BLACK, 0.42f))
+        }
+    }
+
+    private fun createSolidBottomIndicatorDrawable(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = bottomIndicatorCornerRadius
+            setColor(primaryColor)
         }
     }
 
@@ -1770,8 +1562,72 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         )
     }
 
+    private fun createLiquidGlassShellDrawable(
+        glassLevel: Float,
+        cornerRadius: Float,
+        oval: Boolean,
+        selected: Boolean
+    ): GradientDrawable {
+        val baseColor = bottomBackground
+        val isLight = AppColorUtils.isColorLight(baseColor)
+        val surfaceColor = if (isLight) {
+            AppColorUtils.blendColors(baseColor, Color.WHITE, 0.72f)
+        } else {
+            AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
+        }
+        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
+        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
+        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
+        val selectedBoost = if (selected) 0.08f else 0f
+        return GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(
+                AppColorUtils.withAlpha(surfaceColor, startAlpha + selectedBoost),
+                AppColorUtils.withAlpha(surfaceColor, centerAlpha + selectedBoost),
+                AppColorUtils.withAlpha(surfaceColor, endAlpha + selectedBoost)
+            )
+        ).apply {
+            shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
+            if (!oval) {
+                setCornerRadius(cornerRadius)
+            }
+            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+        }
+    }
+
     private fun bottomBarBorderColor(): Int? {
         return NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config.borderColor
+    }
+
+    private fun setupLiquidGlassView(
+        liquidGlassView: LiquidGlassView,
+        cornerRadius: Float,
+        refractionHeight: Float,
+        refractionOffset: Float,
+        blurRadius: Float,
+        dispersion: Float,
+        tintAlpha: Float,
+        elasticEnabled: Boolean,
+        touchEffectEnabled: Boolean,
+    ) {
+        if (boundLiquidGlassViewIds.add(liquidGlassView.id)) {
+            liquidGlassView.bind(binding.contentContainer)
+        }
+        liquidGlassView.setCornerRadius(cornerRadius)
+        liquidGlassView.setRefractionHeight(refractionHeight)
+        liquidGlassView.setRefractionOffset(refractionOffset)
+        liquidGlassView.setDispersion(dispersion)
+        liquidGlassView.setBlurRadius(blurRadius)
+        liquidGlassView.setTintAlpha(tintAlpha)
+        liquidGlassView.setTintColorRed(0.70f)
+        liquidGlassView.setTintColorGreen(0.79f)
+        liquidGlassView.setTintColorBlue(0.86f)
+        liquidGlassView.setDraggableEnabled(false)
+        liquidGlassView.setElasticEnabled(elasticEnabled)
+        liquidGlassView.setTouchEffectEnabled(touchEffectEnabled)
+        liquidGlassView.isClickable = false
+        liquidGlassView.isFocusable = false
+        liquidGlassView.invalidate()
     }
 
     private fun updateBottomNavigationIndicator(animate: Boolean) {
@@ -2095,10 +1951,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun observeLiveBus() {
         viewModel.onUpBooksLiveData.observe(this) {
-            composeUpdateCount.intValue = it
-            if (composeMainEnabled) {
-                return@observe
-            }
             if (onUpBooksBadgeView == null) {
                 onUpBooksBadgeView = binding.bottomNavigationView.addBadgeView(0)
             }
@@ -2109,23 +1961,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         observeEvent<Boolean>(EventBus.NAVIGATION_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                if (composeMainEnabled) {
-                    initComposeMain()
-                } else {
-                    refreshBottomNavigationConfig()
-                }
+                refreshBottomNavigationConfig()
             }
         }
         observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                if (composeMainEnabled) {
-                    initComposeMain()
-                } else {
+                refreshMainTopBars(binding.root)
+                binding.root.post {
                     refreshMainTopBars(binding.root)
-                    binding.root.post {
-                        refreshMainTopBars(binding.root)
-                        scheduleBottomGlassSetup(delayMillis = 96L)
-                    }
+                    scheduleLiquidGlassSetup(delayMillis = 96L)
                 }
             }
         }
@@ -2141,14 +1985,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 updateAiFloatingBall()
                 if (it) {
                     pagePosition = resolveHomePagePosition().coerceIn(0, bottomMenuCount - 1)
-                    if (composeMainEnabled) {
-                        selectComposeTab(composeTabForPosition(pagePosition))
-                    } else {
-                        viewPagerMain.setCurrentItem(pagePosition, false)
-                    }
-                }
-                if (composeMainEnabled) {
-                    initComposeMain()
+                    viewPagerMain.setCurrentItem(pagePosition, false)
                 }
             }
         }
@@ -2258,7 +2095,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)
-            scheduleBottomGlassSetup(delayMillis = 96L)
         }
 
     }

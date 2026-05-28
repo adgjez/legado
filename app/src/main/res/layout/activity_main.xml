@@ -10,6 +10,14 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
+        <View
+            android:id="@+id/liquid_glass_sample_background"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="false"
+            android:focusable="false"
+            android:importantForAccessibility="no" />
+
         <io.legado.app.ui.widget.LockableViewPager
             android:id="@+id/view_pager_main"
             android:layout_width="match_parent"
@@ -18,13 +26,6 @@
             tools:ignore="SpeakableTextPresentCheck" />
 
     </FrameLayout>
-
-    <androidx.compose.ui.platform.ComposeView
-        android:id="@+id/main_compose_root"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/transparent"
-        android:visibility="gone" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_controls"
@@ -49,10 +50,18 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="@id/search_button_container">
 
-            <androidx.compose.ui.platform.ComposeView
+            <com.qmdeve.liquidglass.widget.LiquidGlassView
+                android:id="@+id/bottom_navigation_glass_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+
+            <View
                 android:id="@+id/bottom_navigation_shell_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:background="@drawable/bg_liquid_glass_shell_overlay"
                 android:clickable="false"
                 android:focusable="false" />
 
@@ -65,10 +74,18 @@
                 android:clickable="false"
                 android:focusable="false">
 
-                <androidx.compose.ui.platform.ComposeView
+                <com.qmdeve.liquidglass.widget.LiquidGlassView
+                    android:id="@+id/bottom_navigation_indicator_glass_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clickable="false"
+                    android:focusable="false" />
+
+                <View
                     android:id="@+id/bottom_navigation_indicator_overlay"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
+                    android:background="@drawable/bg_liquid_glass_indicator_overlay"
                     android:clickable="false"
                     android:focusable="false" />
 
@@ -97,10 +114,18 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
-            <androidx.compose.ui.platform.ComposeView
+            <com.qmdeve.liquidglass.widget.LiquidGlassView
+                android:id="@+id/search_button_glass_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+
+            <View
                 android:id="@+id/search_button_shell_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
+                android:background="@drawable/bg_liquid_glass_circle_shell_overlay"
                 android:clickable="false"
                 android:focusable="false" />
 
