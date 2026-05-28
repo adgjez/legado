@@ -38,6 +38,16 @@ def run_git(args, check=True):
 
 def request_json(method, url, data=None, headers=None):
     body = None
+    headers = headers or {}
+    if "api.github.com" in url:
+        github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if github_token:
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {github_token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                **headers,
+            }
     if isinstance(data, dict):
         body = urllib.parse.urlencode(data).encode("utf-8")
         headers = {"Content-Type": "application/x-www-form-urlencoded", **(headers or {})}
@@ -56,7 +66,11 @@ def request_json(method, url, data=None, headers=None):
 
 
 def request_bytes(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "legado-gitee-sync"})
+    headers = {"User-Agent": "legado-gitee-sync"}
+    github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if "github.com" in url and github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=300) as response:
         return response.read()
 
