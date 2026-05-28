@@ -1321,8 +1321,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationIndicatorGlassView.visibility = android.view.View.VISIBLE
             searchButtonGlassView.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
             val glassLevel = when (effectMode) {
-                "frosted" -> AppConfig.frostedGlassLevel / 100f
-                else -> AppConfig.liquidGlassLevel / 100f
+                "frosted" -> bottomBarOpacityLevel(AppConfig.frostedGlassLevel)
+                else -> bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
             }
             val frostedMode = effectMode == "frosted"
             val blurRadius = if (frostedMode) {
@@ -1435,7 +1435,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
         val baseColor = bottomBackground
-        val alpha = (AppConfig.liquidGlassLevel / 100f).coerceIn(0f, 1f)
+        val alpha = bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
         return GradientDrawable().apply {
             shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
             if (!oval) {
@@ -1448,12 +1448,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createStandardBottomShellDrawable(): GradientDrawable {
         val baseColor = bottomBackground
+        val alpha = bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 0f
-            setColor(baseColor)
+            setColor(AppColorUtils.withAlpha(baseColor, alpha))
             bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
         }
+    }
+
+    private fun bottomBarOpacityLevel(value: Int): Float {
+        return (value.coerceIn(0, 100) / 200f).coerceIn(0f, 0.5f)
     }
 
     private fun createEInkBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
