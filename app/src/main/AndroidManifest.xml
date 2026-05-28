@@ -297,6 +297,16 @@
         <activity
             android:name=".ui.main.ai.AiImageGalleryActivity"
             android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.character.BookCharacterManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.character.BookCharacterEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.book.character.BookCharacterRelationActivity"
+            android:launchMode="standard" />
         <!-- 搜索界面 -->
         <activity
             android:name=".ui.book.search.SearchActivity"
