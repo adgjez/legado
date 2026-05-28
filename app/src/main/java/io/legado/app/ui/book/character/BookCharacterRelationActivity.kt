@@ -1,16 +1,21 @@
 package io.legado.app.ui.book.character
 
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
@@ -31,6 +36,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.databinding.ItemThemePackageBinding
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -47,6 +53,8 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -365,12 +373,42 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val avatarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
+        private val nodePath = Path()
+        private val bitmapRect = Rect()
         private val nodePositions = mutableMapOf<Long, Pair<Float, Float>>()
+        private val avatarBitmaps = mutableMapOf<Long, Bitmap>()
+        private val avatarTargets = mutableMapOf<Long, CustomTarget<Bitmap>>()
         private var viewCharacters: List<BookCharacter> = emptyList()
         private var viewRelations: List<BookCharacterRelation> = emptyList()
+        private var scale = 1f
+        private var offsetX = 0f
+        private var offsetY = 0f
+        private var lastX = 0f
+        private var lastY = 0f
+        private var dragging = false
+        private var moved = false
         var onRelationClick: ((BookCharacterRelation) -> Unit)? = null
         var onCharacterClick: ((BookCharacter) -> Unit)? = null
+        private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val oldScale = scale
+                scale = (scale * detector.scaleFactor).coerceIn(0.65f, 2.8f)
+                val factor = scale / oldScale
+                offsetX = detector.focusX - (detector.focusX - offsetX) * factor
+                offsetY = detector.focusY - (detector.focusY - offsetY) * factor
+                invalidate()
+                return true
+            }
+        })
+        private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                resetViewport()
+                return true
+            }
+        })
 
         init {
             background = UiCorner.panelRounded(
@@ -380,6 +418,9 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             )
             nodePaint.color = context.accentColor
             selectedPaint.color = ContextCompat.getColor(context, R.color.background_menu)
+            gridPaint.color = ColorUtilsSafe.adjustAlpha(context.primaryTextColor, 0.08f)
+            gridPaint.style = Paint.Style.STROKE
+            gridPaint.strokeWidth = 1.dpToPx().toFloat()
             linePaint.color = ColorUtilsSafe.adjustAlpha(context.primaryTextColor, 0.32f)
             linePaint.strokeWidth = 2.dpToPx().toFloat()
             textPaint.color = context.primaryTextColor
@@ -390,6 +431,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         fun setData(characters: List<BookCharacter>, relations: List<BookCharacterRelation>) {
             viewCharacters = characters
             viewRelations = relations
+            preloadAvatars(characters)
             invalidate()
         }
 
@@ -398,22 +440,12 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             nodePositions.clear()
             val count = viewCharacters.size
             if (count == 0) return
-            val content = RectF(
-                paddingLeft.toFloat(),
-                paddingTop.toFloat(),
-                (width - paddingRight).toFloat(),
-                (height - paddingBottom).toFloat()
-            )
-            val centerX = content.centerX()
-            val centerY = content.centerY()
-            val radiusX = max(42f.dpToPx(), content.width() * 0.36f)
-            val radiusY = max(36f.dpToPx(), content.height() * 0.30f)
-            viewCharacters.forEachIndexed { index, character ->
-                val angle = -Math.PI / 2 + index * Math.PI * 2 / count
-                val x = if (count == 1) centerX else centerX + cos(angle).toFloat() * radiusX
-                val y = if (count == 1) centerY else centerY + sin(angle).toFloat() * radiusY
-                nodePositions[character.id] = x to y
-            }
+            canvas.save()
+            canvas.translate(offsetX, offsetY)
+            canvas.scale(scale, scale)
+            val content = worldContentRect()
+            drawMapBackground(canvas, content)
+            layoutNodes(content)
             viewRelations.forEach { relation ->
                 val from = nodePositions[relation.fromCharacterId] ?: return@forEach
                 val to = nodePositions[relation.toCharacterId] ?: return@forEach
@@ -425,18 +457,52 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             }
             viewCharacters.forEach { character ->
                 val point = nodePositions[character.id] ?: return@forEach
-                canvas.drawCircle(point.first, point.second, 26.dpToPx().toFloat(), selectedPaint)
-                canvas.drawCircle(point.first, point.second, 20.dpToPx().toFloat(), nodePaint)
-                canvas.drawText(character.displayName().take(6), point.first, point.second + 43.dpToPx(), textPaint)
+                drawCharacterNode(canvas, character, point.first, point.second)
             }
+            canvas.restore()
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            if (event.action != MotionEvent.ACTION_UP) return true
-            val x = event.x
-            val y = event.y
+            gestureDetector.onTouchEvent(event)
+            scaleDetector.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    lastX = event.x
+                    lastY = event.y
+                    dragging = true
+                    moved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!scaleDetector.isInProgress && dragging) {
+                        val dx = event.x - lastX
+                        val dy = event.y - lastY
+                        if (abs(dx) > 2.dpToPx() || abs(dy) > 2.dpToPx()) moved = true
+                        offsetX += dx
+                        offsetY += dy
+                        lastX = event.x
+                        lastY = event.y
+                        invalidate()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    dragging = false
+                    if (!moved) handleClick(event.x, event.y)
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    dragging = false
+                }
+            }
+            return true
+        }
+
+        private fun handleClick(rawX: Float, rawY: Float): Boolean {
+            val x = (rawX - offsetX) / scale
+            val y = (rawY - offsetY) / scale
             nodePositions.forEach { (id, point) ->
-                if (hypot((x - point.first).toDouble(), (y - point.second).toDouble()) <= 34.dpToPx()) {
+                if (hypot((x - point.first).toDouble(), (y - point.second).toDouble()) <= nodeHitRadius(id)) {
                     viewCharacters.firstOrNull { it.id == id }?.let { onCharacterClick?.invoke(it) }
                     return true
                 }
@@ -454,7 +520,149 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
                 onRelationClick?.invoke(it)
                 return true
             }
-            return true
+            return false
+        }
+
+        private fun resetViewport() {
+            scale = 1f
+            offsetX = 0f
+            offsetY = 0f
+            invalidate()
+        }
+
+        private fun worldContentRect(): RectF {
+            return RectF(
+                paddingLeft.toFloat(),
+                paddingTop.toFloat(),
+                (width - paddingRight).toFloat(),
+                (height - paddingBottom).toFloat()
+            )
+        }
+
+        private fun drawMapBackground(canvas: Canvas, content: RectF) {
+            val centerX = content.centerX()
+            val centerY = content.centerY()
+            val maxRadius = min(content.width(), content.height()) * 0.44f
+            canvas.drawCircle(centerX, centerY, maxRadius * 0.42f, gridPaint)
+            canvas.drawCircle(centerX, centerY, maxRadius * 0.72f, gridPaint)
+            canvas.drawCircle(centerX, centerY, maxRadius, gridPaint)
+            val step = 48.dpToPx().toFloat()
+            var x = content.left + step
+            while (x < content.right) {
+                canvas.drawLine(x, content.top, x, content.bottom, gridPaint)
+                x += step
+            }
+            var y = content.top + step
+            while (y < content.bottom) {
+                canvas.drawLine(content.left, y, content.right, y, gridPaint)
+                y += step
+            }
+        }
+
+        private fun layoutNodes(content: RectF) {
+            val centerX = content.centerX()
+            val centerY = content.centerY()
+            val centers = centerCharacters()
+            val outer = viewCharacters.filterNot { c -> centers.any { it.id == c.id } }
+            if (centers.size <= 1) {
+                centers.firstOrNull()?.let { nodePositions[it.id] = centerX to centerY }
+            } else {
+                val centerRadius = 42f.dpToPx()
+                centers.forEachIndexed { index, character ->
+                    val angle = -Math.PI / 2 + index * Math.PI * 2 / centers.size
+                    nodePositions[character.id] = centerX + cos(angle).toFloat() * centerRadius to
+                            centerY + sin(angle).toFloat() * centerRadius
+                }
+            }
+            val radiusX = max(70f.dpToPx(), content.width() * 0.38f)
+            val radiusY = max(58f.dpToPx(), content.height() * 0.33f)
+            outer.forEachIndexed { index, character ->
+                val relatedWeight = relationWeightToCenters(character.id, centers)
+                val ringBias = if (relatedWeight > 0) 0.82f else 1f
+                val angle = -Math.PI / 2 + index * Math.PI * 2 / outer.size.coerceAtLeast(1)
+                val x = centerX + cos(angle).toFloat() * radiusX * ringBias
+                val y = centerY + sin(angle).toFloat() * radiusY * ringBias
+                nodePositions[character.id] = x to y
+            }
+        }
+
+        private fun centerCharacters(): List<BookCharacter> {
+            val main = viewCharacters.filter { it.roleLevel == BookCharacter.ROLE_MAIN }
+            if (main.isNotEmpty()) return main
+            val important = viewCharacters.filter { it.roleLevel == BookCharacter.ROLE_IMPORTANT }
+            if (important.isNotEmpty()) return important
+            return viewCharacters.take(1)
+        }
+
+        private fun relationWeightToCenters(characterId: Long, centers: List<BookCharacter>): Int {
+            val centerIds = centers.map { it.id }.toSet()
+            return viewRelations.sumOf { relation ->
+                if ((relation.fromCharacterId == characterId && relation.toCharacterId in centerIds) ||
+                    (relation.toCharacterId == characterId && relation.fromCharacterId in centerIds)
+                ) relation.strength.coerceIn(0, 100) else 0
+            }
+        }
+
+        private fun drawCharacterNode(canvas: Canvas, character: BookCharacter, x: Float, y: Float) {
+            val roleBoost = when (character.roleLevel) {
+                BookCharacter.ROLE_MAIN -> 8.dpToPx()
+                BookCharacter.ROLE_IMPORTANT -> 4.dpToPx()
+                else -> 0
+            }
+            val outerRadius = 27.dpToPx().toFloat() + roleBoost
+            val innerRadius = outerRadius - 5.dpToPx()
+            selectedPaint.color = if (character.roleLevel == BookCharacter.ROLE_MAIN) {
+                ColorUtilsSafe.adjustAlpha(accentColor, 0.22f)
+            } else {
+                ContextCompat.getColor(context, R.color.background_menu)
+            }
+            canvas.drawCircle(x, y, outerRadius, selectedPaint)
+            val bitmap = avatarBitmaps[character.id]
+            if (bitmap != null && !bitmap.isRecycled) {
+                bitmapRect.set(0, 0, bitmap.width, bitmap.height)
+                val dst = RectF(x - innerRadius, y - innerRadius, x + innerRadius, y + innerRadius)
+                nodePath.reset()
+                nodePath.addCircle(x, y, innerRadius, Path.Direction.CW)
+                canvas.save()
+                canvas.clipPath(nodePath)
+                canvas.drawBitmap(bitmap, bitmapRect, dst, avatarPaint)
+                canvas.restore()
+            } else {
+                canvas.drawCircle(x, y, innerRadius, nodePaint)
+                val label = character.displayName().take(1)
+                canvas.drawText(label, x, y + 5.dpToPx(), textPaint)
+            }
+            canvas.drawText(character.displayName().take(6), x, y + outerRadius + 16.dpToPx(), textPaint)
+        }
+
+        private fun nodeHitRadius(id: Long): Int {
+            val roleLevel = viewCharacters.firstOrNull { it.id == id }?.roleLevel ?: BookCharacter.ROLE_NORMAL
+            return when (roleLevel) {
+                BookCharacter.ROLE_MAIN -> 46.dpToPx()
+                BookCharacter.ROLE_IMPORTANT -> 42.dpToPx()
+                else -> 36.dpToPx()
+            }
+        }
+
+        private fun preloadAvatars(characters: List<BookCharacter>) {
+            val ids = characters.map { it.id }.toSet()
+            avatarBitmaps.keys.filterNot { it in ids }.forEach { avatarBitmaps.remove(it) }
+            avatarTargets.keys.filterNot { it in ids }.forEach { avatarTargets.remove(it) }
+            characters.forEach { character ->
+                val avatar = character.avatar
+                if (avatar.isBlank() || avatarBitmaps.containsKey(character.id) || avatarTargets.containsKey(character.id)) return@forEach
+                val target = object : CustomTarget<Bitmap>(56.dpToPx(), 56.dpToPx()) {
+                    override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                        avatarBitmaps[character.id] = resource
+                        avatarTargets.remove(character.id)
+                        invalidate()
+                    }
+
+                    override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) = Unit
+                }
+                avatarTargets[character.id] = target
+                ImageLoader.loadBitmap(context, avatar).into(target)
+            }
         }
 
         private fun distanceToSegment(px: Float, py: Float, ax: Float, ay: Float, bx: Float, by: Float): Float {
