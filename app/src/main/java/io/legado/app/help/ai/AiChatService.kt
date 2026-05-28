@@ -107,24 +107,36 @@ object AiChatService {
         val tools = runCatching {
             if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
         }.getOrDefault(emptyList())
-        val reserveTokens = estimateStaticRequestTokens(messages, tools)
-        val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
-        preparedContext.summary?.takeIf { preparedContext.compressed }?.let(onContextSummary)
-        onContextStats(
-            JSONObject().apply {
-                put("compressed", preparedContext.compressed)
-                put("inputTokens", preparedContext.inputTokens)
-                put("limitTokens", preparedContext.limitTokens)
-                put("reserveTokens", reserveTokens)
-            }
-        )
-        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
         val requestLog = StringBuilder().apply {
             append("url=$chatUrl").append('\n')
             append("model=$model").append('\n')
             append("apiMode=$apiMode").append('\n')
             append("provider=${provider?.name.orEmpty()}").append('\n')
             append("tools=${tools.joinToString { it.name }}").append('\n')
+        }
+        val reserveTokens = estimateStaticRequestTokens(messages, tools)
+        val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
+        val estimatedTotalTokens = reserveTokens + preparedContext.inputTokens
+        preparedContext.summary
+            ?.takeIf { preparedContext.compressed && it.isValid }
+            ?.let(onContextSummary)
+        onContextStats(
+            JSONObject().apply {
+                put("compressed", preparedContext.compressed)
+                put("inputTokens", preparedContext.inputTokens)
+                put("limitTokens", preparedContext.limitTokens)
+                put("reserveTokens", reserveTokens)
+                put("totalTokens", estimatedTotalTokens)
+            }
+        )
+        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
+        if (estimatedTotalTokens > preparedContext.limitTokens) {
+            throw AiChatException(
+                message = "当前 AI 静态配置或本轮输入超过上下文限制，已自动压缩但仍无法放入，请减少系统提示词、Skill、工具或本次输入。",
+                debugLog = requestLog.append("estimatedTotalTokens=$estimatedTotalTokens\n")
+                    .append("limitTokens=${preparedContext.limitTokens}\n")
+                    .toString()
+            )
         }
 
         return runCatching {

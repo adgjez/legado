@@ -9,7 +9,7 @@ object AiContextManager {
     private const val RECENT_MESSAGE_COUNT = 10
     private const val COMPRESS_TRIGGER_PERCENT = 90
     private const val TARGET_PERCENT = 35
-    private const val MIN_RECENT_TOKENS = 2_000
+    private const val MAX_SUMMARY_CHARS = 32_000
 
     data class PreparedContext(
         val messages: List<AiChatMessage>,
@@ -30,33 +30,47 @@ object AiContextManager {
             return PreparedContext(clean, null, false, estimated, AppConfig.aiContextWindowTokens)
         }
         val limit = AppConfig.aiContextWindowTokens
-        val usableLimit = (limit - reserveTokens).coerceAtLeast(MIN_RECENT_TOKENS)
+        val usableLimit = (limit - reserveTokens).coerceAtLeast(0)
+        val summaryBudget = (usableLimit * TARGET_PERCENT / 100).coerceAtLeast(0)
         val summaryEndIndex = summaryEndIndex(clean, previousSummary)
-        val activeSummary = previousSummary?.takeIf { it.isValid && summaryEndIndex >= 0 }
+        val activeSummary = previousSummary
+            ?.takeIf { it.isValid && summaryEndIndex >= 0 }
+            ?.let { fitSummary(it, summaryBudget, usableLimit) }
         val unsummarized = if (summaryEndIndex >= 0) clean.drop(summaryEndIndex + 1) else clean
         val estimated = estimateMessagesTokens(unsummarized) + estimateTokens(activeSummary?.summary.orEmpty())
         if (estimated < usableLimit * COMPRESS_TRIGGER_PERCENT / 100) {
             val fitted = fitMessages(unsummarized, usableLimit - estimateTokens(activeSummary?.summary.orEmpty()))
             val preparedTokens = estimateMessagesTokens(fitted) + estimateTokens(activeSummary?.summary.orEmpty())
-            return PreparedContext(fitted, activeSummary, false, preparedTokens, limit)
+            return PreparedContext(
+                fitted,
+                activeSummary?.withTokenStats(fitted, preparedTokens, limit),
+                false,
+                preparedTokens,
+                limit
+            )
         }
         val recent = unsummarized.takeLast(RECENT_MESSAGE_COUNT)
         val old = unsummarized.dropLast(recent.size)
         if (old.isEmpty()) {
             val fitted = fitMessages(recent, usableLimit - estimateTokens(activeSummary?.summary.orEmpty()))
             val preparedTokens = estimateMessagesTokens(fitted) + estimateTokens(activeSummary?.summary.orEmpty())
-            return PreparedContext(fitted, activeSummary, false, preparedTokens, limit)
+            return PreparedContext(
+                fitted,
+                activeSummary?.withTokenStats(fitted, preparedTokens, limit),
+                false,
+                preparedTokens,
+                limit
+            )
         }
-        val targetSummaryChars = (limit * TARGET_PERCENT / 100 * CHARS_PER_TOKEN)
-            .coerceAtLeast(2_000)
-            .coerceAtMost(32_000)
+        val targetSummaryChars = (summaryBudget * CHARS_PER_TOKEN)
+            .coerceAtMost(MAX_SUMMARY_CHARS)
         val summaryText = buildSummary(activeSummary, old, targetSummaryChars)
         val lastSummarized = old.last()
         val summarizedCount = clean.indexOfLast { it.id == lastSummarized.id }
             .takeIf { it >= 0 }
             ?.plus(1)
             ?: clean.size
-        val summary = AiContextSummary(
+        val rawSummary = AiContextSummary(
             summary = summaryText,
             sourceMessageCount = summarizedCount,
             sourceChars = clean.sumOf { it.content.length },
@@ -64,9 +78,16 @@ object AiContextManager {
             lastMessageId = lastSummarized.id,
             lastMessageCreatedAt = lastSummarized.createdAt
         )
+        val summary = fitSummary(rawSummary, summaryBudget, usableLimit)
         val fittedRecent = fitMessages(recent, usableLimit - estimateTokens(summary.summary))
         val preparedTokens = estimateMessagesTokens(fittedRecent) + estimateTokens(summary.summary)
-        return PreparedContext(fittedRecent, summary, true, preparedTokens, limit)
+        return PreparedContext(
+            fittedRecent,
+            summary.withTokenStats(fittedRecent, preparedTokens, limit),
+            true,
+            preparedTokens,
+            limit
+        )
     }
 
     fun estimateMessagesTokens(messages: List<AiChatMessage>): Int {
@@ -86,6 +107,7 @@ object AiContextManager {
         oldMessages: List<AiChatMessage>,
         maxChars: Int
     ): String {
+        if (maxChars <= 0) return ""
         val lines = mutableListOf<String>()
         previousSummary?.summary?.takeIf { it.isNotBlank() }?.let {
             lines += "Existing summary:"
@@ -110,7 +132,8 @@ object AiContextManager {
     }
 
     private fun fitMessages(messages: List<AiChatMessage>, tokenBudget: Int): List<AiChatMessage> {
-        val budget = tokenBudget.coerceAtLeast(MIN_RECENT_TOKENS)
+        val budget = tokenBudget.coerceAtLeast(0)
+        if (budget <= 8) return emptyList()
         val result = ArrayDeque<AiChatMessage>()
         var used = 0
         messages.asReversed().forEach { message ->
@@ -119,7 +142,7 @@ object AiContextManager {
                 result.addFirst(message)
                 used += tokens
             } else if (result.isEmpty()) {
-                val maxChars = (budget * CHARS_PER_TOKEN).coerceAtLeast(1_000)
+                val maxChars = ((budget - 8).coerceAtLeast(1) * CHARS_PER_TOKEN)
                 result.addFirst(message.copy(content = message.content.takeLast(maxChars)))
                 return result.toList()
             } else {
@@ -127,5 +150,36 @@ object AiContextManager {
             }
         }
         return result.toList()
+    }
+
+    private fun fitSummary(summary: AiContextSummary, tokenBudget: Int, limitTokens: Int): AiContextSummary {
+        val budget = tokenBudget.coerceAtLeast(0)
+        if (budget <= 0 || summary.summary.isBlank()) {
+            return summary.copy(summary = "", summaryChars = 0, summaryTokens = 0, limitTokens = limitTokens)
+        }
+        val fittedText = if (estimateTokens(summary.summary) <= budget) {
+            summary.summary
+        } else {
+            summary.summary.takeLast((budget * CHARS_PER_TOKEN).coerceAtLeast(1)).trimStart()
+        }
+        return summary.copy(
+            summary = fittedText,
+            summaryChars = fittedText.length,
+            summaryTokens = estimateTokens(fittedText),
+            limitTokens = limitTokens
+        )
+    }
+
+    private fun AiContextSummary.withTokenStats(
+        recentMessages: List<AiChatMessage>,
+        preparedTokens: Int,
+        limitTokens: Int
+    ): AiContextSummary {
+        return copy(
+            summaryTokens = estimateTokens(summary),
+            recentTokens = estimateMessagesTokens(recentMessages),
+            preparedTokens = preparedTokens,
+            limitTokens = limitTokens
+        )
     }
 }

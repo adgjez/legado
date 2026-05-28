@@ -49,6 +49,10 @@ data class AiContextSummary(
     val sourceMessageCount: Int = 0,
     val sourceChars: Int = 0,
     val summaryChars: Int = 0,
+    val summaryTokens: Int = 0,
+    val recentTokens: Int = 0,
+    val preparedTokens: Int = 0,
+    val limitTokens: Int = 0,
     val lastMessageId: String = "",
     val lastMessageCreatedAt: Long = 0L,
     val updatedAt: Long = System.currentTimeMillis()
