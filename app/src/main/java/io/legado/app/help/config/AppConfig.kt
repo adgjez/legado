@@ -34,6 +34,8 @@ import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
+import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.book.read.ReadAiBookHistory
 import splitties.init.appCtx
 import java.net.InetAddress
@@ -733,14 +735,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var aiPersonaList: List<AiPersonaConfig>
-        get() = GSON.fromJsonArray<AiPersonaConfig>(appCtx.getPrefString(PreferKey.aiPersonaList))
-            .getOrDefault(emptyList())
-            .filter { it.id.isNotBlank() && it.name.isNotBlank() && it.prompt.isNotBlank() }
-            .distinctBy { it.id }
+        get() = normalizeAiPersonas(
+            GSON.fromJsonArray<AiPersonaConfig>(appCtx.getPrefString(PreferKey.aiPersonaList))
+                .getOrDefault(emptyList())
+        )
         set(value) {
-            val personas = value
-                .filter { it.id.isNotBlank() && it.name.isNotBlank() && it.prompt.isNotBlank() }
-                .distinctBy { it.id }
+            val personas = normalizeAiPersonas(value)
             if (personas.isEmpty()) appCtx.removePref(PreferKey.aiPersonaList)
             else appCtx.putPrefString(PreferKey.aiPersonaList, GSON.toJson(personas))
         }
@@ -756,15 +756,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = aiPersonaList.firstOrNull { it.id == aiCurrentPersonaId }
 
     var aiImageProviderList: List<AiImageProviderConfig>
-        get() = GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
-            .getOrDefault(emptyList())
-            .filter { it.id.isNotBlank() && it.name.isNotBlank() }
-            .sortedBy { it.order }
+        get() = normalizeAiImageProviders(
+            GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
+                .getOrDefault(emptyList())
+        )
         set(value) {
-            val providers = value
-                .filter { it.id.isNotBlank() && it.name.isNotBlank() }
-                .distinctBy { it.id }
-                .mapIndexed { index, provider -> provider.copy(order = index) }
+            val providers = normalizeAiImageProviders(value)
             if (providers.isEmpty()) appCtx.removePref(PreferKey.aiImageProviderList)
             else appCtx.putPrefString(PreferKey.aiImageProviderList, GSON.toJson(providers))
         }
@@ -853,17 +850,19 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiProviders(value: List<AiProviderConfig>): List<AiProviderConfig> {
         return value.mapNotNull { provider ->
-            val name = provider.name.trim()
-            val id = provider.id.trim()
+            val name = safeString { provider.name }.trim()
+            val id = safeString { provider.id }.trim()
             if (name.isEmpty() || id.isEmpty()) {
                 null
             } else {
-                provider.copy(
+                AiProviderConfig(
                     id = id,
                     name = name,
-                    baseUrl = provider.baseUrl.trim(),
-                    apiKey = provider.apiKey.trim(),
-                    headers = provider.headers?.trim().orEmpty()
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    apiMode = normalizeAiApiMode(safeString { provider.apiMode }),
+                    promptCache = safeBoolean(false) { provider.promptCache }
                 )
             }
         }.distinctBy { it.id }
@@ -874,13 +873,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         validProviderIds: Set<String>
     ): List<AiModelConfig> {
         return value.mapNotNull { model ->
-            val id = model.id.trim()
-            val providerId = model.providerId.trim()
-            val modelId = model.modelId.trim()
+            val id = safeString { model.id }.trim()
+            val providerId = safeString { model.providerId }.trim()
+            val modelId = safeString { model.modelId }.trim()
             if (id.isEmpty() || providerId !in validProviderIds || modelId.isEmpty()) {
                 null
             } else {
-                model.copy(id = id, providerId = providerId, modelId = modelId)
+                AiModelConfig(id = id, providerId = providerId, modelId = modelId)
             }
         }.distinctBy { "${it.providerId}|${it.modelId}" }
     }
@@ -910,17 +909,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiMcpServers(value: List<AiMcpServerConfig>): List<AiMcpServerConfig> {
         return value.mapNotNull { server ->
-            val id = server.id.trim()
-            val name = server.name.trim()
-            val endpoint = server.endpoint.trim()
+            val id = safeString { server.id }.trim()
+            val name = safeString { server.name }.trim()
+            val endpoint = safeString { server.endpoint }.trim()
             if (id.isEmpty() || name.isEmpty() || endpoint.isEmpty()) {
                 null
             } else {
-                server.copy(
+                AiMcpServerConfig(
                     id = id,
                     name = name,
                     endpoint = endpoint,
-                    apiKey = server.apiKey.trim()
+                    apiKey = safeString { server.apiKey }.trim(),
+                    enabled = safeBoolean(true) { server.enabled }
                 )
             }
         }.distinctBy { it.id }
@@ -944,21 +944,100 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiSkills(value: List<AiSkillConfig>): List<AiSkillConfig> {
         return value.mapNotNull { skill ->
-            val id = skill.id.trim()
-            val name = skill.name.trim()
-            val content = skill.content.trim()
+            val id = safeString { skill.id }.trim()
+            val name = safeString { skill.name }.trim()
+            val content = safeString { skill.content }.trim()
             if (id.isEmpty() || name.isEmpty() || content.isEmpty()) {
                 null
             } else {
-                skill.copy(
+                AiSkillConfig(
                     id = id,
                     name = name,
-                    description = skill.description.trim(),
+                    description = safeString { skill.description }.trim(),
                     content = content,
-                    sourceUrl = skill.sourceUrl.trim()
+                    sourceUrl = safeString { skill.sourceUrl }.trim(),
+                    enabled = safeBoolean(true) { skill.enabled }
                 )
             }
         }.distinctBy { it.id }
+    }
+
+    private fun normalizeAiPersonas(value: List<AiPersonaConfig>): List<AiPersonaConfig> {
+        return value.mapNotNull { persona ->
+            val id = safeString { persona.id }.trim()
+            val name = safeString { persona.name }.trim()
+            val prompt = safeString { persona.prompt }.trim()
+            if (id.isEmpty() || name.isEmpty() || prompt.isEmpty()) {
+                null
+            } else {
+                AiPersonaConfig(
+                    id = id,
+                    name = name,
+                    prompt = prompt,
+                    current = safeBoolean(false) { persona.current }
+                )
+            }
+        }.distinctBy { it.id }
+    }
+
+    private fun normalizeAiImageProviders(value: List<AiImageProviderConfig>): List<AiImageProviderConfig> {
+        return value.mapNotNull { provider ->
+            val id = safeString { provider.id }.trim()
+            val name = safeString { provider.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val type = safeString { provider.type }.trim()
+                    .takeIf { it == AiImageProviderConfig.TYPE_JS || it == AiImageProviderConfig.TYPE_OPENAI }
+                    ?: AiImageProviderConfig.TYPE_OPENAI
+                AiImageProviderConfig(
+                    id = id,
+                    name = name,
+                    type = type,
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    model = safeString { provider.model }.trim(),
+                    defaultParamsJson = safeString { provider.defaultParamsJson }.trim(),
+                    jsLib = safeString { provider.jsLib },
+                    loginUrl = safeString { provider.loginUrl }.trim(),
+                    loginUi = safeString { provider.loginUi },
+                    enabledCookieJar = safeBoolean(false) { provider.enabledCookieJar },
+                    script = safeString { provider.script },
+                    timeoutMillisecond = safeLong(120_000L) { provider.timeoutMillisecond }
+                        .takeIf { it > 0L } ?: 120_000L,
+                    order = safeInt(0) { provider.order },
+                    enabled = safeBoolean(true) { provider.enabled }
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedBy { it.order }
+            .mapIndexed { index, provider -> provider.copy(order = index) }
+    }
+
+    private fun normalizeAiApiMode(value: String): String {
+        return if (value.trim() == AI_API_MODE_RESPONSES) {
+            AI_API_MODE_RESPONSES
+        } else {
+            AI_API_MODE_CHAT_COMPLETIONS
+        }
+    }
+
+    private inline fun safeString(block: () -> String?): String {
+        return runCatching { block() }.getOrNull().orEmpty()
+    }
+
+    private inline fun safeBoolean(default: Boolean, block: () -> Boolean): Boolean {
+        return runCatching { block() }.getOrDefault(default)
+    }
+
+    private inline fun safeInt(default: Int, block: () -> Int): Int {
+        return runCatching { block() }.getOrDefault(default)
+    }
+
+    private inline fun safeLong(default: Long, block: () -> Long): Long {
+        return runCatching { block() }.getOrDefault(default)
     }
 
     private fun persistAiSkills(skills: List<AiSkillConfig>) {
