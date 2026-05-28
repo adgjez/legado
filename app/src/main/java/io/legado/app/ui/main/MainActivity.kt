@@ -192,7 +192,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private var liquidGlassReady = false
     private val boundLiquidGlassViewIds = hashSetOf<Int>()
     private val liquidGlassWarmupDelays = longArrayOf(48L, 180L, 420L, 900L)
-    private var liquidGlassWarmupVersion = 0
     private val liquidGlassSetupRunnable = Runnable {
         if (!isFinishing && !isDestroyed) {
             setupLiquidGlass()
@@ -470,16 +469,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun scheduleLiquidGlassWarmup() {
         if (isFinishing || isDestroyed || isSidebarMode()) return
-        val warmupVersion = ++liquidGlassWarmupVersion
         scheduleLiquidGlassSetup()
         liquidGlassWarmupDelays.forEach { delay ->
             binding.bottomControls.postDelayed(delay) {
-                if (
-                    warmupVersion == liquidGlassWarmupVersion &&
-                    !isFinishing &&
-                    !isDestroyed &&
-                    !isSidebarMode()
-                ) {
+                if (!isFinishing && !isDestroyed && !isSidebarMode()) {
                     invalidateLiquidGlassSampleTarget()
                     setupLiquidGlass()
                 }
