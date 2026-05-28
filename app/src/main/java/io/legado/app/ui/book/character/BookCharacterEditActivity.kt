@@ -210,7 +210,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                 })
             }
         }
-        inputLayout.addView(editText, ViewGroup.LayoutParams(
+        inputLayout.addView(editText, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ))
