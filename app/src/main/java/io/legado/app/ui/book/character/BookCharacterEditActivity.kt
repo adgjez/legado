@@ -73,8 +73,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, MENU_SAVE, 0, R.string.save)
-            .setIcon(R.drawable.ic_save)
+        menu.add(0, MENU_SAVE, 0, "保存")
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         return true
     }

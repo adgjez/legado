@@ -4,5 +4,7 @@ import android.view.View
 import androidx.viewbinding.ViewBinding
 
 internal class SimpleViewBinding(
-    override val root: View
-) : ViewBinding
+    private val rootView: View
+) : ViewBinding {
+    override fun getRoot(): View = rootView
+}
