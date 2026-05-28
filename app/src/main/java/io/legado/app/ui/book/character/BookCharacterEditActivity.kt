@@ -8,9 +8,11 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.viewbinding.ViewBinding
@@ -46,7 +48,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
     private lateinit var rootLayout: LinearLayout
     private lateinit var avatarView: ImageView
     private lateinit var nameEdit: ThemeEditText
-    private lateinit var avatarEdit: ThemeEditText
+    private lateinit var roleSpinner: Spinner
     private lateinit var identityEdit: ThemeEditText
     private lateinit var skillsEdit: ThemeEditText
     private lateinit var attributesEdit: ThemeEditText
@@ -61,6 +63,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
     private var bookUrl: String = ""
     private var characterId: Long = 0L
     private var character = BookCharacter()
+    private var avatarPath: String = ""
 
     private val selectAvatar = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let(::copyAvatar)
@@ -114,9 +117,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
         }
         content.addView(createAvatarHeader())
         nameEdit = content.addInput("角色名称", singleLine = true)
-        avatarEdit = content.addInput("角色头像 URL 或本地路径", singleLine = true) {
-            updateAvatar(it)
-        }
+        content.addView(createRoleSelector())
         identityEdit = content.addInput("角色身份", singleLine = true)
         skillsEdit = content.addInput("角色技能")
         attributesEdit = content.addInput("角色属性")
@@ -152,12 +153,16 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                     setTextColor(primaryTextColor)
                 })
                 addView(TextView(this@BookCharacterEditActivity).apply {
-                    text = "可填写网络图片，也可以选择本地图片。"
+                    text = "点击选择头像，可选择本地图片，也可手动输入在线图片链接。"
                     textSize = 13f
                     setTextColor(secondaryTextColor)
                     setPadding(0, 4.dpToPx(), 0, 8.dpToPx())
                 })
-                addView(TextView(this@BookCharacterEditActivity).apply {
+                val buttonRow = LinearLayout(this@BookCharacterEditActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                buttonRow.addView(TextView(this@BookCharacterEditActivity).apply {
                     text = "选择图片"
                     gravity = Gravity.CENTER
                     minHeight = 34.dpToPx()
@@ -174,7 +179,56 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                         }
                     }
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 36.dpToPx()))
+                buttonRow.addView(TextView(this@BookCharacterEditActivity).apply {
+                    text = "清除"
+                    gravity = Gravity.CENTER
+                    minHeight = 34.dpToPx()
+                    setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
+                    setTextColor(secondaryTextColor)
+                    background = UiCorner.actionSelector(
+                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
+                        UiCorner.actionRadius(this@BookCharacterEditActivity)
+                    )
+                    setOnClickListener {
+                        avatarPath = ""
+                        updateAvatar("")
+                    }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 36.dpToPx()).apply {
+                    leftMargin = 10.dpToPx()
+                })
+                addView(buttonRow)
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
+    }
+
+    private fun createRoleSelector(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8.dpToPx(), 0, 2.dpToPx())
+            addView(TextView(this@BookCharacterEditActivity).apply {
+                text = "角色类型"
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 0, 0, 4.dpToPx())
+            })
+            roleSpinner = Spinner(this@BookCharacterEditActivity).apply {
+                adapter = ArrayAdapter(
+                    this@BookCharacterEditActivity,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    listOf("普通角色", "重要角色", "主角")
+                )
+                background = UiCorner.actionSelector(
+                    ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                    ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
+                    UiCorner.actionRadius(this@BookCharacterEditActivity)
+                )
+                setPadding(10.dpToPx(), 0, 10.dpToPx(), 0)
+            }
+            addView(roleSpinner, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                42.dpToPx()
+            ))
         }
     }
 
@@ -229,7 +283,8 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
 
     private fun fill(character: BookCharacter) {
         nameEdit.setText(character.name)
-        avatarEdit.setText(character.avatar)
+        avatarPath = character.avatar
+        roleSpinner.setSelection(character.roleLevel.coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN))
         identityEdit.setText(character.identity)
         skillsEdit.setText(character.skills)
         attributesEdit.setText(character.attributes)
@@ -260,7 +315,11 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                 val saving = character.copy(
                     bookUrl = bookUrl,
                     name = name,
-                    avatar = avatarEdit.text?.toString().orEmpty().trim(),
+                    avatar = avatarPath.trim(),
+                    roleLevel = roleSpinner.selectedItemPosition.coerceIn(
+                        BookCharacter.ROLE_NORMAL,
+                        BookCharacter.ROLE_MAIN
+                    ),
                     identity = identityEdit.text?.toString().orEmpty().trim(),
                     skills = skillsEdit.text?.toString().orEmpty().trim(),
                     attributes = attributesEdit.text?.toString().orEmpty().trim(),
@@ -290,8 +349,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
 
     private fun copyAvatar(uri: Uri) {
         if (uri.scheme?.lowercase() in listOf("http", "https")) {
-            avatarEdit.setText(uri.toString())
-            updateAvatar(uri.toString())
+            setAvatar(uri.toString())
             return
         }
         readUri(uri) { fileDoc, inputStream ->
@@ -310,8 +368,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                     FileOutputStream(file).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
-                    avatarEdit.setText(file.absolutePath)
-                    updateAvatar(file.absolutePath)
+                    setAvatar(file.absolutePath)
                 }
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: "头像导入失败")
@@ -324,6 +381,11 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
             .placeholder(R.drawable.ic_bottom_person)
             .error(R.drawable.ic_bottom_person)
             .into(avatarView)
+    }
+
+    private fun setAvatar(path: String) {
+        avatarPath = path
+        updateAvatar(path)
     }
 
     companion object {
