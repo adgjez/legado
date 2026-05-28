@@ -191,6 +191,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
     private var liquidGlassReady = false
     private val boundLiquidGlassViewIds = hashSetOf<Int>()
+    private val liquidGlassWarmupDelays = longArrayOf(48L, 180L, 420L, 900L)
     private val liquidGlassSetupRunnable = Runnable {
         if (!isFinishing && !isDestroyed) {
             setupLiquidGlass()
@@ -306,6 +307,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onResume() {
         super.onResume()
         refreshBottomNavigationConfig()
+        binding.root.post {
+            scheduleLiquidGlassWarmup()
+        }
         if (isSidebarMode()) {
             updateSideGoalHeader()
         }
@@ -315,7 +319,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         super.upBackgroundImage()
         binding.root.post {
             syncLiquidGlassSampleBackground()
-            scheduleLiquidGlassSetup(delayMillis = 32L)
+            scheduleLiquidGlassWarmup()
         }
     }
 
@@ -409,10 +413,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             true
         }
         syncLiquidGlassSampleBackground()
-        scheduleLiquidGlassSetup()
+        scheduleLiquidGlassWarmup()
         contentContainer.doOnPreDraw {
             liquidGlassReady = true
-            scheduleLiquidGlassSetup(delayMillis = 32L)
+            scheduleLiquidGlassWarmup()
         }
         bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
@@ -463,6 +467,28 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun scheduleLiquidGlassWarmup() {
+        if (isFinishing || isDestroyed || isSidebarMode()) return
+        scheduleLiquidGlassSetup()
+        liquidGlassWarmupDelays.forEach { delay ->
+            binding.bottomControls.postDelayed(delay) {
+                if (!isFinishing && !isDestroyed && !isSidebarMode()) {
+                    invalidateLiquidGlassSampleTarget()
+                    setupLiquidGlass()
+                }
+            }
+        }
+    }
+
+    private fun invalidateLiquidGlassSampleTarget() = binding.run {
+        liquidGlassSampleBackground.invalidate()
+        viewPagerMain.invalidate()
+        contentContainer.invalidate()
+        bottomNavigationGlassView.invalidate()
+        bottomNavigationIndicatorGlassView.invalidate()
+        searchButtonGlassView.invalidate()
+    }
+
     private fun syncLiquidGlassSampleBackground() = binding.run {
         val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
             runCatching {
@@ -478,8 +504,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
             )
         }
-        liquidGlassSampleBackground.invalidate()
-        contentContainer.invalidate()
+        invalidateLiquidGlassSampleTarget()
     }
 
     private fun refreshBottomNavigationConfig() {
@@ -491,7 +516,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         applyBottomNavigationIcons()
         applyBottomLayoutMode()
-        scheduleLiquidGlassSetup()
+        scheduleLiquidGlassWarmup()
         binding.bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -1285,29 +1310,29 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             val frostedMode = effectMode == "frosted"
             val blurRadius = if (frostedMode) {
-                (10f + glassLevel * 24f).dpToPx()
+                (12f + glassLevel * 18f).dpToPx()
             } else {
-                (5f + glassLevel * 14f).dpToPx()
+                (8f + glassLevel * 10f).dpToPx()
             }
             val tintAlpha = if (frostedMode) {
-                0.12f + glassLevel * 0.18f
-            } else {
                 0.05f + glassLevel * 0.10f
+            } else {
+                0.02f + glassLevel * 0.05f
             }
             val dispersion = if (frostedMode) {
-                (0.18f + glassLevel * 0.16f).coerceAtMost(0.42f)
+                (0.10f + glassLevel * 0.12f).coerceAtMost(0.28f)
             } else {
-                0.46f + glassLevel * 0.32f
+                (0.20f + glassLevel * 0.24f).coerceAtMost(0.48f)
             }
             val refractionHeight = if (frostedMode) {
-                (12f + glassLevel * 10f).dpToPx()
+                (14f + glassLevel * 8f).dpToPx()
             } else {
-                (18f + glassLevel * 14f).dpToPx()
+                (22f + glassLevel * 12f).dpToPx()
             }
             val refractionOffset = if (frostedMode) {
-                (36f + glassLevel * 18f).dpToPx()
+                (26f + glassLevel * 16f).dpToPx()
             } else {
-                (72f + glassLevel * 34f).dpToPx()
+                (42f + glassLevel * 24f).dpToPx()
             }
             bottomNavigationShellOverlay.background = createLiquidGlassShellDrawable(
                 glassLevel = glassLevel,
@@ -1570,15 +1595,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     ): GradientDrawable {
         val baseColor = bottomBackground
         val isLight = AppColorUtils.isColorLight(baseColor)
-        val surfaceColor = if (isLight) {
-            AppColorUtils.blendColors(baseColor, Color.WHITE, 0.72f)
-        } else {
-            AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
-        }
-        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
-        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
-        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
-        val selectedBoost = if (selected) 0.08f else 0f
+        val surfaceColor = if (isLight) Color.WHITE else Color.rgb(22, 24, 28)
+        val fallbackBoost = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) 0.08f else 0f
+        val startAlpha = (0.18f + glassLevel * 0.16f + fallbackBoost).coerceIn(0f, 0.44f)
+        val centerAlpha = (0.10f + glassLevel * 0.12f + fallbackBoost * 0.65f).coerceIn(0f, 0.32f)
+        val endAlpha = (0.08f + glassLevel * 0.10f + fallbackBoost * 0.45f).coerceIn(0f, 0.26f)
+        val selectedBoost = if (selected) 0.05f else 0f
+        val strokeAlpha = (0.18f + glassLevel * 0.16f + selectedBoost).coerceIn(0f, 0.42f)
         return GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
@@ -1591,7 +1614,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!oval) {
                 setCornerRadius(cornerRadius)
             }
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+            setStroke(
+                1.dpToPx(),
+                bottomBarBorderColor() ?: AppColorUtils.withAlpha(surfaceColor, strokeAlpha)
+            )
         }
     }
 
@@ -1619,9 +1645,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         liquidGlassView.setDispersion(dispersion)
         liquidGlassView.setBlurRadius(blurRadius)
         liquidGlassView.setTintAlpha(tintAlpha)
-        liquidGlassView.setTintColorRed(0.70f)
-        liquidGlassView.setTintColorGreen(0.79f)
-        liquidGlassView.setTintColorBlue(0.86f)
+        liquidGlassView.setTintColorRed(1f)
+        liquidGlassView.setTintColorGreen(1f)
+        liquidGlassView.setTintColorBlue(1f)
         liquidGlassView.setDraggableEnabled(false)
         liquidGlassView.setElasticEnabled(elasticEnabled)
         liquidGlassView.setTouchEffectEnabled(touchEffectEnabled)
@@ -2095,6 +2121,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)
+            scheduleLiquidGlassWarmup()
         }
 
     }
