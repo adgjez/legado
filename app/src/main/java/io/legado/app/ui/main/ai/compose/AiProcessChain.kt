@@ -71,7 +71,7 @@ fun AiProcessTimelineCard(
     var expanded by remember(steps.first().id) { mutableStateOf(false) }
     var expandedStepIds by remember(steps.first().id) { mutableStateOf(emptySet<String>()) }
     val activeStep = steps.firstOrNull { it.pending } ?: steps.last()
-    val hasFailedStep = steps.any { !it.success }
+    val hasFailedStep = steps.any { it.isRealFailure() }
     Surface(
         modifier = modifier
             .fillMaxWidth(),
@@ -269,7 +269,7 @@ fun AiProcessChainCard(
     modifier: Modifier = Modifier
 ) {
     if (steps.isEmpty()) return
-    val hasFailedStep = steps.any { !it.success }
+    val hasFailedStep = steps.any { it.isRealFailure() }
     val surface = if (steps.any { it.type == AiProcessStepType.Tool }) {
         style.colors.toolSurface
     } else {
@@ -396,7 +396,7 @@ private fun TimelineMarker(
     style: AiComposeStyle
 ) {
     val markerColor = when {
-        !step.success -> style.colors.danger
+        step.isRealFailure() -> style.colors.danger
         step.type == AiProcessStepType.Tool -> style.colors.accent
         else -> style.colors.secondaryText.copy(alpha = 0.72f)
     }
@@ -420,6 +420,14 @@ private fun TimelineMarker(
             )
         }
     }
+}
+
+private fun AiProcessStepUi.isRealFailure(): Boolean {
+    return !pending && type == AiProcessStepType.Tool && !success
+}
+
+private fun AiProcessChainStep.isRealFailure(): Boolean {
+    return !pending && type == AiProcessStepType.Tool && !success
 }
 
 @Composable
