@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -61,9 +62,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -836,6 +835,10 @@ private fun CharacterGraph(
     val visibleRelations = remember(relations, visibleIds) {
         relations.filter { it.fromCharacterId in visibleIds && it.toCharacterId in visibleIds }
     }
+    LaunchedEffect(visibleCharacters.map { it.id }, selectedCenterId) {
+        scale = 1f
+        pan = Offset.Zero
+    }
     Surface(
         modifier = modifier,
         color = style.colors.card,
@@ -844,10 +847,11 @@ private fun CharacterGraph(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
+                .pointerInput(visibleCharacters, selectedCenterId) {
                     detectTransformGestures { _, p, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(0.62f, 2.2f)
-                        pan += p
+                        val nextScale = (scale * zoom).coerceIn(1f, 2.2f)
+                        scale = nextScale
+                        pan = constrainGraphPan(pan + p, size.width.toFloat(), size.height.toFloat(), nextScale)
                     }
                 }
         ) {
@@ -869,54 +873,34 @@ private fun CharacterGraph(
                     val to = positions[relation.toCharacterId] ?: return@forEach
                     val start = transformGraphPoint(from, scale, pan, size.width, size.height)
                     val end = transformGraphPoint(to, scale, pan, size.width, size.height)
-                    val mid = Offset((start.x + end.x) / 2f, (start.y + end.y) / 2f)
-                    val normal = Offset(-(end.y - start.y), end.x - start.x)
-                    val len = kotlin.math.sqrt(normal.x * normal.x + normal.y * normal.y).coerceAtLeast(1f)
-                    val control = mid + normal / len * 34f
-                    val path = Path().apply {
-                        moveTo(start.x, start.y)
-                        quadraticBezierTo(control.x, control.y, end.x, end.y)
-                    }
-                    drawPath(
-                        path = path,
+                    drawLine(
                         color = style.colors.accent.copy(alpha = 0.22f + relation.strength.coerceIn(0, 100) / 360f),
-                        style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+                        start = start,
+                        end = end,
+                        strokeWidth = 2.2.dp.toPx(),
+                        cap = StrokeCap.Round
                     )
                 }
-            }
-            visibleRelations.forEach { relation ->
-                val from = positions[relation.fromCharacterId] ?: return@forEach
-                val to = positions[relation.toCharacterId] ?: return@forEach
-                val start = transformGraphPoint(from, scale, pan, widthPx, heightPx)
-                val end = transformGraphPoint(to, scale, pan, widthPx, heightPx)
-                val label = relation.displayName()
-                Text(
-                    text = label,
-                    color = style.colors.accent,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                ((start.x + end.x) / 2f).roundToInt() - 28,
-                                ((start.y + end.y) / 2f).roundToInt() - 10
-                            )
-                        }
-                        .clickable { onRelationClick(relation) }
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                )
             }
             visibleCharacters.forEach { character ->
                 val point = positions[character.id] ?: return@forEach
                 val p = transformGraphPoint(point, scale, pan, widthPx, heightPx)
-                val size = when (character.id) {
+                val avatarSize = when (character.id) {
                     selectedCenterId -> 82
                     else -> if (character.roleLevel == BookCharacter.ROLE_IMPORTANT) 64 else 56
                 }
+                val nodeWidth = 112.dp
+                val nodeWidthPx = with(density) { nodeWidth.toPx() }
+                val avatarSizePx = with(density) { avatarSize.dp.toPx() }
                 Column(
                     modifier = Modifier
-                        .offset { IntOffset(p.x.roundToInt() - size / 2, p.y.roundToInt() - size / 2) }
-                        .widthIn(min = size.dp + 18.dp, max = 112.dp)
+                        .offset {
+                            IntOffset(
+                                (p.x - nodeWidthPx / 2f).roundToInt(),
+                                (p.y - avatarSizePx / 2f).roundToInt()
+                            )
+                        }
+                        .width(nodeWidth)
                         .pointerInput(character.id) {
                             detectTapGestures(onTap = { onCharacterClick(character) })
                         },
@@ -930,17 +914,18 @@ private fun CharacterGraph(
                             if (character.id == selectedCenterId) style.colors.accent else style.colors.stroke
                         )
                     ) {
-                        CharacterAvatar(character.avatar, character.displayName(), size)
+                        CharacterAvatar(character.avatar, character.displayName(), avatarSize)
                     }
                     Text(
                         text = character.displayName(),
                         color = style.colors.text,
                         fontSize = 11.sp,
                         maxLines = 1,
+                        textAlign = TextAlign.Center,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
+                            .fillMaxWidth()
                             .padding(top = 4.dp)
-                            .background(style.colors.card.copy(alpha = 0.76f), RoundedCornerShape(style.smallRadius))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -965,15 +950,21 @@ private fun buildVisibleCharacters(
 ): List<BookCharacter> {
     if (characters.isEmpty()) return emptyList()
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
-    val directIds = relations.filter { it.fromCharacterId == center.id || it.toCharacterId == center.id }
-        .flatMap { listOf(it.fromCharacterId, it.toCharacterId) }
-        .toMutableSet()
-    val secondIds = relations.filter { it.fromCharacterId in directIds || it.toCharacterId in directIds }
-        .flatMap { listOf(it.fromCharacterId, it.toCharacterId) }
-        .take(10)
-    directIds.add(center.id)
-    directIds.addAll(secondIds)
-    return characters.filter { it.id in directIds }
+    val byId = characters.associateBy { it.id }
+    val directIds = relations
+        .filter { it.fromCharacterId == center.id || it.toCharacterId == center.id }
+        .sortedWith(compareByDescending<BookCharacterRelation> { it.strength }.thenBy { it.sortOrder }.thenBy { it.id })
+        .mapNotNull {
+            when (center.id) {
+                it.fromCharacterId -> it.toCharacterId
+                it.toCharacterId -> it.fromCharacterId
+                else -> null
+            }
+        }
+        .distinct()
+        .take(8)
+    return (listOf(center.id) + directIds)
+        .mapNotNull { byId[it] }
         .ifEmpty { listOf(center) }
 }
 
@@ -987,22 +978,42 @@ private fun buildGraphPositions(
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
     val others = characters.filter { it.id != center.id }
     val result = linkedMapOf<Long, Offset>()
-    result[center.id] = Offset(width * 0.5f, height * 0.46f)
-    val radius = minOf(width, height) * 0.31f
+    val centerPoint = Offset(width * 0.5f, height * 0.46f)
+    result[center.id] = centerPoint
+    val radiusX = (width * 0.38f).coerceAtMost(width / 2f - 72f).coerceAtLeast(92f)
+    val radiusY = (height * 0.34f).coerceAtMost(height / 2f - 88f).coerceAtLeast(76f)
     others.forEachIndexed { index, character ->
-        val angle = -PI / 2.0 + index * 2.0 * PI / others.size.coerceAtLeast(1)
-        val levelOffset = if (character.roleLevel == BookCharacter.ROLE_IMPORTANT) 0.88f else 1.06f
+        val angle = graphAngle(index, others.size)
         result[character.id] = Offset(
-            x = width * 0.5f + cos(angle).toFloat() * radius * levelOffset,
-            y = height * 0.46f + sin(angle).toFloat() * radius * levelOffset
+            x = centerPoint.x + cos(angle).toFloat() * radiusX,
+            y = centerPoint.y + sin(angle).toFloat() * radiusY
         )
     }
     return result
 }
 
+private fun graphAngle(index: Int, count: Int): Double {
+    return when (count) {
+        1 -> -PI / 2.0
+        2 -> if (index == 0) PI else 0.0
+        3 -> -PI / 2.0 + index * 2.0 * PI / 3.0
+        4 -> listOf(-PI / 2.0, 0.0, PI / 2.0, PI)[index]
+        else -> -PI / 2.0 + index * 2.0 * PI / count
+    }
+}
+
 private fun transformGraphPoint(point: Offset, scale: Float, pan: Offset, width: Float, height: Float): Offset {
     val center = Offset(width / 2f, height / 2f)
     return center + (point - center) * scale + pan
+}
+
+private fun constrainGraphPan(pan: Offset, width: Float, height: Float, scale: Float): Offset {
+    val maxX = (width * (scale - 1f) / 2f + 80f).coerceAtLeast(0f)
+    val maxY = (height * (scale - 1f) / 2f + 80f).coerceAtLeast(0f)
+    return Offset(
+        pan.x.coerceIn(-maxX, maxX),
+        pan.y.coerceIn(-maxY, maxY)
+    )
 }
 
 @Composable
