@@ -80,8 +80,7 @@ class AiSelectionDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                                     binding.tvDict.text = partial
                                 }
                             }
-                        },
-                        useAllTools = true
+                        }
                     )
                 }
             }.getOrElse { it.localizedMessage ?: it.toString() }
