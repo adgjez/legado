@@ -237,6 +237,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             setIcon(R.drawable.ic_outline_cloud_24)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
+        menu.add(0, MENU_SYNC_TASKS, 1, R.string.package_sync_task_menu).apply {
+            setIcon(R.drawable.ic_history)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         updateContainerButton()
         return true
     }
@@ -244,6 +248,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == MENU_CONTAINER) {
             showContainerSelector()
+            return true
+        }
+        if (item.itemId == MENU_SYNC_TASKS) {
+            showThemeSyncTasks()
             return true
         }
         return super.onCompatOptionsItemSelected(item)
@@ -927,7 +935,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }.onSuccess {
                 toastOnUi(getString(R.string.theme_saved_local))
                 loadThemes()
-                enqueueUploadIfNeeded(it)
+                if (enqueueUploadIfNeeded(it)) {
+                    showThemeSyncTasks()
+                }
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 toastOnUi(getString(R.string.theme_save_failed, it.localizedMessage))
@@ -937,6 +947,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun enqueueUploadIfNeeded(entry: ThemePackageManager.Entry): Boolean {
         if (!AppConfig.syncThemePackages) return false
+        return enqueueThemeUpload(entry)
+    }
+
+    private fun enqueueThemeUpload(entry: ThemePackageManager.Entry): Boolean {
         return WebDavTaskManager.enqueueUpload(
             key = "theme_upload:${entry.packageInfo.isNightTheme}:${entry.dirName}",
             name = entry.packageInfo.name,
@@ -953,14 +967,21 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             WebDavTaskManager.states.collectLatest { states ->
                 states.values
                     .filter { it.type == WebDavTaskType.THEME_PACKAGE_UPLOAD }
-                    .filter { it.status == WebDavTaskStatus.COMPLETED }
+                    .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
                         if (handledWebDavTasks.add("${state.key}:${state.status}")) {
                             loadThemes()
+                            if (state.status == WebDavTaskStatus.FAILED) {
+                                toastOnUi(getString(R.string.theme_sync_failed, state.message))
+                            }
                         }
                     }
             }
         }
+    }
+
+    private fun showThemeSyncTasks() {
+        showPackageSyncTaskDialog(setOf(WebDavTaskType.THEME_PACKAGE_UPLOAD))
     }
 
     private fun currentConfig(): ThemeConfig.Config {
@@ -1156,8 +1177,10 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun uploadThemeNow(entry: ThemePackageManager.Entry) {
-        runAction(getString(R.string.theme_sync_done)) {
-            ThemePackageManager.upload(entry, cloudContainerId, CLOUD_SCOPE)
+        val queued = enqueueThemeUpload(entry)
+        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+        if (queued) {
+            showThemeSyncTasks()
         }
     }
 
@@ -1194,7 +1217,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }.onSuccess {
                 toastOnUi(getString(R.string.theme_imported))
                 loadThemes()
-                enqueueUploadIfNeeded(it)
+                if (enqueueUploadIfNeeded(it)) {
+                    showThemeSyncTasks()
+                }
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 toastOnUi(getString(R.string.theme_import_failed, it.localizedMessage))
@@ -1551,6 +1576,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         private const val colorPanelBorder = 405
         private const val CLOUD_SCOPE = "theme"
         private const val MENU_CONTAINER = 0x5401
+        private const val MENU_SYNC_TASKS = 0x5402
     }
 
     private enum class ThemeAction(val titleRes: Int) {

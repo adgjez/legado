@@ -173,6 +173,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 view.setOnClickListener { showContainerSelector(view) }
             }
         }
+        menu.add(0, MENU_SYNC_TASKS, 1, R.string.package_sync_task_menu).apply {
+            setIcon(R.drawable.ic_history)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         updateContainerMenu()
         return true
     }
@@ -181,6 +185,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         return when (item.itemId) {
             MENU_CONTAINER -> {
                 showContainerSelector(item.actionView)
+                true
+            }
+            MENU_SYNC_TASKS -> {
+                showTopBarSyncTasks()
                 true
             }
             else -> super.onCompatOptionsItemSelected(item)
@@ -523,7 +531,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 }
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
-                enqueueUploadIfNeeded(it)
+                if (enqueueUploadIfNeeded(it)) {
+                    showTopBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -568,6 +578,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private fun enqueueUpload(entry: TopBarConfig.Entry) {
         val queued = enqueueUploadTask(entry)
         toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+        if (queued) {
+            showTopBarSyncTasks()
+        }
     }
 
     private fun enqueueUploadIfNeeded(entry: TopBarConfig.Entry): Boolean {
@@ -602,6 +615,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                     }
             }
         }
+    }
+
+    private fun showTopBarSyncTasks() {
+        showPackageSyncTaskDialog(setOf(WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD))
     }
 
     private fun applyPackage(entry: TopBarConfig.Entry) {
@@ -662,7 +679,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()
-                enqueueUploadIfNeeded(it)
+                if (enqueueUploadIfNeeded(it)) {
+                    showTopBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -833,6 +852,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private companion object {
         private const val CLOUD_SCOPE = "theme"
         private const val MENU_CONTAINER = 0x5401
+        private const val MENU_SYNC_TASKS = 0x5402
         const val COLOR_TAG_BAR = 5101
         const val COLOR_TAG_SELECTED = 5102
         const val REQUEST_WALLPAPER = 5103

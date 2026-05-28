@@ -248,6 +248,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 view.setOnClickListener { showContainerSelector(view) }
             }
         }
+        menu.add(0, MENU_SYNC_TASKS, 1, R.string.package_sync_task_menu).apply {
+            setIcon(R.drawable.ic_history)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
         updateContainerMenu()
         return true
     }
@@ -256,6 +260,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         return when (item.itemId) {
             MENU_CONTAINER -> {
                 showContainerSelector(item.actionView)
+                true
+            }
+            MENU_SYNC_TASKS -> {
+                showNavigationBarSyncTasks()
                 true
             }
             else -> super.onCompatOptionsItemSelected(item)
@@ -359,12 +367,19 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             toastOnUi(R.string.navigation_bar_default_readonly)
             return
         }
-        editingEntry = if (base.localDir == null && entry != null) {
-            toastOnUi(R.string.navigation_bar_download_first)
+        if (base.localDir == null && entry != null && base.source == NavigationBarIconConfig.Source.REMOTE) {
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) { NavigationBarIconConfig.download(base, cloudContainerId, CLOUD_SCOPE) }
+                }.onSuccess {
+                    showEditDialog(it)
+                }.onFailure {
+                    toastOnUi(it.localizedMessage)
+                }
+            }
             return
-        } else {
-            base
         }
+        editingEntry = base
         pendingConfig = editingEntry!!.config.copy(icons = editingEntry!!.config.icons.toMutableMap())
         val root = buildEditView()
         editingDialog = root
@@ -618,7 +633,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 notifyAppliedIfNeeded(it)
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
-                enqueueUploadIfNeeded(it)
+                if (enqueueUploadIfNeeded(it)) {
+                    showNavigationBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -690,6 +707,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private fun enqueueUpload(entry: NavigationBarIconConfig.Entry) {
         val queued = enqueueUploadTask(entry)
         toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+        if (queued) {
+            showNavigationBarSyncTasks()
+        }
     }
 
     private fun enqueueUploadIfNeeded(entry: NavigationBarIconConfig.Entry): Boolean {
@@ -713,14 +733,21 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             WebDavTaskManager.states.collectLatest { states ->
                 states.values
                     .filter { it.type == WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD }
-                    .filter { it.status == WebDavTaskStatus.COMPLETED }
+                    .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
                         if (handledWebDavTasks.add("${state.key}:${state.status}")) {
                             loadPackages()
+                            if (state.status == WebDavTaskStatus.FAILED) {
+                                toastOnUi(getString(R.string.theme_sync_failed, state.message))
+                            }
                         }
                     }
             }
         }
+    }
+
+    private fun showNavigationBarSyncTasks() {
+        showPackageSyncTaskDialog(setOf(WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD))
     }
 
     private fun exportPackage(entry: NavigationBarIconConfig.Entry) {
@@ -751,6 +778,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()
+                if (enqueueUploadIfNeeded(it)) {
+                    showNavigationBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -816,6 +846,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private companion object {
         private const val CLOUD_SCOPE = "theme"
         private const val MENU_CONTAINER = 0x5401
+        private const val MENU_SYNC_TASKS = 0x5402
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
     }
