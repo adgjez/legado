@@ -734,7 +734,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         val ball = aiFloatingBall ?: createAiFloatingBall().also {
             aiFloatingBall = it
-            it.isVisible = false
+            it.visibility = View.INVISIBLE
             root.addView(it)
         }
         showAiFloatingBallWhenReady(ball)
@@ -778,18 +778,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         aiFloatingBall?.postDelayed(aiFloatingBallAttachRunnable, 3000L)
     }
 
-    private fun showAiFloatingBallWhenReady(ball: View, retryCount: Int = 0) {
+    private fun showAiFloatingBallWhenReady(ball: View) {
         ball.bringToFront()
         if (placeAiFloatingBall(ball, animate = false, attached = true)) {
             ball.isVisible = true
             scheduleAiFloatingBallAttach()
             return
         }
-        ball.isVisible = false
-        if (retryCount >= 3) return
-        ball.post {
-            if (aiFloatingBall === ball && shouldShowAiFloatingBall()) {
-                showAiFloatingBallWhenReady(ball, retryCount + 1)
+        ball.visibility = View.INVISIBLE
+        binding.root.doOnLayout {
+            ball.doOnLayout {
+                if (aiFloatingBall === ball && shouldShowAiFloatingBall()) {
+                    showAiFloatingBallWhenReady(ball)
+                }
             }
         }
     }
@@ -800,7 +801,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         if (parentWidth <= 0 || parentHeight <= 0 || ball.width <= 0 || ball.height <= 0) return@run false
         val side = getPrefInt(PreferKey.aiFloatingBallSide, 1).coerceIn(0, 1)
         val yPercent = getPrefInt(PreferKey.aiFloatingBallYPercent, 50).coerceIn(8, 92)
-        val hiddenOffset = if (attached) (ball.width * 0.5f) else 0f
+        val hiddenOffset = 0f
         val targetX = if (side == 0) -hiddenOffset else parentWidth - ball.width + hiddenOffset
         val safeMargin = resources.getDimensionPixelSize(R.dimen.main_ai_floating_ball_safe_margin)
         val targetY = ((parentHeight - ball.height) * yPercent / 100f)
@@ -844,7 +845,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     }
                     if (aiFloatingBallDragged) {
                         val parent = binding.root
-                        target.x = (downX + dx).coerceIn(-target.width * 0.45f, parent.width - target.width * 0.55f)
+                        target.x = (downX + dx).coerceIn(0f, (parent.width - target.width).toFloat())
                         target.y = (downY + dy).coerceIn(12.dpToPx().toFloat(), (parent.height - target.height - 12.dpToPx()).toFloat())
                     }
                     return true
