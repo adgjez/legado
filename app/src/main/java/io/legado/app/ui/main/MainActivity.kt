@@ -31,7 +31,6 @@ import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.get
@@ -192,7 +191,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
     private var liquidGlassReady = false
     private val boundLiquidGlassViewIds = hashSetOf<Int>()
-    private val liquidGlassAttachListenerIds = hashSetOf<Int>()
     private val liquidGlassWarmupRunnables = arrayListOf<Runnable>()
     private val liquidGlassWarmupDelays = longArrayOf(48L, 180L, 420L, 900L)
     private val liquidGlassSetupRunnable = Runnable {
@@ -496,7 +494,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun resetLiquidGlassBindingState() {
         liquidGlassReady = false
         boundLiquidGlassViewIds.clear()
-        liquidGlassAttachListenerIds.clear()
     }
 
     private fun invalidateLiquidGlassSampleTarget() = binding.run {
@@ -1677,26 +1674,24 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         elasticEnabled: Boolean,
         touchEffectEnabled: Boolean,
     ) {
-        ensureLiquidGlassAttachListener(liquidGlassView)
-        if (!ViewCompat.isAttachedToWindow(liquidGlassView) || !ViewCompat.isAttachedToWindow(binding.contentContainer)) {
-            boundLiquidGlassViewIds.remove(liquidGlassView.id)
-            liquidGlassView.post {
-                if (!isFinishing && !isDestroyed) {
-                    scheduleLiquidGlassSetup(delayMillis = 32L)
-                }
-            }
-            return
-        }
-        if (!liquidGlassView.isLaidOut || !binding.contentContainer.isLaidOut) {
-            liquidGlassView.doOnLayout {
-                scheduleLiquidGlassSetup(delayMillis = 32L)
-            }
-            return
-        }
         if (boundLiquidGlassViewIds.add(liquidGlassView.id)) {
             liquidGlassView.bind(binding.contentContainer)
+            liquidGlassView.post {
+                safeApplyLiquidGlassParameters(
+                    liquidGlassView = liquidGlassView,
+                    cornerRadius = cornerRadius,
+                    refractionHeight = refractionHeight,
+                    refractionOffset = refractionOffset,
+                    blurRadius = blurRadius,
+                    dispersion = dispersion,
+                    tintAlpha = tintAlpha,
+                    elasticEnabled = elasticEnabled,
+                    touchEffectEnabled = touchEffectEnabled
+                )
+            }
+            return
         }
-        applyLiquidGlassParameters(
+        safeApplyLiquidGlassParameters(
             liquidGlassView = liquidGlassView,
             cornerRadius = cornerRadius,
             refractionHeight = refractionHeight,
@@ -1709,24 +1704,37 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         )
     }
 
-    private fun ensureLiquidGlassAttachListener(liquidGlassView: LiquidGlassView) {
-        if (!liquidGlassAttachListenerIds.add(liquidGlassView.id)) {
-            return
-        }
-        liquidGlassView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) {
-                boundLiquidGlassViewIds.remove(v.id)
-                v.post {
-                    if (!isFinishing && !isDestroyed) {
-                        scheduleLiquidGlassSetup(delayMillis = 32L)
-                    }
+    private fun safeApplyLiquidGlassParameters(
+        liquidGlassView: LiquidGlassView,
+        cornerRadius: Float,
+        refractionHeight: Float,
+        refractionOffset: Float,
+        blurRadius: Float,
+        dispersion: Float,
+        tintAlpha: Float,
+        elasticEnabled: Boolean,
+        touchEffectEnabled: Boolean,
+    ) {
+        runCatching {
+            applyLiquidGlassParameters(
+                liquidGlassView = liquidGlassView,
+                cornerRadius = cornerRadius,
+                refractionHeight = refractionHeight,
+                refractionOffset = refractionOffset,
+                blurRadius = blurRadius,
+                dispersion = dispersion,
+                tintAlpha = tintAlpha,
+                elasticEnabled = elasticEnabled,
+                touchEffectEnabled = touchEffectEnabled
+            )
+        }.onFailure {
+            boundLiquidGlassViewIds.remove(liquidGlassView.id)
+            liquidGlassView.post {
+                if (!isFinishing && !isDestroyed) {
+                    scheduleLiquidGlassSetup(delayMillis = 96L)
                 }
             }
-
-            override fun onViewDetachedFromWindow(v: View) {
-                boundLiquidGlassViewIds.remove(v.id)
-            }
-        })
+        }
     }
 
     private fun applyLiquidGlassParameters(
