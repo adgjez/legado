@@ -27,6 +27,7 @@ import io.legado.app.databinding.DialogLibraryContainerEditBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryContainerConfig
+import io.legado.app.help.book.library.LibraryContainerExportCrypto
 import io.legado.app.help.book.library.LibraryContainerManager
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
@@ -71,37 +72,24 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private val waitDialog by lazy { WaitDialog(this) }
     private var editingSourceUrls: MutableSet<String> = mutableSetOf()
     private var editingSourceSummary: TextView? = null
+    private var pendingExportDecryptKey: String? = null
     private val importJson = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
             lifecycleScope.launch {
-                runCatching { importContainers(uri.readText(this@LibraryContainerManageActivity)) }
-                    .onSuccess { count ->
-                        if (count > 0) {
-                            reload()
-                            toastOnUi("已导入 $count 个书库容器")
-                        } else {
-                            toastOnUi(R.string.wrong_format)
-                        }
-                    }
+                runCatching { uri.readText(this@LibraryContainerManageActivity) }
+                    .onSuccess { handleImportText(it) }
                     .onFailure { toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format)) }
             }
         }
     }
     private val exportJson = registerForActivityResult(HandleFileContract()) { result ->
-        result.uri?.let { uri ->
+        val uri = result.uri
+        if (uri == null) {
+            pendingExportDecryptKey = null
+        } else {
             val value = uri.toString()
-            if (value.startsWith("http://", true) || value.startsWith("https://", true)) {
-                alert(R.string.upload_url) {
-                    setMessage(value)
-                    positiveButton(R.string.copy_text) {
-                        sendToClip(value)
-                        toastOnUi(R.string.copy_complete)
-                    }
-                    negativeButton(R.string.cancel)
-                }
-            } else {
-                toastOnUi(R.string.export_success)
-            }
+            showExportResult(value, pendingExportDecryptKey)
+            pendingExportDecryptKey = null
         }
     }
 
@@ -186,24 +174,59 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private fun importContainersFromUrl(url: String) {
         lifecycleScope.launch {
             runCatching {
-                val text = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     okHttpClient.newCallResponseBody { url(url) }.use { it.string() }
                 }
-                importContainers(text)
-            }.onSuccess { count ->
-                if (count > 0) {
-                    reload()
-                    toastOnUi("已导入 $count 个书库容器")
-                } else {
-                    toastOnUi(R.string.wrong_format)
-                }
+            }.onSuccess { text ->
+                handleImportText(text)
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format))
             }
         }
     }
 
-    private fun importContainers(text: String): Int {
+    private fun handleImportText(text: String) {
+        if (LibraryContainerExportCrypto.isEncrypted(text)) {
+            showDecryptImportDialog(text)
+            return
+        }
+        runCatching { importContainers(text, lockedImported = false) }
+            .onSuccess(::showImportResult)
+            .onFailure { toastOnUi(it.localizedMessage ?: getString(R.string.wrong_format)) }
+    }
+
+    private fun showDecryptImportDialog(text: String) {
+        alert("导入加密书库容器") {
+            val input = EditText(this@LibraryContainerManageActivity).apply {
+                hint = "请输入解密密钥"
+                setSingleLine(false)
+                minLines = 2
+            }
+            customView { input }
+            okButton {
+                val key = input.text?.toString().orEmpty().trim()
+                runCatching {
+                    val decrypted = LibraryContainerExportCrypto.decrypt(text, key)
+                    importContainers(decrypted, lockedImported = true)
+                }.onSuccess(::showImportResult)
+                    .onFailure { error ->
+                        toastOnUi(error.localizedMessage ?: getString(R.string.wrong_format))
+                    }
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showImportResult(count: Int) {
+        if (count > 0) {
+            reload()
+            toastOnUi("已导入 $count 个书库容器")
+        } else {
+            toastOnUi(R.string.wrong_format)
+        }
+    }
+
+    private fun importContainers(text: String, lockedImported: Boolean): Int {
         val imported = parseImportedContainers(text)
         if (imported.containers.isEmpty()) return 0
         val idMap = mutableMapOf<String, String>()
@@ -212,7 +235,15 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             .map { it.normalized() }
             .filter { it.container.endpoint.isNotBlank() && it.container.bucket.isNotBlank() }
             .forEach { config ->
-                val saved = LibraryContainerManager.upsert(config)
+                val saveConfig = if (lockedImported) {
+                    config.copy(
+                        container = config.container.copy(id = S3Container.newId()),
+                        lockedImported = true
+                    )
+                } else {
+                    config.copy(lockedImported = false)
+                }
+                val saved = LibraryContainerManager.upsert(saveConfig)
                 idMap[config.id] = saved.id
                 count++
             }
@@ -241,26 +272,64 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     private fun exportContainers(items: List<LibraryContainerConfig>, fileName: String) {
-        if (items.isEmpty()) {
+        val exportableItems = items.filterNot { it.lockedImported }
+        if (exportableItems.size < items.size) {
+            toastOnUi("已跳过加密导入的书库容器")
+        }
+        if (exportableItems.isEmpty()) {
             toastOnUi("没有可导出的书库容器")
             return
         }
+        val selectedId = LibraryContainerManager.selectedId()
+            ?.takeIf { id -> exportableItems.any { it.id == id } }
         val payload = LibraryContainerExport(
-            selectedId = LibraryContainerManager.selectedId(),
-            containers = items.map { it.normalized() }
+            selectedId = selectedId,
+            containers = exportableItems.map { it.normalized().copy(lockedImported = false) }
         )
+        val encrypted = LibraryContainerExportCrypto.encrypt(GSON.toJson(payload))
+        pendingExportDecryptKey = encrypted.decryptKey
         exportJson.launch {
             mode = HandleFileContract.EXPORT
             title = "导出书库容器"
             fileData = HandleFileContract.FileData(
                 fileName,
-                GSON.toJson(payload).toByteArray(),
+                GSON.toJson(encrypted.payload).toByteArray(),
                 "application/json"
             )
         }
     }
 
+    private fun showExportResult(value: String, decryptKey: String?) {
+        val isUrl = value.startsWith("http://", true) || value.startsWith("https://", true)
+        val keyText = decryptKey.orEmpty()
+        alert(if (isUrl) getString(R.string.upload_url) else getString(R.string.export_success)) {
+            setMessage(buildString {
+                if (isUrl) {
+                    append(value)
+                    append("\n\n")
+                }
+                append("解密密钥：\n")
+                append(keyText)
+            })
+            positiveButton("复制密钥") {
+                sendToClip(keyText)
+                toastOnUi(R.string.copy_complete)
+            }
+            if (isUrl) {
+                neutralButton("复制URL") {
+                    sendToClip(value)
+                    toastOnUi(R.string.copy_complete)
+                }
+            }
+            negativeButton(R.string.cancel)
+        }
+    }
+
     private fun showEditDialog(item: LibraryContainerConfig?) {
+        if (item?.lockedImported == true) {
+            toastOnUi("加密导入的书库容器不允许编辑")
+            return
+        }
         editingSourceUrls = item?.sourceUrls.orEmpty().toMutableSet()
         val dialogBinding = DialogLibraryContainerEditBinding.inflate(LayoutInflater.from(this))
         dialogBinding.bind(item)
@@ -495,15 +564,19 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     private fun showActions(item: LibraryContainerConfig) {
-        val actions = listOf(
-            Action.EDIT,
-            Action.EXPORT,
-            Action.TEST,
-            Action.REFRESH,
-            Action.SET_DEFAULT,
-            if (item.container.enabled) Action.DISABLE else Action.ENABLE,
-            Action.DELETE
-        )
+        val actions = if (item.lockedImported) {
+            listOf(Action.DELETE)
+        } else {
+            listOf(
+                Action.EDIT,
+                Action.EXPORT,
+                Action.TEST,
+                Action.REFRESH,
+                Action.SET_DEFAULT,
+                if (item.container.enabled) Action.DISABLE else Action.ENABLE,
+                Action.DELETE
+            )
+        }
         selector(LibraryContainerManager.displayLabel(item), actions.map { it.title }) { _, index ->
             when (actions[index]) {
                 Action.EDIT -> showEditDialog(item)
@@ -625,7 +698,8 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             }
             val minUpload = if (item.minUploadChars > 0) "最少${item.minUploadChars}字" else "不过滤短章"
             val dailyLimit = if (item.dailyUploadLimit > 0) "每日${item.dailyUploadLimit}章" else "每日不限"
-            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"} · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload · $dailyLimit"
+            val lockState = if (item.lockedImported) " · 加密导入" else ""
+            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"}$lockState · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload · $dailyLimit"
             tvName.applyUiSectionTitleStyle(this@LibraryContainerManageActivity)
             tvPath.applyUiLabelStyle(this@LibraryContainerManageActivity)
             tvCapacity.applyUiLabelStyle(this@LibraryContainerManageActivity)
@@ -636,7 +710,9 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
         override fun registerListener(holder: ItemViewHolder, binding: ItemS3ContainerBinding) {
             holder.itemView.setOnClickListener {
-                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let { showEditDialog(it) }
+                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let {
+                    if (it.lockedImported) showActions(it) else showEditDialog(it)
+                }
             }
         }
     }

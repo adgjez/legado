@@ -12,7 +12,8 @@ data class LibraryContainerConfig(
     val password: String? = null,
     val sourceUrls: Set<String> = emptySet(),
     val minUploadChars: Int = 1500,
-    val dailyUploadLimit: Int = 0
+    val dailyUploadLimit: Int = 0,
+    val lockedImported: Boolean = false
 ) {
     val id: String get() = container.id
 
@@ -24,7 +25,8 @@ data class LibraryContainerConfig(
             password = password?.takeIf { it.isNotBlank() },
             sourceUrls = sourceUrls.filter { it.isNotBlank() }.toSet(),
             minUploadChars = minUploadChars.coerceAtLeast(0),
-            dailyUploadLimit = dailyUploadLimit.coerceAtLeast(0)
+            dailyUploadLimit = dailyUploadLimit.coerceAtLeast(0),
+            lockedImported = lockedImported
         )
     }
 
