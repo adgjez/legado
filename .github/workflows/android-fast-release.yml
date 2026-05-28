@@ -49,17 +49,54 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           cat > release-notes.md <<'EOF'
-          阅读Archive 第七版补充更新
+          阅读Archive 第八版
 
           新增：
+          - 正文长按菜单新增网页搜索，可直接用选中文本打开搜索弹窗。
+          - 网页搜索支持搜索引擎管理，内置百度百科、Bing、百度、Google。
+          - 搜索引擎支持编辑、CSS 屏蔽规则、网络导入和长按排序。
+          - AI 页重构为 Compose 聊天界面，支持更清晰的思考、工具调用和回复过程展示。
+          - AI 回复过程支持分步骤折叠，工具调用结果可展开查看。
+          - AI 工具结果新增结构化预览，搜索结果、书籍结果展示更直观。
+          - 新增 AI 图片生成能力和图片库。
+          - AI 图片库支持收藏、分组、重命名和自动清理未收藏图片。
+          - 新增 AI Responses 聊天模式支持。
+          - 新增 AI 上下文压缩配置，减少长对话超过上下文限制的概率。
+          - 新增 AI 人格提示词、供应商和模型管理能力。
+          - 新增 AI 原生工具管理，工具名称中文化并按分类展示。
+          - 书库容器支持加密导入、加密导出。
+          - 导出书库容器时会生成解密密钥，导入加密配置时需输入密钥。
+          - 加密导入的书库容器可编辑指定同步书源，但不允许修改连接配置或再次导出。
+          - 主题、顶栏、底栏管理页新增云端同步任务弹窗。
           - 新增检查更新「加速管理」，可选择 Gitee、GitHub 或 Gitee 优先失败后回退 GitHub。
           - 支持配置 GitHub 加速代理模板，检查更新和 APK 下载链接可统一走代理。
 
           修复：
+          - 修复正文长按菜单换行后遮挡选中文字的问题。
+          - 修复网页搜索弹窗下拉时优先关闭弹窗，而不是优先滚动网页的问题。
+          - 修复 AI Markdown 流式显示时下一段回复导致内容抖动的问题。
+          - 修复 AI 思考栏显示时机不准确的问题。
+          - 修复 AI 页状态栏、安全区和右上角菜单锚点异常的问题。
+          - 修复阅读页 AI 工具权限判断异常的问题。
+          - 修复发现页书源选择弹窗搜索栏顶部显示冗余标题的问题。
+          - 修复 AI 悬浮球在常规底栏下可能先出现在左上角再移动的问题。
+          - 修复底栏玻璃效果在部分场景下丢失、采样异常或色偏的问题。
+          - 修复底栏不透明度映射过高导致效果不通透的问题。
+          - 修复手动检查更新无新版本时没有提示的问题，现在会显示“暂无更新”。
+          - 修复书源管理分组弹窗背景显示异常的问题。
+          - 修复底栏导入后未自动参与云端同步的问题。
+          - 修复远端底栏配置无法直接下载后编辑的问题。
           - 修复从书架或发现页进入部分书籍详情时，偶发提示 book is null 的问题。
           - 修复部分复杂书源发现页 tag 显示不完整、无意义搜索控件占用发现栏的问题。
 
           优化：
+          - 优化正文长按网页搜索弹窗样式，圆角、加载显示和弹窗销毁逻辑更稳定。
+          - 优化搜索引擎编辑体验，支持默认百度百科作为首选搜索入口。
+          - 优化底栏玻璃采样、悬浮间距和不透明度表现。
+          - 优化主题、顶栏、底栏云端同步逻辑，保存或导入后可自动加入同步任务。
+          - 优化顶栏、底栏云端容器选择逻辑，与主题同步使用同一套云端容器配置。
+          - 优化顶栏云端同步逻辑，远端配置编辑前会自动下载到本地。
+          - 优化 WebDAV 上传较慢时的反馈体验。
           - 优化检查更新失败回退逻辑，默认优先使用 Gitee，失败后自动尝试 GitHub。
           - 优化发现页长按书源名弹出的完整发现弹窗，支持下拉刷新当前书源发现分类。
           EOF
@@ -110,7 +147,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: 阅读Archive 第七版 ${{ steps.version.outputs.name }}
+          name: 阅读Archive 第八版 ${{ steps.version.outputs.name }}
           prerelease: false
           make_latest: true
           generate_release_notes: false
@@ -139,103 +176,3 @@ jobs:
               --notes-file release-notes.md
           fi
 
-      - name: Sync release to Gitee
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          if [ -z "$GITEE_TOKEN" ]; then
-            echo "GITEE_TOKEN is not configured, skip Gitee release sync."
-            exit 0
-          fi
-
-          set +e
-          API="https://gitee.com/api/v5/repos/zziji/legado"
-          TAG_NAME="${{ steps.version.outputs.tag }}"
-          RELEASE_NAME="阅读Archive 第七版 ${{ steps.version.outputs.name }}"
-          CHANNEL_TAG="latest-arm64-release"
-          TOKEN_QUERY="$(python3 -c 'import os, urllib.parse; print(urllib.parse.urlencode({"access_token": os.environ["GITEE_TOKEN"]}))')"
-
-          if ! git rev-parse -q --verify "refs/tags/$TAG_NAME" >/dev/null; then
-            git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-          fi
-
-          GITEE_REMOTE="https://oauth2:${GITEE_TOKEN}@gitee.com/zziji/legado.git"
-          if git ls-remote --exit-code --tags "$GITEE_REMOTE" "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
-            echo "Gitee tag already exists: $TAG_NAME"
-          else
-            git push "$GITEE_REMOTE" "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
-            echo "Pushed Gitee tag: $TAG_NAME"
-          fi
-
-          find_release_id() {
-            curl -fsS -G \
-              --data-urlencode "access_token=$GITEE_TOKEN" \
-              "$API/releases/tags/$1" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))'
-          }
-
-          upsert_release() {
-            local tag_name="$1"
-            local release_name="$2"
-            local release_id
-            release_id="$(find_release_id "$tag_name" 2>/dev/null || true)"
-            if [ -n "$release_id" ]; then
-              curl -fsS -X PATCH "$API/releases/$release_id" \
-                --data-urlencode "access_token=$GITEE_TOKEN" \
-                --data-urlencode "tag_name=$tag_name" \
-                --data-urlencode "name=$release_name" \
-                --data-urlencode "body=$(cat release-notes.md)" \
-                --data-urlencode "prerelease=false" >/dev/null
-            else
-              release_id="$(curl -fsS -X POST "$API/releases" \
-                --data-urlencode "access_token=$GITEE_TOKEN" \
-                --data-urlencode "tag_name=$tag_name" \
-                --data-urlencode "target_commitish=$tag_name" \
-                --data-urlencode "name=$release_name" \
-                --data-urlencode "body=$(cat release-notes.md)" \
-                --data-urlencode "prerelease=false" \
-                | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))')"
-            fi
-            echo "$release_id"
-          }
-
-          upload_apks() {
-            local release_id="$1"
-            if [ -z "$release_id" ]; then
-              return 1
-            fi
-            curl -fsS -G \
-              --data-urlencode "access_token=$GITEE_TOKEN" \
-              "$API/releases/$release_id/attach_files" \
-              | python3 -c 'import json,sys; data=json.load(sys.stdin); [print(item.get("id")) for item in data if str(item.get("name", "")).endswith(".apk")]' \
-              | while read -r attach_id; do
-                  if [ -n "$attach_id" ]; then
-                    curl -fsS -X DELETE "$API/releases/$release_id/attach_files/$attach_id?$TOKEN_QUERY" >/dev/null
-                  fi
-                done
-            for apk in release-apks/*.apk; do
-              curl -fsS -X POST "$API/releases/$release_id/attach_files" \
-                -F "access_token=$GITEE_TOKEN" \
-                -F "file=@$apk" >/dev/null || return 1
-            done
-          }
-
-          SYNC_FAILED=0
-          VERSIONED_ID="$(upsert_release "$TAG_NAME" "$RELEASE_NAME")" || SYNC_FAILED=1
-          upload_apks "$VERSIONED_ID" || SYNC_FAILED=1
-
-          if git ls-remote --exit-code --tags "$GITEE_REMOTE" "refs/tags/$CHANNEL_TAG" >/dev/null 2>&1; then
-            echo "Gitee update channel tag already exists: $CHANNEL_TAG"
-          else
-            git push "$GITEE_REMOTE" "HEAD:refs/tags/$CHANNEL_TAG"
-            echo "Pushed Gitee update channel tag: $CHANNEL_TAG"
-          fi
-
-          CHANNEL_ID="$(upsert_release "$CHANNEL_TAG" "阅读Archive 更新通道")" || SYNC_FAILED=1
-          upload_apks "$CHANNEL_ID" || SYNC_FAILED=1
-
-          if [ "$SYNC_FAILED" -ne 0 ]; then
-            echo "Gitee release sync failed, GitHub release has already been published."
-            exit 0
-          fi
-          echo "Gitee release sync finished."
