@@ -794,8 +794,7 @@ private fun CharacterGraph(
                             )
                         }
                         .clickable { onRelationClick(relation) }
-                        .background(style.colors.page.copy(alpha = 0.58f), RoundedCornerShape(9.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
             visibleCharacters.forEach { character ->
