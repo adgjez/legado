@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -66,13 +67,18 @@ def request_json(method, url, data=None, headers=None):
 
 
 def request_bytes(url):
-    headers = {"User-Agent": "legado-gitee-sync"}
-    github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if "github.com" in url and github_token:
-        headers["Authorization"] = f"Bearer {github_token}"
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=300) as response:
-        return response.read()
+    req = urllib.request.Request(url, headers={"User-Agent": "legado-gitee-sync"})
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=300) as response:
+                return response.read()
+        except Exception as error:
+            last_error = error
+            if attempt < 3:
+                log(f"Download interrupted, retry {attempt}/3...")
+                time.sleep(attempt * 2)
+    raise last_error
 
 
 def github_release(tag_name):
