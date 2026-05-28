@@ -25,6 +25,8 @@ object AiChatService {
     private const val MAX_SEARCH_RESULT_CARDS = 8
     private const val DEFAULT_TOOL_TIMEOUT_MILLIS = 120_000L
     private const val IMAGE_TOOL_TIMEOUT_MILLIS = 300_000L
+    private const val MAX_DEBUG_LOG_CHARS = 16_000
+    private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
 
     private data class ToolCall(
         val id: String,
@@ -74,7 +76,7 @@ object AiChatService {
                     message = extractError(payload).ifBlank {
                         "${rawResponse.code} ${rawResponse.message}"
                     },
-                    debugLog = "url=${resolveModelsUrl(baseUrl)}\nresponse=$payload\n"
+                    debugLog = safeDebugLog("url=${resolveModelsUrl(baseUrl)}\nresponse=$payload\n")
                 )
             }
             val root = JSONObject(payload)
@@ -139,7 +141,7 @@ object AiChatService {
                 message = "当前 AI 静态配置或本轮输入超过上下文限制，已自动压缩但仍无法放入，请减少系统提示词、Skill、工具或本次输入。",
                 debugLog = requestLog.append("estimatedTotalTokens=$estimatedTotalTokens\n")
                     .append("limitTokens=${preparedContext.limitTokens}\n")
-                    .toString()
+                    .toSafeDebugLog()
             )
         }
 
@@ -166,7 +168,7 @@ object AiChatService {
             }
             throw AiChatException(
                 message = throwable.message ?: throwable.javaClass.simpleName,
-                debugLog = requestLog.toString(),
+                debugLog = requestLog.toSafeDebugLog(),
                 cause = throwable
             )
         }
@@ -235,7 +237,7 @@ object AiChatService {
                 if (content.isBlank()) {
                     throw AiChatException(
                         message = "Empty response",
-                        debugLog = requestLog.toString()
+                        debugLog = requestLog.toSafeDebugLog()
                     )
                 }
                 return if (includeStructuredBlocks) {
@@ -339,7 +341,7 @@ object AiChatService {
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
                 message = appCtx.getString(R.string.ai_tool_round_limit_summary),
-                debugLog = requestLog.toString()
+                debugLog = requestLog.toSafeDebugLog()
             )
         }
         return if (includeStructuredBlocks) {
@@ -464,7 +466,7 @@ object AiChatService {
     ): AssistantTurn {
         val requestBody = buildRequestBody(messages, model, tools, stream = true, apiMode = apiMode)
         requestLog.append("round=").append(round).append('\n')
-            .append("request=").append(requestBody).append('\n')
+            .append("request=").append(safeDebugPayload(requestBody)).append('\n')
         val response = aiChatHttpClient().newCallResponse {
             url(chatUrl)
             addHeader("Accept", "text/event-stream, application/json")
@@ -478,7 +480,7 @@ object AiChatService {
         response.use { rawResponse ->
             val body = rawResponse.body ?: throw AiChatException(
                 message = "Empty response body",
-                debugLog = requestLog.append("response=<empty body>\n").toString()
+                debugLog = requestLog.append("response=<empty body>\n").toSafeDebugLog()
             )
             if (!rawResponse.isSuccessful) {
                 val payload = body.string()
@@ -489,8 +491,8 @@ object AiChatService {
                     debugLog = buildString {
                         append(requestLog)
                         append("status=${rawResponse.code} ${rawResponse.message}").append('\n')
-                        append("response=$payload").append('\n')
-                    }
+                        append("response=").append(safeDebugPayload(payload)).append('\n')
+                    }.let(::safeDebugLog)
                 )
             }
             val rendered = StringBuilder()
@@ -520,7 +522,7 @@ object AiChatService {
                     }
                 }
             }
-            requestLog.append("response=").append(rawPayload).append('\n')
+            requestLog.append("response=").append(safeDebugPayload(rawPayload.toString())).append('\n')
             val toolCalls = toolCallBuilders.map { (index, builder) ->
                 ToolCall(
                     id = builder.id.ifBlank { "call_$index" },
@@ -1064,6 +1066,26 @@ object AiChatService {
 
     private fun stripSearchResultBlocks(content: String): String {
         return searchResultBlockRegex.replace(content, "").trim()
+    }
+
+    private fun StringBuilder.toSafeDebugLog(): String {
+        return safeDebugLog(toString())
+    }
+
+    private fun safeDebugLog(text: String): String {
+        return safeDebugPayload(text, MAX_DEBUG_LOG_CHARS)
+    }
+
+    private fun safeDebugPayload(text: String, maxChars: Int = MAX_DEBUG_PAYLOAD_CHARS): String {
+        val sanitized = text
+            .replace(Regex("Bearer\\s+[^\\s\"']+", RegexOption.IGNORE_CASE), "Bearer <redacted>")
+            .replace(Regex("(\"(?:api[_-]?key|authorization|token|secret)\"\\s*:\\s*\")([^\"]+)(\")", RegexOption.IGNORE_CASE), "$1<redacted>$3")
+            .replace(Regex("data:image/[^\\s\"')]+"), "data:image/<redacted>")
+        return if (sanitized.length <= maxChars) {
+            sanitized
+        } else {
+            sanitized.take(maxChars) + "\n...<truncated ${sanitized.length - maxChars} chars>"
+        }
     }
 
     private fun requiresBookshelfTool(messages: List<AiChatMessage>): Boolean {

@@ -39,6 +39,9 @@ class AiChatViewModel : ViewModel() {
         private var activePendingAssistantMessageId: String? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
+        private const val MAX_STORED_MESSAGES = 80
+        private const val MAX_STORED_TEXT_CHARS = 20_000
+        private const val MAX_STORED_STATUS_CHARS = 4_000
     }
 
     init {
@@ -460,8 +463,9 @@ class AiChatViewModel : ViewModel() {
 
     private fun saveCurrentSession() {
         val snapshot = messages.filterNot { it.pending }
-            .map { it.copy(pending = false) }
+            .map { sanitizeMessageForStorage(it) }
             .filter { it.content.isNotBlank() }
+            .takeLast(MAX_STORED_MESSAGES)
         val history = AppConfig.aiChatSessionList.toMutableList()
         val index = history.indexOfFirst { it.id == currentSessionId }
         if (snapshot.isEmpty()) {
@@ -485,6 +489,29 @@ class AiChatViewModel : ViewModel() {
         }
         AppConfig.aiChatSessionList = history.sortedByDescending { it.updatedAt }
         AppConfig.aiCurrentChatSessionId = currentSessionId
+    }
+
+    private fun sanitizeMessageForStorage(message: AiChatMessage): AiChatMessage {
+        val maxChars = when (message.kind ?: AiChatMessage.Kind.TEXT) {
+            AiChatMessage.Kind.TEXT -> MAX_STORED_TEXT_CHARS
+            AiChatMessage.Kind.STATUS,
+            AiChatMessage.Kind.THINKING,
+            AiChatMessage.Kind.TOOL -> MAX_STORED_STATUS_CHARS
+        }
+        return message.copy(
+            content = sanitizeStoredText(message.content, maxChars),
+            pending = false,
+            statusDetail = message.statusDetail?.let { sanitizeStoredText(it, MAX_STORED_STATUS_CHARS) }
+        )
+    }
+
+    private fun sanitizeStoredText(text: String, maxChars: Int): String {
+        val clean = dataImageRegex.replace(text, "data:image/<stored-in-gallery>")
+        return if (clean.length <= maxChars) {
+            clean
+        } else {
+            clean.take(maxChars) + "\n...<truncated ${clean.length - maxChars} chars>"
+        }
     }
 
     private fun resolveSessionTitle(messages: List<AiChatMessage>): String {
