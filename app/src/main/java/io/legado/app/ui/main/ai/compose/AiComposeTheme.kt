@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
 
 @Immutable
@@ -99,8 +101,8 @@ fun aiComposeStyle(context: Context): AiComposeStyle {
             danger = Color(0xfff44336.toInt())
         ),
         metrics = AiComposeMetrics(
-            cardRadius = 18.dp,
-            chipRadius = 11.dp,
+            cardRadius = context.composePanelRadius(),
+            chipRadius = context.composeActionRadius(),
             strokeWidth = 1.dp
         )
     )

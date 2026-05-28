@@ -82,6 +82,8 @@ import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
 import kotlin.math.PI
 import kotlin.math.cos
@@ -129,7 +131,9 @@ fun rememberCharacterStyle(): CharacterStyle {
             subText = Color(subText),
             stroke = Color(stroke),
             danger = Color(0xffe34f4f.toInt())
-        )
+        ),
+        radius = context.composePanelRadius(),
+        smallRadius = context.composeActionRadius()
     )
 }
 
@@ -418,7 +422,7 @@ private fun CharacterHeroCard(character: BookCharacter) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = style.colors.cardAlt,
-        shape = RoundedCornerShape(28.dp)
+        shape = RoundedCornerShape(style.radius)
     ) {
         Box {
             Canvas(modifier = Modifier.matchParentSize()) {
@@ -674,6 +678,7 @@ private fun CharacterCenterSelector(
     selectedCenterId: Long,
     onSelect: (Long) -> Unit
 ) {
+    val style = rememberCharacterStyle()
     val scrollState = rememberScrollState()
     Row(
         modifier = Modifier
@@ -685,8 +690,8 @@ private fun CharacterCenterSelector(
         characters.forEach { character ->
             val selected = character.id == selectedCenterId
             Surface(
-                color = if (selected) rememberCharacterStyle().colors.accent.copy(alpha = 0.14f) else rememberCharacterStyle().colors.card,
-                shape = RoundedCornerShape(18.dp),
+                color = if (selected) style.colors.accent.copy(alpha = 0.14f) else style.colors.card,
+                shape = RoundedCornerShape(style.smallRadius),
                 modifier = Modifier.clickable { onSelect(character.id) }
             ) {
                 Row(
@@ -696,7 +701,7 @@ private fun CharacterCenterSelector(
                     CharacterAvatar(character.avatar, character.displayName(), 32)
                     Text(
                         text = character.displayName(),
-                        color = if (selected) rememberCharacterStyle().colors.accent else rememberCharacterStyle().colors.text,
+                        color = if (selected) style.colors.accent else style.colors.text,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(start = 8.dp),
                         maxLines = 1
@@ -730,7 +735,7 @@ private fun CharacterGraph(
     Surface(
         modifier = modifier,
         color = style.colors.card,
-        shape = RoundedCornerShape(28.dp)
+        shape = RoundedCornerShape(style.radius)
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -831,7 +836,7 @@ private fun CharacterGraph(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .padding(top = 4.dp)
-                            .background(style.colors.card.copy(alpha = 0.76f), RoundedCornerShape(8.dp))
+                            .background(style.colors.card.copy(alpha = 0.76f), RoundedCornerShape(style.smallRadius))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -905,7 +910,7 @@ private fun UnlinkedCharactersStrip(
     val style = rememberCharacterStyle()
     Row(
         modifier = modifier
-            .background(style.colors.page.copy(alpha = 0.78f), RoundedCornerShape(20.dp))
+            .background(style.colors.page.copy(alpha = 0.78f), RoundedCornerShape(style.radius))
             .horizontalScroll(rememberScrollState())
             .padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -949,7 +954,7 @@ private fun RelationListPanel(
                     relations.take(8).forEach { relation ->
                         val from = characters.firstOrNull { it.id == relation.fromCharacterId }?.displayName().orEmpty()
                         val to = characters.firstOrNull { it.id == relation.toCharacterId }?.displayName().orEmpty()
-                        Surface(color = style.colors.card, shape = RoundedCornerShape(16.dp)) {
+                        Surface(color = style.colors.card, shape = RoundedCornerShape(style.smallRadius)) {
                             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("$from → $to", color = style.colors.text, fontSize = 14.sp, maxLines = 1)
@@ -1077,7 +1082,7 @@ private fun CharacterDropdown(
                 .padding(top = 6.dp)
                 .clickable { expanded = true },
             color = style.colors.card,
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(style.smallRadius),
             border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
         ) {
             Text(
@@ -1103,7 +1108,7 @@ private fun RolePill(text: String, compact: Boolean, modifier: Modifier = Modifi
     Surface(
         modifier = modifier,
         color = style.colors.accent.copy(alpha = 0.13f),
-        shape = RoundedCornerShape(999.dp)
+        shape = RoundedCornerShape(style.smallRadius)
     ) {
         Text(
             text = text,
@@ -1121,7 +1126,7 @@ private fun SmallAction(text: String, onClick: () -> Unit, danger: Boolean = fal
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
         color = if (danger) style.colors.danger.copy(alpha = 0.10f) else style.colors.accent.copy(alpha = 0.12f),
-        shape = RoundedCornerShape(999.dp)
+        shape = RoundedCornerShape(style.smallRadius)
     ) {
         Text(
             text = text,

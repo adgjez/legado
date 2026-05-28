@@ -740,7 +740,7 @@ private fun AiComposer(
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.composerSurface,
         shadowElevation = 8.dp,
         border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.composerStroke)
