@@ -2,37 +2,24 @@ package io.legado.app.ui.book.character
 
 import android.net.Uri
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import android.widget.ArrayAdapter
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.Spinner
-import android.widget.TextView
-import androidx.core.content.ContextCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
-import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
-import io.legado.app.help.glide.ImageLoader
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
-import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.lib.theme.view.ThemeEditText
+import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.lib.dialogs.alert
+import io.legado.app.ui.book.character.compose.CharacterEditDraft
+import io.legado.app.ui.book.character.compose.CharacterEditScreen
+import io.legado.app.ui.book.character.compose.toDraft
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.TitleBar
-import io.legado.app.ui.widget.text.TextInputLayout
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.readUri
@@ -40,30 +27,23 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.lifecycleScope
 import java.io.FileOutputStream
 
-class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
+class BookCharacterEditActivity : BaseActivity<ViewBinding>(
+    fullScreen = false,
+    imageBg = false
+) {
 
-    private lateinit var rootLayout: LinearLayout
-    private lateinit var avatarView: ImageView
-    private lateinit var nameEdit: ThemeEditText
-    private lateinit var roleSpinner: Spinner
-    private lateinit var identityEdit: ThemeEditText
-    private lateinit var skillsEdit: ThemeEditText
-    private lateinit var attributesEdit: ThemeEditText
-    private lateinit var appearanceEdit: ThemeEditText
-    private lateinit var personalityEdit: ThemeEditText
-    private lateinit var biographyEdit: ThemeEditText
-
+    private lateinit var composeView: ComposeView
     override val binding: ViewBinding by lazy {
-        SimpleViewBinding(createContentView())
+        composeView = ComposeView(this)
+        SimpleViewBinding(composeView)
     }
 
     private var bookUrl: String = ""
     private var characterId: Long = 0L
     private var character = BookCharacter()
-    private var avatarPath: String = ""
+    private var draft by mutableStateOf(CharacterEditDraft())
 
     private val selectAvatar = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let(::copyAvatar)
@@ -72,204 +52,24 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         bookUrl = intent.getStringExtra(BookCharacterManageActivity.EXTRA_BOOK_URL).orEmpty()
         characterId = intent.getLongExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, 0L)
+        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        composeView.setContent {
+            CharacterEditScreen(
+                title = if (characterId > 0L) "编辑角色" else "添加角色",
+                draft = draft,
+                onDraftChange = { draft = it },
+                onBack = ::finish,
+                onSave = ::save,
+                onPickLocalAvatar = {
+                    selectAvatar.launch {
+                        mode = HandleFileContract.IMAGE
+                    }
+                },
+                onPickOnlineAvatar = ::showOnlineAvatarDialog,
+                onClearAvatar = { draft = draft.copy(avatar = "") }
+            )
+        }
         load()
-    }
-
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, MENU_SAVE, 0, "保存")
-            .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-        return true
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            MENU_SAVE -> {
-                save()
-                true
-            }
-            else -> super.onCompatOptionsItemSelected(item)
-        }
-    }
-
-    private fun createContentView(): View {
-        rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-        rootLayout.addView(TitleBar(this).apply {
-            id = R.id.title_bar
-            title = "编辑角色"
-        })
-        val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-            isFillViewport = true
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(16.dpToPx(), 14.dpToPx(), 16.dpToPx(), 24.dpToPx())
-        }
-        content.addView(createAvatarHeader())
-        nameEdit = content.addInput("角色名称", singleLine = true)
-        content.addView(createRoleSelector())
-        identityEdit = content.addInput("角色身份", singleLine = true)
-        skillsEdit = content.addInput("角色技能")
-        attributesEdit = content.addInput("角色属性")
-        appearanceEdit = content.addInput("角色形象描述")
-        personalityEdit = content.addInput("角色性格描述")
-        biographyEdit = content.addInput("角色生平", minLines = 4)
-        scrollView.addView(content)
-        rootLayout.addView(scrollView)
-        rootLayout.applyUiBodyTypefaceDeep(uiTypeface())
-        return rootLayout
-    }
-
-    private fun createAvatarHeader(): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 12.dpToPx())
-            avatarView = ImageView(this@BookCharacterEditActivity).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                background = UiCorner.opaqueRounded(
-                    ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
-                    UiCorner.panelRadius(this@BookCharacterEditActivity)
-                )
-                setImageResource(R.drawable.ic_bottom_person)
-            }
-            addView(avatarView, LinearLayout.LayoutParams(78.dpToPx(), 78.dpToPx()))
-            addView(LinearLayout(this@BookCharacterEditActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(14.dpToPx(), 0, 0, 0)
-                addView(TextView(this@BookCharacterEditActivity).apply {
-                    text = "角色头像"
-                    textSize = 16f
-                    setTextColor(primaryTextColor)
-                })
-                addView(TextView(this@BookCharacterEditActivity).apply {
-                    text = "点击选择头像，可选择本地图片，也可手动输入在线图片链接。"
-                    textSize = 13f
-                    setTextColor(secondaryTextColor)
-                    setPadding(0, 4.dpToPx(), 0, 8.dpToPx())
-                })
-                val buttonRow = LinearLayout(this@BookCharacterEditActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                }
-                buttonRow.addView(TextView(this@BookCharacterEditActivity).apply {
-                    text = "选择图片"
-                    gravity = Gravity.CENTER
-                    minHeight = 34.dpToPx()
-                    setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
-                    setTextColor(primaryTextColor)
-                    background = UiCorner.actionSelector(
-                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
-                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
-                        UiCorner.actionRadius(this@BookCharacterEditActivity)
-                    )
-                    setOnClickListener {
-                        selectAvatar.launch {
-                            mode = HandleFileContract.IMAGE
-                        }
-                    }
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 36.dpToPx()))
-                buttonRow.addView(TextView(this@BookCharacterEditActivity).apply {
-                    text = "清除"
-                    gravity = Gravity.CENTER
-                    minHeight = 34.dpToPx()
-                    setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
-                    setTextColor(secondaryTextColor)
-                    background = UiCorner.actionSelector(
-                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
-                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
-                        UiCorner.actionRadius(this@BookCharacterEditActivity)
-                    )
-                    setOnClickListener {
-                        avatarPath = ""
-                        updateAvatar("")
-                    }
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 36.dpToPx()).apply {
-                    leftMargin = 10.dpToPx()
-                })
-                addView(buttonRow)
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        }
-    }
-
-    private fun createRoleSelector(): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 8.dpToPx(), 0, 2.dpToPx())
-            addView(TextView(this@BookCharacterEditActivity).apply {
-                text = "角色类型"
-                textSize = 13f
-                setTextColor(secondaryTextColor)
-                setPadding(0, 0, 0, 4.dpToPx())
-            })
-            roleSpinner = Spinner(this@BookCharacterEditActivity).apply {
-                adapter = ArrayAdapter(
-                    this@BookCharacterEditActivity,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    listOf("普通角色", "重要角色", "主角")
-                )
-                background = UiCorner.actionSelector(
-                    ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
-                    ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
-                    UiCorner.actionRadius(this@BookCharacterEditActivity)
-                )
-                setPadding(10.dpToPx(), 0, 10.dpToPx(), 0)
-            }
-            addView(roleSpinner, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                42.dpToPx()
-            ))
-        }
-    }
-
-    private fun LinearLayout.addInput(
-        hint: String,
-        singleLine: Boolean = false,
-        minLines: Int = 2,
-        afterTextChanged: ((String) -> Unit)? = null
-    ): ThemeEditText {
-        val inputLayout = TextInputLayout(this@BookCharacterEditActivity, null).apply {
-            this.hint = hint
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = 8.dpToPx()
-            }
-        }
-        val editText = ThemeEditText(this@BookCharacterEditActivity).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            setSingleLine(singleLine)
-            if (!singleLine) {
-                this.minLines = minLines
-                gravity = Gravity.TOP or Gravity.START
-            }
-            afterTextChanged?.let { callback ->
-                addTextChangedListener(object : android.text.TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        callback(s?.toString().orEmpty())
-                    }
-                    override fun afterTextChanged(s: android.text.Editable?) = Unit
-                })
-            }
-        }
-        inputLayout.addView(editText, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-        addView(inputLayout)
-        return editText
     }
 
     private fun load() {
@@ -277,25 +77,12 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
             character = withContext(IO) {
                 appDb.bookCharacterDao.getCharacter(characterId)
             } ?: BookCharacter(bookUrl = bookUrl)
-            fill(character)
+            draft = character.toDraft()
         }
     }
 
-    private fun fill(character: BookCharacter) {
-        nameEdit.setText(character.name)
-        avatarPath = character.avatar
-        roleSpinner.setSelection(character.roleLevel.coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN))
-        identityEdit.setText(character.identity)
-        skillsEdit.setText(character.skills)
-        attributesEdit.setText(character.attributes)
-        appearanceEdit.setText(character.appearance)
-        personalityEdit.setText(character.personality)
-        biographyEdit.setText(character.biography)
-        updateAvatar(character.avatar)
-    }
-
     private fun save() {
-        val name = nameEdit.text?.toString().orEmpty().trim()
+        val name = draft.name.trim()
         if (bookUrl.isBlank()) {
             toastOnUi("当前书籍不存在")
             return
@@ -315,17 +102,17 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                 val saving = character.copy(
                     bookUrl = bookUrl,
                     name = name,
-                    avatar = avatarPath.trim(),
-                    roleLevel = roleSpinner.selectedItemPosition.coerceIn(
+                    avatar = draft.avatar.trim(),
+                    roleLevel = draft.roleLevel.coerceIn(
                         BookCharacter.ROLE_NORMAL,
                         BookCharacter.ROLE_MAIN
                     ),
-                    identity = identityEdit.text?.toString().orEmpty().trim(),
-                    skills = skillsEdit.text?.toString().orEmpty().trim(),
-                    attributes = attributesEdit.text?.toString().orEmpty().trim(),
-                    appearance = appearanceEdit.text?.toString().orEmpty().trim(),
-                    personality = personalityEdit.text?.toString().orEmpty().trim(),
-                    biography = biographyEdit.text?.toString().orEmpty().trim(),
+                    identity = draft.identity.trim(),
+                    skills = draft.skills.trim(),
+                    attributes = draft.attributes.trim(),
+                    appearance = draft.appearance.trim(),
+                    personality = draft.personality.trim(),
+                    biography = draft.biography.trim(),
                     sortOrder = character.sortOrder.takeIf { it > 0 }
                         ?: ((appDb.bookCharacterDao.maxCharacterOrder(bookUrl) ?: -1) + 1),
                     createdAt = character.createdAt.takeIf { it > 0 } ?: now,
@@ -347,9 +134,26 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
         }
     }
 
+    private fun showOnlineAvatarDialog() {
+        val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = "输入在线图片链接"
+            editView.setText(draft.avatar.takeIf { it.startsWith("http", ignoreCase = true) }.orEmpty())
+        }
+        alert("在线头像") {
+            customView { dialogBinding.root }
+            okButton {
+                val value = dialogBinding.editView.text?.toString()?.trim().orEmpty()
+                if (value.isNotBlank()) {
+                    draft = draft.copy(avatar = value)
+                }
+            }
+            cancelButton()
+        }
+    }
+
     private fun copyAvatar(uri: Uri) {
         if (uri.scheme?.lowercase() in listOf("http", "https")) {
-            setAvatar(uri.toString())
+            draft = draft.copy(avatar = uri.toString())
             return
         }
         readUri(uri) { fileDoc, inputStream ->
@@ -368,27 +172,11 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>() {
                     FileOutputStream(file).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
-                    setAvatar(file.absolutePath)
+                    draft = draft.copy(avatar = file.absolutePath)
                 }
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: "头像导入失败")
             }
         }
-    }
-
-    private fun updateAvatar(path: String) {
-        ImageLoader.load(this, path.ifBlank { null })
-            .placeholder(R.drawable.ic_bottom_person)
-            .error(R.drawable.ic_bottom_person)
-            .into(avatarView)
-    }
-
-    private fun setAvatar(path: String) {
-        avatarPath = path
-        updateAvatar(path)
-    }
-
-    companion object {
-        private const val MENU_SAVE = 1
     }
 }
