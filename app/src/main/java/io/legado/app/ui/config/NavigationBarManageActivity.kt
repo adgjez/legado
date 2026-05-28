@@ -814,7 +814,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     )
 
     private companion object {
-        private const val CLOUD_SCOPE = "navigationBar"
+        private const val CLOUD_SCOPE = "theme"
         private const val MENU_CONTAINER = 0x5401
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
