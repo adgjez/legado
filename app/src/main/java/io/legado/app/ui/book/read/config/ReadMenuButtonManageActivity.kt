@@ -307,6 +307,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.READ_ASSISTANT))
             }
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES))
+            add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.CHARACTERS))
         }
     }
 
@@ -588,6 +589,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.SETTING -> getString(R.string.setting)
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> getString(R.string.ai_assistant)
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> getString(R.string.paragraph_rule)
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
             else -> ref.id
         }
     }
@@ -605,6 +607,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
             else -> R.drawable.ic_custom
         }
     }

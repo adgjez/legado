@@ -117,6 +117,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
+import io.legado.app.ui.book.character.BookCharacterManageActivity
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.BG_COLOR
@@ -2981,6 +2982,16 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.invalidateParagraphRuleLayout()
         ReadBook.callBack?.upContent(resetPageOffset = false)
         ReadBook.loadContent(resetPageOffset = false)
+    }
+
+    override fun openBookCharacters() {
+        val book = ReadBook.book ?: run {
+            toastOnUi("当前书籍不存在")
+            return
+        }
+        startActivity<BookCharacterManageActivity> {
+            putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, book.bookUrl)
+        }
     }
 
     override fun showSearchSetting() {

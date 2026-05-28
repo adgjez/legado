@@ -22,6 +22,7 @@ object ReadMenuButtonConfig {
         const val SETTING = "setting"
         const val READ_ASSISTANT = "readAssistant"
         const val PARAGRAPH_RULES = "paragraphRules"
+        const val CHARACTERS = "characters"
 
         val ids = setOf(
             SEARCH,
@@ -33,7 +34,8 @@ object ReadMenuButtonConfig {
             READ_STYLE,
             SETTING,
             READ_ASSISTANT,
-            PARAGRAPH_RULES
+            PARAGRAPH_RULES,
+            CHARACTERS
         )
     }
 

@@ -492,6 +492,9 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> runMenuOut {
                 callBack.showParagraphRuleQuickDialog()
             }
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> runMenuOut {
+                callBack.openBookCharacters()
+            }
         }
     }
 
@@ -533,6 +536,7 @@ class ReadMenu @JvmOverloads constructor(
                 ReadMenuButtonConfig.Builtin.SETTING -> context.getString(R.string.setting)
                 ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> context.getString(R.string.ai_assistant)
                 ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> context.getString(R.string.paragraph_rule)
+                ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
                 else -> ref.id
             }
         }
@@ -555,6 +559,7 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
+            ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
             else -> R.drawable.ic_custom
         }
     }
@@ -1086,6 +1091,7 @@ class ReadMenu @JvmOverloads constructor(
         fun showLibraryCloudDebug() = Unit
         fun openReadAssistant() = Unit
         fun showParagraphRuleQuickDialog() = Unit
+        fun openBookCharacters() = Unit
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit
