@@ -66,12 +66,15 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
 
     private lateinit var titleBar: TitleBar
     private lateinit var summaryView: TextView
+    private lateinit var graphModeView: TextView
+    private lateinit var treeModeView: TextView
     private lateinit var networkView: CharacterNetworkView
     private lateinit var recyclerView: RecyclerView
     private val adapter = RelationAdapter()
     private var bookUrl: String = ""
     private var characters: List<BookCharacter> = emptyList()
     private var relations: List<BookCharacterRelation> = emptyList()
+    private var networkMode = MODE_GRAPH
 
     override val binding: ViewBinding by lazy {
         SimpleViewBinding(createContentView())
@@ -123,6 +126,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             setTextColor(secondaryTextColor)
         }
         root.addView(summaryView)
+        root.addView(createModeSelector())
         networkView = CharacterNetworkView(this).apply {
             setPadding(16.dpToPx(), 8.dpToPx(), 16.dpToPx(), 8.dpToPx())
             onRelationClick = { relation -> editRelation(relation) }
@@ -151,6 +155,49 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         return root
     }
 
+    private fun createModeSelector(): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(16.dpToPx(), 0, 16.dpToPx(), 8.dpToPx())
+            graphModeView = createModeButton("关系图", MODE_GRAPH)
+            treeModeView = createModeButton("树状图", MODE_TREE)
+            addView(graphModeView, LinearLayout.LayoutParams(0, 36.dpToPx(), 1f))
+            addView(treeModeView, LinearLayout.LayoutParams(0, 36.dpToPx(), 1f).apply {
+                leftMargin = 8.dpToPx()
+            })
+            updateModeSelector()
+        }
+    }
+
+    private fun createModeButton(text: String, mode: Int): TextView {
+        return TextView(this).apply {
+            this.text = text
+            gravity = Gravity.CENTER
+            textSize = 14f
+            typeface = uiTypeface()
+            setOnClickListener {
+                networkMode = mode
+                updateModeSelector()
+                networkView.setMode(mode)
+            }
+        }
+    }
+
+    private fun updateModeSelector() {
+        if (!::graphModeView.isInitialized || !::treeModeView.isInitialized) return
+        listOf(graphModeView to MODE_GRAPH, treeModeView to MODE_TREE).forEach { (view, mode) ->
+            val selected = networkMode == mode
+            view.setTextColor(if (selected) accentColor else primaryTextColor)
+            view.background = UiCorner.actionSelector(
+                if (selected) ColorUtilsSafe.adjustAlpha(accentColor, 0.14f)
+                else ContextCompat.getColor(this, R.color.background_card),
+                ContextCompat.getColor(this, R.color.background_menu),
+                UiCorner.actionRadius(this)
+            )
+        }
+    }
+
     private fun load() {
         if (bookUrl.isBlank()) {
             summaryView.text = "当前书籍不存在"
@@ -166,6 +213,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
                         characters.any { it.id == relation.toCharacterId }
             }
             summaryView.text = "共 ${characters.size} 个角色，${relations.size} 条关系。点击节点查看角色，点击关系线或下方条目编辑关系。"
+            networkView.setMode(networkMode)
             networkView.setData(characters, relations)
             adapter.items = relations
         }
@@ -371,9 +419,10 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
 
     private inner class CharacterNetworkView(context: android.content.Context) : View(context) {
         private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val labelBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val avatarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
         private val nodePath = Path()
@@ -383,6 +432,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         private val avatarTargets = mutableMapOf<Long, CustomTarget<Bitmap>>()
         private var viewCharacters: List<BookCharacter> = emptyList()
         private var viewRelations: List<BookCharacterRelation> = emptyList()
+        private var mode = MODE_GRAPH
         private var scale = 1f
         private var offsetX = 0f
         private var offsetY = 0f
@@ -416,16 +466,24 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
                 ContextCompat.getColor(context, R.color.background_card),
                 UiCorner.panelRadius(context)
             )
-            nodePaint.color = context.accentColor
-            selectedPaint.color = ContextCompat.getColor(context, R.color.background_menu)
-            gridPaint.color = ColorUtilsSafe.adjustAlpha(context.primaryTextColor, 0.08f)
-            gridPaint.style = Paint.Style.STROKE
-            gridPaint.strokeWidth = 1.dpToPx().toFloat()
-            linePaint.color = ColorUtilsSafe.adjustAlpha(context.primaryTextColor, 0.32f)
-            linePaint.strokeWidth = 2.dpToPx().toFloat()
+            nodePaint.color = ContextCompat.getColor(context, R.color.background_menu)
+            ringPaint.style = Paint.Style.STROKE
+            ringPaint.strokeWidth = 2.dpToPx().toFloat()
+            linePaint.color = ColorUtilsSafe.adjustAlpha(context.primaryTextColor, 0.28f)
+            linePaint.strokeCap = Paint.Cap.ROUND
+            labelPaint.color = context.primaryTextColor
+            labelPaint.textSize = 12.dpToPx().toFloat()
+            labelPaint.textAlign = Paint.Align.CENTER
+            labelBgPaint.color = ColorUtilsSafe.adjustAlpha(ContextCompat.getColor(context, R.color.background_card), 0.92f)
             textPaint.color = context.primaryTextColor
-            textPaint.textSize = 13.dpToPx().toFloat()
+            textPaint.textSize = 12.dpToPx().toFloat()
             textPaint.textAlign = Paint.Align.CENTER
+        }
+
+        fun setMode(mode: Int) {
+            if (this.mode == mode) return
+            this.mode = mode
+            resetViewport()
         }
 
         fun setData(characters: List<BookCharacter>, relations: List<BookCharacterRelation>) {
@@ -445,16 +503,13 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             canvas.scale(scale, scale)
             val content = worldContentRect()
             drawMapBackground(canvas, content)
-            layoutNodes(content)
-            viewRelations.forEach { relation ->
-                val from = nodePositions[relation.fromCharacterId] ?: return@forEach
-                val to = nodePositions[relation.toCharacterId] ?: return@forEach
-                linePaint.strokeWidth = (1.5f + relation.strength.coerceIn(0, 100) / 50f).dpToPx()
-                canvas.drawLine(from.first, from.second, to.first, to.second, linePaint)
-                val midX = (from.first + to.first) / 2f
-                val midY = (from.second + to.second) / 2f
-                canvas.drawText(relation.displayName().take(8), midX, midY - 4.dpToPx(), textPaint)
+            if (mode == MODE_TREE) {
+                layoutTreeNodes(content)
+            } else {
+                layoutGraphNodes(content)
             }
+            val usedLabelRects = arrayListOf<RectF>()
+            viewRelations.forEach { relation -> drawRelation(canvas, relation, usedLabelRects) }
             viewCharacters.forEach { character ->
                 val point = nodePositions[character.id] ?: return@forEach
                 drawCharacterNode(canvas, character, point.first, point.second)
@@ -540,26 +595,24 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
         }
 
         private fun drawMapBackground(canvas: Canvas, content: RectF) {
-            val centerX = content.centerX()
-            val centerY = content.centerY()
-            val maxRadius = min(content.width(), content.height()) * 0.44f
-            canvas.drawCircle(centerX, centerY, maxRadius * 0.42f, gridPaint)
-            canvas.drawCircle(centerX, centerY, maxRadius * 0.72f, gridPaint)
-            canvas.drawCircle(centerX, centerY, maxRadius, gridPaint)
-            val step = 48.dpToPx().toFloat()
-            var x = content.left + step
-            while (x < content.right) {
-                canvas.drawLine(x, content.top, x, content.bottom, gridPaint)
-                x += step
-            }
-            var y = content.top + step
-            while (y < content.bottom) {
-                canvas.drawLine(content.left, y, content.right, y, gridPaint)
-                y += step
-            }
+            val softPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            softPaint.color = ColorUtilsSafe.adjustAlpha(accentColor, 0.08f)
+            canvas.drawRoundRect(
+                content.left + 8.dpToPx(),
+                content.top + 8.dpToPx(),
+                content.right - 8.dpToPx(),
+                content.bottom - 8.dpToPx(),
+                UiCorner.panelRadius(context) * 0.75f,
+                UiCorner.panelRadius(context) * 0.75f,
+                softPaint
+            )
+            softPaint.style = Paint.Style.STROKE
+            softPaint.strokeWidth = 1.dpToPx().toFloat()
+            softPaint.color = ColorUtilsSafe.adjustAlpha(primaryTextColor, 0.08f)
+            canvas.drawRoundRect(content, UiCorner.panelRadius(context), UiCorner.panelRadius(context), softPaint)
         }
 
-        private fun layoutNodes(content: RectF) {
+        private fun layoutGraphNodes(content: RectF) {
             val centerX = content.centerX()
             val centerY = content.centerY()
             val centers = centerCharacters()
@@ -584,6 +637,102 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
                 val y = centerY + sin(angle).toFloat() * radiusY * ringBias
                 nodePositions[character.id] = x to y
             }
+        }
+
+        private fun layoutTreeNodes(content: RectF) {
+            val components = relationComponents()
+            if (components.isEmpty()) {
+                layoutGraphNodes(content)
+                return
+            }
+            val treeGap = 44.dpToPx().toFloat()
+            val treeWidth = max(220.dpToPx().toFloat(), (content.width() - treeGap * (components.size - 1)) / components.size)
+            components.forEachIndexed { componentIndex, component ->
+                val left = content.left + componentIndex * (treeWidth + treeGap)
+                val root = component.maxWithOrNull(
+                    compareBy<BookCharacter> { it.roleLevel }
+                        .thenBy { relationDegree(it.id) }
+                        .thenByDescending { -it.sortOrder }
+                ) ?: return@forEachIndexed
+                val levels = buildTreeLevels(root, component)
+                val verticalStep = max(70.dpToPx().toFloat(), (content.height() - 28.dpToPx()) / levels.size.coerceAtLeast(1))
+                levels.forEachIndexed { levelIndex, level ->
+                    val y = content.top + 30.dpToPx() + verticalStep * levelIndex
+                    val gap = treeWidth / (level.size + 1)
+                    level.forEachIndexed { itemIndex, character ->
+                        val x = left + gap * (itemIndex + 1)
+                        nodePositions[character.id] = x.coerceIn(
+                            content.left + 44.dpToPx(),
+                            content.right - 44.dpToPx()
+                        ) to y
+                    }
+                }
+            }
+        }
+
+        private fun relationComponents(): List<List<BookCharacter>> {
+            val byId = viewCharacters.associateBy { it.id }
+            val graph = hashMapOf<Long, MutableSet<Long>>()
+            viewCharacters.forEach { graph[it.id] = linkedSetOf() }
+            viewRelations.forEach { relation ->
+                graph[relation.fromCharacterId]?.add(relation.toCharacterId)
+                graph[relation.toCharacterId]?.add(relation.fromCharacterId)
+            }
+            val visited = hashSetOf<Long>()
+            val components = arrayListOf<List<BookCharacter>>()
+            viewCharacters.forEach { start ->
+                if (!visited.add(start.id)) return@forEach
+                val queue = ArrayDeque<Long>()
+                val ids = arrayListOf<Long>()
+                queue.add(start.id)
+                while (queue.isNotEmpty()) {
+                    val id = queue.removeFirst()
+                    ids.add(id)
+                    graph[id].orEmpty().forEach { next ->
+                        if (visited.add(next)) queue.add(next)
+                    }
+                }
+                components.add(ids.mapNotNull(byId::get))
+            }
+            return components.sortedWith(
+                compareByDescending<List<BookCharacter>> { component ->
+                    component.maxOfOrNull { it.roleLevel } ?: 0
+                }.thenByDescending { it.size }
+            )
+        }
+
+        private fun buildTreeLevels(root: BookCharacter, component: List<BookCharacter>): List<List<BookCharacter>> {
+            val componentIds = component.map { it.id }.toSet()
+            val byId = component.associateBy { it.id }
+            val graph = hashMapOf<Long, MutableSet<Long>>()
+            componentIds.forEach { graph[it] = linkedSetOf() }
+            viewRelations.forEach { relation ->
+                if (relation.fromCharacterId in componentIds && relation.toCharacterId in componentIds) {
+                    graph[relation.fromCharacterId]?.add(relation.toCharacterId)
+                    graph[relation.toCharacterId]?.add(relation.fromCharacterId)
+                }
+            }
+            val visited = hashSetOf(root.id)
+            val queue = ArrayDeque<Pair<Long, Int>>()
+            val levels = arrayListOf<MutableList<BookCharacter>>()
+            queue.add(root.id to 0)
+            while (queue.isNotEmpty()) {
+                val (id, level) = queue.removeFirst()
+                val character = byId[id]
+                if (character == null) continue
+                while (levels.size <= level) levels.add(arrayListOf())
+                levels[level].add(character)
+                graph[id].orEmpty()
+                    .sortedWith(compareByDescending<Long> { byId[it]?.roleLevel ?: 0 }.thenBy { byId[it]?.sortOrder ?: 0 })
+                    .forEach { next ->
+                        if (visited.add(next)) queue.add(next to level + 1)
+                    }
+            }
+            return levels
+        }
+
+        private fun relationDegree(characterId: Long): Int {
+            return viewRelations.count { it.fromCharacterId == characterId || it.toCharacterId == characterId }
         }
 
         private fun centerCharacters(): List<BookCharacter> {
@@ -611,12 +760,13 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
             }
             val outerRadius = 27.dpToPx().toFloat() + roleBoost
             val innerRadius = outerRadius - 5.dpToPx()
-            selectedPaint.color = if (character.roleLevel == BookCharacter.ROLE_MAIN) {
-                ColorUtilsSafe.adjustAlpha(accentColor, 0.22f)
+            ringPaint.color = if (character.roleLevel == BookCharacter.ROLE_MAIN) {
+                accentColor
             } else {
-                ContextCompat.getColor(context, R.color.background_menu)
+                ColorUtilsSafe.adjustAlpha(primaryTextColor, 0.16f)
             }
-            canvas.drawCircle(x, y, outerRadius, selectedPaint)
+            nodePaint.color = ContextCompat.getColor(context, R.color.background_menu)
+            canvas.drawCircle(x, y, outerRadius, nodePaint)
             val bitmap = avatarBitmaps[character.id]
             if (bitmap != null && !bitmap.isRecycled) {
                 bitmapRect.set(0, 0, bitmap.width, bitmap.height)
@@ -628,11 +778,66 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
                 canvas.drawBitmap(bitmap, bitmapRect, dst, avatarPaint)
                 canvas.restore()
             } else {
-                canvas.drawCircle(x, y, innerRadius, nodePaint)
+                val fallbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = ColorUtilsSafe.adjustAlpha(primaryTextColor, 0.08f)
+                }
+                canvas.drawCircle(x, y, innerRadius, fallbackPaint)
                 val label = character.displayName().take(1)
                 canvas.drawText(label, x, y + 5.dpToPx(), textPaint)
             }
+            canvas.drawCircle(x, y, outerRadius - 1.dpToPx(), ringPaint)
             canvas.drawText(character.displayName().take(6), x, y + outerRadius + 16.dpToPx(), textPaint)
+        }
+
+        private fun drawRelation(
+            canvas: Canvas,
+            relation: BookCharacterRelation,
+            usedLabelRects: MutableList<RectF>
+        ) {
+            val from = nodePositions[relation.fromCharacterId] ?: return
+            val to = nodePositions[relation.toCharacterId] ?: return
+            val dx = to.first - from.first
+            val dy = to.second - from.second
+            val distance = hypot(dx, dy).coerceAtLeast(1f)
+            val fromRadius = nodeHitRadius(relation.fromCharacterId).toFloat() * 0.72f
+            val toRadius = nodeHitRadius(relation.toCharacterId).toFloat() * 0.72f
+            val sx = from.first + dx / distance * fromRadius
+            val sy = from.second + dy / distance * fromRadius
+            val ex = to.first - dx / distance * toRadius
+            val ey = to.second - dy / distance * toRadius
+            linePaint.strokeWidth = (1.4f + relation.strength.coerceIn(0, 100) / 70f).dpToPx()
+            linePaint.color = ColorUtilsSafe.adjustAlpha(primaryTextColor, if (mode == MODE_TREE) 0.22f else 0.28f)
+            canvas.drawLine(sx, sy, ex, ey, linePaint)
+            if (distance < 86.dpToPx()) return
+            val label = relation.displayName().take(8)
+            val textWidth = labelPaint.measureText(label)
+            val normalX = -dy / distance
+            val normalY = dx / distance
+            var labelX = (sx + ex) / 2f + normalX * 14.dpToPx()
+            var labelY = (sy + ey) / 2f + normalY * 14.dpToPx()
+            val rect = labelRect(labelX, labelY, textWidth)
+            var tries = 0
+            while (usedLabelRects.any { RectF.intersects(it, rect) } && tries < 4) {
+                labelX += normalX * 12.dpToPx()
+                labelY += normalY * 12.dpToPx()
+                rect.set(labelRect(labelX, labelY, textWidth))
+                tries++
+            }
+            if (usedLabelRects.any { RectF.intersects(it, rect) }) return
+            canvas.drawRoundRect(rect, 9.dpToPx().toFloat(), 9.dpToPx().toFloat(), labelBgPaint)
+            canvas.drawText(label, labelX, labelY + 4.dpToPx(), labelPaint)
+            usedLabelRects.add(rect)
+        }
+
+        private fun labelRect(x: Float, y: Float, textWidth: Float): RectF {
+            val horizontal = 9.dpToPx().toFloat()
+            val vertical = 6.dpToPx().toFloat()
+            return RectF(
+                x - textWidth / 2f - horizontal,
+                y - 12.dpToPx().toFloat() - vertical,
+                x + textWidth / 2f + horizontal,
+                y + 6.dpToPx().toFloat() + vertical
+            )
         }
 
         private fun nodeHitRadius(id: Long): Int {
@@ -685,5 +890,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>() {
 
     companion object {
         private const val MENU_ADD = 1
+        private const val MODE_GRAPH = 0
+        private const val MODE_TREE = 1
     }
 }
