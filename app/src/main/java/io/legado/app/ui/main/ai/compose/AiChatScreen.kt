@@ -3,6 +3,7 @@ package io.legado.app.ui.main.ai.compose
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,9 +21,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -47,19 +50,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.LifecycleOwner
@@ -70,21 +78,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatViewModel
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.ext.tasklist.TaskListPlugin
-import io.noties.markwon.html.HtmlPlugin
-import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.launch
 import android.net.Uri
-import android.text.Spannable
-import android.text.TextPaint
-import android.text.method.LinkMovementMethod
-import android.text.style.ClickableSpan
-import android.text.style.URLSpan
-import android.view.View
-import android.widget.TextView
 
 @Stable
 data class AiChatScreenActions(
@@ -162,7 +157,7 @@ fun AiChatScreen(
         }
     }
     LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, requesting, autoScrollSignal, processExpandSignal) {
-        if (uiItems.isNotEmpty() && shouldAutoScroll) {
+        if (uiItems.isNotEmpty() && shouldAutoScroll && !listState.isScrollInProgress) {
             if (requesting) {
                 listState.scrollToItem(uiItems.lastIndex)
             } else {
@@ -523,30 +518,27 @@ private fun AiAssistantMessageRow(
 @Composable
 private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyle) {
     Surface(
-        shape = RoundedCornerShape(
-            topStart = 20.dp,
-            topEnd = 20.dp,
-            bottomStart = 8.dp,
-            bottomEnd = 20.dp
-        ),
-        color = style.colors.assistantBubble,
-        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke)
+        shape = RoundedCornerShape(style.metrics.cardRadius),
+        color = style.colors.toolSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
-        SelectionContainer {
+        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (part.pending) {
                 Text(
                     text = part.content,
                     color = style.colors.primaryText,
                     fontSize = 15.sp,
-                    lineHeight = 21.sp,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+                    lineHeight = 21.sp
                 )
             } else {
-                AiMarkdownText(
-                    content = part.content,
-                    style = style,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
-                )
+                SelectionContainer {
+                    AiMarkdownText(
+                        content = part.content,
+                        style = style
+                    )
+                }
             }
         }
     }
@@ -641,79 +633,330 @@ private fun AiMarkdownText(
     style: AiComposeStyle,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val markwon = remember(context) {
-        Markwon.builder(context)
-            .usePlugin(TablePlugin.create(context))
-            .usePlugin(StrikethroughPlugin.create())
-            .usePlugin(TaskListPlugin.create(context))
-            .usePlugin(HtmlPlugin.create())
-            .usePlugin(LinkifyPlugin.create())
-            .build()
-    }
-    AndroidView(
-        modifier = modifier,
-        factory = {
-            TextView(it).apply {
-                textSize = 15f
-                setTextColor(android.graphics.Color.rgb(32, 32, 32))
-                setLineSpacing(2f, 1f)
-                linksClickable = true
-                movementMethod = LinkMovementMethod.getInstance()
-                setTextIsSelectable(true)
+    val blocks = remember(content) { parseAiMarkdownBlocks(content) }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is AiMarkdownBlock.Paragraph -> AiMarkdownRichText(
+                    text = block.text,
+                    style = style
+                )
+                is AiMarkdownBlock.Heading -> AiMarkdownRichText(
+                    text = block.text,
+                    style = style,
+                    fontSize = when (block.level) {
+                        1 -> 20.sp
+                        2 -> 18.sp
+                        else -> 16.sp
+                    },
+                    lineHeight = when (block.level) {
+                        1 -> 26.sp
+                        2 -> 24.sp
+                        else -> 22.sp
+                    },
+                    fontWeight = FontWeight.SemiBold
+                )
+                is AiMarkdownBlock.Bullet -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("•", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
+                    AiMarkdownRichText(
+                        text = block.text,
+                        style = style,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                is AiMarkdownBlock.Numbered -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("${block.number}.", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
+                    AiMarkdownRichText(
+                        text = block.text,
+                        style = style,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                is AiMarkdownBlock.Quote -> Surface(
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = style.colors.processSurface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        style.metrics.strokeWidth,
+                        style.colors.stroke
+                    )
+                ) {
+                    AiMarkdownRichText(
+                        text = block.text,
+                        style = style,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        color = style.colors.secondaryText
+                    )
+                }
+                is AiMarkdownBlock.Code -> Surface(
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = style.colors.processSurface,
+                    border = androidx.compose.foundation.BorderStroke(
+                        style.metrics.strokeWidth,
+                        style.colors.stroke
+                    )
+                ) {
+                    Text(
+                        text = block.text,
+                        color = style.colors.primaryText,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                }
+                AiMarkdownBlock.Divider -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(style.colors.stroke)
+                        .heightIn(min = style.metrics.strokeWidth)
+                )
             }
-        },
-        update = { textView ->
-            textView.setTextColor(style.colors.primaryText.toArgb())
-            textView.setLinkTextColor(style.colors.accent.toArgb())
-            val normalizedContent = content.ifBlank { " " }
-            if (textView.tag != normalizedContent) {
-                markwon.setMarkdown(textView, normalizedContent)
-                textView.tag = normalizedContent
-                installSearchBookLinks(textView)
-            }
-            textView.setTextColor(style.colors.primaryText.toArgb())
-            textView.setLinkTextColor(style.colors.accent.toArgb())
-            textView.movementMethod = LinkMovementMethod.getInstance()
         }
+    }
+}
+
+@Composable
+private fun AiMarkdownRichText(
+    text: String,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    color: Color = style.colors.primaryText,
+    fontSize: androidx.compose.ui.unit.TextUnit = 15.sp,
+    lineHeight: androidx.compose.ui.unit.TextUnit = 21.sp,
+    fontWeight: FontWeight? = null
+) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val annotated = remember(text, color, style.colors.accent) {
+        buildAiInlineMarkdown(text, color, style.colors.accent)
+    }
+    if (annotated.getStringAnnotations(AI_LINK_TAG, 0, annotated.length).isEmpty()) {
+        Text(
+            text = annotated,
+            color = color,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            fontWeight = fontWeight,
+            modifier = modifier
+        )
+    } else {
+        ClickableText(
+            text = annotated,
+            style = TextStyle(
+                color = color,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                fontWeight = fontWeight
+            ),
+            modifier = modifier,
+            onClick = { offset ->
+                annotated.getStringAnnotations(AI_LINK_TAG, offset, offset)
+                    .firstOrNull()
+                    ?.item
+                    ?.let { url ->
+                        if (url.startsWith(searchBookScheme)) {
+                            openSearchBookLink(context, url)
+                        } else {
+                            runCatching { uriHandler.openUri(url) }
+                        }
+                    }
+            }
+        )
+    }
+}
+
+private sealed class AiMarkdownBlock {
+    data class Paragraph(val text: String) : AiMarkdownBlock()
+    data class Heading(val level: Int, val text: String) : AiMarkdownBlock()
+    data class Bullet(val text: String) : AiMarkdownBlock()
+    data class Numbered(val number: Int, val text: String) : AiMarkdownBlock()
+    data class Quote(val text: String) : AiMarkdownBlock()
+    data class Code(val text: String) : AiMarkdownBlock()
+    data object Divider : AiMarkdownBlock()
+}
+
+private fun parseAiMarkdownBlocks(content: String): List<AiMarkdownBlock> {
+    val blocks = mutableListOf<AiMarkdownBlock>()
+    val paragraph = mutableListOf<String>()
+    val lines = content.replace("\r\n", "\n").replace('\r', '\n').lines()
+    var index = 0
+
+    fun flushParagraph() {
+        if (paragraph.isNotEmpty()) {
+            blocks += AiMarkdownBlock.Paragraph(paragraph.joinToString("\n").trim())
+            paragraph.clear()
+        }
+    }
+
+    while (index < lines.size) {
+        val raw = lines[index]
+        val line = raw.trimEnd()
+        val trimmed = line.trim()
+        if (trimmed.isBlank()) {
+            flushParagraph()
+            index++
+            continue
+        }
+        if (trimmed.startsWith("```")) {
+            flushParagraph()
+            val codeLines = mutableListOf<String>()
+            index++
+            while (index < lines.size && !lines[index].trimStart().startsWith("```")) {
+                codeLines += lines[index]
+                index++
+            }
+            if (index < lines.size) index++
+            blocks += AiMarkdownBlock.Code(codeLines.joinToString("\n"))
+            continue
+        }
+        val headingMatch = headingRegex.matchEntire(trimmed)
+        if (headingMatch != null) {
+            flushParagraph()
+            blocks += AiMarkdownBlock.Heading(
+                level = headingMatch.groupValues[1].length.coerceIn(1, 6),
+                text = headingMatch.groupValues[2].trim()
+            )
+            index++
+            continue
+        }
+        if (dividerRegex.matches(trimmed)) {
+            flushParagraph()
+            blocks += AiMarkdownBlock.Divider
+            index++
+            continue
+        }
+        val quoteMatch = quoteRegex.matchEntire(trimmed)
+        if (quoteMatch != null) {
+            flushParagraph()
+            blocks += AiMarkdownBlock.Quote(quoteMatch.groupValues[1].trim())
+            index++
+            continue
+        }
+        val bulletMatch = bulletRegex.matchEntire(trimmed)
+        if (bulletMatch != null) {
+            flushParagraph()
+            blocks += AiMarkdownBlock.Bullet(bulletMatch.groupValues[1].trim())
+            index++
+            continue
+        }
+        val numberedMatch = numberedRegex.matchEntire(trimmed)
+        if (numberedMatch != null) {
+            flushParagraph()
+            blocks += AiMarkdownBlock.Numbered(
+                number = numberedMatch.groupValues[1].toIntOrNull() ?: 1,
+                text = numberedMatch.groupValues[2].trim()
+            )
+            index++
+            continue
+        }
+        if (looksLikeMarkdownTable(lines, index)) {
+            flushParagraph()
+            val tableLines = mutableListOf(line)
+            index++
+            while (index < lines.size && lines[index].contains('|') && lines[index].isNotBlank()) {
+                tableLines += lines[index].trimEnd()
+                index++
+            }
+            blocks += AiMarkdownBlock.Code(tableLines.joinToString("\n"))
+            continue
+        }
+        paragraph += line
+        index++
+    }
+    flushParagraph()
+    return blocks.ifEmpty { listOf(AiMarkdownBlock.Paragraph(" ")) }
+}
+
+private fun buildAiInlineMarkdown(text: String, color: Color, accent: Color): AnnotatedString {
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val match = inlineMarkdownRegex.find(text, index)
+            if (match == null) {
+                append(text.substring(index))
+                break
+            }
+            if (match.range.first > index) {
+                append(text.substring(index, match.range.first))
+            }
+            val token = match.value
+            when {
+                token.startsWith("`") -> withStyle(
+                    SpanStyle(
+                        color = color,
+                        background = accent.copy(alpha = 0.10f),
+                        fontFamily = FontFamily.Monospace
+                    )
+                ) {
+                    append(token.trim('`'))
+                }
+                token.startsWith("[") -> {
+                    val label = match.groupValues[2]
+                    val url = match.groupValues[3]
+                    pushStringAnnotation(AI_LINK_TAG, url)
+                    withStyle(
+                        SpanStyle(
+                            color = accent,
+                            textDecoration = TextDecoration.Underline
+                        )
+                    ) {
+                        append(label)
+                    }
+                    pop()
+                }
+                token.startsWith("**") -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                    append(token.removeSurrounding("**"))
+                }
+                else -> append(token)
+            }
+            index = match.range.last + 1
+        }
+    }
+}
+
+private fun openSearchBookLink(context: android.content.Context, url: String) {
+    val uri = Uri.parse(url)
+    val book = SearchBook(
+        name = uri.getQueryParameter("name").orEmpty(),
+        author = uri.getQueryParameter("author").orEmpty(),
+        bookUrl = uri.getQueryParameter("bookUrl").orEmpty(),
+        origin = uri.getQueryParameter("origin").orEmpty(),
+        originName = uri.getQueryParameter("originName").orEmpty()
+    )
+    if (book.bookUrl.isBlank() || book.origin.isBlank()) return
+    SearchBookOpenHelper.open(
+        context,
+        book,
+        uri.getQueryParameter("target") == "video"
     )
 }
 
-private fun installSearchBookLinks(textView: TextView) {
-    val spannable = textView.text as? Spannable ?: return
-    val spans = spannable.getSpans(0, spannable.length, URLSpan::class.java)
-    spans.forEach { span ->
-        val url = span.url
-        if (!url.startsWith(searchBookScheme)) return@forEach
-        val start = spannable.getSpanStart(span)
-        val end = spannable.getSpanEnd(span)
-        val flags = spannable.getSpanFlags(span)
-        spannable.removeSpan(span)
-        spannable.setSpan(object : ClickableSpan() {
-            override fun onClick(widget: View) {
-                val uri = Uri.parse(url)
-                val book = SearchBook(
-                    name = uri.getQueryParameter("name").orEmpty(),
-                    author = uri.getQueryParameter("author").orEmpty(),
-                    bookUrl = uri.getQueryParameter("bookUrl").orEmpty(),
-                    origin = uri.getQueryParameter("origin").orEmpty(),
-                    originName = uri.getQueryParameter("originName").orEmpty()
-                )
-                if (book.bookUrl.isBlank() || book.origin.isBlank()) return
-                SearchBookOpenHelper.open(
-                    widget.context,
-                    book,
-                    uri.getQueryParameter("target") == "video"
-                )
-            }
-
-            override fun updateDrawState(ds: TextPaint) {
-                super.updateDrawState(ds)
-                ds.isUnderlineText = false
-            }
-        }, start, end, flags)
-    }
+private fun looksLikeMarkdownTable(lines: List<String>, index: Int): Boolean {
+    if (index + 1 >= lines.size) return false
+    return lines[index].contains('|') && markdownTableSeparatorRegex.matches(lines[index + 1].trim())
 }
+
+private const val AI_LINK_TAG = "ai_link"
+private val headingRegex = Regex("^(#{1,6})\\s+(.+)$")
+private val dividerRegex = Regex("^([-*_]\\s*){3,}$")
+private val quoteRegex = Regex("^>\\s?(.+)$")
+private val bulletRegex = Regex("^[-*+]\\s+(.+)$")
+private val numberedRegex = Regex("^(\\d+)\\.\\s+(.+)$")
+private val markdownTableSeparatorRegex = Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$")
+private val inlineMarkdownRegex = Regex("`([^`]+)`|\\[([^\\]]+)]\\(([^)]+)\\)|\\*\\*([^*]+)\\*\\*")
 
 @Composable
 private fun AiJumpButtons(
@@ -775,7 +1018,7 @@ private fun AiComposer(
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(style.metrics.cardRadius),
+        shape = RoundedCornerShape(28.dp),
         color = style.colors.composerSurface,
         shadowElevation = 8.dp,
         border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.composerStroke)
