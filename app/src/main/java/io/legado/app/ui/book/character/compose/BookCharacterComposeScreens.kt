@@ -838,9 +838,8 @@ private fun CharacterGraph(
     val visibleRelations = remember(relations, visibleIds) {
         relations.filter { it.fromCharacterId in visibleIds && it.toCharacterId in visibleIds }
     }
-    LaunchedEffect(visibleCharacters.map { it.id }, selectedCenterId) {
-        scale = 1f
-        pan = Offset.Zero
+    val visibleKey = remember(visibleCharacters) {
+        visibleCharacters.joinToString("|") { it.id.toString() }
     }
     Surface(
         modifier = modifier.shadow(8.dp, RoundedCornerShape(style.radius), clip = false),
@@ -855,12 +854,22 @@ private fun CharacterGraph(
             val layout = remember(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density) {
                 buildGraphLayout(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density.density)
             }
+            val fitScale = remember(layout.canvasWidth, layout.canvasHeight, widthPx, heightPx) {
+                graphFitScale(layout, widthPx, heightPx)
+            }
+            val minScale = remember(fitScale) {
+                graphMinScale(fitScale)
+            }
+            LaunchedEffect(visibleKey, selectedCenterId, layout.canvasWidth, layout.canvasHeight) {
+                scale = fitScale
+                pan = Offset.Zero
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(visibleCharacters, selectedCenterId, layout.canvasWidth, layout.canvasHeight) {
+                    .pointerInput(visibleCharacters, selectedCenterId, layout.canvasWidth, layout.canvasHeight, minScale) {
                         detectTransformGestures { _, p, zoom, _ ->
-                            val nextScale = (scale * zoom).coerceIn(1f, 2.4f)
+                            val nextScale = (scale * zoom).coerceIn(minScale, 2.4f)
                             scale = nextScale
                             pan = constrainGraphPan(
                                 pan = pan + p,
@@ -1176,6 +1185,19 @@ private fun distance(a: Offset, b: Offset): Float {
     val dx = a.x - b.x
     val dy = a.y - b.y
     return sqrt(dx * dx + dy * dy)
+}
+
+private fun graphFitScale(layout: GraphLayout, width: Float, height: Float): Float {
+    if (width <= 0f || height <= 0f || layout.canvasWidth <= 0f || layout.canvasHeight <= 0f) {
+        return 1f
+    }
+    val horizontal = width * 0.88f / layout.canvasWidth
+    val vertical = height * 0.84f / layout.canvasHeight
+    return minOf(horizontal, vertical).coerceIn(0.42f, 1f)
+}
+
+private fun graphMinScale(fitScale: Float): Float {
+    return (fitScale * 0.72f).coerceIn(0.32f, fitScale)
 }
 
 private fun graphSlotRatios(count: Int): List<Offset> {
