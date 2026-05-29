@@ -61,12 +61,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -877,23 +878,12 @@ private fun CharacterGraph(
                         radius = size.minDimension * 0.72f
                     )
                 )
-                val ringColor = style.colors.stroke.copy(alpha = 0.36f)
-                listOf(0.32f, 0.52f).forEach { ratio ->
-                    drawCircle(
-                        color = ringColor,
-                        radius = size.minDimension * ratio,
-                        center = graphCenter,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                }
-                visibleRelations.forEach { relation ->
-                    val from = layout.nodes[relation.fromCharacterId]?.center ?: return@forEach
-                    val to = layout.nodes[relation.toCharacterId]?.center ?: return@forEach
-                    val start = transformGraphPoint(from, layout, scale, pan, size.width, size.height)
-                    val end = transformGraphPoint(to, layout, scale, pan, size.width, size.height)
-                    val strength = relation.strength.coerceIn(0, 100)
+                layout.edges.sortedBy { it.relation.strength }.forEach { edge ->
+                    val start = transformGraphPoint(edge.start, layout, scale, pan, size.width, size.height)
+                    val end = transformGraphPoint(edge.end, layout, scale, pan, size.width, size.height)
+                    val strength = edge.relation.strength.coerceIn(0, 100)
                     drawLine(
-                        color = style.colors.accent.copy(alpha = 0.20f + strength / 420f),
+                        color = style.colors.accent.copy(alpha = 0.18f + strength / 380f),
                         start = start,
                         end = end,
                         strokeWidth = (1.4f + strength / 58f).dp.toPx(),
@@ -901,6 +891,21 @@ private fun CharacterGraph(
                     )
                 }
             }
+            layout.edges
+                .filter { it.showLabel }
+                .forEach { edge ->
+                    val p = transformGraphPoint(edge.labelPoint, layout, scale, pan, widthPx, heightPx)
+                    GraphRelationLabel(
+                        relation = edge.relation,
+                        onClick = { onRelationClick(edge.relation) },
+                        modifier = Modifier.offset {
+                            IntOffset(
+                                (p.x - 48.dp.toPx()).roundToInt(),
+                                (p.y - 14.dp.toPx()).roundToInt()
+                            )
+                        }
+                    )
+                }
             visibleCharacters.forEach { character ->
                 val node = layout.nodes[character.id] ?: return@forEach
                 val p = transformGraphPoint(node.center, layout, scale, pan, widthPx, heightPx)
@@ -937,6 +942,34 @@ private fun CharacterGraph(
             }
         }
     }
+}
+
+@Composable
+private fun GraphRelationLabel(
+    relation: BookCharacterRelation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val style = rememberCharacterStyle()
+    Text(
+        text = relation.displayName(),
+        color = style.colors.accent.copy(alpha = 0.92f),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = TextStyle(
+            shadow = Shadow(
+                color = style.colors.page.copy(alpha = 0.82f),
+                offset = Offset(0f, 1.2f),
+                blurRadius = 4f
+            )
+        ),
+        modifier = modifier
+            .widthIn(max = 96.dp)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .clickable(onClick = onClick)
+    )
 }
 
 private fun buildVisibleCharacters(
@@ -992,25 +1025,25 @@ private fun CharacterGraphNode(
                 CharacterAvatar(character.avatar, character.displayName(), avatarSize)
             }
         }
-        Surface(
+        Text(
+            text = character.displayName(),
+            color = if (isCenter) style.colors.accent else style.colors.text,
+            fontSize = if (isCenter) 12.sp else 11.sp,
+            fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            overflow = TextOverflow.Ellipsis,
+            style = TextStyle(
+                shadow = Shadow(
+                    color = style.colors.page.copy(alpha = 0.92f),
+                    offset = Offset(0f, 1.2f),
+                    blurRadius = 5f
+                )
+            ),
             modifier = Modifier
-                .padding(top = 6.dp)
-                .fillMaxWidth(),
-            color = style.colors.page.copy(alpha = 0.88f),
-            shape = RoundedCornerShape(style.smallRadius),
-            border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
-        ) {
-            Text(
-                text = character.displayName(),
-                color = if (isCenter) style.colors.accent else style.colors.text,
-                fontSize = if (isCenter) 12.sp else 11.sp,
-                fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
+                .fillMaxWidth()
+                .padding(top = 6.dp, start = 4.dp, end = 4.dp)
+        )
     }
 }
 
@@ -1018,12 +1051,21 @@ private data class GraphLayout(
     val canvasWidth: Float,
     val canvasHeight: Float,
     val center: Offset,
-    val nodes: Map<Long, GraphNodeLayout>
+    val nodes: Map<Long, GraphNodeLayout>,
+    val edges: List<GraphEdgeLayout>
 )
 
 private data class GraphNodeLayout(
     val character: BookCharacter,
     val center: Offset
+)
+
+private data class GraphEdgeLayout(
+    val relation: BookCharacterRelation,
+    val start: Offset,
+    val end: Offset,
+    val labelPoint: Offset,
+    val showLabel: Boolean
 )
 
 private fun buildGraphLayout(
@@ -1048,7 +1090,7 @@ private fun buildGraphLayout(
     }
     if (characters.isEmpty()) {
         val emptyCenter = Offset(canvasWidth / 2f, canvasHeight / 2f)
-        return GraphLayout(canvasWidth, canvasHeight, emptyCenter, emptyMap())
+        return GraphLayout(canvasWidth, canvasHeight, emptyCenter, emptyMap(), emptyList())
     }
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
     val others = characters.filter { it.id != center.id }
@@ -1078,7 +1120,52 @@ private fun buildGraphLayout(
             )
         )
     }
-    return GraphLayout(canvasWidth, canvasHeight, centerPoint, result)
+    val edges = buildGraphEdges(relations, result, density)
+    return GraphLayout(canvasWidth, canvasHeight, centerPoint, result, edges)
+}
+
+private fun buildGraphEdges(
+    relations: List<BookCharacterRelation>,
+    nodes: Map<Long, GraphNodeLayout>,
+    density: Float
+): List<GraphEdgeLayout> {
+    val acceptedLabels = mutableListOf<Offset>()
+    val minLabelDistance = 86f * density
+    return relations
+        .filter { it.fromCharacterId in nodes && it.toCharacterId in nodes }
+        .sortedWith(compareByDescending<BookCharacterRelation> { it.strength }.thenBy { it.sortOrder }.thenBy { it.id })
+        .mapIndexed { index, relation ->
+            val start = nodes.getValue(relation.fromCharacterId).center
+            val end = nodes.getValue(relation.toCharacterId).center
+            val labelPoint = relationLabelPoint(start, end, index, density)
+            val labelAllowed = acceptedLabels.none { distance(it, labelPoint) < minLabelDistance }
+            if (labelAllowed) acceptedLabels += labelPoint
+            GraphEdgeLayout(
+                relation = relation,
+                start = start,
+                end = end,
+                labelPoint = labelPoint,
+                showLabel = labelAllowed
+            )
+        }
+}
+
+private fun relationLabelPoint(start: Offset, end: Offset, index: Int, density: Float): Offset {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val length = sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+    val direction = if (index % 2 == 0) 1f else -1f
+    val offset = (14f + (index % 3) * 5f) * density * direction
+    return Offset(
+        x = (start.x + end.x) / 2f + (-dy / length) * offset,
+        y = (start.y + end.y) / 2f + (dx / length) * offset
+    )
+}
+
+private fun distance(a: Offset, b: Offset): Float {
+    val dx = a.x - b.x
+    val dy = a.y - b.y
+    return sqrt(dx * dx + dy * dy)
 }
 
 private fun graphSlotRatios(count: Int): List<Offset> {
