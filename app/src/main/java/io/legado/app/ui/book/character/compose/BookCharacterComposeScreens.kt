@@ -848,97 +848,107 @@ private fun CharacterGraph(
         shape = RoundedCornerShape(style.radius)
     ) {
         BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(visibleCharacters, selectedCenterId) {
-                    detectTransformGestures { _, p, zoom, _ ->
-                        val nextScale = (scale * zoom).coerceIn(1f, 2.2f)
-                        scale = nextScale
-                        pan = constrainGraphPan(pan + p, size.width.toFloat(), size.height.toFloat(), nextScale)
-                    }
-                }
+            modifier = Modifier.fillMaxSize()
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
             val layout = remember(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density) {
                 buildGraphLayout(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density.density)
             }
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val graphCenter = layout.nodes[selectedCenterId]?.center
-                    ?.let { transformGraphPoint(it, layout, scale, pan, size.width, size.height) }
-                    ?: Offset(size.width * 0.5f, size.height * 0.5f)
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            style.colors.accent.copy(alpha = 0.18f),
-                            style.colors.accent.copy(alpha = 0.06f),
-                            Color.Transparent
-                        ),
-                        center = graphCenter,
-                        radius = size.minDimension * 0.72f
-                    )
-                )
-                layout.edges.sortedBy { it.relation.strength }.forEach { edge ->
-                    val start = transformGraphPoint(edge.start, layout, scale, pan, size.width, size.height)
-                    val end = transformGraphPoint(edge.end, layout, scale, pan, size.width, size.height)
-                    val strength = edge.relation.strength.coerceIn(0, 100)
-                    drawLine(
-                        color = style.colors.accent.copy(alpha = 0.18f + strength / 380f),
-                        start = start,
-                        end = end,
-                        strokeWidth = (1.4f + strength / 58f).dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-            layout.edges
-                .filter { it.showLabel }
-                .forEach { edge ->
-                    val p = transformGraphPoint(edge.labelPoint, layout, scale, pan, widthPx, heightPx)
-                    GraphRelationLabel(
-                        relation = edge.relation,
-                        onClick = { onRelationClick(edge.relation) },
-                        modifier = Modifier.offset {
-                            IntOffset(
-                                (p.x - 48.dp.toPx()).roundToInt(),
-                                (p.y - 14.dp.toPx()).roundToInt()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(visibleCharacters, selectedCenterId, layout.canvasWidth, layout.canvasHeight) {
+                        detectTransformGestures { _, p, zoom, _ ->
+                            val nextScale = (scale * zoom).coerceIn(1f, 2.4f)
+                            scale = nextScale
+                            pan = constrainGraphPan(
+                                pan = pan + p,
+                                width = size.width.toFloat(),
+                                height = size.height.toFloat(),
+                                layout = layout,
+                                scale = nextScale
                             )
                         }
+                    }
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val graphCenter = layout.nodes[selectedCenterId]?.center
+                        ?.let { transformGraphPoint(it, layout, scale, pan, size.width, size.height) }
+                        ?: Offset(size.width * 0.5f, size.height * 0.5f)
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                style.colors.accent.copy(alpha = 0.18f),
+                                style.colors.accent.copy(alpha = 0.06f),
+                                Color.Transparent
+                            ),
+                            center = graphCenter,
+                            radius = size.minDimension * 0.72f
+                        )
+                    )
+                    layout.edges.sortedBy { it.relation.strength }.forEach { edge ->
+                        val start = transformGraphPoint(edge.start, layout, scale, pan, size.width, size.height)
+                        val end = transformGraphPoint(edge.end, layout, scale, pan, size.width, size.height)
+                        val strength = edge.relation.strength.coerceIn(0, 100)
+                        drawLine(
+                            color = style.colors.accent.copy(alpha = 0.18f + strength / 380f),
+                            start = start,
+                            end = end,
+                            strokeWidth = (1.4f + strength / 58f).dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+                layout.edges
+                    .filter { it.showLabel }
+                    .forEach { edge ->
+                        val p = transformGraphPoint(edge.labelPoint, layout, scale, pan, widthPx, heightPx)
+                        GraphRelationLabel(
+                            relation = edge.relation,
+                            onClick = { onRelationClick(edge.relation) },
+                            modifier = Modifier.offset {
+                                IntOffset(
+                                    (p.x - 48.dp.toPx()).roundToInt(),
+                                    (p.y - 14.dp.toPx()).roundToInt()
+                                )
+                            }
+                        )
+                    }
+                visibleCharacters.forEach { character ->
+                    val node = layout.nodes[character.id] ?: return@forEach
+                    val p = transformGraphPoint(node.center, layout, scale, pan, widthPx, heightPx)
+                    val avatarSize = when (character.id) {
+                        selectedCenterId -> 82
+                        else -> if (character.roleLevel == BookCharacter.ROLE_IMPORTANT) 64 else 56
+                    }
+                    val nodeWidth = 112.dp
+                    val nodeWidthPx = with(density) { nodeWidth.toPx() }
+                    val avatarSizePx = with(density) { avatarSize.dp.toPx() }
+                    CharacterGraphNode(
+                        character = character,
+                        isCenter = character.id == selectedCenterId,
+                        avatarSize = avatarSize,
+                        onClick = { onCharacterClick(character) },
+                        modifier = Modifier
+                            .offset {
+                                IntOffset(
+                                    (p.x - nodeWidthPx / 2f).roundToInt(),
+                                    (p.y - avatarSizePx / 2f).roundToInt()
+                                )
+                            }
+                            .width(nodeWidth)
                     )
                 }
-            visibleCharacters.forEach { character ->
-                val node = layout.nodes[character.id] ?: return@forEach
-                val p = transformGraphPoint(node.center, layout, scale, pan, widthPx, heightPx)
-                val avatarSize = when (character.id) {
-                    selectedCenterId -> 82
-                    else -> if (character.roleLevel == BookCharacter.ROLE_IMPORTANT) 64 else 56
+                if (characters.size > visibleCharacters.size) {
+                    UnlinkedCharactersStrip(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(12.dp),
+                        characters = characters.filter { it.id !in visibleIds },
+                        onCharacterClick = onCharacterClick
+                    )
                 }
-                val nodeWidth = 112.dp
-                val nodeWidthPx = with(density) { nodeWidth.toPx() }
-                val avatarSizePx = with(density) { avatarSize.dp.toPx() }
-                CharacterGraphNode(
-                    character = character,
-                    isCenter = character.id == selectedCenterId,
-                    avatarSize = avatarSize,
-                    onClick = { onCharacterClick(character) },
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                (p.x - nodeWidthPx / 2f).roundToInt(),
-                                (p.y - avatarSizePx / 2f).roundToInt()
-                            )
-                        }
-                        .width(nodeWidth)
-                )
-            }
-            if (characters.size > visibleCharacters.size) {
-                UnlinkedCharactersStrip(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(12.dp),
-                    characters = characters.filter { it.id !in visibleIds },
-                    onCharacterClick = onCharacterClick
-                )
             }
         }
     }
@@ -1224,9 +1234,15 @@ private fun transformGraphPoint(
     return viewportCenter + (point - layout.center) * scale + pan
 }
 
-private fun constrainGraphPan(pan: Offset, width: Float, height: Float, scale: Float): Offset {
-    val maxX = (width * (scale - 1f) / 2f + 80f).coerceAtLeast(0f)
-    val maxY = (height * (scale - 1f) / 2f + 80f).coerceAtLeast(0f)
+private fun constrainGraphPan(
+    pan: Offset,
+    width: Float,
+    height: Float,
+    layout: GraphLayout,
+    scale: Float
+): Offset {
+    val maxX = ((layout.canvasWidth * scale - width) / 2f + 96f).coerceAtLeast(96f)
+    val maxY = ((layout.canvasHeight * scale - height) / 2f + 96f).coerceAtLeast(96f)
     return Offset(
         pan.x.coerceIn(-maxX, maxX),
         pan.y.coerceIn(-maxY, maxY)
