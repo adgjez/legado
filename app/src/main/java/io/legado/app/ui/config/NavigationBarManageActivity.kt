@@ -78,6 +78,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var pendingIconRequest: IconRequest? = null
     private var pendingSidebarBackgroundEntry: NavigationBarIconConfig.Entry? = null
     private val handledWebDavTasks = mutableSetOf<String>()
+    private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private var containerMenuPopup: PopupWindow? = null
@@ -332,12 +333,14 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
     private fun loadPackages() {
+        val version = ++loadVersion
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
                     NavigationBarIconConfig.loadEntries(isNightMode, includeRemote = true, cloudContainerId, CLOUD_SCOPE)
                 }
             }.onSuccess {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 adapter.submit(it, NavigationBarIconConfig.activeDirName(isNightMode))
                 binding.tvSummary.text = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
@@ -345,6 +348,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     getString(R.string.navigation_bar_package_summary)
                 }
             }.onFailure {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 binding.tvSummary.text = it.localizedMessage
             }
         }

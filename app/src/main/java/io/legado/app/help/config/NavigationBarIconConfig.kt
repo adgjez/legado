@@ -467,13 +467,29 @@ object NavigationBarIconConfig {
 
     private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         return AppCloudStorage.listNavigationBarPackages(isNight, containerId, scope).mapNotNull { file ->
-            val name = file.displayName.removeSuffix(".zip")
+            val name = remoteZipBaseName(file.displayName)
+            val dirName = name.normalizeFileName().ifBlank { return@mapNotNull null }
             Entry(
-                Config(name = name, isNightMode = isNight, updatedAt = file.lastModify),
+                Config(name = name.ifBlank { dirName }, isNightMode = isNight, updatedAt = file.lastModify),
                 Source.REMOTE,
-                name.normalizeFileName(),
+                dirName,
                 remoteUpdatedAt = file.lastModify
             )
+        }.dedupeRemoteEntries()
+    }
+
+    private fun remoteZipBaseName(displayName: String): String {
+        val name = displayName.trim().trimEnd('/').trim()
+        return if (name.endsWith(".zip", ignoreCase = true)) {
+            name.dropLast(4).trim()
+        } else {
+            name
+        }
+    }
+
+    private fun List<Entry>.dedupeRemoteEntries(): List<Entry> {
+        return groupBy { it.dirName }.values.mapNotNull { entries ->
+            entries.maxByOrNull { it.remoteUpdatedAt }
         }
     }
 

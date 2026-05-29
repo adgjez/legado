@@ -76,6 +76,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private var pendingColorTarget = 0
     private var pendingWallpaperCropRequest: ImageCropHelper.Request? = null
     private val handledWebDavTasks = mutableSetOf<String>()
+    private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private var containerMenuPopup: PopupWindow? = null
@@ -257,15 +258,18 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         }
     }
     private fun loadPackages() {
+        val version = ++loadVersion
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
                     TopBarConfig.loadEntries(this@TopBarManageActivity, isNightMode, includeRemote = true, cloudContainerId, CLOUD_SCOPE)
                 }
             }.onSuccess {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 adapter.submit(it, TopBarConfig.activeDirName(isNightMode))
                 binding.tvSummary.text = getString(R.string.top_bar_manage_summary)
             }.onFailure {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 binding.tvSummary.text = it.localizedMessage
             }
         }

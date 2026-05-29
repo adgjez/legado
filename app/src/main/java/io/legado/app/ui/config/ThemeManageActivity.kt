@@ -299,6 +299,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 ThemePackageManager.load(isNightTheme, cloudContainerId, CLOUD_SCOPE)
             }.onSuccess {
                 if (version != loadVersion) return@onSuccess
+                if (isFinishing || isDestroyed) return@onSuccess
                 adapter.items = it
                 binding.tvSummary.text = appendPendingRemoteSummary(
                     if (it.isEmpty()) {
@@ -313,6 +314,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }.onFailure {
                 if (it.isJobCancellation()) return@onFailure
                 if (version != loadVersion) return@onFailure
+                if (isFinishing || isDestroyed) return@onFailure
                 binding.tvSummary.text = if (useCloud) {
                     getString(R.string.theme_package_cloud_load_failed, it.localizedMessage)
                 } else {

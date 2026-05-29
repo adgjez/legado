@@ -365,11 +365,12 @@ object ThemePackageManager {
     }
 
     private suspend fun loadRemote(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
-        return AppCloudStorage.listThemePackages(isNightTheme, containerId, scope).map { remoteDir ->
-            val dirName = remoteDir.displayName.trimEnd('/').removeSuffix(".zip")
+        return AppCloudStorage.listThemePackages(isNightTheme, containerId, scope).mapNotNull { remoteDir ->
+            val rawName = remoteZipBaseName(remoteDir.displayName)
+            val dirName = rawName.normalizeFileName().ifBlank { return@mapNotNull null }
             Entry(
                 packageInfo = Package(
-                    name = dirName,
+                    name = rawName.ifBlank { dirName },
                     dirName = dirName,
                     isNightTheme = isNightTheme,
                     updatedAt = remoteDir.lastModify,
@@ -378,6 +379,21 @@ object ThemePackageManager {
                 source = Source.REMOTE,
                 remoteUpdatedAt = remoteDir.lastModify
             )
+        }.dedupeRemoteEntries()
+    }
+
+    private fun remoteZipBaseName(displayName: String): String {
+        val name = displayName.trim().trimEnd('/').trim()
+        return if (name.endsWith(".zip", ignoreCase = true)) {
+            name.dropLast(4).trim()
+        } else {
+            name
+        }
+    }
+
+    private fun List<Entry>.dedupeRemoteEntries(): List<Entry> {
+        return groupBy { it.dirName }.values.mapNotNull { entries ->
+            entries.maxByOrNull { it.remoteUpdatedAt }
         }
     }
 
