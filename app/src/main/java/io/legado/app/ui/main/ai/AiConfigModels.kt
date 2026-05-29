@@ -79,6 +79,7 @@ data class AiImageProviderConfig(
     val headers: String = "",
     val model: String = "",
     val defaultParamsJson: String = "",
+    val stylePrompt: String = "",
     val jsLib: String = "",
     val loginUrl: String = "",
     val loginUi: String = "",

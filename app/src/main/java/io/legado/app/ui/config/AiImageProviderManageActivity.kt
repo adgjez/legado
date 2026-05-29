@@ -245,6 +245,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             name = json.optString("name").ifBlank { getString(R.string.ai_image_provider_js) },
             type = AiImageProviderConfig.TYPE_JS,
             model = json.optString("model").ifBlank { "JS" },
+            stylePrompt = json.optString("stylePrompt"),
             jsLib = json.optString("jsLib"),
             loginUrl = json.optString("loginUrl"),
             loginUi = json.optString("loginUi"),

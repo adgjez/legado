@@ -24,6 +24,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private var providerId: String? = null
     private var providerType: String = AiImageProviderConfig.TYPE_OPENAI
     private var paramsText: String = ""
+    private var stylePromptText: String = ""
     private var scriptText: String = ""
     private var jsLibText: String = ""
     private var editingField: Field = Field.PARAMS
@@ -33,6 +34,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         val text = result.data?.getStringExtra("text") ?: return@registerForActivityResult
         when (editingField) {
             Field.PARAMS -> paramsText = text
+            Field.STYLE_PROMPT -> stylePromptText = text
             Field.SCRIPT -> scriptText = text
             Field.JS_LIB -> jsLibText = text
         }
@@ -49,10 +51,18 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun initView() = binding.run {
-        listOf(tvType, btnParams, btnScript, btnJsLib, btnSave).forEach {
+        listOf(tvType, btnStylePrompt, btnParams, btnScript, btnJsLib, btnSave).forEach {
             it.background = actionBackground()
         }
         tvType.setOnClickListener { selectType() }
+        btnStylePrompt.setOnClickListener {
+            openCodeEditor(
+                Field.STYLE_PROMPT,
+                getString(R.string.ai_image_style_prompt),
+                stylePromptText,
+                "text.html.markdown"
+            )
+        }
         btnParams.setOnClickListener { openCodeEditor(Field.PARAMS, getString(R.string.ai_image_params), paramsText.ifBlank { defaultParams() }) }
         btnScript.setOnClickListener { openCodeEditor(Field.SCRIPT, getString(R.string.ai_image_script), scriptText) }
         btnJsLib.setOnClickListener { openCodeEditor(Field.JS_LIB, "jsLib", jsLibText) }
@@ -70,6 +80,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         etTimeout.setText((provider?.validTimeout() ?: 300_000L).toString())
         cbEnabled.isChecked = provider?.enabled ?: true
         paramsText = provider?.defaultParamsJson.orEmpty()
+        stylePromptText = provider?.stylePrompt.orEmpty()
         scriptText = provider?.script.orEmpty()
         jsLibText = provider?.jsLib.orEmpty()
     }
@@ -95,17 +106,23 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun refreshCodeButtons() = binding.run {
+        btnStylePrompt.text = "${getString(R.string.ai_image_style_prompt)}: ${summary(stylePromptText)}"
         btnParams.text = "${getString(R.string.ai_image_params)}: ${summary(paramsText.ifBlank { defaultParams() })}"
         btnScript.text = "${getString(R.string.ai_image_script)}: ${summary(scriptText)}"
         btnJsLib.text = "jsLib: ${summary(jsLibText)}"
     }
 
-    private fun openCodeEditor(field: Field, title: String, text: String) {
+    private fun openCodeEditor(
+        field: Field,
+        title: String,
+        text: String,
+        languageName: String = "source.js"
+    ) {
         editingField = field
         codeEditLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
             putExtra("title", title)
             putExtra("text", text)
-            putExtra("languageName", "source.js")
+            putExtra("languageName", languageName)
         })
     }
 
@@ -128,6 +145,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             headers = binding.etHeaders.text?.toString()?.trim().orEmpty(),
             model = binding.etModel.text?.toString()?.trim().orEmpty(),
             defaultParamsJson = paramsText.ifBlank { defaultParams() },
+            stylePrompt = stylePromptText.trim(),
             jsLib = jsLibText,
             script = scriptText,
             timeoutMillisecond = binding.etTimeout.text?.toString()?.toLongOrNull() ?: 300_000L,
@@ -163,6 +181,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     private enum class Field {
         PARAMS,
+        STYLE_PROMPT,
         SCRIPT,
         JS_LIB
     }

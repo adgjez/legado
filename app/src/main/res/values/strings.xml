@@ -679,6 +679,7 @@
     <string name="ai_image_provider_js">JS 生图规则</string>
     <string name="ai_image_provider_type">供应商类型</string>
     <string name="ai_image_params">请求参数 JSON</string>
+    <string name="ai_image_style_prompt">风格提示词</string>
     <string name="ai_image_script">生图脚本</string>
     <string name="ai_image_generate">生图</string>
     <string name="ai_image_gallery">AI 图片库</string>

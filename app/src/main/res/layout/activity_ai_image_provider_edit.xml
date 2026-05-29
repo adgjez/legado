@@ -130,6 +130,18 @@
                 android:textSize="14sp" />
 
             <TextView
+                android:id="@+id/btn_style_prompt"
+                android:layout_width="match_parent"
+                android:layout_height="46dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_book_info_intro_panel"
+                android:gravity="center_vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="@string/ai_image_style_prompt"
+                android:textSize="14sp" />
+
+            <TextView
                 android:id="@+id/btn_params"
                 android:layout_width="match_parent"
                 android:layout_height="46dp"

@@ -999,6 +999,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     headers = safeString { provider.headers }.trim(),
                     model = safeString { provider.model }.trim(),
                     defaultParamsJson = safeString { provider.defaultParamsJson }.trim(),
+                    stylePrompt = safeString { provider.stylePrompt }.trim(),
                     jsLib = safeString { provider.jsLib },
                     loginUrl = safeString { provider.loginUrl }.trim(),
                     loginUi = safeString { provider.loginUi },

@@ -38,7 +38,7 @@ object AiImageService {
         provider: AiImageProviderConfig? = null
     ): String {
         val target = resolveProvider(provider)
-        return generateRaw(prompt, target).source
+        return generateRaw(effectivePrompt(prompt, target), target).source
     }
 
     suspend fun generateAndStore(
@@ -46,13 +46,23 @@ object AiImageService {
         provider: AiImageProviderConfig? = null
     ): AiGeneratedImage {
         val target = resolveProvider(provider)
-        val image = generateRaw(prompt, target)
+        val image = generateRaw(effectivePrompt(prompt, target), target)
         return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model)
     }
 
     private fun resolveProvider(provider: AiImageProviderConfig?): AiImageProviderConfig {
         return provider ?: AppConfig.aiEnabledImageProviders.firstOrNull()
             ?: error("未配置可用生图供应商")
+    }
+
+    private fun effectivePrompt(prompt: String, provider: AiImageProviderConfig): String {
+        val style = provider.stylePrompt.trim()
+        val content = prompt.trim()
+        return when {
+            style.isBlank() -> content
+            content.isBlank() -> style
+            else -> "$style\n\n$content"
+        }
     }
 
     private suspend fun generateRaw(prompt: String, target: AiImageProviderConfig): ImageGenerationResult {
