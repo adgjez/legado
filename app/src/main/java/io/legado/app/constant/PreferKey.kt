@@ -69,6 +69,7 @@ object PreferKey {
     const val aiPersonaList = "aiPersonaList"
     const val aiCurrentPersonaId = "aiCurrentPersonaId"
     const val aiImageProviderList = "aiImageProviderList"
+    const val aiCurrentImageProviderId = "aiCurrentImageProviderId"
     const val aiContextCompressionEnabled = "aiContextCompressionEnabled"
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"

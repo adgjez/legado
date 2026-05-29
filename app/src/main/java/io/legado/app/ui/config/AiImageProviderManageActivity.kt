@@ -136,7 +136,9 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
 
     private fun showActions(provider: AiImageProviderConfig) {
         val isJsRule = provider.type == AiImageProviderConfig.TYPE_JS
+        val isCurrent = provider.id == AppConfig.aiCurrentImageProviderId
         val actions = buildList {
+            if (!isCurrent) add("设为当前生图模型")
             add(getString(if (provider.enabled) R.string.disable else R.string.enable))
             add(getString(R.string.edit))
             if (isJsRule) {
@@ -150,6 +152,15 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             actions
         ) { _, index ->
             when (actions[index]) {
+                "设为当前生图模型" -> {
+                    if (!provider.enabled) {
+                        toastOnUi("请先启用该生图模型")
+                    } else {
+                        AppConfig.aiCurrentImageProviderId = provider.id
+                        reload()
+                        toastOnUi("已设为当前生图模型")
+                    }
+                }
                 getString(if (provider.enabled) R.string.disable else R.string.enable) -> {
                     AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.map {
                         if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
@@ -351,6 +362,8 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             item: AiImageProviderConfig,
             payloads: MutableList<Any>
         ) = binding.run {
+            val currentId = AppConfig.aiCurrentImageProvider?.id ?: AppConfig.aiCurrentImageProviderId
+            val isCurrent = item.id == currentId
             tvName.text = item.displayName()
             tvPath.text = if (item.type == AiImageProviderConfig.TYPE_OPENAI) {
                 item.baseUrl.ifBlank { "OpenAI" }
@@ -358,8 +371,12 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                 getString(R.string.ai_image_provider_js)
             }
             tvCapacity.text = item.model.ifBlank { if (item.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" }
-            tvState.text = getString(if (item.enabled) R.string.enabled else R.string.disabled)
-            tvSelected.visibility = if (item.enabled) View.VISIBLE else View.GONE
+            tvState.text = buildString {
+                if (isCurrent) append("当前使用 · ")
+                append(getString(if (item.enabled) R.string.enabled else R.string.disabled))
+            }
+            tvSelected.visibility = if (isCurrent) View.VISIBLE else View.GONE
+            tvSelected.text = "✓"
             tvSelected.setTextColor(ContextCompat.getColor(this@AiImageProviderManageActivity, R.color.accent))
             tvName.applyUiSectionTitleStyle(this@AiImageProviderManageActivity)
             tvPath.applyUiLabelStyle(this@AiImageProviderManageActivity)

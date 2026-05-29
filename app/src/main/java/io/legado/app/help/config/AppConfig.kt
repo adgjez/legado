@@ -769,6 +769,29 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiEnabledImageProviders: List<AiImageProviderConfig>
         get() = aiImageProviderList.filter { it.enabled }
 
+    var aiCurrentImageProviderId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentImageProviderId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentImageProviderId)
+            else appCtx.putPrefString(PreferKey.aiCurrentImageProviderId, value)
+        }
+
+    val aiCurrentImageProvider: AiImageProviderConfig?
+        get() {
+            val providers = aiEnabledImageProviders
+            val currentId = aiCurrentImageProviderId
+            if (currentId.isNullOrBlank()) {
+                return providers.firstOrNull()?.also { aiCurrentImageProviderId = it.id }
+            }
+            return providers.firstOrNull { it.id == currentId }
+        }
+
+    fun findEnabledImageProvider(id: String?): AiImageProviderConfig? {
+        val cleanId = id?.trim().orEmpty()
+        if (cleanId.isBlank()) return null
+        return aiEnabledImageProviders.firstOrNull { it.id == cleanId }
+    }
+
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)

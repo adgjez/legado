@@ -50,9 +50,17 @@ object AiImageService {
         return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model)
     }
 
+    fun currentProviderOrNull(): AiImageProviderConfig? {
+        return AppConfig.aiCurrentImageProvider
+    }
+
+    fun providerByIdOrNull(providerId: String?): AiImageProviderConfig? {
+        return AppConfig.findEnabledImageProvider(providerId)
+    }
+
     private fun resolveProvider(provider: AiImageProviderConfig?): AiImageProviderConfig {
-        return provider ?: AppConfig.aiEnabledImageProviders.firstOrNull()
-            ?: error("未配置可用生图供应商")
+        return provider ?: currentProviderOrNull()
+            ?: error("请选择可用生图模型")
     }
 
     private fun effectivePrompt(prompt: String, provider: AiImageProviderConfig): String {
