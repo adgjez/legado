@@ -132,6 +132,7 @@ object AiBookCharacterTool {
         put("characterId", intProp("可选，角色 ID。"))
         put("name", stringProp("可选，角色名称。"))
         put("prompt", stringProp("可选，头像生成提示词；为空时会根据角色资料自动生成。"))
+        put("providerId", stringProp("可选，指定生图提供商 ID；只有用户明确选择某个生图模型时才传入，否则留空。"))
     }
 
     private suspend fun listCharacters(args: JSONObject?): String = withContext(IO) {
@@ -317,8 +318,17 @@ object AiBookCharacterTool {
         val prompt = args?.optString("prompt")?.trim()
             ?.takeIf { it.isNotBlank() }
             ?: buildCharacterAvatarPrompt(character)
+        val providerId = args?.optString("providerId").orEmpty().trim()
+        val provider = if (providerId.isBlank()) {
+            null
+        } else {
+            AiImageService.providerByIdOrNull(providerId)
+        }
+        if (providerId.isNotBlank() && provider == null) {
+            return errorJson("image provider is unavailable: $providerId")
+        }
         val image = runCatching {
-            AiImageService.generateAndStore(prompt)
+            AiImageService.generateAndStore(prompt, provider)
         }.getOrElse {
             return errorJson("生成头像失败：${it.localizedMessage ?: it.javaClass.simpleName}")
         }

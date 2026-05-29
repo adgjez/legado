@@ -19,6 +19,10 @@ object AiImageTool {
                                 put("type", "string")
                                 put("description", "Image prompt")
                             })
+                            put("providerId", JSONObject().apply {
+                                put("type", "string")
+                                put("description", "Optional image provider id. Use only when user explicitly selects an image model; otherwise omit it.")
+                            })
                         })
                         put("required", JSONArray().put("prompt"))
                     })
@@ -29,25 +33,39 @@ object AiImageTool {
                 if (prompt.isBlank()) {
                     JSONObject().put("ok", false).put("success", false).put("error", "prompt is empty").toString()
                 } else {
-                    runCatching {
-                        val image = AiImageService.generateAndStore(prompt)
-                        JSONObject()
-                            .put("ok", true)
-                            .put("success", true)
-                            .put("type", "image")
-                            .put("imageId", image.id)
-                            .put("imagePath", image.localPath)
-                            .put("name", image.name)
-                            .put("prompt", prompt)
-                            .put("provider", image.providerName)
-                            .put("model", image.model)
-                            .toString()
-                    }.getOrElse {
+                    val providerId = args?.optString("providerId").orEmpty().trim()
+                    val provider = if (providerId.isBlank()) {
+                        null
+                    } else {
+                        AiImageService.providerByIdOrNull(providerId)
+                    }
+                    if (providerId.isNotBlank() && provider == null) {
                         JSONObject()
                             .put("ok", false)
                             .put("success", false)
-                            .put("error", it.localizedMessage ?: it.javaClass.simpleName)
+                            .put("error", "image provider is unavailable: $providerId")
                             .toString()
+                    } else {
+                        runCatching {
+                            val image = AiImageService.generateAndStore(prompt, provider)
+                            JSONObject()
+                                .put("ok", true)
+                                .put("success", true)
+                                .put("type", "image")
+                                .put("imageId", image.id)
+                                .put("imagePath", image.localPath)
+                                .put("name", image.name)
+                                .put("prompt", prompt)
+                                .put("provider", image.providerName)
+                                .put("model", image.model)
+                                .toString()
+                        }.getOrElse {
+                            JSONObject()
+                                .put("ok", false)
+                                .put("success", false)
+                                .put("error", it.localizedMessage ?: it.javaClass.simpleName)
+                                .toString()
+                        }
                     }
                 }
             }
