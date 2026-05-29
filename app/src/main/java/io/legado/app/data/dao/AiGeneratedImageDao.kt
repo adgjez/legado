@@ -24,6 +24,29 @@ interface AiGeneratedImageDao {
     @Query("select * from ai_generated_images where groupId = :groupId and favorite = 1 order by updatedAt desc")
     fun byGroup(groupId: String): List<AiGeneratedImage>
 
+    @Query("select * from ai_generated_images where bookKey = :bookKey order by createdAt desc")
+    fun byBook(bookKey: String): List<AiGeneratedImage>
+
+    @Query("select * from ai_generated_images where chapterKey = :chapterKey order by createdAt desc")
+    fun byChapter(chapterKey: String): List<AiGeneratedImage>
+
+    @Query("select * from ai_generated_images where sourceType = :sourceType order by createdAt desc")
+    fun bySourceType(sourceType: String): List<AiGeneratedImage>
+
+    @Query(
+        """
+        select * from ai_generated_images
+        where name like :keyword
+           or prompt like :keyword
+           or bookName like :keyword
+           or bookAuthor like :keyword
+           or chapterTitle like :keyword
+           or characterName like :keyword
+        order by createdAt desc
+        """
+    )
+    fun search(keyword: String): List<AiGeneratedImage>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(image: AiGeneratedImage)
 

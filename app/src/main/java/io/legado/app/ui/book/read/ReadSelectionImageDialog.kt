@@ -104,7 +104,10 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
         generateJob = lifecycleScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    AiImageService.generateAndStore(content)
+                    AiImageService.generateAndStore(
+                        content,
+                        metadata = readSelectionMetadata()
+                    )
                 }
             }.onSuccess { image ->
                 currentImage = image
@@ -186,6 +189,19 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
         }
         AiImageGalleryManager.setFavorite(image.id, true, null)
         return true
+    }
+
+    private fun readSelectionMetadata(): AiImageGalleryManager.ImageMetadata {
+        val book = ReadBook.book
+        val chapter = ReadBook.curTextChapter?.chapter
+        return AiImageGalleryManager.ImageMetadata(
+            bookName = book?.name.orEmpty(),
+            bookAuthor = book?.author.orEmpty(),
+            chapterIndex = chapter?.index ?: ReadBook.durChapterIndex,
+            chapterTitle = chapter?.title.orEmpty(),
+            sourceType = AiImageGalleryManager.SOURCE_TYPE_READ_INSERT,
+            sourceText = paragraphText
+        )
     }
 
     private fun findParagraphIndex(lines: List<String>, target: String): Int? {

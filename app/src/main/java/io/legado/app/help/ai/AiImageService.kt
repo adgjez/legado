@@ -43,11 +43,12 @@ object AiImageService {
 
     suspend fun generateAndStore(
         prompt: String,
-        provider: AiImageProviderConfig? = null
+        provider: AiImageProviderConfig? = null,
+        metadata: AiImageGalleryManager.ImageMetadata = AiImageGalleryManager.ImageMetadata()
     ): AiGeneratedImage {
         val target = resolveProvider(provider)
         val image = generateRaw(effectivePrompt(prompt, target), target)
-        return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model)
+        return AiImageGalleryManager.saveGeneratedImage(image.source, prompt, target, image.model, metadata)
     }
 
     fun currentProviderOrNull(): AiImageProviderConfig? {

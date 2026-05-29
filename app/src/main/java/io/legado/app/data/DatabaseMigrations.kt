@@ -21,8 +21,27 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
-            migration_95_96, migration_96_97,
+            migration_95_96, migration_96_97, migration_97_98,
         )
+    }
+
+    private val migration_97_98 = object : Migration(97, 98) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `bookKey` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `bookName` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `bookAuthor` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `chapterKey` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `chapterIndex` INTEGER NOT NULL DEFAULT -1")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `chapterTitle` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `characterId` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `characterName` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `sourceType` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_generated_images` ADD COLUMN `sourceText` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_bookKey` ON `ai_generated_images` (`bookKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_chapterKey` ON `ai_generated_images` (`chapterKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_characterId` ON `ai_generated_images` (`characterId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_images_sourceType` ON `ai_generated_images` (`sourceType`)")
+        }
     }
 
     private val migration_96_97 = object : Migration(96, 97) {

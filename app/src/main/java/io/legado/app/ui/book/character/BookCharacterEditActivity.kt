@@ -228,7 +228,18 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
         lifecycleScope.launch {
             val result = withContext(IO) {
                 runCatching {
-                    AiImageService.generateAndStore(prompt).also { image ->
+                    val book = appDb.bookDao.getBook(bookUrl)
+                    AiImageService.generateAndStore(
+                        prompt,
+                        metadata = AiImageGalleryManager.ImageMetadata(
+                            bookName = book?.name.orEmpty(),
+                            bookAuthor = book?.author.orEmpty(),
+                            characterId = character.id,
+                            characterName = draft.name,
+                            sourceType = AiImageGalleryManager.SOURCE_TYPE_CHARACTER_AVATAR,
+                            sourceText = prompt
+                        )
+                    ).also { image ->
                         AiImageGalleryManager.setFavorite(image.id, true, null)
                     }
                 }

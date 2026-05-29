@@ -47,7 +47,14 @@ object AiImageTool {
                             .toString()
                     } else {
                         runCatching {
-                            val image = AiImageService.generateAndStore(prompt, provider)
+                            val image = AiImageService.generateAndStore(
+                                prompt,
+                                provider,
+                                metadata = AiImageGalleryManager.ImageMetadata(
+                                    sourceType = AiImageGalleryManager.SOURCE_TYPE_CHAT,
+                                    sourceText = prompt
+                                )
+                            )
                             JSONObject()
                                 .put("ok", true)
                                 .put("success", true)

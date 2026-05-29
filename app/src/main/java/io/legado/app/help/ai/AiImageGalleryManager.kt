@@ -16,6 +16,7 @@ import okhttp3.OkHttpClient
 import splitties.init.appCtx
 import java.io.File
 import java.io.InputStream
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -23,6 +24,9 @@ object AiImageGalleryManager {
 
     const val DEFAULT_GROUP_ID = "default"
     const val IMAGE_URI_PREFIX = "ai-image://"
+    const val SOURCE_TYPE_CHAT = "chat"
+    const val SOURCE_TYPE_READ_INSERT = "read_insert"
+    const val SOURCE_TYPE_CHARACTER_AVATAR = "character_avatar"
     private const val DEFAULT_GROUP_NAME = "默认分组"
     private const val TEMP_KEEP_DAYS = 3L
     private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
@@ -30,11 +34,29 @@ object AiImageGalleryManager {
     private val imageDir: File
         get() = File(appCtx.filesDir, "ai_images").apply { mkdirs() }
 
+    data class ImageMetadata(
+        val bookName: String = "",
+        val bookAuthor: String = "",
+        val chapterIndex: Int = -1,
+        val chapterTitle: String = "",
+        val characterId: Long = 0L,
+        val characterName: String = "",
+        val sourceType: String = "",
+        val sourceText: String = ""
+    ) {
+        val bookKey: String
+            get() = buildBookKey(bookName, bookAuthor)
+
+        val chapterKey: String
+            get() = buildChapterKey(bookKey, chapterIndex, chapterTitle)
+    }
+
     suspend fun saveGeneratedImage(
         imageSource: String,
         prompt: String,
         provider: AiImageProviderConfig,
-        model: String? = null
+        model: String? = null,
+        metadata: ImageMetadata = ImageMetadata()
     ): AiGeneratedImage = withContext(Dispatchers.IO) {
         ensureDefaultGroup()
         cleanupExpiredTemporary()
@@ -67,6 +89,16 @@ object AiImageGalleryManager {
                 ?: provider.model.ifBlank { if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" },
             localPath = file.absolutePath,
             originalSource = sourceSummary(imageSource),
+            bookKey = metadata.bookKey,
+            bookName = metadata.bookName.trim(),
+            bookAuthor = metadata.bookAuthor.trim(),
+            chapterKey = metadata.chapterKey,
+            chapterIndex = metadata.chapterIndex,
+            chapterTitle = metadata.chapterTitle.trim(),
+            characterId = metadata.characterId,
+            characterName = metadata.characterName.trim(),
+            sourceType = metadata.sourceType.trim(),
+            sourceText = metadata.sourceText.trim().take(2000),
             createdAt = now,
             updatedAt = now
         )
@@ -148,6 +180,10 @@ object AiImageGalleryManager {
             GalleryFilter.TEMPORARY -> appDb.aiGeneratedImageDao.temporary()
             GalleryFilter.FAVORITE -> appDb.aiGeneratedImageDao.favorites()
             is GalleryFilter.GROUP -> appDb.aiGeneratedImageDao.byGroup(filter.groupId)
+            is GalleryFilter.BOOK -> appDb.aiGeneratedImageDao.byBook(filter.bookKey)
+            is GalleryFilter.CHAPTER -> appDb.aiGeneratedImageDao.byChapter(filter.chapterKey)
+            is GalleryFilter.SOURCE_TYPE -> appDb.aiGeneratedImageDao.bySourceType(filter.sourceType)
+            is GalleryFilter.SEARCH -> appDb.aiGeneratedImageDao.search("%${filter.keyword.trim()}%")
         }.filter { image ->
             val exists = File(image.localPath).isFile
             if (!exists) appDb.aiGeneratedImageDao.delete(image.id)
@@ -328,10 +364,34 @@ object AiImageGalleryManager {
         return if (source.startsWith("data:image", true)) "data:image" else source.take(500)
     }
 
+    fun buildBookKey(bookName: String, author: String): String {
+        val name = normalizeKeyPart(bookName)
+        val writer = normalizeKeyPart(author)
+        return if (name.isBlank() && writer.isBlank()) "" else "$name|$writer"
+    }
+
+    fun buildChapterKey(bookKey: String, chapterIndex: Int, chapterTitle: String): String {
+        val cleanBookKey = bookKey.trim()
+        if (cleanBookKey.isBlank()) return ""
+        val title = normalizeKeyPart(chapterTitle)
+        return "$cleanBookKey|$chapterIndex|$title"
+    }
+
+    private fun normalizeKeyPart(value: String): String {
+        return value
+            .trim()
+            .replace(Regex("""\s+"""), "")
+            .lowercase(Locale.ROOT)
+    }
+
     sealed class GalleryFilter {
         data object ALL : GalleryFilter()
         data object TEMPORARY : GalleryFilter()
         data object FAVORITE : GalleryFilter()
         data class GROUP(val groupId: String) : GalleryFilter()
+        data class BOOK(val bookKey: String) : GalleryFilter()
+        data class CHAPTER(val chapterKey: String) : GalleryFilter()
+        data class SOURCE_TYPE(val sourceType: String) : GalleryFilter()
+        data class SEARCH(val keyword: String) : GalleryFilter()
     }
 }

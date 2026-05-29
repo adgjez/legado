@@ -314,6 +314,7 @@ object AiBookCharacterTool {
             val character = resolveCharacter(book.bookUrl, args) ?: return@withContext null
             book to character
         } ?: return errorJson("未找到书籍或角色")
+        val book = resolved.first
         val character = resolved.second
         val prompt = args?.optString("prompt")?.trim()
             ?.takeIf { it.isNotBlank() }
@@ -328,7 +329,18 @@ object AiBookCharacterTool {
             return errorJson("image provider is unavailable: $providerId")
         }
         val image = runCatching {
-            AiImageService.generateAndStore(prompt, provider)
+            AiImageService.generateAndStore(
+                prompt,
+                provider,
+                metadata = AiImageGalleryManager.ImageMetadata(
+                    bookName = book.name,
+                    bookAuthor = book.author,
+                    characterId = character.id,
+                    characterName = character.name,
+                    sourceType = AiImageGalleryManager.SOURCE_TYPE_CHARACTER_AVATAR,
+                    sourceText = prompt
+                )
+            )
         }.getOrElse {
             return errorJson("生成头像失败：${it.localizedMessage ?: it.javaClass.simpleName}")
         }
