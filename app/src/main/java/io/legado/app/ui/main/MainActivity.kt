@@ -674,12 +674,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.main_bottom_nav_horizontal_padding)
         val standardContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_standard_height)
         val floatingContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height)
+        val floatingBottomPadding = resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding)
         bottomControls.setPadding(
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             bottomControls.paddingTop,
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
-            if (standardMode) 0 else bottomControls.paddingBottom
+            if (standardMode) 0 else floatingBottomPadding
         )
+        bottomControls.requestLayout()
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
             NavigationBarView.LABEL_VISIBILITY_UNLABELED
         } else {
