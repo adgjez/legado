@@ -79,7 +79,8 @@ object ParagraphRuleProcessor {
             processCache[cacheKey]?.let { return it }
         }
         val original = content.textList.joinToString("\n")
-        var result = ChapterResult(original, content.textList)
+        val protectedContent = SpecialContentProtector.protect(original)
+        var result = ChapterResult(protectedContent.content, protectedContent.content.split('\n'))
         val context = currentCoroutineContext()
         var hasFailure = false
         for (rule in rules) {
@@ -97,7 +98,9 @@ object ParagraphRuleProcessor {
                 }
             }.getOrDefault(result)
         }
-        val processed = if (result.content == original) content else content.copy(textList = result.paragraphs)
+        val restoredParagraphs = result.paragraphs.map { protectedContent.restore(it) }
+        val restoredContent = restoredParagraphs.joinToString("\n")
+        val processed = if (restoredContent == original) content else content.copy(textList = restoredParagraphs)
         if (!hasFailure) {
             synchronized(processCache) {
                 processCache[cacheKey] = processed
@@ -110,7 +113,8 @@ object ParagraphRuleProcessor {
         if (book.isEpub) return content
         val rules = appDb.paragraphRuleDao.enabledRulesForBook(book.bookUrl)
         if (rules.isEmpty()) return content
-        var result = content
+        val protectedContent = SpecialContentProtector.protect(content)
+        var result = protectedContent.content
         val context = currentCoroutineContext()
         for (rule in rules) {
             if (rule.script.isBlank()) continue
@@ -126,7 +130,7 @@ object ParagraphRuleProcessor {
                 }
             }.getOrDefault(result)
         }
-        return result
+        return protectedContent.restore(result)
     }
 
     suspend fun debug(rule: ParagraphRule, book: Book, chapter: BookChapter, content: String): DebugResult {
