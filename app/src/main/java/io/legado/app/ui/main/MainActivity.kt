@@ -1467,7 +1467,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun createStandardBottomShellDrawable(): Drawable {
         val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
         val baseColor = bottomBackground
-        val alpha = bottomBarOpacityLevel(config.opacity)
+        val alpha = standardBottomBarOpacityLevel(config.opacity)
         val shell = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 0f
@@ -1500,6 +1500,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun bottomBarOpacityLevel(value: Int): Float {
         return (value.coerceIn(0, 100) / 200f).coerceIn(0f, 0.5f)
+    }
+
+    private fun standardBottomBarOpacityLevel(value: Int): Float {
+        return (value.coerceIn(0, 100) / 100f).coerceIn(0f, 1f)
     }
 
     private fun createEInkBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
