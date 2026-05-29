@@ -21,6 +21,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.viewbinding.ViewBinding
+import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -36,7 +37,6 @@ import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiLabelStyle
@@ -192,17 +192,6 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             val groups = data.first
             val images = data.second
             showGalleryAvatarPicker(groups, images)
-            return@launch
-            if (images.isEmpty()) {
-                toastOnUi("AI 图库暂无图片")
-                return@launch
-            }
-            val items: List<CharSequence> = images.map { image ->
-                "${image.name}\n${image.prompt.replace(Regex("\\s+"), " ").take(60)}"
-            }
-            selector("选择 AI 图库头像", items) { _, index ->
-                images.getOrNull(index)?.let(::setGalleryAvatar)
-            }
         }
     }
 
@@ -224,7 +213,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
         }
         val search = EditText(this).apply {
             hint = getString(R.string.search)
-            singleLine = true
+            setSingleLine(true)
             textSize = 14f
             setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
             background = UiCorner.panelRounded(

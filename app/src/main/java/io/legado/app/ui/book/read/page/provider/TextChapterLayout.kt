@@ -362,20 +362,20 @@ class TextChapterLayout(
                 val text = content.trim()
                 if (text == "[newpage]") {
                     prepareNextPageIfNeed()
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith(EpubFile.NATIVE_CONTENT_FLAG)) {
                     setTypeNativeEpubLayout(text)
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith("<usehtml")) {
                     val contentStart = text.indexOf('>')
                     val contentEnd = text.lastIndexOf("<")
                     if (contentStart >= 0 && contentEnd > contentStart) {
                         if (book.isEpub && AppConfig.useExperimentalEpubCore) {
                             setTypeEpubDiagnosticPage("旧 EPUB 缓存仍是 usehtml，请重新打开或刷新章节缓存", text.take(180))
-                            return@forEach
+                            return@forEachIndexed
                         }
                         setTypeHtml(imageStyle, book, text.substring(contentStart + 1, contentEnd))
-                        return@forEach
+                        return@forEachIndexed
                     }
                 }
             }
