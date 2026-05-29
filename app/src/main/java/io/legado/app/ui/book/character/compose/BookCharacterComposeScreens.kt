@@ -868,11 +868,14 @@ private fun CharacterGraph(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(visibleCharacters, selectedCenterId, layout.canvasWidth, layout.canvasHeight, minScale) {
-                        detectTransformGestures { _, p, zoom, _ ->
+                        detectTransformGestures { centroid, p, zoom, _ ->
+                            val oldScale = scale.coerceAtLeast(0.01f)
                             val nextScale = (scale * zoom).coerceIn(minScale, 2.4f)
+                            val viewportCenter = Offset(size.width / 2f, size.height / 2f)
+                            val zoomPan = (centroid - viewportCenter - pan) * (1f - nextScale / oldScale)
                             scale = nextScale
                             pan = constrainGraphPan(
-                                pan = pan + p,
+                                pan = pan + p + zoomPan,
                                 width = size.width.toFloat(),
                                 height = size.height.toFloat(),
                                 layout = layout,
@@ -1263,8 +1266,9 @@ private fun constrainGraphPan(
     layout: GraphLayout,
     scale: Float
 ): Offset {
-    val maxX = ((layout.canvasWidth * scale - width) / 2f + 96f).coerceAtLeast(96f)
-    val maxY = ((layout.canvasHeight * scale - height) / 2f + 96f).coerceAtLeast(96f)
+    val margin = (minOf(width, height) * 0.18f).coerceIn(72f, 180f)
+    val maxX = ((layout.canvasWidth * scale - width) / 2f + margin).coerceAtLeast(margin)
+    val maxY = ((layout.canvasHeight * scale - height) / 2f + margin).coerceAtLeast(margin)
     return Offset(
         pan.x.coerceIn(-maxX, maxX),
         pan.y.coerceIn(-maxY, maxY)
