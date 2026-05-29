@@ -62,6 +62,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -83,10 +84,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
-import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 @Immutable
 data class CharacterColors(
@@ -742,7 +740,7 @@ fun CharacterRelationScreen(
                 CharacterGraph(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 14.dp, end = 14.dp, bottom = 108.dp),
+                        .padding(start = 14.dp, end = 14.dp, bottom = 132.dp),
                     characters = characters,
                     relations = relations,
                     selectedCenterId = selectedCenterId,
@@ -847,7 +845,7 @@ private fun CharacterGraph(
         pan = Offset.Zero
     }
     Surface(
-        modifier = modifier,
+        modifier = modifier.shadow(8.dp, RoundedCornerShape(style.radius), clip = false),
         color = style.colors.card,
         shape = RoundedCornerShape(style.radius)
     ) {
@@ -868,23 +866,40 @@ private fun CharacterGraph(
                 buildGraphPositions(visibleCharacters, selectedCenterId, widthPx, heightPx)
             }
             Canvas(modifier = Modifier.fillMaxSize()) {
+                val graphCenter = positions[selectedCenterId]
+                    ?.let { transformGraphPoint(it, scale, pan, size.width, size.height) }
+                    ?: Offset(size.width * 0.5f, size.height * 0.5f)
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(style.colors.accent.copy(alpha = 0.12f), Color.Transparent),
-                        center = Offset(size.width * 0.5f, size.height * 0.42f),
-                        radius = size.minDimension * 0.65f
+                        colors = listOf(
+                            style.colors.accent.copy(alpha = 0.18f),
+                            style.colors.accent.copy(alpha = 0.06f),
+                            Color.Transparent
+                        ),
+                        center = graphCenter,
+                        radius = size.minDimension * 0.72f
                     )
                 )
+                val ringColor = style.colors.stroke.copy(alpha = 0.36f)
+                listOf(0.32f, 0.52f).forEach { ratio ->
+                    drawCircle(
+                        color = ringColor,
+                        radius = size.minDimension * ratio,
+                        center = graphCenter,
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+                }
                 visibleRelations.forEach { relation ->
                     val from = positions[relation.fromCharacterId] ?: return@forEach
                     val to = positions[relation.toCharacterId] ?: return@forEach
                     val start = transformGraphPoint(from, scale, pan, size.width, size.height)
                     val end = transformGraphPoint(to, scale, pan, size.width, size.height)
+                    val strength = relation.strength.coerceIn(0, 100)
                     drawLine(
-                        color = style.colors.accent.copy(alpha = 0.22f + relation.strength.coerceIn(0, 100) / 360f),
+                        color = style.colors.accent.copy(alpha = 0.20f + strength / 420f),
                         start = start,
                         end = end,
-                        strokeWidth = 2.2.dp.toPx(),
+                        strokeWidth = (1.4f + strength / 58f).dp.toPx(),
                         cap = StrokeCap.Round
                     )
                 }
@@ -899,7 +914,11 @@ private fun CharacterGraph(
                 val nodeWidth = 112.dp
                 val nodeWidthPx = with(density) { nodeWidth.toPx() }
                 val avatarSizePx = with(density) { avatarSize.dp.toPx() }
-                Column(
+                CharacterGraphNode(
+                    character = character,
+                    isCenter = character.id == selectedCenterId,
+                    avatarSize = avatarSize,
+                    onClick = { onCharacterClick(character) },
                     modifier = Modifier
                         .offset {
                             IntOffset(
@@ -908,34 +927,7 @@ private fun CharacterGraph(
                             )
                         }
                         .width(nodeWidth)
-                        .pointerInput(character.id) {
-                            detectTapGestures(onTap = { onCharacterClick(character) })
-                        },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (character.id == selectedCenterId) style.colors.accent.copy(alpha = 0.18f) else style.colors.page,
-                        border = androidx.compose.foundation.BorderStroke(
-                            if (character.id == selectedCenterId) 2.dp else 1.dp,
-                            if (character.id == selectedCenterId) style.colors.accent else style.colors.stroke
-                        )
-                    ) {
-                        CharacterAvatar(character.avatar, character.displayName(), avatarSize)
-                    }
-                    Text(
-                        text = character.displayName(),
-                        color = style.colors.text,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
+                )
             }
             if (characters.size > visibleCharacters.size) {
                 UnlinkedCharactersStrip(
@@ -975,6 +967,56 @@ private fun buildVisibleCharacters(
         .ifEmpty { listOf(center) }
 }
 
+@Composable
+private fun CharacterGraphNode(
+    character: BookCharacter,
+    isCenter: Boolean,
+    avatarSize: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val style = rememberCharacterStyle()
+    Column(
+        modifier = modifier.pointerInput(character.id) {
+            detectTapGestures(onTap = { onClick() })
+        },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            modifier = Modifier.shadow(if (isCenter) 14.dp else 8.dp, CircleShape, clip = false),
+            shape = CircleShape,
+            color = if (isCenter) style.colors.accent.copy(alpha = 0.18f) else style.colors.page.copy(alpha = 0.96f),
+            border = androidx.compose.foundation.BorderStroke(
+                if (isCenter) 2.dp else 1.dp,
+                if (isCenter) style.colors.accent else style.colors.stroke
+            )
+        ) {
+            Box(modifier = Modifier.padding(if (isCenter) 4.dp else 3.dp)) {
+                CharacterAvatar(character.avatar, character.displayName(), avatarSize)
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .fillMaxWidth(),
+            color = style.colors.page.copy(alpha = 0.88f),
+            shape = RoundedCornerShape(style.smallRadius),
+            border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
+        ) {
+            Text(
+                text = character.displayName(),
+                color = if (isCenter) style.colors.accent else style.colors.text,
+                fontSize = if (isCenter) 12.sp else 11.sp,
+                fontWeight = if (isCenter) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
 private fun buildGraphPositions(
     characters: List<BookCharacter>,
     centerId: Long,
@@ -985,37 +1027,70 @@ private fun buildGraphPositions(
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
     val others = characters.filter { it.id != center.id }
     val result = linkedMapOf<Long, Offset>()
-    val safeTop = 104f
-    val safeBottom = 112f
-    val minCenterY = safeTop
-    val maxCenterY = (height - safeBottom).coerceAtLeast(minCenterY)
-    val centerY = (height * 0.48f).coerceIn(minCenterY, maxCenterY)
-    val centerPoint = Offset(width * 0.5f, centerY)
+    val sideSafe = 72f.coerceAtMost(width * 0.18f)
+    val topSafe = 82f.coerceAtMost(height * 0.24f)
+    val bottomSafe = 94f.coerceAtMost(height * 0.24f)
+    val minX = sideSafe
+    val maxX = (width - sideSafe).coerceAtLeast(minX)
+    val minY = topSafe
+    val maxY = (height - bottomSafe).coerceAtLeast(minY)
+    val centerPoint = Offset(
+        x = width * 0.5f,
+        y = ((minY + maxY) / 2f).coerceIn(minY, maxY)
+    )
     result[center.id] = centerPoint
-    val radiusX = (width * 0.38f)
-        .coerceAtMost(width / 2f - 72f)
-        .coerceAtLeast(72f)
-    val radiusYMax = minOf(centerY - 64f, height - centerY - 86f).coerceAtLeast(44f)
-    val radiusY = (height * 0.30f)
-        .coerceAtMost(radiusYMax)
-        .coerceAtLeast(44f)
+    val slots = graphSlotRatios(others.size)
     others.forEachIndexed { index, character ->
-        val angle = graphAngle(index, others.size)
+        val slot = slots.getOrElse(index) { Offset(0.5f, 0.5f) }
         result[character.id] = Offset(
-            x = centerPoint.x + cos(angle).toFloat() * radiusX,
-            y = centerPoint.y + sin(angle).toFloat() * radiusY
+            x = minX + (maxX - minX) * slot.x,
+            y = minY + (maxY - minY) * slot.y
         )
     }
     return result
 }
 
-private fun graphAngle(index: Int, count: Int): Double {
+private fun graphSlotRatios(count: Int): List<Offset> {
     return when (count) {
-        1 -> -PI / 2.0
-        2 -> if (index == 0) PI else 0.0
-        3 -> -PI / 2.0 + index * 2.0 * PI / 3.0
-        4 -> listOf(-PI / 2.0, 0.0, PI / 2.0, PI)[index]
-        else -> -PI / 2.0 + index * 2.0 * PI / count
+        0 -> emptyList()
+        1 -> listOf(Offset(0.82f, 0.50f))
+        2 -> listOf(Offset(0.18f, 0.50f), Offset(0.82f, 0.50f))
+        3 -> listOf(Offset(0.50f, 0.10f), Offset(0.16f, 0.68f), Offset(0.84f, 0.68f))
+        4 -> listOf(Offset(0.50f, 0.08f), Offset(0.86f, 0.50f), Offset(0.50f, 0.92f), Offset(0.14f, 0.50f))
+        5 -> listOf(
+            Offset(0.50f, 0.07f),
+            Offset(0.86f, 0.32f),
+            Offset(0.74f, 0.88f),
+            Offset(0.26f, 0.88f),
+            Offset(0.14f, 0.32f)
+        )
+        6 -> listOf(
+            Offset(0.30f, 0.10f),
+            Offset(0.70f, 0.10f),
+            Offset(0.90f, 0.48f),
+            Offset(0.70f, 0.90f),
+            Offset(0.30f, 0.90f),
+            Offset(0.10f, 0.48f)
+        )
+        7 -> listOf(
+            Offset(0.50f, 0.06f),
+            Offset(0.82f, 0.18f),
+            Offset(0.92f, 0.50f),
+            Offset(0.72f, 0.88f),
+            Offset(0.28f, 0.88f),
+            Offset(0.08f, 0.50f),
+            Offset(0.18f, 0.18f)
+        )
+        else -> listOf(
+            Offset(0.50f, 0.06f),
+            Offset(0.82f, 0.18f),
+            Offset(0.94f, 0.44f),
+            Offset(0.80f, 0.74f),
+            Offset(0.50f, 0.94f),
+            Offset(0.20f, 0.74f),
+            Offset(0.06f, 0.44f),
+            Offset(0.18f, 0.18f)
+        )
     }
 }
 
@@ -1068,7 +1143,7 @@ private fun RelationListPanel(
 ) {
     val style = rememberCharacterStyle()
     var expanded by remember { mutableStateOf(false) }
-    val panelHeight = if (expanded) 260.dp else 96.dp
+    val panelHeight = if (expanded) 280.dp else 118.dp
     Surface(
         color = style.colors.page.copy(alpha = 0.96f),
         shape = RoundedCornerShape(style.radius),
@@ -1099,7 +1174,7 @@ private fun RelationListPanel(
                     text = summary,
                     color = style.colors.subText,
                     fontSize = 12.sp,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 12.dp)
                 )
