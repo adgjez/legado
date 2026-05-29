@@ -5,11 +5,15 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.AiGeneratedImage
+import io.legado.app.data.entities.BaseSource
+import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
+import io.legado.app.help.source.getShareScope
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withTimeout
@@ -184,10 +188,30 @@ object AiImageService {
     private suspend fun generateByJs(prompt: String, provider: AiImageProviderConfig): ImageGenerationResult {
         val script = provider.script.trim()
         if (script.isBlank()) error("JS script is empty")
+        val source = AiImageJsSource(provider)
+        val coroutineContext = currentCoroutineContext()
         val result = withTimeout(provider.validTimeout()) {
+            val bindings = buildScriptBindings { bindings ->
+                bindings["java"] = source
+                bindings["source"] = source
+                bindings["cache"] = CacheManager
+                bindings["cookie"] = CookieStore
+                bindings["baseUrl"] = source.getKey()
+                bindings["prompt"] = prompt
+                bindings["result"] = prompt
+                bindings["key"] = prompt
+                bindings["provider"] = provider
+            }
+            val sharedScope = source.getShareScope(coroutineContext)
+            val scope = if (sharedScope == null) {
+                RhinoScriptEngine.getRuntimeScope(bindings)
+            } else {
+                bindings.apply {
+                    prototype = sharedScope
+                }
+            }
             RhinoScriptEngine.eval(
                 buildString {
-                    if (provider.jsLib.isNotBlank()) append(provider.jsLib).append('\n')
                     append(script).append('\n')
                     append(
                         """
@@ -200,16 +224,30 @@ object AiImageService {
                         """.trimIndent()
                     )
                 },
-                RhinoScriptEngine.getRuntimeScope(
-                    buildScriptBindings { bindings ->
-                        bindings["prompt"] = prompt
-                        bindings["provider"] = provider
-                    }
-                ),
-                currentCoroutineContext()
+                scope,
+                coroutineContext
             )
         }
         return ImageGenerationResult(normalizeImageResult(result), provider.model.ifBlank { "JS" })
+    }
+
+    private class AiImageJsSource(
+        private val provider: AiImageProviderConfig
+    ) : BaseSource {
+        override var concurrentRate: String? = null
+        override var loginUrl: String? = provider.loginUrl
+        override var loginUi: String? = provider.loginUi
+        override var header: String? = provider.headers
+        override var enabledCookieJar: Boolean? = provider.enabledCookieJar
+        override var jsLib: String? = provider.jsLib
+
+        override fun getTag(): String {
+            return "AiImageProvider:${provider.id}:${provider.displayName()}"
+        }
+
+        override fun getKey(): String {
+            return "ai_image_provider_${provider.id}"
+        }
     }
 
     private fun normalizeBaseUrl(raw: String): String {
