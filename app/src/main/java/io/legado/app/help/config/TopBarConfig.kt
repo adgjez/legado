@@ -18,6 +18,9 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.putPrefString
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.io.File
 
@@ -27,6 +30,7 @@ object TopBarConfig {
     const val STYLE_DEFAULT = "default"
     const val STYLE_REGULAR = "regular"
     private const val packageFileName = "top_bar.json"
+    private const val remoteListTimeoutMillis = 4_000L
     private const val activeDayKey = PreferKey.topBarPackageDay
     private const val activeNightKey = PreferKey.topBarPackageNight
 
@@ -314,14 +318,23 @@ object TopBarConfig {
 
     private suspend fun loadRemoteOrCache(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         val cached = readRemoteCache(isNight, containerId)
-        return runCatching {
-            loadRemote(isNight, containerId, scope)
-        }.onSuccess { remote ->
+        return try {
+            val remote = withTimeout(remoteListTimeoutMillis) {
+                loadRemote(isNight, containerId, scope)
+            }
             writeRemoteCache(isNight, remote, containerId)
-        }.getOrElse {
+            remote
+        } catch (e: TimeoutCancellationException) {
             AppLog.put(
-                "加载远端顶栏包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${it.localizedMessage}",
-                it
+                "加载远端顶栏包列表超时: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}, timeout=${remoteListTimeoutMillis}ms"
+            )
+            cached
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            AppLog.put(
+                "加载远端顶栏包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${e.localizedMessage}",
+                e
             )
             cached
         }
