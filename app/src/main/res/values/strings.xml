@@ -2108,6 +2108,8 @@ Selected text or question:
     <string name="book_info_component_meta_hint">Group, source, source switch and chapter entry.</string>
     <string name="book_info_component_detail">Intro and chapters card</string>
     <string name="book_info_component_detail_hint">Intro tab, chapter preview and expanded chapter list entry.</string>
+    <string name="book_info_component_ai_images">Book image gallery</string>
+    <string name="book_info_component_ai_images_hint">No images generated for this book yet.</string>
     <string name="book_info_component_keep_one">Keep at least one detail component enabled.</string>
     <string name="catalog_page_indicator_empty">0/0</string>
     <string name="catalog_page_indicator">%1$d/%2$d</string>

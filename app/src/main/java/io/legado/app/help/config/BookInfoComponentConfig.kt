@@ -15,7 +15,8 @@ enum class BookInfoComponentType(
     META(R.string.book_info_component_meta, R.string.book_info_component_meta_hint),
     ACTIONS(R.string.reading, R.string.add_to_bookshelf),
     DETAIL(R.string.book_info_component_detail, R.string.book_info_component_detail_hint),
-    CATALOG(R.string.book_info_tab_toc, R.string.view_toc);
+    CATALOG(R.string.book_info_tab_toc, R.string.view_toc),
+    AI_IMAGES(R.string.book_info_component_ai_images, R.string.book_info_component_ai_images_hint);
 
     companion object {
         fun fromKey(key: String?): BookInfoComponentType? {
@@ -35,7 +36,8 @@ object BookInfoComponentConfig {
         BookInfoComponentType.HEADER,
         BookInfoComponentType.META,
         BookInfoComponentType.DETAIL,
-        BookInfoComponentType.CATALOG
+        BookInfoComponentType.CATALOG,
+        BookInfoComponentType.AI_IMAGES
     )
 
     private val manageableTypes = defaultOrder.toSet()

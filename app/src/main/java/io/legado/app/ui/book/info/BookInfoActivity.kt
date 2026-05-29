@@ -20,6 +20,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.CheckBox
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Space
 import android.widget.TextView
@@ -56,6 +59,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.addType
@@ -72,6 +76,7 @@ import io.legado.app.help.config.BookInfoComponentConfig
 import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoComponentType
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -113,6 +118,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -286,6 +292,10 @@ class BookInfoActivity :
             )
         }
     }
+    private lateinit var tvAiImagesSummary: TextView
+    private lateinit var llAiImagesPreview: LinearLayout
+    private lateinit var tvAiImagesEmpty: TextView
+    private val aiImagesPanel by lazy { createAiImagesPanel() }
 
     private var pooledWebView: PooledWebView? = null
 
@@ -336,6 +346,124 @@ class BookInfoActivity :
         }
     }
 
+    private fun createAiImagesPanel(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 14.dpToPx())
+            background = UiCorner.panelRounded(
+                this@BookInfoActivity,
+                ContextCompat.getColor(this@BookInfoActivity, R.color.background_card),
+                UiCorner.panelRadius(this@BookInfoActivity)
+            )
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = getString(R.string.book_info_component_ai_images)
+                    textSize = 16f
+                    setTextColor(primaryTextColor)
+                    includeFontPadding = false
+                    applyUiTitleTypeface(context)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(TextView(context).apply {
+                    text = getString(R.string.ai_image_gallery)
+                    textSize = 12.5f
+                    gravity = Gravity.CENTER
+                    setTextColor(accentColor)
+                    minHeight = 30.dpToPx()
+                    setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+                    background = UiCorner.actionSelector(
+                        ContextCompat.getColor(context, R.color.background_menu),
+                        ContextCompat.getColor(context, R.color.background_card),
+                        UiCorner.actionRadius(context)
+                    )
+                    applyUiBodyTypefaceDeep(context.uiTypeface())
+                })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            tvAiImagesSummary = TextView(context).apply {
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 8.dpToPx(), 0, 10.dpToPx())
+                applyUiBodyTypefaceDeep(context.uiTypeface())
+            }
+            addView(tvAiImagesSummary, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            llAiImagesPreview = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            addView(HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(llAiImagesPreview)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 112.dpToPx()))
+            tvAiImagesEmpty = TextView(context).apply {
+                text = getString(R.string.ai_image_gallery_empty)
+                gravity = Gravity.CENTER
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                background = UiCorner.opaqueRounded(
+                    ContextCompat.getColor(context, R.color.background_menu),
+                    UiCorner.actionRadius(context)
+                )
+                applyUiBodyTypefaceDeep(context.uiTypeface())
+            }
+            addView(tvAiImagesEmpty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 96.dpToPx()))
+            setOnClickListener { openBookAiImageGallery() }
+        }
+    }
+
+    private fun updateBookAiImagesPanel(targetBook: Book? = book) {
+        if (!::tvAiImagesSummary.isInitialized) return
+        val safeBook = targetBook ?: return
+        lifecycleScope.launch {
+            val images = withContext(IO) {
+                val key = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
+                AiImageGalleryManager.listImages(AiImageGalleryManager.GalleryFilter.BOOK(key))
+            }
+            tvAiImagesSummary.text = if (images.isEmpty()) {
+                getString(R.string.book_info_component_ai_images_hint)
+            } else {
+                "共 ${images.size} 张相关图片，点击查看完整图库"
+            }
+            tvAiImagesEmpty.isVisible = images.isEmpty()
+            llAiImagesPreview.isVisible = images.isNotEmpty()
+            llAiImagesPreview.removeAllViews()
+            images.take(12).forEach { image ->
+                llAiImagesPreview.addView(createAiImageThumb(image.id, image.localPath))
+            }
+        }
+    }
+
+    private fun createAiImageThumb(imageId: String, path: String): View {
+        return androidx.cardview.widget.CardView(this).apply {
+            radius = UiCorner.scaledDp(12f)
+            cardElevation = 0f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            addView(ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = getString(R.string.ai_image_gallery)
+                ImageLoader.load(context, path)
+                    .error(R.drawable.image_loading_error)
+                    .into(this)
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            setOnClickListener {
+                showDialogFragment(io.legado.app.ui.main.ai.AiImagePreviewDialog(imageId))
+            }
+            layoutParams = LinearLayout.LayoutParams(88.dpToPx(), 104.dpToPx()).apply {
+                marginEnd = 10.dpToPx()
+            }
+        }
+    }
+
+    private fun openBookAiImageGallery() {
+        val safeBook = book ?: return
+        val key = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
+        startActivity(Intent(this, AiImageGalleryActivity::class.java).apply {
+            putExtra(AiImageGalleryActivity.EXTRA_BOOK_KEY, key)
+            putExtra(AiImageGalleryActivity.EXTRA_TITLE, getString(R.string.book_info_component_ai_images))
+        })
+    }
+
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.bgBook.setBackgroundColor(backgroundColor)
@@ -370,6 +498,11 @@ class BookInfoActivity :
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
         viewModel.initData(intent)
         initViewEvent()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateBookAiImagesPanel()
     }
 
     private fun applyUiCorners() = binding.run {
@@ -422,7 +555,7 @@ class BookInfoActivity :
 
     private fun restoreBookInfoComponentBackgrounds() = binding.run {
         val panelColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_card)
-        listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel).forEach {
+        listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, aiImagesPanel).forEach {
             it.background = UiCorner.panelRounded(this@BookInfoActivity, panelColor, UiCorner.panelRadius(this@BookInfoActivity))
         }
     }
@@ -431,7 +564,8 @@ class BookInfoActivity :
             BookInfoComponentType.HEADER to llDetailPanel,
             BookInfoComponentType.META to llInfoPage,
             BookInfoComponentType.DETAIL to llDetailContentPanel,
-            BookInfoComponentType.CATALOG to llCatalogPanel
+            BookInfoComponentType.CATALOG to llCatalogPanel,
+            BookInfoComponentType.AI_IMAGES to aiImagesPanel
         )
         val orderedComponents: List<BookInfoComponentItem> = BookInfoComponentConfig.load()
             .filter { item -> item.enabled && componentViews.containsKey(item.type) }
@@ -462,7 +596,7 @@ class BookInfoActivity :
     private fun initBookInfoPager(): Unit = binding.run {
         configurePagedRefreshLayout()
         ensureCoverInsideHeader()
-        listOf(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, flAction).forEach {
+        listOf(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, aiImagesPanel, flAction).forEach {
             (it.parent as? ViewGroup)?.removeView(it)
         }
         llInfo.removeAllViews()
@@ -631,7 +765,7 @@ class BookInfoActivity :
         orderedComponents.forEach { item ->
             val view = componentViews[item.type] ?: return@forEach
             view.visibility = View.VISIBLE
-            if (item.type == BookInfoComponentType.CATALOG) {
+            if (item.type.isBookInfoFullPage()) {
                 flushCurrent()
                 val height = measureBookInfoComponent(view, pageWidth, pageHeight)
                 pages += BookInfoPage(
@@ -665,6 +799,10 @@ class BookInfoActivity :
         flushCurrent()
         appendActionToFirstPage()
         return pages
+    }
+
+    private fun BookInfoComponentType.isBookInfoFullPage(): Boolean {
+        return this == BookInfoComponentType.CATALOG || this == BookInfoComponentType.AI_IMAGES
     }
 
     private fun buildLandscapeBookInfoPages(
@@ -771,7 +909,7 @@ class BookInfoActivity :
         orderedComponents.forEach { item ->
             val view = componentViews[item.type] ?: return@forEach
             view.visibility = View.VISIBLE
-            if (item.type == BookInfoComponentType.CATALOG) {
+            if (item.type.isBookInfoFullPage()) {
                 if (currentItems().isNotEmpty()) {
                     nextColumn()
                 }
@@ -1446,6 +1584,7 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
+        updateBookAiImagesPanel(book)
         updateDetailContentPanelHeight()
         renderCatalogPager(viewModel.chapterListData.value)
         root.post { applyBookInfoComponents() }

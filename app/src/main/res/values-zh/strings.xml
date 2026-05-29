@@ -1830,6 +1830,8 @@ bookUrl：%7$s
     <string name="book_info_component_meta_hint">分组、书源、换源和目录入口。</string>
     <string name="book_info_component_detail">简介与目录卡片</string>
     <string name="book_info_component_detail_hint">简介、章节预览和展开目录入口。</string>
+    <string name="book_info_component_ai_images">本书图库</string>
+    <string name="book_info_component_ai_images_hint">暂无本书生成图片。</string>
     <string name="book_info_component_keep_one">至少保留一个详情组件。</string>
     <string name="discovery_page_layout">发现页布局</string>
     <string name="discovery_page_layout_summary">当前：%1$s</string>
