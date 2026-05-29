@@ -965,21 +965,39 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun observeWebDavTasks() {
+        seedHandledWebDavTasks(WebDavTaskType.THEME_PACKAGE_UPLOAD)
         lifecycleScope.launch {
             WebDavTaskManager.states.collectLatest { states ->
+                var shouldReload = false
+                var failedMessage: String? = null
                 states.values
                     .filter { it.type == WebDavTaskType.THEME_PACKAGE_UPLOAD }
                     .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
-                        if (handledWebDavTasks.add("${state.key}:${state.status}")) {
-                            loadThemes()
+                        if (handledWebDavTasks.add(webDavTaskHandleKey(state.key, state.status))) {
+                            shouldReload = true
                             if (state.status == WebDavTaskStatus.FAILED) {
-                                toastOnUi(getString(R.string.theme_sync_failed, state.message))
+                                failedMessage = state.message
                             }
                         }
                     }
+                if (shouldReload) {
+                    loadThemes()
+                    failedMessage?.let { toastOnUi(getString(R.string.theme_sync_failed, it)) }
+                }
             }
         }
+    }
+
+    private fun seedHandledWebDavTasks(type: WebDavTaskType) {
+        WebDavTaskManager.states.value.values
+            .filter { it.type == type }
+            .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
+            .forEach { handledWebDavTasks.add(webDavTaskHandleKey(it.key, it.status)) }
+    }
+
+    private fun webDavTaskHandleKey(key: String, status: WebDavTaskStatus): String {
+        return "$key:$status"
     }
 
     private fun showThemeSyncTasks() {
