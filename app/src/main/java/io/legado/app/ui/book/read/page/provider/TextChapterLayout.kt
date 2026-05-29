@@ -147,6 +147,7 @@ class TextChapterLayout(
     private var pendingSingleImagePageBreak = false
     private var activeEpubBlockDecoration: ActiveEpubBlockDecoration? = null
     private val imageInfoCache = hashMapOf<String, ImageInfo>()
+    private var currentSourceIndex = -1
 
     private var isCompleted = false
     private val job: Coroutine<*>
@@ -354,8 +355,9 @@ class TextChapterLayout(
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
-        contents.forEach { content ->
+        contents.forEachIndexed { contentIndex, content ->
             currentCoroutineContext().ensureActive()
+            currentSourceIndex = bookContent.sourceIndexes.getOrElse(contentIndex) { contentIndex }
             if (adaptSpecialStyle) {
                 val text = content.trim()
                 if (text == "[newpage]") {
@@ -2083,6 +2085,7 @@ class TextChapterLayout(
             else -> lastLine.paragraphNum
         }
         textLine.paragraphNum = paragraphNum
+        textLine.sourceIndex = currentSourceIndex
         val previousPageEndPosition = textPages.lastOrNull()?.let { lastPage ->
             lastPage.lines.lastOrNull()?.run {
                 chapterPosition + charSize + if (isParagraphEnd) 1 else 0

@@ -1375,9 +1375,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val paragraph = paragraphs.firstOrNull { it.realNum == line.paragraphNum }
             ?: return null
         if (paragraph.firstLine.isTitle) return null
-        val titleParagraphCount = paragraphs.takeWhile { it.firstLine.isTitle }.size
-        val contentIndex = paragraph.realNum - titleParagraphCount - 1
-        if (contentIndex < 0) return null
+        val contentIndex = paragraph.sourceIndex.takeIf { it >= 0 } ?: return null
         return SelectedParagraphForImage(
             contentIndex = contentIndex,
             text = paragraph.text
@@ -4007,8 +4005,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         val paragraphs = textChapter.getParagraphs(pageSplit = false)
         val targetParagraph = paragraphs.firstOrNull { it.realNum == paragraphNum }
             ?: return -1
-        val titleParagraphCount = paragraphs.takeWhile { it.firstLine.isTitle }.size
-        return targetParagraph.realNum - titleParagraphCount - 1
+        return targetParagraph.sourceIndex
     }
 
     private fun removeAiImageTag(

@@ -34,6 +34,7 @@ data class TextLine(
     var lineBottom: Float = 0f,
     var indentWidth: Float = 0f,
     var paragraphNum: Int = 0,
+    var sourceIndex: Int = -1,
     var chapterPosition: Int = 0,
     var pagePosition: Int = 0,
     val isTitle: Boolean = false,
