@@ -11,13 +11,20 @@ import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
 import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
+import io.legado.app.help.ai.AiImageService
+import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.book.character.compose.CharacterEditDraft
 import io.legado.app.ui.book.character.compose.CharacterEditScreen
 import io.legado.app.ui.book.character.compose.toDraft
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -44,6 +51,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
     private var characterId: Long = 0L
     private var character = BookCharacter()
     private var draft by mutableStateOf(CharacterEditDraft())
+    private val waitDialog by lazy { WaitDialog(this) }
 
     private val selectAvatar = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let(::copyAvatar)
@@ -66,6 +74,8 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     }
                 },
                 onPickOnlineAvatar = ::showOnlineAvatarDialog,
+                onPickGalleryAvatar = ::showGalleryAvatarSelector,
+                onRegenerateAvatar = ::showRegenerateAvatarDialog,
                 onClearAvatar = { draft = draft.copy(avatar = "") }
             )
         }
@@ -148,6 +158,88 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                 }
             }
             cancelButton()
+        }
+    }
+
+    private fun showGalleryAvatarSelector() {
+        lifecycleScope.launch {
+            val images = withContext(IO) {
+                AiImageGalleryManager.listImages(GalleryFilter.ALL)
+            }
+            if (images.isEmpty()) {
+                toastOnUi("AI 图库暂无图片")
+                return@launch
+            }
+            val items: List<CharSequence> = images.map { image ->
+                "${image.name}\n${image.prompt.replace(Regex("\\s+"), " ").take(60)}"
+            }
+            selector("选择 AI 图库头像", items) { _, index ->
+                images.getOrNull(index)?.let(::setGalleryAvatar)
+            }
+        }
+    }
+
+    private fun setGalleryAvatar(image: AiGeneratedImage) {
+        lifecycleScope.launch {
+            withContext(IO) {
+                AiImageGalleryManager.setFavorite(image.id, true, null)
+            }
+            draft = draft.copy(avatar = image.localPath)
+            toastOnUi("已设置角色头像")
+        }
+    }
+
+    private fun showRegenerateAvatarDialog() {
+        if (AppConfig.aiEnabledImageProviders.isEmpty()) {
+            toastOnUi("未配置生图供应商")
+            return
+        }
+        val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = "输入角色头像提示词"
+            editView.minLines = 5
+            editView.setText(buildAvatarPrompt())
+        }
+        alert("生成角色头像") {
+            customView { dialogBinding.root }
+            okButton {
+                val prompt = dialogBinding.editView.text?.toString()?.trim().orEmpty()
+                if (prompt.isNotBlank()) generateAvatar(prompt)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun buildAvatarPrompt(): String {
+        return buildList {
+            add("为小说角色生成一张角色头像，头像构图，清晰，适合角色资料卡。")
+            add("角色名：${draft.name.ifBlank { "未命名角色" }}")
+            draft.identity.takeIf { it.isNotBlank() }?.let { add("身份：$it") }
+            draft.skills.takeIf { it.isNotBlank() }?.let { add("技能：$it") }
+            draft.attributes.takeIf { it.isNotBlank() }?.let { add("属性：$it") }
+            draft.appearance.takeIf { it.isNotBlank() }?.let { add("形象：$it") }
+            draft.personality.takeIf { it.isNotBlank() }?.let { add("性格：$it") }
+            draft.biography.takeIf { it.isNotBlank() }?.let { add("生平：$it") }
+        }.joinToString("\n")
+    }
+
+    private fun generateAvatar(prompt: String) {
+        waitDialog.setText("正在生成角色头像...")
+        waitDialog.show()
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching {
+                    AiImageService.generateAndStore(prompt).also { image ->
+                        AiImageGalleryManager.setFavorite(image.id, true, null)
+                    }
+                }
+            }
+            waitDialog.dismiss()
+            result.onSuccess { image ->
+                draft = draft.copy(avatar = image.localPath)
+                toastOnUi("已生成并收藏角色头像")
+            }.onFailure {
+                toastOnUi("生成角色头像失败：${it.localizedMessage ?: it.javaClass.simpleName}")
+            }
         }
     }
 

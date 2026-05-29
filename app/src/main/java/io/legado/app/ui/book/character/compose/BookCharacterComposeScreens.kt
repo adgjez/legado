@@ -596,6 +596,8 @@ fun CharacterEditScreen(
     onSave: () -> Unit,
     onPickLocalAvatar: () -> Unit,
     onPickOnlineAvatar: () -> Unit,
+    onPickGalleryAvatar: () -> Unit,
+    onRegenerateAvatar: () -> Unit,
     onClearAvatar: () -> Unit
 ) {
     val style = rememberCharacterStyle()
@@ -623,9 +625,16 @@ fun CharacterEditScreen(
                         CharacterAvatar(draft.avatar, draft.name, 82)
                         Column(modifier = Modifier.padding(start = 14.dp)) {
                             Text("角色头像", color = style.colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 SmallAction("本地", onPickLocalAvatar)
                                 SmallAction("在线", onPickOnlineAvatar)
+                                SmallAction("图库", onPickGalleryAvatar)
+                                SmallAction("生成", onRegenerateAvatar)
                                 SmallAction("清除", onClearAvatar, danger = true)
                             }
                         }
