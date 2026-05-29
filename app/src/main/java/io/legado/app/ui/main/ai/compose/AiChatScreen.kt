@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai.compose
 
+import android.widget.ImageView
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,12 +12,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -69,16 +72,20 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatViewModel
+import io.legado.app.ui.widget.dialog.PhotoDialog
+import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.launch
 import android.net.Uri
 
@@ -673,7 +680,7 @@ private fun AiMarkdownText(
     ) {
         blocks.forEach { block ->
             when (block) {
-                is AiMarkdownBlock.Paragraph -> AiMarkdownRichText(
+                is AiMarkdownBlock.Paragraph -> AiMarkdownInlineContent(
                     text = block.text,
                     style = style
                 )
@@ -697,7 +704,7 @@ private fun AiMarkdownText(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("•", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
-                    AiMarkdownRichText(
+                    AiMarkdownInlineContent(
                         text = block.text,
                         style = style,
                         modifier = Modifier.weight(1f)
@@ -708,7 +715,7 @@ private fun AiMarkdownText(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text("${block.number}.", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
-                    AiMarkdownRichText(
+                    AiMarkdownInlineContent(
                         text = block.text,
                         style = style,
                         modifier = Modifier.weight(1f)
@@ -722,13 +729,14 @@ private fun AiMarkdownText(
                         style.colors.stroke
                     )
                 ) {
-                    AiMarkdownRichText(
+                    AiMarkdownInlineContent(
                         text = block.text,
                         style = style,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         color = style.colors.secondaryText
                     )
                 }
+                is AiMarkdownBlock.Table -> AiMarkdownTable(block, style)
                 is AiMarkdownBlock.Code -> Surface(
                     shape = RoundedCornerShape(style.metrics.chipRadius),
                     color = style.colors.processSurface,
@@ -811,14 +819,168 @@ private fun AiMarkdownRichText(
     }
 }
 
+@Composable
+private fun AiMarkdownInlineContent(
+    text: String,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    color: Color = style.colors.primaryText
+) {
+    val pieces = remember(text) { parseMarkdownInlinePieces(text) }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        pieces.forEach { piece ->
+            when (piece) {
+                is AiMarkdownInlinePiece.Text -> {
+                    if (piece.text.isNotBlank()) {
+                        AiMarkdownRichText(
+                            text = piece.text.trim(),
+                            style = style,
+                            color = color
+                        )
+                    }
+                }
+                is AiMarkdownInlinePiece.Image -> AiMarkdownImage(
+                    image = piece,
+                    style = style,
+                    compact = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiMarkdownTable(table: AiMarkdownBlock.Table, style: AiComposeStyle) {
+    val scrollState = rememberScrollState()
+    Surface(
+        shape = RoundedCornerShape(style.metrics.chipRadius),
+        color = style.colors.processSurface,
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(scrollState)
+                .padding(1.dp)
+        ) {
+            AiMarkdownTableRow(
+                cells = table.headers,
+                style = style,
+                header = true
+            )
+            table.rows.forEach { row ->
+                AiMarkdownTableRow(
+                    cells = normalizeTableRow(row, table.headers.size),
+                    style = style,
+                    header = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiMarkdownTableRow(
+    cells: List<String>,
+    style: AiComposeStyle,
+    header: Boolean
+) {
+    Row {
+        cells.forEach { cell ->
+            Surface(
+                color = if (header) style.colors.accent.copy(alpha = 0.10f) else Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+                modifier = Modifier
+                    .width(138.dp)
+                    .heightIn(min = if (header) 40.dp else 48.dp)
+            ) {
+                val pieces = remember(cell) { parseMarkdownInlinePieces(cell) }
+                Column(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    pieces.forEach { piece ->
+                        when (piece) {
+                            is AiMarkdownInlinePiece.Text -> {
+                                if (piece.text.isNotBlank()) {
+                                    AiMarkdownRichText(
+                                        text = piece.text.trim(),
+                                        style = style,
+                                        color = if (header) style.colors.accent else style.colors.primaryText,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                        fontWeight = if (header) FontWeight.SemiBold else null
+                                    )
+                                }
+                            }
+                            is AiMarkdownInlinePiece.Image -> AiMarkdownImage(
+                                image = piece,
+                                style = style,
+                                compact = true
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiMarkdownImage(
+    image: AiMarkdownInlinePiece.Image,
+    style: AiComposeStyle,
+    compact: Boolean
+) {
+    val context = LocalContext.current
+    val size = if (compact) 52.dp else 180.dp
+    Surface(
+        modifier = Modifier
+            .width(size)
+            .height(size)
+            .clip(RoundedCornerShape(style.metrics.chipRadius))
+            .clickable {
+                (context as? androidx.appcompat.app.AppCompatActivity)
+                    ?.showDialogFragment(PhotoDialog(image.url))
+            },
+        shape = RoundedCornerShape(style.metrics.chipRadius),
+        color = style.colors.background.copy(alpha = 0.08f),
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = {
+                ImageView(it).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = image.alt
+                }
+            },
+            update = {
+                ImageLoader.load(context, image.url)
+                    .error(R.drawable.image_loading_error)
+                    .into(it)
+            }
+        )
+    }
+}
+
 private sealed class AiMarkdownBlock {
     data class Paragraph(val text: String) : AiMarkdownBlock()
     data class Heading(val level: Int, val text: String) : AiMarkdownBlock()
     data class Bullet(val text: String) : AiMarkdownBlock()
     data class Numbered(val number: Int, val text: String) : AiMarkdownBlock()
     data class Quote(val text: String) : AiMarkdownBlock()
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : AiMarkdownBlock()
     data class Code(val text: String) : AiMarkdownBlock()
     data object Divider : AiMarkdownBlock()
+}
+
+private sealed class AiMarkdownInlinePiece {
+    data class Text(val text: String) : AiMarkdownInlinePiece()
+    data class Image(val alt: String, val url: String) : AiMarkdownInlinePiece()
 }
 
 private fun parseAiMarkdownBlocks(content: String): List<AiMarkdownBlock> {
@@ -903,7 +1065,11 @@ private fun parseAiMarkdownBlocks(content: String): List<AiMarkdownBlock> {
                 tableLines += lines[index].trimEnd()
                 index++
             }
-            blocks += AiMarkdownBlock.Code(tableLines.joinToString("\n"))
+            parseMarkdownTable(tableLines)?.let { table ->
+                blocks += table
+            } ?: run {
+                blocks += AiMarkdownBlock.Paragraph(tableLines.joinToString("\n"))
+            }
             continue
         }
         paragraph += line
@@ -911,6 +1077,51 @@ private fun parseAiMarkdownBlocks(content: String): List<AiMarkdownBlock> {
     }
     flushParagraph()
     return blocks.ifEmpty { listOf(AiMarkdownBlock.Paragraph(" ")) }
+}
+
+private fun parseMarkdownTable(lines: List<String>): AiMarkdownBlock.Table? {
+    if (lines.size < 2 || !markdownTableSeparatorRegex.matches(lines[1].trim())) return null
+    val headers = parseMarkdownTableRow(lines[0])
+    if (headers.isEmpty()) return null
+    val rows = lines.drop(2)
+        .map { parseMarkdownTableRow(it) }
+        .filter { row -> row.any { it.isNotBlank() } }
+    return AiMarkdownBlock.Table(headers, rows)
+}
+
+private fun parseMarkdownTableRow(line: String): List<String> {
+    return line.trim()
+        .trim('|')
+        .split('|')
+        .map { it.trim() }
+}
+
+private fun normalizeTableRow(row: List<String>, size: Int): List<String> {
+    return when {
+        row.size == size -> row
+        row.size > size -> row.take(size)
+        else -> row + List(size - row.size) { "" }
+    }
+}
+
+private fun parseMarkdownInlinePieces(text: String): List<AiMarkdownInlinePiece> {
+    val pieces = mutableListOf<AiMarkdownInlinePiece>()
+    var index = 0
+    markdownImageRegex.findAll(text).forEach { match ->
+        if (match.range.first > index) {
+            pieces += AiMarkdownInlinePiece.Text(text.substring(index, match.range.first))
+        }
+        val alt = match.groupValues[1].trim()
+        val url = match.groupValues[2].trim()
+        if (url.isNotBlank()) {
+            pieces += AiMarkdownInlinePiece.Image(alt = alt, url = url)
+        }
+        index = match.range.last + 1
+    }
+    if (index < text.length) {
+        pieces += AiMarkdownInlinePiece.Text(text.substring(index))
+    }
+    return pieces.ifEmpty { listOf(AiMarkdownInlinePiece.Text(text)) }
 }
 
 private fun buildAiInlineMarkdown(text: String, color: Color, accent: Color): AnnotatedString {
@@ -989,6 +1200,7 @@ private val quoteRegex = Regex("^>\\s?(.+)$")
 private val bulletRegex = Regex("^[-*+]\\s+(.+)$")
 private val numberedRegex = Regex("^(\\d+)\\.\\s+(.+)$")
 private val markdownTableSeparatorRegex = Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$")
+private val markdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
 private val inlineMarkdownRegex = Regex("`([^`]+)`|\\[([^\\]]+)]\\(([^)]+)\\)|\\*\\*([^*]+)\\*\\*")
 
 @Composable
