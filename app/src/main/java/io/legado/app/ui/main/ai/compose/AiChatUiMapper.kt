@@ -384,6 +384,17 @@ private fun parseToolDisplayPayload(
                 images = listOfNotNull(image)
             )
         }
+        "generate_book_character_avatar",
+        "set_book_character_avatar_from_gallery" -> {
+            val image = parseImageResult(raw)
+            AiToolDisplayPayload(
+                type = AiToolPreviewType.ImageResult,
+                title = "角色头像",
+                summary = image?.prompt?.takeIf { it.isNotBlank() } ?: "已更新角色头像",
+                raw = raw,
+                images = listOfNotNull(image)
+            )
+        }
         else -> AiToolDisplayPayload(
             type = AiToolPreviewType.Generic,
             title = name.ifBlank { context.getString(R.string.ai_tool_default_name) },
@@ -414,15 +425,22 @@ private fun JSONObject.toSearchBookUi(): AiSearchBookUi? {
 private fun parseImageResult(raw: String): AiImageResultUi? {
     val payload = runCatching { JSONObject(raw) }.getOrNull() ?: return null
     if (!payload.optBoolean("success", payload.optBoolean("ok", false))) return null
+    val nestedImage = payload.optJSONObject("image")
     val imageId = payload.optString("imageId")
-    val image = payload.optString("imagePath").ifBlank { payload.optString("image") }
+        .ifBlank { nestedImage?.optString("imageId").orEmpty() }
+        .ifBlank { nestedImage?.optString("id").orEmpty() }
+    val image = payload.optString("imagePath")
+        .ifBlank { payload.optString("image") }
+        .ifBlank { nestedImage?.optString("imagePath").orEmpty() }
+        .ifBlank { nestedImage?.optString("image").orEmpty() }
+        .ifBlank { nestedImage?.optString("localPath").orEmpty() }
     if (imageId.isBlank() && !image.startsWith("http", true) && !image.startsWith("data:image", true)) {
         return null
     }
     return AiImageResultUi(
         imageId = imageId,
         image = image,
-        prompt = payload.optString("prompt")
+        prompt = payload.optString("prompt").ifBlank { nestedImage?.optString("prompt").orEmpty() }
     )
 }
 

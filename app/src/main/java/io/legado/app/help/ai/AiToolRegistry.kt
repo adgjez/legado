@@ -45,6 +45,9 @@ object AiToolRegistry {
         "list_book_character_relations",
         "upsert_book_character_relation",
         "delete_book_character_relation",
+        "list_ai_gallery_images",
+        "set_book_character_avatar_from_gallery",
+        "generate_book_character_avatar",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -78,6 +81,9 @@ object AiToolRegistry {
         "list_book_character_relations" to "读取角色关系网",
         "upsert_book_character_relation" to "新增或更新角色关系",
         "delete_book_character_relation" to "删除角色关系",
+        "list_ai_gallery_images" to "读取 AI 图片库",
+        "set_book_character_avatar_from_gallery" to "设置角色图库头像",
+        "generate_book_character_avatar" to "生成角色头像",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -111,6 +117,9 @@ object AiToolRegistry {
         "list_book_character_relations" to "角色资料",
         "upsert_book_character_relation" to "角色资料",
         "delete_book_character_relation" to "角色资料",
+        "list_ai_gallery_images" to "AI 图片库",
+        "set_book_character_avatar_from_gallery" to "角色资料",
+        "generate_book_character_avatar" to "角色资料",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"

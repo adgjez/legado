@@ -1,9 +1,11 @@
 package io.legado.app.help.ai
 
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -17,6 +19,9 @@ object AiBookCharacterTool {
     private const val TOOL_LIST_RELATIONS = "list_book_character_relations"
     private const val TOOL_UPSERT_RELATION = "upsert_book_character_relation"
     private const val TOOL_DELETE_RELATION = "delete_book_character_relation"
+    private const val TOOL_LIST_GALLERY_IMAGES = "list_ai_gallery_images"
+    private const val TOOL_SET_CHARACTER_AVATAR_FROM_GALLERY = "set_book_character_avatar_from_gallery"
+    private const val TOOL_GENERATE_CHARACTER_AVATAR = "generate_book_character_avatar"
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -25,7 +30,14 @@ object AiBookCharacterTool {
             AiResolvedTool(TOOL_DELETE_CHARACTER, deleteCharacterDefinition()) { args -> deleteCharacter(args) },
             AiResolvedTool(TOOL_LIST_RELATIONS, listRelationsDefinition()) { args -> listRelations(args) },
             AiResolvedTool(TOOL_UPSERT_RELATION, upsertRelationDefinition()) { args -> upsertRelation(args) },
-            AiResolvedTool(TOOL_DELETE_RELATION, deleteRelationDefinition()) { args -> deleteRelation(args) }
+            AiResolvedTool(TOOL_DELETE_RELATION, deleteRelationDefinition()) { args -> deleteRelation(args) },
+            AiResolvedTool(TOOL_LIST_GALLERY_IMAGES, listGalleryImagesDefinition()) { args -> listGalleryImages(args) },
+            AiResolvedTool(TOOL_SET_CHARACTER_AVATAR_FROM_GALLERY, setCharacterAvatarFromGalleryDefinition()) { args ->
+                setCharacterAvatarFromGallery(args)
+            },
+            AiResolvedTool(TOOL_GENERATE_CHARACTER_AVATAR, generateCharacterAvatarDefinition()) { args ->
+                generateCharacterAvatar(args)
+            }
         )
     }
 
@@ -91,6 +103,35 @@ object AiBookCharacterTool {
     ) {
         bookProps(this)
         put("relationId", intProp("关系 ID。"))
+    }
+
+    private fun listGalleryImagesDefinition() = function(
+        TOOL_LIST_GALLERY_IMAGES,
+        "读取 AI 图片库图片，可用于给角色选择头像。"
+    ) {
+        put("keyword", stringProp("可选，按图片名称、提示词、供应商或模型筛选。"))
+        put("favoriteOnly", booleanProp("可选，只读取已收藏图片。"))
+        put("limit", intProp("可选，返回数量上限，默认 20，最大 50。"))
+    }
+
+    private fun setCharacterAvatarFromGalleryDefinition() = function(
+        TOOL_SET_CHARACTER_AVATAR_FROM_GALLERY,
+        "把 AI 图片库中的图片设为指定角色头像，并自动收藏该图片。"
+    ) {
+        bookProps(this)
+        put("characterId", intProp("可选，角色 ID。"))
+        put("name", stringProp("可选，角色名称。"))
+        put("imageId", stringProp("AI 图片库图片 ID。"))
+    }
+
+    private fun generateCharacterAvatarDefinition() = function(
+        TOOL_GENERATE_CHARACTER_AVATAR,
+        "根据指定角色资料生成头像，自动保存到 AI 图片库、收藏，并设为角色头像。"
+    ) {
+        bookProps(this)
+        put("characterId", intProp("可选，角色 ID。"))
+        put("name", stringProp("可选，角色名称。"))
+        put("prompt", stringProp("可选，头像生成提示词；为空时会根据角色资料自动生成。"))
     }
 
     private suspend fun listCharacters(args: JSONObject?): String = withContext(IO) {
@@ -216,6 +257,87 @@ object AiBookCharacterTool {
         }.toString()
     }
 
+    private suspend fun listGalleryImages(args: JSONObject?): String = withContext(IO) {
+        val keyword = args?.optString("keyword")?.trim().orEmpty()
+        val favoriteOnly = args?.optBoolean("favoriteOnly", false) ?: false
+        val limit = (args?.optInt("limit", 20) ?: 20).coerceIn(1, 50)
+        val filter = if (favoriteOnly) GalleryFilter.FAVORITE else GalleryFilter.ALL
+        val images = AiImageGalleryManager.listImages(filter)
+            .asSequence()
+            .filter { image ->
+                keyword.isBlank() ||
+                    image.name.contains(keyword, true) ||
+                    image.prompt.contains(keyword, true) ||
+                    image.providerName.contains(keyword, true) ||
+                    image.model.contains(keyword, true)
+            }
+            .take(limit)
+            .toList()
+        JSONObject().apply {
+            put("ok", true)
+            put("images", JSONArray().apply {
+                images.forEach { put(imageJson(it)) }
+            })
+        }.toString()
+    }
+
+    private suspend fun setCharacterAvatarFromGallery(args: JSONObject?): String = withContext(IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val character = resolveCharacter(book.bookUrl, args)
+            ?: return@withContext errorJson("未找到角色")
+        val imageId = args?.optString("imageId")?.trim().orEmpty()
+        if (imageId.isBlank()) return@withContext errorJson("imageId 不能为空")
+        val image = AiImageGalleryManager.getImage(imageId)
+            ?: return@withContext errorJson("未找到图片")
+        AiImageGalleryManager.setFavorite(image.id, true, null)
+        val favoriteImage = image.copy(
+            favorite = true,
+            groupId = image.groupId ?: AiImageGalleryManager.DEFAULT_GROUP_ID,
+            updatedAt = System.currentTimeMillis()
+        )
+        val updated = character.copy(
+            avatar = image.localPath,
+            updatedAt = System.currentTimeMillis()
+        )
+        appDb.bookCharacterDao.updateCharacter(updated)
+        JSONObject().apply {
+            put("ok", true)
+            put("character", characterJson(updated))
+            put("image", imageJson(favoriteImage))
+        }.toString()
+    }
+
+    private suspend fun generateCharacterAvatar(args: JSONObject?): String {
+        val resolved = withContext(IO) {
+            val book = resolveBook(args) ?: return@withContext null
+            val character = resolveCharacter(book.bookUrl, args) ?: return@withContext null
+            book to character
+        } ?: return errorJson("未找到书籍或角色")
+        val character = resolved.second
+        val prompt = args?.optString("prompt")?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: buildCharacterAvatarPrompt(character)
+        val image = runCatching {
+            AiImageService.generateAndStore(prompt)
+        }.getOrElse {
+            return errorJson("生成头像失败：${it.localizedMessage ?: it.javaClass.simpleName}")
+        }
+        val updated = withContext(IO) {
+            AiImageGalleryManager.setFavorite(image.id, true, null)
+            val latest = appDb.bookCharacterDao.getCharacter(character.id) ?: character
+            latest.copy(
+                avatar = image.localPath,
+                updatedAt = System.currentTimeMillis()
+            ).also { appDb.bookCharacterDao.updateCharacter(it) }
+        }
+        return JSONObject().apply {
+            put("ok", true)
+            put("character", characterJson(updated))
+            put("image", imageJson(image.copy(favorite = true, groupId = image.groupId ?: AiImageGalleryManager.DEFAULT_GROUP_ID)))
+            put("prompt", prompt)
+        }.toString()
+    }
+
     private fun resolveBook(args: JSONObject?): Book? {
         val bookUrl = args?.optString("bookUrl")?.trim().orEmpty()
         if (bookUrl.isNotBlank()) {
@@ -292,6 +414,34 @@ object AiBookCharacterTool {
         }
     }
 
+    private fun imageJson(image: AiGeneratedImage): JSONObject {
+        return JSONObject().apply {
+            put("id", image.id)
+            put("name", image.name)
+            put("prompt", image.prompt)
+            put("providerName", image.providerName)
+            put("model", image.model)
+            put("localPath", image.localPath)
+            put("favorite", image.favorite)
+            put("groupId", image.groupId)
+            put("createdAt", image.createdAt)
+            put("updatedAt", image.updatedAt)
+        }
+    }
+
+    private fun buildCharacterAvatarPrompt(character: BookCharacter): String {
+        return buildList {
+            add("为小说角色生成一张角色头像，头像构图，清晰，适合角色资料卡。")
+            add("角色名：${character.displayName()}")
+            character.identity.takeIf { it.isNotBlank() }?.let { add("身份：$it") }
+            character.skills.takeIf { it.isNotBlank() }?.let { add("技能：$it") }
+            character.attributes.takeIf { it.isNotBlank() }?.let { add("属性：$it") }
+            character.appearance.takeIf { it.isNotBlank() }?.let { add("形象：$it") }
+            character.personality.takeIf { it.isNotBlank() }?.let { add("性格：$it") }
+            character.biography.takeIf { it.isNotBlank() }?.let { add("生平：$it") }
+        }.joinToString("\n")
+    }
+
     private fun bookJson(book: Book): JSONObject {
         return JSONObject().apply {
             put("bookUrl", book.bookUrl)
@@ -330,6 +480,11 @@ object AiBookCharacterTool {
 
     private fun intProp(description: String) = JSONObject().apply {
         put("type", "integer")
+        put("description", description)
+    }
+
+    private fun booleanProp(description: String) = JSONObject().apply {
+        put("type", "boolean")
         put("description", description)
     }
 

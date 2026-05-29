@@ -30,6 +30,10 @@ object AiChatService {
     private const val NETWORK_ABORT_RETRY_COUNT = 1
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
+    private val imageToolNames = setOf(
+        "generate_image",
+        "generate_book_character_avatar"
+    )
     private val retryableToolNames = setOf(
         "query_bookshelf",
         "get_bookshelf_book_info",
@@ -45,6 +49,8 @@ object AiChatService {
         "reading_webview",
         "capture_web_requests",
         "search_web_tavily",
+        "generate_image",
+        "generate_book_character_avatar",
         "list_book_characters",
         "list_book_character_relations",
         "get_app_settings"
@@ -498,7 +504,7 @@ object AiChatService {
     }
 
     private fun toolTimeoutMillis(name: String): Long {
-        return if (name == "generate_image") IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
+        return if (name in imageToolNames) IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
     }
 
     private fun Throwable.isRetryableNetworkAbort(): Boolean {
