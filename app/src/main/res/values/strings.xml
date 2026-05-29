@@ -703,6 +703,10 @@
     <string name="ai_image_generate_failed">图片生成失败</string>
     <string name="ai_image_insert_failed">图片插入失败</string>
     <string name="ai_image_no_selection">请选择正文段落</string>
+    <string name="ai_image_delete_insert">删除插图</string>
+    <string name="ai_image_delete_insert_confirm">删除这张插图？图库中的原图会保留。</string>
+    <string name="ai_image_insert_deleted">插图已删除</string>
+    <string name="ai_image_insert_not_found">未找到插图引用</string>
     <string name="ai_tavily_api_key">Tavily API key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">Tap to set your Tavily API key.</string>

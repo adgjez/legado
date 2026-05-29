@@ -39,6 +39,7 @@ import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
@@ -55,6 +56,7 @@ import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
@@ -202,6 +204,7 @@ import io.legado.app.ui.login.SourceLoginJsExtensions
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.ConcurrentHashMap
+import java.util.regex.Matcher
 
 /**
  * 阅读界面
@@ -3900,14 +3903,19 @@ class ReadBookActivity : BaseReadBookActivity(),
         paragraphNum: Int,
         imageIndexInParagraph: Int
     ) {
+        val aiImageId = AiImageGalleryManager.imageIdFromUri(src)
+        val items = mutableListOf(
+            SelectItem(getString(R.string.show), "show"),
+            SelectItem(getString(R.string.refresh), "refresh"),
+            SelectItem(getString(R.string.action_save), "save"),
+            SelectItem(getString(R.string.menu), "menu"),
+            SelectItem(getString(R.string.select_folder), "selectFolder")
+        )
+        if (aiImageId != null) {
+            items += SelectItem(getString(R.string.ai_image_delete_insert), "deleteAiImage")
+        }
         popupAction.setItems(
-            listOf(
-                SelectItem(getString(R.string.show), "show"),
-                SelectItem(getString(R.string.refresh), "refresh"),
-                SelectItem(getString(R.string.action_save), "save"),
-                SelectItem(getString(R.string.menu), "menu"),
-                SelectItem(getString(R.string.select_folder), "selectFolder")
-            )
+            items
         )
         popupAction.onActionClick = {
             when (it) {
@@ -3926,6 +3934,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
                 "menu" -> showActionMenu()
                 "selectFolder" -> selectImageDir.launch()
+                "deleteAiImage" -> confirmDeleteAiInsertedImage(src, paragraphNum, imageIndexInParagraph)
             }
             popupAction.dismiss()
         }
@@ -3936,6 +3945,96 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readView, Gravity.BOTTOM or Gravity.LEFT, x.toInt(),
             binding.root.height + navigationBarHeight - y.toInt()
         )
+    }
+
+    private fun confirmDeleteAiInsertedImage(
+        src: String,
+        paragraphNum: Int,
+        imageIndexInParagraph: Int
+    ) {
+        alert(titleResource = R.string.delete, messageResource = R.string.ai_image_delete_insert_confirm) {
+            okButton {
+                deleteAiInsertedImage(src, paragraphNum, imageIndexInParagraph)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun deleteAiInsertedImage(
+        src: String,
+        paragraphNum: Int,
+        imageIndexInParagraph: Int
+    ) {
+        lifecycleScope.launch {
+            val deleted = withContext(IO) {
+                removeAiInsertedImageFromCurrentChapter(src, paragraphNum, imageIndexInParagraph)
+            }
+            if (deleted) {
+                ReadBook.clearTextChapter()
+                postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                toastOnUi(R.string.ai_image_insert_deleted)
+            } else {
+                toastOnUi(R.string.ai_image_insert_not_found)
+            }
+        }
+    }
+
+    private fun removeAiInsertedImageFromCurrentChapter(
+        src: String,
+        paragraphNum: Int,
+        imageIndexInParagraph: Int
+    ): Boolean {
+        val imageId = AiImageGalleryManager.imageIdFromUri(src) ?: return false
+        val book = ReadBook.book ?: return false
+        val chapter = ReadBook.curTextChapter?.chapter ?: return false
+        val rawContent = BookHelp.getContent(book, chapter).orEmpty()
+        if (rawContent.isBlank()) return false
+        val contentProcessor = ContentProcessor.get(book.name, book.origin)
+        val lines = contentProcessor.getContent(book, chapter, rawContent, includeTitle = false)
+            .textList
+            .toMutableList()
+        val targetIndex = currentChapterContentIndex(paragraphNum).takeIf { it in lines.indices }
+            ?: return false
+        val newLine = removeAiImageTag(lines[targetIndex], imageId, imageIndexInParagraph)
+            ?: return false
+        lines[targetIndex] = newLine
+        BookHelp.saveText(book, chapter, lines.joinToString("\n"))
+        return true
+    }
+
+    private fun currentChapterContentIndex(paragraphNum: Int): Int {
+        val textChapter = ReadBook.curTextChapter ?: return -1
+        val paragraphs = textChapter.getParagraphs(pageSplit = false)
+        val targetParagraph = paragraphs.firstOrNull { it.realNum == paragraphNum }
+            ?: return -1
+        val titleParagraphCount = paragraphs.takeWhile { it.firstLine.isTitle }.size
+        return targetParagraph.realNum - titleParagraphCount - 1
+    }
+
+    private fun removeAiImageTag(
+        line: String,
+        imageId: String,
+        imageIndexInParagraph: Int
+    ): String? {
+        val matcher = AppPattern.imgPattern.matcher(line)
+        val result = StringBuffer()
+        var sameImageIndex = 0
+        var removed = false
+        while (matcher.find()) {
+            val matchedSrc = matcher.group(1)
+            if (
+                AiImageGalleryManager.imageIdFromUri(matchedSrc) == imageId &&
+                sameImageIndex++ == imageIndexInParagraph
+            ) {
+                matcher.appendReplacement(result, "")
+                removed = true
+            } else {
+                matcher.appendReplacement(result, Matcher.quoteReplacement(matcher.group(0)))
+            }
+        }
+        if (!removed) return null
+        matcher.appendTail(result)
+        return result.toString()
     }
 
     /**
