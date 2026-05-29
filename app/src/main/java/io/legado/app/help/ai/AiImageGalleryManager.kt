@@ -132,7 +132,7 @@ object AiImageGalleryManager {
     fun imageIdFromUri(src: String?): String? {
         val value = src?.trim().orEmpty()
         if (!value.startsWith(IMAGE_URI_PREFIX, ignoreCase = true)) return null
-        return value.substringAfter(IMAGE_URI_PREFIX).substringBefore('?').trim().takeIf { it.isNotBlank() }
+        return value.substring(IMAGE_URI_PREFIX.length).substringBefore('?').trim().takeIf { it.isNotBlank() }
     }
 
     fun resolveImageFile(src: String?): File? {

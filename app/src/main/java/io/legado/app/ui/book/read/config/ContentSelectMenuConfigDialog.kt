@@ -41,6 +41,7 @@ class ContentSelectMenuConfigDialog : BaseDialogFragment(R.layout.dialog_content
                 MenuAction(ContentSelectConfig.ACTION_ALOUD, cbAloud),
                 MenuAction(ContentSelectConfig.ACTION_DICT, cbDict),
                 MenuAction(ContentSelectConfig.ACTION_ASK_AI, cbAskAi),
+                MenuAction(ContentSelectConfig.ACTION_GENERATE_IMAGE, cbGenerateImage),
             )
         }
 

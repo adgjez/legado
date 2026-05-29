@@ -17,6 +17,7 @@ object ContentSelectConfig {
     const val ACTION_ALOUD = "aloud"
     const val ACTION_DICT = "dict"
     const val ACTION_ASK_AI = "ask_ai"
+    const val ACTION_GENERATE_IMAGE = "generate_image"
 
     private val oldDefaultActions = setOf(
         ACTION_REPLACE,
@@ -24,7 +25,8 @@ object ContentSelectConfig {
         ACTION_BOOKMARK,
         ACTION_ALOUD,
         ACTION_DICT,
-        ACTION_ASK_AI
+        ACTION_ASK_AI,
+        ACTION_GENERATE_IMAGE
     )
 
     val defaultActions = setOf(
@@ -34,11 +36,12 @@ object ContentSelectConfig {
         ACTION_BOOKMARK,
         ACTION_ALOUD,
         ACTION_DICT,
-        ACTION_ASK_AI
+        ACTION_ASK_AI,
+        ACTION_GENERATE_IMAGE
     )
 
     val defaultOpenValues = listOf("", ACTION_WEB_SEARCH, ACTION_DICT, ACTION_ASK_AI)
-    private val removedActionIds = setOf("generate_image")
+    private val removedActionIds = emptySet<String>()
 
     data class SearchEngine(
         val id: String = "",
