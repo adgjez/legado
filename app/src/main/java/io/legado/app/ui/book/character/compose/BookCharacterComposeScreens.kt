@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.character.compose
 
 import android.widget.ImageView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -735,23 +734,31 @@ fun CharacterRelationScreen(
                 .navigationBarsPadding()
         ) {
             CharacterCenterSelector(characters, selectedCenterId, onSelectCenter)
-            CharacterGraph(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 14.dp),
-                characters = characters,
-                relations = relations,
-                selectedCenterId = selectedCenterId,
-                onCharacterClick = onOpenCard,
-                onRelationClick = onSelectRelation
-            )
-            RelationListPanel(
-                relations = relations,
-                characters = characters,
-                onEdit = onEditRelation,
-                onDelete = onDeleteRelation
-            )
+            ) {
+                CharacterGraph(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp, bottom = 108.dp),
+                    characters = characters,
+                    relations = relations,
+                    selectedCenterId = selectedCenterId,
+                    onCharacterClick = onOpenCard,
+                    onRelationClick = onSelectRelation
+                )
+                RelationListPanel(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 14.dp, bottom = 10.dp),
+                    relations = relations,
+                    characters = characters,
+                    onEdit = onEditRelation,
+                    onDelete = onDeleteRelation
+                )
+            }
         }
     }
     selectedRelation?.let {
@@ -978,10 +985,20 @@ private fun buildGraphPositions(
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
     val others = characters.filter { it.id != center.id }
     val result = linkedMapOf<Long, Offset>()
-    val centerPoint = Offset(width * 0.5f, height * 0.46f)
+    val safeTop = 104f
+    val safeBottom = 112f
+    val minCenterY = safeTop
+    val maxCenterY = (height - safeBottom).coerceAtLeast(minCenterY)
+    val centerY = (height * 0.48f).coerceIn(minCenterY, maxCenterY)
+    val centerPoint = Offset(width * 0.5f, centerY)
     result[center.id] = centerPoint
-    val radiusX = (width * 0.38f).coerceAtMost(width / 2f - 72f).coerceAtLeast(92f)
-    val radiusY = (height * 0.34f).coerceAtMost(height / 2f - 88f).coerceAtLeast(76f)
+    val radiusX = (width * 0.38f)
+        .coerceAtMost(width / 2f - 72f)
+        .coerceAtLeast(72f)
+    val radiusYMax = minOf(centerY - 64f, height - centerY - 86f).coerceAtLeast(44f)
+    val radiusY = (height * 0.30f)
+        .coerceAtMost(radiusYMax)
+        .coerceAtLeast(44f)
     others.forEachIndexed { index, character ->
         val angle = graphAngle(index, others.size)
         result[character.id] = Offset(
@@ -1043,6 +1060,7 @@ private fun UnlinkedCharactersStrip(
 
 @Composable
 private fun RelationListPanel(
+    modifier: Modifier = Modifier,
     relations: List<BookCharacterRelation>,
     characters: List<BookCharacter>,
     onEdit: (BookCharacterRelation) -> Unit,
@@ -1050,11 +1068,16 @@ private fun RelationListPanel(
 ) {
     val style = rememberCharacterStyle()
     var expanded by remember { mutableStateOf(false) }
+    val panelHeight = if (expanded) 260.dp else 96.dp
     Surface(
-        color = style.colors.page,
-        modifier = Modifier.fillMaxWidth()
+        color = style.colors.page.copy(alpha = 0.96f),
+        shape = RoundedCornerShape(style.radius),
+        shadowElevation = 10.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(panelHeight)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1062,11 +1085,33 @@ private fun RelationListPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("关系列表", color = style.colors.text, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("${relations.size} 条", color = style.colors.subText, fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
                 Text(if (expanded) "收起" else "展开", color = style.colors.accent, fontSize = 13.sp)
             }
-            AnimatedVisibility(expanded) {
-                Column(modifier = Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    relations.take(8).forEach { relation ->
+            if (!expanded) {
+                val first = relations.firstOrNull()
+                val summary = first?.let { relation ->
+                    val from = characters.firstOrNull { it.id == relation.fromCharacterId }?.displayName().orEmpty()
+                    val to = characters.firstOrNull { it.id == relation.toCharacterId }?.displayName().orEmpty()
+                    "$from → $to · ${relation.displayName()}"
+                } ?: "暂无关系，点击右上角添加"
+                Text(
+                    text = summary,
+                    color = style.colors.subText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(relations.take(12), key = { it.id }) { relation ->
                         val from = characters.firstOrNull { it.id == relation.fromCharacterId }?.displayName().orEmpty()
                         val to = characters.firstOrNull { it.id == relation.toCharacterId }?.displayName().orEmpty()
                         Surface(color = style.colors.card, shape = RoundedCornerShape(style.smallRadius)) {
