@@ -89,7 +89,7 @@ data class AiChatScreenActions(
     val onNewChat: () -> Unit,
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
-    val onGenerateImage: (() -> Unit)? = null
+    val onOpenImageGallery: (() -> Unit)? = null
 )
 
 @Composable
@@ -342,8 +342,8 @@ private fun AiChatTopBar(
                         add(AiTopMenuAction(stringResource(R.string.ai_new_chat)) { actions.onNewChat() })
                         add(AiTopMenuAction(stringResource(R.string.ai_chat_history)) { actions.onOpenHistory() })
                         add(AiTopMenuAction(stringResource(R.string.ai_setting)) { actions.onOpenSettings() })
-                        actions.onGenerateImage?.let { generate ->
-                            add(AiTopMenuAction(stringResource(R.string.ai_image_generate), generate))
+                        actions.onOpenImageGallery?.let { openGallery ->
+                            add(AiTopMenuAction(stringResource(R.string.ai_image_gallery), openGallery))
                         }
                     },
                     onDismiss = { menuExpanded = false }

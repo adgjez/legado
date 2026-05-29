@@ -50,7 +50,8 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
                     onOpenSettings = ::openAiSettings,
                     onNewChat = ::startNewChat,
                     onOpenHistory = ::openHistory,
-                    onSelectModel = ::showModelSelectorDialog
+                    onSelectModel = ::showModelSelectorDialog,
+                    onOpenImageGallery = ::openImageGallery
                 )
             )
         }
@@ -84,6 +85,10 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
         startActivity<ConfigActivity> {
             putExtra("configTag", ConfigTag.AI_CONFIG)
         }
+    }
+
+    private fun openImageGallery() {
+        startActivity<AiImageGalleryActivity>()
     }
 
     private fun startNewChat() {
