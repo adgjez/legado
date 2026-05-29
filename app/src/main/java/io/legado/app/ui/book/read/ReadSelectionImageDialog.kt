@@ -12,6 +12,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.databinding.DialogReadSelectionImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.ai.AiImagePromptRewriter
 import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -65,10 +66,18 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
             ContextCompat.getColor(requireContext(), R.color.background_menu),
             UiCorner.actionRadius(requireContext())
         )
-        listOf(binding.btnRegenerate, binding.btnInsert).forEach {
+        listOf(binding.btnOptimizePrompt, binding.btnRegenerate, binding.btnInsert).forEach {
             it.background = actionBackground
         }
-        binding.tvPrompt.text = prompt
+        binding.etPrompt.background = UiCorner.panelRounded(
+            requireContext(),
+            ContextCompat.getColor(requireContext(), R.color.background_card),
+            UiCorner.panelRadius(requireContext())
+        )
+        binding.etPrompt.setText(prompt)
+        binding.btnOptimizePrompt.setOnClickListener {
+            optimizePrompt()
+        }
         binding.btnRegenerate.setOnClickListener {
             generateImage()
         }
@@ -84,7 +93,7 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
     }
 
     private fun generateImage() {
-        val content = prompt.trim()
+        val content = binding.etPrompt.text?.toString().orEmpty().trim()
         if (content.isBlank()) {
             showError(getString(R.string.ai_image_no_selection))
             return
@@ -102,12 +111,34 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
                 ImageLoader.load(requireContext(), image.localPath)
                     .error(R.drawable.image_loading_error)
                     .into(binding.photoView)
-                binding.tvState.text = getString(R.string.ai_image_generated)
+                binding.tvState.gone()
                 binding.photoView.visible()
                 setLoading(false)
             }.onFailure { error ->
                 showError(error.localizedMessage ?: getString(R.string.ai_image_generate_failed))
             }
+        }
+    }
+
+    private fun optimizePrompt() {
+        val content = binding.etPrompt.text?.toString().orEmpty().trim()
+        if (content.isBlank()) {
+            showError(getString(R.string.ai_image_no_selection))
+            return
+        }
+        binding.btnOptimizePrompt.isEnabled = false
+        lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    AiImagePromptRewriter.rewrite(content, paragraphText)
+                }
+            }.onSuccess { rewritten ->
+                binding.etPrompt.setText(rewritten)
+                binding.etPrompt.setSelection(binding.etPrompt.text?.length ?: 0)
+            }.onFailure { error ->
+                showError(error.localizedMessage ?: getString(R.string.ai_image_generate_failed))
+            }
+            binding.btnOptimizePrompt.isEnabled = true
         }
     }
 
@@ -176,12 +207,12 @@ class ReadSelectionImageDialog() : BaseDialogFragment(R.layout.dialog_read_selec
 
     private fun setLoading(loading: Boolean) {
         binding.progressBar.isVisible = loading
+        binding.tvState.gone()
+        binding.btnOptimizePrompt.isEnabled = !loading
         binding.btnRegenerate.isEnabled = !loading
         binding.btnInsert.isEnabled = !loading && currentImage != null
         if (loading) {
             binding.photoView.gone()
-            binding.tvState.visible()
-            binding.tvState.text = getString(R.string.ai_image_generating)
         }
     }
 

@@ -698,6 +698,7 @@
     <string name="ai_image_generating">正在生成图片...</string>
     <string name="ai_image_generated">图片已生成</string>
     <string name="ai_image_regenerate">重新生成</string>
+    <string name="ai_image_optimize_prompt">AI优化</string>
     <string name="ai_image_insert">插入</string>
     <string name="ai_image_inserted">图片已插入正文</string>
     <string name="ai_image_generate_failed">图片生成失败</string>
