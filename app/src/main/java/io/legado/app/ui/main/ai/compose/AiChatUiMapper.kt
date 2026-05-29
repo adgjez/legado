@@ -126,6 +126,9 @@ fun buildAiChatUiItems(
             val processSteps = assistantMessages
                 .filter { it.isProcessMessage() }
                 .map { it.toProcessStep(context) }
+            val processImages = processSteps
+                .flatMap { it.payload?.images.orEmpty() }
+                .distinctBy { it.imageKey() }
             val assistantParts = mutableListOf<AiMessagePartUi>()
             if (processSteps.isNotEmpty()) {
                 assistantParts += AiMessagePartUi.ProcessChain(
@@ -136,6 +139,20 @@ fun buildAiChatUiItems(
             assistantMessages
                 .filterNot { it.isProcessMessage() }
                 .forEach { assistantParts += it.toTextParts() }
+            if (processImages.isNotEmpty()) {
+                val existingImageKeys = assistantParts
+                    .filterIsInstance<AiMessagePartUi.Images>()
+                    .flatMap { it.images }
+                    .map { it.imageKey() }
+                    .toSet()
+                val visibleImages = processImages.filterNot { it.imageKey() in existingImageKeys }
+                if (visibleImages.isNotEmpty()) {
+                    assistantParts += AiMessagePartUi.Images(
+                        id = "process-images-${processSteps.first().id}",
+                        images = visibleImages
+                    )
+                }
+            }
             if (assistantParts.isNotEmpty()) {
                 result += AiChatUiItem.Assistant(
                     id = id,
@@ -254,6 +271,10 @@ private fun AiChatMessage.toProcessStep(context: Context): AiProcessStepUi {
             collapsed = collapsed
         )
     }
+}
+
+private fun AiImageResultUi.imageKey(): String {
+    return imageId.ifBlank { image }
 }
 
 private data class ParsedAssistantContent(
