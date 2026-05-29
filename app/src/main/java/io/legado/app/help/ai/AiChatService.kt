@@ -17,6 +17,8 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
+import java.io.IOException
+import java.net.SocketException
 import java.util.concurrent.TimeUnit
 
 object AiChatService {
@@ -25,8 +27,28 @@ object AiChatService {
     private const val MAX_SEARCH_RESULT_CARDS = 8
     private const val DEFAULT_TOOL_TIMEOUT_MILLIS = 120_000L
     private const val IMAGE_TOOL_TIMEOUT_MILLIS = 300_000L
+    private const val NETWORK_ABORT_RETRY_COUNT = 1
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
+    private val retryableToolNames = setOf(
+        "query_bookshelf",
+        "get_bookshelf_book_info",
+        "list_book_chapters",
+        "read_book_chapter_content",
+        "query_read_records",
+        "list_book_sources",
+        "search_book_source",
+        "get_book_source",
+        "fetch_source_html",
+        "debug_book_source",
+        "reading_ajax",
+        "reading_webview",
+        "capture_web_requests",
+        "search_web_tavily",
+        "list_book_characters",
+        "list_book_character_relations",
+        "get_app_settings"
+    )
 
     private data class ToolCall(
         val id: String,
@@ -211,7 +233,7 @@ object AiChatService {
                     put("success", true)
                 }
             )
-            val assistantTurn = requestCompletionStream(
+            val assistantTurn = requestCompletionStreamWithRetry(
                 chatUrl = chatUrl,
                 apiMode = apiMode,
                 model = model,
@@ -331,7 +353,7 @@ object AiChatService {
                 appCtx.getString(R.string.ai_tool_round_limit_system_prompt)
             )
         }
-        val finalTurn = requestCompletionStream(
+        val finalTurn = requestCompletionStreamWithRetry(
             chatUrl = chatUrl,
             apiMode = apiMode,
             model = model,
@@ -434,11 +456,32 @@ object AiChatService {
                 put("error", "Unknown tool: ${toolCall.name}")
             }.toString()
         }
+        val arguments = runCatching {
+            toolCall.arguments.trim().takeIf { it.isNotBlank() }?.let(::JSONObject)
+        }.getOrElse { throwable ->
+            return JSONObject().apply {
+                put("ok", false)
+                put("error", throwable.message ?: throwable.javaClass.simpleName)
+            }.toString()
+        }
         return runCatching {
-            val arguments = toolCall.arguments.trim().takeIf { it.isNotBlank() }?.let(::JSONObject)
-            withTimeout(toolTimeoutMillis(toolCall.name)) {
-                resolvedTool.execute(arguments)
+            var lastError: Throwable? = null
+            repeat(NETWORK_ABORT_RETRY_COUNT + 1) { attempt ->
+                try {
+                    return@runCatching withTimeout(toolTimeoutMillis(toolCall.name)) {
+                        resolvedTool.execute(arguments)
+                    }
+                } catch (throwable: Throwable) {
+                    lastError = throwable
+                    if (attempt >= NETWORK_ABORT_RETRY_COUNT ||
+                        toolCall.name !in retryableToolNames ||
+                        !throwable.isRetryableNetworkAbort()
+                    ) {
+                        throw throwable
+                    }
+                }
             }
+            throw lastError ?: IllegalStateException("Tool failed")
         }.getOrElse { throwable ->
             JSONObject().apply {
                 put("ok", false)
@@ -456,6 +499,74 @@ object AiChatService {
 
     private fun toolTimeoutMillis(name: String): Long {
         return if (name == "generate_image") IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
+    }
+
+    private fun Throwable.isRetryableNetworkAbort(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            val message = current.message.orEmpty().lowercase()
+            if (current is SocketException) return true
+            if (current is IOException && (
+                    "software caused connection abort" in message ||
+                            "connection reset" in message ||
+                            "unexpected end of stream" in message ||
+                            "stream was reset" in message ||
+                            "closed" in message && "connection" in message
+                    )
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
+    private suspend fun requestCompletionStreamWithRetry(
+        chatUrl: String,
+        apiMode: String,
+        model: String,
+        providerApiKey: String,
+        providerHeaders: String,
+        messages: List<JSONObject>,
+        tools: List<AiResolvedTool>,
+        promptCacheKey: String?,
+        requestLog: StringBuilder,
+        round: Int,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit
+    ): AssistantTurn {
+        var lastError: Throwable? = null
+        repeat(NETWORK_ABORT_RETRY_COUNT + 1) { attempt ->
+            try {
+                if (attempt > 0) {
+                    requestLog.append("round=").append(round)
+                        .append(" retry=").append(attempt)
+                        .append(" reason=").append(lastError?.message ?: lastError?.javaClass?.simpleName)
+                        .append('\n')
+                    onThinking("连接中断，正在重试一次")
+                }
+                return requestCompletionStream(
+                    chatUrl = chatUrl,
+                    apiMode = apiMode,
+                    model = model,
+                    providerApiKey = providerApiKey,
+                    providerHeaders = providerHeaders,
+                    messages = messages,
+                    tools = tools,
+                    promptCacheKey = promptCacheKey,
+                    requestLog = requestLog,
+                    round = round,
+                    onPartial = onPartial,
+                    onThinking = onThinking
+                )
+            } catch (throwable: Throwable) {
+                lastError = throwable
+                if (attempt >= NETWORK_ABORT_RETRY_COUNT || !throwable.isRetryableNetworkAbort()) {
+                    throw throwable
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("AI request failed")
     }
 
     private suspend fun requestCompletionStream(
