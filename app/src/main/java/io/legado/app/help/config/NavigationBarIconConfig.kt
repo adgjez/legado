@@ -742,11 +742,12 @@ object NavigationBarIconConfig {
         val effectMode = runCatching { config.effectMode }.getOrNull()
             ?.takeIf { it in setOf("solid", "glass", "frosted") }
             ?: "glass"
+        val resolvedEffectMode = if (layoutMode == "standard") "solid" else effectMode
         val icons = runCatching { config.icons }.getOrNull() ?: linkedMapOf()
         val sidebarBackgroundPath = runCatching { config.sidebarBackgroundPath }.getOrNull()
         config.layoutMode = layoutMode
         config.sidebarGravity = sidebarGravity
-        config.effectMode = effectMode
+        config.effectMode = resolvedEffectMode
         config.opacity = config.opacity.coerceIn(0, 100)
         config.sidebarBackgroundPath = sidebarBackgroundPath
         config.icons = icons.toMutableMap()

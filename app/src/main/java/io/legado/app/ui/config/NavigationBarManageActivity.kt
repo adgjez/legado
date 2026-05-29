@@ -398,6 +398,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     private fun buildEditView(): LinearLayout {
         val config = pendingConfig!!
+        normalizeStandardBottomConfig(config)
         val currentEntry = editingEntry
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -418,6 +419,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                         2 -> "sidebar"
                         else -> "floating"
                     }
+                    normalizeStandardBottomConfig(config)
                     refreshEditDialog()
                 }
             })
@@ -430,48 +432,50 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     postEvent(EventBus.NOTIFY_MAIN, false)
                     refreshEditDialog()
                 })
-                addView(optionRow(getString(R.string.bottom_bar_effect_mode), effectModeLabel(config.effectMode)) {
-                    selector(
-                        getString(R.string.bottom_bar_effect_mode),
-                        listOf(
-                            getString(R.string.bottom_bar_effect_solid),
-                            getString(R.string.bottom_bar_effect_glass),
-                            getString(R.string.bottom_bar_effect_frosted)
-                        )
-                    ) { _, index ->
-                        config.effectMode = when (index) {
-                            0 -> "solid"
-                            2 -> "frosted"
-                            else -> "glass"
-                        }
-                        refreshEditDialog()
-                    }
-                })
-                addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
-                    NumberPickerDialog(this@NavigationBarManageActivity)
-                        .setTitle(getString(R.string.bottom_bar_opacity))
-                        .setMinValue(0)
-                        .setMaxValue(100)
-                        .setValue(config.opacity)
-                        .setCustomButton(R.string.btn_default_s) {
-                            config.opacity = 76
+                if (config.layoutMode == "floating") {
+                    addView(optionRow(getString(R.string.bottom_bar_effect_mode), effectModeLabel(config.effectMode)) {
+                        selector(
+                            getString(R.string.bottom_bar_effect_mode),
+                            listOf(
+                                getString(R.string.bottom_bar_effect_solid),
+                                getString(R.string.bottom_bar_effect_glass),
+                                getString(R.string.bottom_bar_effect_frosted)
+                            )
+                        ) { _, index ->
+                            config.effectMode = when (index) {
+                                0 -> "solid"
+                                2 -> "frosted"
+                                else -> "glass"
+                            }
                             refreshEditDialog()
                         }
-                        .show {
-                            config.opacity = it.coerceIn(0, 100)
-                            refreshEditDialog()
-                        }
-                })
-                addView(optionRow(
-                    getString(R.string.bottom_bar_border_color),
-                    config.borderColor?.let(::colorLabel) ?: getString(R.string.disable)
-                ) {
-                    showOptionalColorSelector(
+                    })
+                    addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
+                        NumberPickerDialog(this@NavigationBarManageActivity)
+                            .setTitle(getString(R.string.bottom_bar_opacity))
+                            .setMinValue(0)
+                            .setMaxValue(100)
+                            .setValue(config.opacity)
+                            .setCustomButton(R.string.btn_default_s) {
+                                config.opacity = 76
+                                refreshEditDialog()
+                            }
+                            .show {
+                                config.opacity = it.coerceIn(0, 100)
+                                refreshEditDialog()
+                            }
+                    })
+                    addView(optionRow(
                         getString(R.string.bottom_bar_border_color),
-                        config.borderColor,
-                        COLOR_BORDER
-                    )
-                })
+                        config.borderColor?.let(::colorLabel) ?: getString(R.string.disable)
+                    ) {
+                        showOptionalColorSelector(
+                            getString(R.string.bottom_bar_border_color),
+                            config.borderColor,
+                            COLOR_BORDER
+                        )
+                    })
+                }
             } else {
                 addView(optionRow(
                     getString(R.string.navigation_bar_sidebar_background),
@@ -521,6 +525,12 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             while (rebuilt.childCount > 0) {
                 root.addView(rebuilt.getChildAt(0).also { rebuilt.removeView(it) })
             }
+        }
+    }
+
+    private fun normalizeStandardBottomConfig(config: NavigationBarIconConfig.Config) {
+        if (config.layoutMode == "standard") {
+            config.effectMode = "solid"
         }
     }
 
@@ -627,6 +637,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     private fun saveEditingPackage() {
         val config = pendingConfig ?: return
+        normalizeStandardBottomConfig(config)
         val name = editingDialog?.findViewWithTag<EditText>("name")?.text?.toString()?.trim().orEmpty()
         lifecycleScope.launch {
             kotlin.runCatching {
@@ -933,12 +944,16 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 )
                 tvName.text = entry.config.name
                 tvInfo.text = buildString {
-                    append(effectModeLabel(entry.config.effectMode))
+                    append(layoutModeLabel(entry.config.layoutMode))
                     append(" · ")
-                    append(getString(R.string.bottom_bar_opacity))
-                    append(" ")
-                    append(entry.config.opacity)
-                    append("%")
+                    append(effectModeLabel(displayEffectMode(entry.config)))
+                    if (entry.config.layoutMode != "standard") {
+                        append(" · ")
+                        append(getString(R.string.bottom_bar_opacity))
+                        append(" ")
+                        append(entry.config.opacity)
+                        append("%")
+                    }
                     if (entry.config.updatedAt > 0) {
                         append(" · ")
                         append(dateFormat.format(Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))))
@@ -972,6 +987,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 root.setOnClickListener { showActions(entry) }
             }
         }
+    }
+
+    private fun displayEffectMode(config: NavigationBarIconConfig.Config): String {
+        return if (config.layoutMode == "standard") "solid" else config.effectMode
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
