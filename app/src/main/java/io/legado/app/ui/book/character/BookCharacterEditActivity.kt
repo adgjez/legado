@@ -2,24 +2,46 @@ package io.legado.app.ui.book.character
 
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.viewbinding.ViewBinding
 import io.legado.app.base.BaseActivity
+import io.legado.app.base.adapter.ItemViewHolder
+import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGeneratedImage
+import io.legado.app.data.entities.AiImageGroup
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.databinding.ItemAiGeneratedImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.applyUiLabelStyle
+import io.legado.app.lib.theme.applyUiSectionTitleStyle
+import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.character.compose.CharacterEditDraft
 import io.legado.app.ui.book.character.compose.CharacterEditScreen
 import io.legado.app.ui.book.character.compose.toDraft
@@ -27,6 +49,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.readUri
@@ -163,9 +186,13 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
 
     private fun showGalleryAvatarSelector() {
         lifecycleScope.launch {
-            val images = withContext(IO) {
-                AiImageGalleryManager.listImages(GalleryFilter.ALL)
+            val data = withContext(IO) {
+                AiImageGalleryManager.listGroups() to AiImageGalleryManager.listImages(GalleryFilter.ALL)
             }
+            val groups = data.first
+            val images = data.second
+            showGalleryAvatarPicker(groups, images)
+            return@launch
             if (images.isEmpty()) {
                 toastOnUi("AI 图库暂无图片")
                 return@launch
@@ -179,12 +206,109 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
         }
     }
 
+    private fun showGalleryAvatarPicker(groups: List<AiImageGroup>, images: List<AiGeneratedImage>) {
+        if (images.isEmpty()) {
+            toastOnUi("AI 图库暂无图片")
+            return
+        }
+        var currentGroupId: String? = null
+        var query = ""
+        var dialog: AlertDialog? = null
+        val adapter = GalleryAvatarAdapter { image ->
+            setGalleryAvatar(image)
+            dialog?.dismiss()
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12.dpToPx(), 10.dpToPx(), 12.dpToPx(), 8.dpToPx())
+        }
+        val search = EditText(this).apply {
+            hint = getString(R.string.search)
+            singleLine = true
+            textSize = 14f
+            setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
+            background = UiCorner.panelRounded(
+                this@BookCharacterEditActivity,
+                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                UiCorner.actionRadius(this@BookCharacterEditActivity)
+            )
+        }
+        root.addView(search, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 42.dpToPx()))
+        val chipContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        root.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chipContainer)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 48.dpToPx()))
+        val recyclerView = RecyclerView(this).apply {
+            layoutManager = GridLayoutManager(this@BookCharacterEditActivity, 3)
+            this.adapter = adapter
+            overScrollMode = RecyclerView.OVER_SCROLL_NEVER
+            (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        }
+        root.addView(recyclerView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 420.dpToPx()))
+
+        fun applyFilter() {
+            adapter.setItems(images.filter { image ->
+                val matchGroup = currentGroupId == null || image.groupId == currentGroupId
+                val text = "${image.name}\n${image.prompt}\n${image.bookName}\n${image.chapterTitle}\n${image.characterName}"
+                val matchQuery = query.isBlank() || text.contains(query, ignoreCase = true)
+                matchGroup && matchQuery
+            })
+        }
+
+        fun renderChips() {
+            chipContainer.removeAllViews()
+            fun addChip(text: String, groupId: String?) {
+                val selected = currentGroupId == groupId
+                val chip = TextView(this).apply {
+                    this.text = text
+                    gravity = Gravity.CENTER
+                    minWidth = 62.dpToPx()
+                    setPadding(14.dpToPx(), 0, 14.dpToPx(), 0)
+                    setTextColor(if (selected) accentColor else secondaryTextColor)
+                    background = UiCorner.actionSelector(
+                        ContextCompat.getColor(this@BookCharacterEditActivity, if (selected) R.color.background_card else R.color.background_menu),
+                        ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                        UiCorner.actionRadius(this@BookCharacterEditActivity)
+                    )
+                    setOnClickListener {
+                        currentGroupId = groupId
+                        renderChips()
+                        applyFilter()
+                    }
+                }
+                chipContainer.addView(chip, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    34.dpToPx()
+                ).apply {
+                    marginEnd = 8.dpToPx()
+                })
+            }
+            addChip("全部", null)
+            groups.forEach { addChip(it.name, it.id) }
+        }
+
+        renderChips()
+        search.doAfterTextChanged {
+            query = it?.toString().orEmpty().trim()
+            applyFilter()
+        }
+        applyFilter()
+        dialog = alert("选择 AI 图库头像") {
+            customView { root }
+            cancelButton()
+        }
+    }
+
     private fun setGalleryAvatar(image: AiGeneratedImage) {
         lifecycleScope.launch {
             withContext(IO) {
                 AiImageGalleryManager.setFavorite(image.id, true, null)
             }
-            draft = draft.copy(avatar = image.localPath)
+            draft = draft.copy(avatar = AiImageGalleryManager.imageUri(image.id))
             toastOnUi("已设置角色头像")
         }
     }
@@ -246,7 +370,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             }
             waitDialog.dismiss()
             result.onSuccess { image ->
-                draft = draft.copy(avatar = image.localPath)
+                draft = draft.copy(avatar = AiImageGalleryManager.imageUri(image.id))
                 toastOnUi("已生成并收藏角色头像")
             }.onFailure {
                 toastOnUi("生成角色头像失败：${it.localizedMessage ?: it.javaClass.simpleName}")
@@ -279,6 +403,55 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                 }
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: "头像导入失败")
+            }
+        }
+    }
+
+    private inner class GalleryAvatarAdapter(
+        private val onPick: (AiGeneratedImage) -> Unit
+    ) : RecyclerAdapter<AiGeneratedImage, ItemAiGeneratedImageBinding>(this@BookCharacterEditActivity) {
+
+        override fun getViewBinding(parent: ViewGroup): ItemAiGeneratedImageBinding {
+            return ItemAiGeneratedImageBinding.inflate(inflater, parent, false).apply {
+                root.radius = UiCorner.scaledDp(12f)
+                root.cardElevation = 0f
+                root.setCardBackgroundColor(ContextCompat.getColor(root.context, R.color.background_card))
+            }
+        }
+
+        override fun convert(
+            holder: ItemViewHolder,
+            binding: ItemAiGeneratedImageBinding,
+            item: AiGeneratedImage,
+            payloads: MutableList<Any>
+        ) = binding.run {
+            ImageLoader.load(this@BookCharacterEditActivity, item.localPath)
+                .error(R.drawable.image_loading_error)
+                .into(ivImage)
+            tvName.text = item.name
+            tvPrompt.text = buildList {
+                item.bookName.takeIf { it.isNotBlank() }?.let(::add)
+                item.chapterTitle.takeIf { it.isNotBlank() }?.let(::add)
+                item.characterName.takeIf { it.isNotBlank() }?.let(::add)
+                add(item.prompt.replace(Regex("\\s+"), " ").take(48))
+            }.joinToString(" · ")
+            tvState.text = if (item.favorite) getString(R.string.in_favorites) else getString(R.string.ai_image_gallery_temporary)
+            tvSelected.visibility = android.view.View.GONE
+            tvName.applyUiSectionTitleStyle(this@BookCharacterEditActivity)
+            tvPrompt.applyUiLabelStyle(this@BookCharacterEditActivity)
+            tvPrompt.setTextColor(secondaryTextColor)
+            tvState.applyUiLabelStyle(this@BookCharacterEditActivity)
+            tvState.setTextColor(if (item.favorite) accentColor else ContextCompat.getColor(this@BookCharacterEditActivity, R.color.primaryText))
+            tvState.background = UiCorner.actionSelector(
+                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_card),
+                ContextCompat.getColor(this@BookCharacterEditActivity, R.color.background_menu),
+                UiCorner.actionRadius(this@BookCharacterEditActivity)
+            )
+        }
+
+        override fun registerListener(holder: ItemViewHolder, binding: ItemAiGeneratedImageBinding) {
+            holder.itemView.setOnClickListener {
+                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let(onPick)
             }
         }
     }
