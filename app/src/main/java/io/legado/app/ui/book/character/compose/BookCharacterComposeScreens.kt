@@ -84,7 +84,9 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
+import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 @Immutable
 data class CharacterColors(
@@ -732,31 +734,26 @@ fun CharacterRelationScreen(
                 .navigationBarsPadding()
         ) {
             CharacterCenterSelector(characters, selectedCenterId, onSelectCenter)
-            Box(
+            CharacterGraph(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            ) {
-                CharacterGraph(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(start = 14.dp, end = 14.dp, bottom = 132.dp),
-                    characters = characters,
-                    relations = relations,
-                    selectedCenterId = selectedCenterId,
-                    onCharacterClick = onOpenCard,
-                    onRelationClick = onSelectRelation
-                )
-                RelationListPanel(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
-                    relations = relations,
-                    characters = characters,
-                    onEdit = onEditRelation,
-                    onDelete = onDeleteRelation
-                )
-            }
+                    .padding(start = 14.dp, end = 14.dp),
+                characters = characters,
+                relations = relations,
+                selectedCenterId = selectedCenterId,
+                onCharacterClick = onOpenCard,
+                onRelationClick = onSelectRelation
+            )
+            RelationListPanel(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
+                relations = relations,
+                characters = characters,
+                onEdit = onEditRelation,
+                onDelete = onDeleteRelation
+            )
         }
     }
     selectedRelation?.let {
@@ -862,12 +859,12 @@ private fun CharacterGraph(
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
-            val positions = remember(visibleCharacters, selectedCenterId, widthPx, heightPx) {
-                buildGraphPositions(visibleCharacters, selectedCenterId, widthPx, heightPx)
+            val layout = remember(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density) {
+                buildGraphLayout(visibleCharacters, visibleRelations, selectedCenterId, widthPx, density.density)
             }
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val graphCenter = positions[selectedCenterId]
-                    ?.let { transformGraphPoint(it, scale, pan, size.width, size.height) }
+                val graphCenter = layout.nodes[selectedCenterId]?.center
+                    ?.let { transformGraphPoint(it, layout, scale, pan, size.width, size.height) }
                     ?: Offset(size.width * 0.5f, size.height * 0.5f)
                 drawRect(
                     brush = Brush.radialGradient(
@@ -890,10 +887,10 @@ private fun CharacterGraph(
                     )
                 }
                 visibleRelations.forEach { relation ->
-                    val from = positions[relation.fromCharacterId] ?: return@forEach
-                    val to = positions[relation.toCharacterId] ?: return@forEach
-                    val start = transformGraphPoint(from, scale, pan, size.width, size.height)
-                    val end = transformGraphPoint(to, scale, pan, size.width, size.height)
+                    val from = layout.nodes[relation.fromCharacterId]?.center ?: return@forEach
+                    val to = layout.nodes[relation.toCharacterId]?.center ?: return@forEach
+                    val start = transformGraphPoint(from, layout, scale, pan, size.width, size.height)
+                    val end = transformGraphPoint(to, layout, scale, pan, size.width, size.height)
                     val strength = relation.strength.coerceIn(0, 100)
                     drawLine(
                         color = style.colors.accent.copy(alpha = 0.20f + strength / 420f),
@@ -905,8 +902,8 @@ private fun CharacterGraph(
                 }
             }
             visibleCharacters.forEach { character ->
-                val point = positions[character.id] ?: return@forEach
-                val p = transformGraphPoint(point, scale, pan, widthPx, heightPx)
+                val node = layout.nodes[character.id] ?: return@forEach
+                val p = transformGraphPoint(node.center, layout, scale, pan, widthPx, heightPx)
                 val avatarSize = when (character.id) {
                     selectedCenterId -> 82
                     else -> if (character.roleLevel == BookCharacter.ROLE_IMPORTANT) 64 else 56
@@ -1017,37 +1014,71 @@ private fun CharacterGraphNode(
     }
 }
 
-private fun buildGraphPositions(
+private data class GraphLayout(
+    val canvasWidth: Float,
+    val canvasHeight: Float,
+    val center: Offset,
+    val nodes: Map<Long, GraphNodeLayout>
+)
+
+private data class GraphNodeLayout(
+    val character: BookCharacter,
+    val center: Offset
+)
+
+private fun buildGraphLayout(
     characters: List<BookCharacter>,
+    relations: List<BookCharacterRelation>,
     centerId: Long,
     width: Float,
-    height: Float
-): Map<Long, Offset> {
-    if (characters.isEmpty()) return emptyMap()
+    density: Float
+): GraphLayout {
+    val minCanvasWidth = 420f * density
+    val baseWidth = max(width, minCanvasWidth)
+    val canvasScale = when {
+        characters.size <= 5 -> 1.08f
+        characters.size <= 9 -> 1.28f
+        else -> 1.55f
+    }
+    val canvasWidth = baseWidth * canvasScale
+    val canvasHeight = baseWidth * when {
+        characters.size <= 5 -> 1.10f
+        characters.size <= 9 -> 1.32f
+        else -> 1.58f
+    }
+    if (characters.isEmpty()) {
+        val emptyCenter = Offset(canvasWidth / 2f, canvasHeight / 2f)
+        return GraphLayout(canvasWidth, canvasHeight, emptyCenter, emptyMap())
+    }
     val center = characters.firstOrNull { it.id == centerId } ?: characters.first()
     val others = characters.filter { it.id != center.id }
-    val result = linkedMapOf<Long, Offset>()
-    val sideSafe = 72f.coerceAtMost(width * 0.18f)
-    val topSafe = 82f.coerceAtMost(height * 0.24f)
-    val bottomSafe = 94f.coerceAtMost(height * 0.24f)
-    val minX = sideSafe
-    val maxX = (width - sideSafe).coerceAtLeast(minX)
-    val minY = topSafe
-    val maxY = (height - bottomSafe).coerceAtLeast(minY)
+    val result = linkedMapOf<Long, GraphNodeLayout>()
     val centerPoint = Offset(
-        x = width * 0.5f,
-        y = ((minY + maxY) / 2f).coerceIn(minY, maxY)
+        x = canvasWidth * 0.5f,
+        y = canvasHeight * 0.48f
     )
-    result[center.id] = centerPoint
-    val slots = graphSlotRatios(others.size)
-    others.forEachIndexed { index, character ->
+    result[center.id] = GraphNodeLayout(center, centerPoint)
+    val relationStrength = relations.flatMap {
+        listOf(it.fromCharacterId to it.strength, it.toCharacterId to it.strength)
+    }.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.maxOrNull() ?: 0 }
+    val orderedOthers = others.sortedWith(
+        compareByDescending<BookCharacter> { relationStrength[it.id] ?: 0 }
+            .thenByDescending { it.roleLevel }
+            .thenBy { it.sortOrder }
+            .thenBy { it.id }
+    )
+    val slots = graphSlotRatios(orderedOthers.size)
+    orderedOthers.forEachIndexed { index, character ->
         val slot = slots.getOrElse(index) { Offset(0.5f, 0.5f) }
-        result[character.id] = Offset(
-            x = minX + (maxX - minX) * slot.x,
-            y = minY + (maxY - minY) * slot.y
+        result[character.id] = GraphNodeLayout(
+            character = character,
+            center = Offset(
+                x = canvasWidth * slot.x,
+                y = canvasHeight * slot.y
+            )
         )
     }
-    return result
+    return GraphLayout(canvasWidth, canvasHeight, centerPoint, result)
 }
 
 private fun graphSlotRatios(count: Int): List<Offset> {
@@ -1094,9 +1125,16 @@ private fun graphSlotRatios(count: Int): List<Offset> {
     }
 }
 
-private fun transformGraphPoint(point: Offset, scale: Float, pan: Offset, width: Float, height: Float): Offset {
-    val center = Offset(width / 2f, height / 2f)
-    return center + (point - center) * scale + pan
+private fun transformGraphPoint(
+    point: Offset,
+    layout: GraphLayout,
+    scale: Float,
+    pan: Offset,
+    width: Float,
+    height: Float
+): Offset {
+    val viewportCenter = Offset(width / 2f, height / 2f)
+    return viewportCenter + (point - layout.center) * scale + pan
 }
 
 private fun constrainGraphPan(pan: Offset, width: Float, height: Float, scale: Float): Offset {
