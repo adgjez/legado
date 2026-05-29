@@ -554,7 +554,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     }
                 }
                 .sortedByDescending { it.updatedAt }
-                .take(30)
+                .take(100)
             if (sessions.isEmpty()) {
                 appCtx.removePref(PreferKey.aiChatSessionList)
             } else {
