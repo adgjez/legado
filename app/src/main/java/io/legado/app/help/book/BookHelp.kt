@@ -11,6 +11,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.library.LibraryCloudSync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -401,7 +402,7 @@ object BookHelp {
             val matcher = AppPattern.imgPattern.matcher(it)
             while (matcher.find()) {
                 val src = matcher.group(1)!!
-                val image = getImage(book, src)
+                val image = AiImageGalleryManager.resolveImageFile(src) ?: getImage(book, src)
                 if (!image.exists()) {
                     ret = false
                     continue
@@ -500,6 +501,7 @@ object BookHelp {
         val matcher = AppPattern.imgPattern.matcher(content)
         while (matcher.find()) {
             val src = matcher.group(1) ?: continue
+            if (AiImageGalleryManager.imageIdFromUri(src) != null) continue
             val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
             getImage(book, mSrc).takeIf { it.exists() }?.delete()
         }

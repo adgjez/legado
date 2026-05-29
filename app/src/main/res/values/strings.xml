@@ -697,6 +697,12 @@
     <string name="ai_image_prompt_hint">输入图片提示词</string>
     <string name="ai_image_generating">正在生成图片...</string>
     <string name="ai_image_generated">图片已生成</string>
+    <string name="ai_image_regenerate">重新生成</string>
+    <string name="ai_image_insert">插入</string>
+    <string name="ai_image_inserted">图片已插入正文</string>
+    <string name="ai_image_generate_failed">图片生成失败</string>
+    <string name="ai_image_insert_failed">图片插入失败</string>
+    <string name="ai_image_no_selection">请选择正文段落</string>
     <string name="ai_tavily_api_key">Tavily API key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">Tap to set your Tavily API key.</string>

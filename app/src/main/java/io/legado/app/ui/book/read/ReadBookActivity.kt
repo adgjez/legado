@@ -341,6 +341,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         val resetPageOffset: Boolean
     )
 
+    private data class SelectedParagraphForImage(
+        val contentIndex: Int,
+        val text: String
+    )
+
     private enum class EpubCorePageEdge {
         Start,
         End,
@@ -1314,6 +1319,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 askAiBySelection()
                 return true
             }
+            R.id.menu_generate_image -> {
+                generateImageBySelection()
+                return true
+            }
         }
         return false
     }
@@ -1322,6 +1331,54 @@ class ReadBookActivity : BaseReadBookActivity(),
         val prompt = selectedText.trim()
         if (prompt.isEmpty()) return
         openReadAiPanel(prompt)
+    }
+
+    private fun generateImageBySelection() {
+        if (epubCoreActive) {
+            toastOnUi(R.string.ai_image_insert_failed)
+            return
+        }
+        if (AppConfig.aiCurrentImageProvider == null) {
+            toastOnUi(R.string.ai_missing_config)
+            return
+        }
+        val paragraph = currentSelectedParagraphForImage()
+        if (paragraph == null) {
+            toastOnUi(R.string.ai_image_no_selection)
+            return
+        }
+        val prompt = selectedText.trim().ifBlank { paragraph.text.trim() }
+        if (prompt.isBlank()) {
+            toastOnUi(R.string.ai_image_no_selection)
+            return
+        }
+        showDialogFragment(
+            ReadSelectionImageDialog(
+                prompt = prompt,
+                paragraphIndex = paragraph.contentIndex,
+                paragraphText = paragraph.text
+            )
+        )
+    }
+
+    private fun currentSelectedParagraphForImage(): SelectedParagraphForImage? {
+        val textChapter = ReadBook.curTextChapter ?: return null
+        val selectStartPos = binding.readView.curPage.selectStartPos
+        if (!selectStartPos.isSelected()) return null
+        val page = binding.readView.curPage.relativePage(selectStartPos.relativePagePos)
+        val line = page.getLine(selectStartPos.lineIndex)
+        if (line.paragraphNum <= 0 || line.isTitle) return null
+        val paragraphs = textChapter.getParagraphs(pageSplit = false)
+        val paragraph = paragraphs.firstOrNull { it.realNum == line.paragraphNum }
+            ?: return null
+        if (paragraph.firstLine.isTitle) return null
+        val titleParagraphCount = paragraphs.takeWhile { it.firstLine.isTitle }.size
+        val contentIndex = paragraph.realNum - titleParagraphCount - 1
+        if (contentIndex < 0) return null
+        return SelectedParagraphForImage(
+            contentIndex = contentIndex,
+            text = paragraph.text
+        )
     }
 
     override fun openReadAssistant() {
