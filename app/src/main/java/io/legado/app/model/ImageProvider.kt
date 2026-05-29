@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.util.Size
 import androidx.collection.LruCache
 import io.legado.app.R
@@ -9,6 +10,7 @@ import io.legado.app.constant.AppLog.putDebug
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isMobi
@@ -138,6 +140,9 @@ object ImageProvider {
         bookSource: BookSource?
     ): File {
         return withContext(IO) {
+            resolveLocalImageFile(src)?.let { file ->
+                return@withContext file
+            }
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
                 val inputStream = when {
@@ -277,16 +282,18 @@ object ImageProvider {
             appCtx.toastOnUi(R.string.error_image_url_empty)
         }
         val vFile = BookHelp.getImage(book, src)
+        val directFile = resolveLocalImageFile(src)
         //epub文件提供图片链接是相对链接，同时阅读多个epub文件，缓存命中错误
         //bitmapLruCache的key同一改成缓存文件的路径
+        val imageFile = directFile ?: vFile
         val cacheKey = if (cacheKeySuffix.isNullOrBlank()) {
-            vFile.absolutePath
+            imageFile.absolutePath
         } else {
-            "${vFile.absolutePath}#$cacheKeySuffix"
+            "${imageFile.absolutePath}#$cacheKeySuffix"
         }
         val cacheBitmap = getNotRecycled(cacheKey)
         if (cacheBitmap != null) return cacheBitmap
-        if (!vFile.exists()) {
+        if (!imageFile.exists()) {
             return if (src.isDataUrl()) {
                 decodeDataUrlImage(src, width, height, cacheKey)
             } else {
@@ -294,8 +301,8 @@ object ImageProvider {
             }
         }
         return kotlin.runCatching {
-            val bitmap = BitmapUtils.decodeBitmap(vFile.absolutePath, width, height)
-                ?: SvgUtils.createBitmap(vFile.absolutePath, width, height)
+            val bitmap = BitmapUtils.decodeBitmap(imageFile.absolutePath, width, height)
+                ?: SvgUtils.createBitmap(imageFile.absolutePath, width, height)
                 ?: throw NoStackTraceException(appCtx.getString(R.string.error_decode_bitmap))
             put(cacheKey, bitmap)
             bitmap
@@ -303,6 +310,17 @@ object ImageProvider {
             //错误图片占位,防止重复获取
             put(cacheKey, errorBitmap)
         }.getOrDefault(errorBitmap)
+    }
+
+    private fun resolveLocalImageFile(src: String): File? {
+        AiImageGalleryManager.resolveImageFile(src)?.let { return it }
+        val value = src.trim()
+        if (value.startsWith("file://", ignoreCase = true)) {
+            return runCatching { File(Uri.parse(value).path.orEmpty()) }
+                .getOrNull()
+                ?.takeIf { it.isFile }
+        }
+        return File(value).takeIf { it.isFile && value.startsWith("/") }
     }
 
     private fun decodeDataUrlImage(

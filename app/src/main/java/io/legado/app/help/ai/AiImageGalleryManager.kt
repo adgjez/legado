@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 object AiImageGalleryManager {
 
     const val DEFAULT_GROUP_ID = "default"
+    const val IMAGE_URI_PREFIX = "ai-image://"
     private const val DEFAULT_GROUP_NAME = "默认分组"
     private const val TEMP_KEEP_DAYS = 3L
     private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
@@ -122,6 +123,22 @@ object AiImageGalleryManager {
             return null
         }
         return image
+    }
+
+    fun imageUri(id: String): String {
+        return IMAGE_URI_PREFIX + id.trim()
+    }
+
+    fun imageIdFromUri(src: String?): String? {
+        val value = src?.trim().orEmpty()
+        if (!value.startsWith(IMAGE_URI_PREFIX, ignoreCase = true)) return null
+        return value.substringAfter(IMAGE_URI_PREFIX).substringBefore('?').trim().takeIf { it.isNotBlank() }
+    }
+
+    fun resolveImageFile(src: String?): File? {
+        val id = imageIdFromUri(src) ?: return null
+        val image = getImage(id) ?: return null
+        return File(image.localPath).takeIf { it.isFile }
     }
 
     fun listImages(filter: GalleryFilter): List<AiGeneratedImage> {
