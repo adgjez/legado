@@ -221,6 +221,16 @@ object AiImageGalleryManager {
         appDb.aiGeneratedImageDao.delete(id)
     }
 
+    fun moveImagesToGroup(ids: Collection<String>, groupId: String?) {
+        ids.forEach { id ->
+            setFavorite(id, true, groupId)
+        }
+    }
+
+    fun deleteImages(ids: Collection<String>) {
+        ids.forEach(::deleteImage)
+    }
+
     private fun deleteImageFile(image: AiGeneratedImage) {
         runCatching {
             val file = File(image.localPath)
