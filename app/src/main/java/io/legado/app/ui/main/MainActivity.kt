@@ -5,10 +5,12 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -91,6 +93,7 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.CenterCropBitmapDrawable
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.getPrefInt
@@ -1461,15 +1464,38 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun createStandardBottomShellDrawable(): GradientDrawable {
+    private fun createStandardBottomShellDrawable(): Drawable {
+        val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
         val baseColor = bottomBackground
-        val alpha = bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
-        return GradientDrawable().apply {
+        val alpha = bottomBarOpacityLevel(config.opacity)
+        val shell = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 0f
             setColor(AppColorUtils.withAlpha(baseColor, alpha))
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+            bottomBarBorderColor(config)?.let { setStroke(1.dpToPx(), it) }
         }
+        val wallpaper = NavigationBarIconConfig.currentBottomWallpaperPath(AppConfig.isNightTheme)
+            ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+            ?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }
+            ?.let {
+                CenterCropBitmapDrawable(resources, it).apply {
+                    setAlpha((alpha * 255).toInt().coerceIn(0, 255))
+                }
+            }
+            ?: return shell
+        val border = bottomBarBorderColor(config)?.let { color ->
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 0f
+                setColor(Color.TRANSPARENT)
+                setStroke(1.dpToPx(), color)
+            }
+        }
+        return LayerDrawable(buildList {
+            add(shell)
+            add(wallpaper)
+            if (border != null) add(border)
+        }.toTypedArray())
     }
 
     private fun bottomBarOpacityLevel(value: Int): Float {
@@ -1657,8 +1683,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun bottomBarBorderColor(): Int? {
-        return NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config.borderColor
+    private fun bottomBarBorderColor(
+        config: NavigationBarIconConfig.Config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
+    ): Int? {
+        val color = config.borderColor ?: return null
+        return AppColorUtils.withAlpha(color, config.borderAlpha.coerceIn(0, 100) / 100f)
     }
 
     private fun setupLiquidGlassView(

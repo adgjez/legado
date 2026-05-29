@@ -1856,6 +1856,7 @@ function login() {
     <string name="bottom_bar_effect_solid">Solid</string>
     <string name="bottom_bar_effect_glass">Glass</string>
     <string name="bottom_bar_effect_frosted">Frosted glass</string>
+    <string name="bottom_bar_material_mode">Material style</string>
     <string name="bottom_bar_layout_mode">Bottom bar layout</string>
     <string name="bottom_bar_layout_floating">Floating bottom bar</string>
     <string name="bottom_bar_layout_sidebar">Sidebar</string>
@@ -2068,6 +2069,8 @@ Selected text or question:
     <string name="top_bar_tag_bar_alpha">Tag bar opacity</string>
     <string name="top_bar_wallpaper">Top bar wallpaper</string>
     <string name="top_bar_wallpaper_alpha">Wallpaper opacity</string>
+    <string name="bottom_bar_wallpaper">Bottom bar wallpaper</string>
+    <string name="bottom_bar_border_alpha">Bottom bar border opacity</string>
     <string name="top_bar_tag_selected_color">Selected tag background</string>
     <string name="top_bar_tag_selected_alpha">Selected tag opacity</string>
     <string name="top_bar_filter_default">Filter bar default state</string>

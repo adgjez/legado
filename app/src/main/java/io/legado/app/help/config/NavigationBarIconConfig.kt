@@ -96,7 +96,9 @@ object NavigationBarIconConfig {
         var opacity: Int = 72,
         var updatedAt: Long = System.currentTimeMillis(),
         var sidebarBackgroundPath: String? = null,
+        var wallpaperPath: String? = null,
         var borderColor: Int? = null,
+        var borderAlpha: Int = 100,
         var icons: MutableMap<String, String> = linkedMapOf()
     )
 
@@ -273,6 +275,8 @@ object NavigationBarIconConfig {
             sidebarGravity = source.sidebarGravity,
             effectMode = source.effectMode,
             opacity = source.opacity.coerceIn(0, 100),
+            wallpaperPath = normalizeWallpaperPath(source.wallpaperPath, dir),
+            borderAlpha = source.borderAlpha.coerceIn(0, 100),
             updatedAt = System.currentTimeMillis(),
             icons = source.icons.toMutableMap()
         )
@@ -408,6 +412,41 @@ object NavigationBarIconConfig {
         return addOrUpdate(config, entry)
     }
 
+    fun saveBottomWallpaperToPackage(
+        context: Context,
+        sourcePath: String,
+        entry: Entry
+    ): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) {
+            throw IllegalArgumentException(context.getString(R.string.navigation_bar_default_readonly))
+        }
+        val source = File(sourcePath)
+        if (!source.exists() || !source.isFile) {
+            throw IllegalArgumentException(
+                context.getString(R.string.image_crop_failed, context.getString(R.string.unknown))
+            )
+        }
+        val dirName = entry.dirName.ifBlank {
+            entry.config.name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
+        }
+        val dir = entry.localDir ?: localDir(entry.config.isNightMode, dirName).apply { mkdirs() }
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.wallpaperPath = source.absolutePath
+        return addOrUpdate(config, entry.copy(dirName = dirName, localDir = dir))
+    }
+
+    fun clearBottomWallpaper(entry: Entry): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) return entry
+        entry.config.wallpaperPath?.let { name ->
+            val file = File(name)
+            val resolved = if (file.isAbsolute) file else File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), name)
+            resolved.takeIf { it.exists() }?.delete()
+        }
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.wallpaperPath = null
+        return addOrUpdate(config, entry)
+    }
+
     fun applyTo(menu: Menu, context: Context, isNight: Boolean): Boolean {
         val entry = currentEntry(isNight)
         val hasCustom = entry.dirName != DEFAULT_DIR_NAME && entry.config.icons.isNotEmpty()
@@ -436,6 +475,10 @@ object NavigationBarIconConfig {
 
     fun currentSidebarBackgroundPath(isNight: Boolean): String? {
         return resolveSidebarBackgroundPath(currentEntry(isNight))
+    }
+
+    fun currentBottomWallpaperPath(isNight: Boolean): String? {
+        return resolveBottomWallpaperPath(currentEntry(isNight))
     }
 
     fun getIconFileName(entry: Entry, itemKey: String, selected: Boolean): String? {
@@ -626,6 +669,16 @@ object NavigationBarIconConfig {
         ).absolutePath
     }
 
+    private fun resolveBottomWallpaperPath(entry: Entry): String? {
+        if (entry.dirName == DEFAULT_DIR_NAME) return null
+        val value = entry.config.wallpaperPath ?: return null
+        val file = File(value)
+        return if (file.isAbsolute) value else File(
+            entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName),
+            value
+        ).absolutePath
+    }
+
     private fun iconKey(itemKey: String, state: String): String = "${itemKey}_$state"
 
     private fun defaultDrawable(context: Context, @DrawableRes resId: Int, color: Int): Drawable {
@@ -753,13 +806,37 @@ object NavigationBarIconConfig {
         val resolvedEffectMode = if (layoutMode == "standard") "solid" else effectMode
         val icons = runCatching { config.icons }.getOrNull() ?: linkedMapOf()
         val sidebarBackgroundPath = runCatching { config.sidebarBackgroundPath }.getOrNull()
+        val wallpaperPath = runCatching { config.wallpaperPath }.getOrNull()
+        val borderAlpha = runCatching { config.borderAlpha }.getOrDefault(100).coerceIn(0, 100)
         config.layoutMode = layoutMode
         config.sidebarGravity = sidebarGravity
         config.effectMode = resolvedEffectMode
         config.opacity = config.opacity.coerceIn(0, 100)
         config.sidebarBackgroundPath = sidebarBackgroundPath
+        config.wallpaperPath = wallpaperPath?.takeIf { it.isNotBlank() }
+        config.borderAlpha = borderAlpha
         config.icons = icons.toMutableMap()
         return config
+    }
+
+    private fun normalizeWallpaperPath(path: String?, dir: File): String? {
+        val value = path?.takeIf { it.isNotBlank() } ?: return null
+        val source = File(value)
+        if (!source.isAbsolute) {
+            return value
+        }
+        if (!source.exists() || !source.isFile) {
+            return null
+        }
+        dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("bottom_bar_wallpaper.") }
+            ?.forEach { it.delete() }
+        val suffix = source.extension.takeIf { it.isNotBlank() } ?: "jpg"
+        val target = File(dir, "bottom_bar_wallpaper.$suffix")
+        if (source.absolutePath != target.absolutePath) {
+            source.copyTo(target, overwrite = true)
+        }
+        return target.name
     }
 
     private fun resetActiveIfNeeded(entry: Entry) {

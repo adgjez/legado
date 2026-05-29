@@ -77,6 +77,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var pendingColorTarget = 0
     private var pendingIconRequest: IconRequest? = null
     private var pendingSidebarBackgroundEntry: NavigationBarIconConfig.Entry? = null
+    private var pendingBottomWallpaperCropRequest: ImageCropHelper.Request? = null
     private val handledWebDavTasks = mutableSetOf<String>()
     private var loadVersion = 0
     private var cloudContainerId: String? = null
@@ -270,6 +271,21 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             else -> super.onCompatOptionsItemSelected(item)
         }
     }
+
+    private val selectBottomWallpaper = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let(::startBottomWallpaperCrop)
+    }
+
+    private val cropBottomWallpaper = registerForActivityResult(ImageCropContract()) { result ->
+        pendingBottomWallpaperCropRequest = null
+        if (result == null) return@registerForActivityResult
+        if (File(result).exists()) {
+            pendingConfig?.wallpaperPath = result
+            refreshEditDialog()
+        } else {
+            toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
+        }
+    }
     private fun showAddDialog() {
         selector(
             getString(R.string.theme_add),
@@ -433,9 +449,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     refreshEditDialog()
                 })
                 if (config.layoutMode == "floating") {
-                    addView(optionRow(getString(R.string.bottom_bar_effect_mode), effectModeLabel(config.effectMode)) {
+                    addView(optionRow(getString(R.string.bottom_bar_material_mode), effectModeLabel(config.effectMode)) {
                         selector(
-                            getString(R.string.bottom_bar_effect_mode),
+                            getString(R.string.bottom_bar_material_mode),
                             listOf(
                                 getString(R.string.bottom_bar_effect_solid),
                                 getString(R.string.bottom_bar_effect_glass),
@@ -450,32 +466,32 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                             refreshEditDialog()
                         }
                     })
-                    addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
-                        NumberPickerDialog(this@NavigationBarManageActivity)
-                            .setTitle(getString(R.string.bottom_bar_opacity))
-                            .setMinValue(0)
-                            .setMaxValue(100)
-                            .setValue(config.opacity)
-                            .setCustomButton(R.string.btn_default_s) {
-                                config.opacity = 76
-                                refreshEditDialog()
-                            }
-                            .show {
-                                config.opacity = it.coerceIn(0, 100)
-                                refreshEditDialog()
-                            }
-                    })
-                    addView(optionRow(
-                        getString(R.string.bottom_bar_border_color),
-                        config.borderColor?.let(::colorLabel) ?: getString(R.string.disable)
-                    ) {
-                        showOptionalColorSelector(
-                            getString(R.string.bottom_bar_border_color),
-                            config.borderColor,
-                            COLOR_BORDER
-                        )
+                }
+                if (config.layoutMode == "standard") {
+                    addView(optionRow(getString(R.string.bottom_bar_wallpaper), wallpaperLabel(config.wallpaperPath)) {
+                        showBottomWallpaperSelector()
                     })
                 }
+                addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
+                    showAlphaPicker(getString(R.string.bottom_bar_opacity), config.opacity) {
+                        config.opacity = it
+                    }
+                })
+                addView(optionRow(
+                    getString(R.string.bottom_bar_border_color),
+                    config.borderColor?.let(::colorLabel) ?: getString(R.string.disable)
+                ) {
+                    showOptionalColorSelector(
+                        getString(R.string.bottom_bar_border_color),
+                        config.borderColor,
+                        COLOR_BORDER
+                    )
+                })
+                addView(optionRow(getString(R.string.bottom_bar_border_alpha), "${config.borderAlpha}%") {
+                    showAlphaPicker(getString(R.string.bottom_bar_border_alpha), config.borderAlpha) {
+                        config.borderAlpha = it
+                    }
+                })
             } else {
                 addView(optionRow(
                     getString(R.string.navigation_bar_sidebar_background),
@@ -528,6 +544,43 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
+    private fun showBottomWallpaperSelector() {
+        val hasWallpaper = !pendingConfig?.wallpaperPath.isNullOrBlank()
+        selector(
+            getString(R.string.bottom_bar_wallpaper),
+            buildList {
+                add(getString(R.string.theme_image_select))
+                if (hasWallpaper) add(getString(R.string.theme_image_delete))
+            }
+        ) { _, index ->
+            if (index == 0) {
+                selectBottomWallpaper.launch {
+                    mode = HandleFileContract.IMAGE
+                    title = getString(R.string.bottom_bar_wallpaper)
+                }
+            } else {
+                pendingConfig?.wallpaperPath = null
+                refreshEditDialog()
+            }
+        }
+    }
+
+    private fun startBottomWallpaperCrop(uri: Uri) {
+        val metrics = resources.displayMetrics
+        val request = ImageCropHelper.buildRequest(
+            context = this,
+            sourceUri = uri,
+            requestCode = requestBottomWallpaper,
+            aspectWidth = metrics.widthPixels.coerceAtLeast(1),
+            aspectHeight = (96 * metrics.density).toInt().coerceAtLeast(1),
+            dirName = "bottomBarWallpapers",
+            prefix = "bottom_bar",
+            targetWidth = 1600
+        )
+        pendingBottomWallpaperCropRequest = request
+        cropBottomWallpaper.launch(request.params)
+    }
+
     private fun normalizeStandardBottomConfig(config: NavigationBarIconConfig.Config) {
         if (config.layoutMode == "standard") {
             config.effectMode = "solid"
@@ -536,6 +589,18 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     private fun optionRow(title: String, value: String, onClick: () -> Unit): View {
         return PackageManageUi.optionRow(this, title, value, onClick)
+    }
+
+    private fun showAlphaPicker(title: String, value: Int, apply: (Int) -> Unit) {
+        NumberPickerDialog(this)
+            .setTitle(title)
+            .setMinValue(0)
+            .setMaxValue(100)
+            .setValue(value)
+            .show {
+                apply(it.coerceIn(0, 100))
+                refreshEditDialog()
+            }
     }
 
     private fun showOptionalColorSelector(title: String, color: Int?, target: Int) {
@@ -858,6 +923,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         return "#${Integer.toHexString(color).takeLast(6).uppercase(Locale.ROOT)}"
     }
 
+    private fun wallpaperLabel(path: String?): String {
+        return if (path.isNullOrBlank()) getString(R.string.theme_image_select) else getString(R.string.theme_image_selected)
+    }
+
     private fun nextPackageName(): String {
         val base = getString(R.string.navigation_bar_custom_name)
         val usedNames = adapter.items.map { it.config.name }.toSet()
@@ -882,6 +951,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         private const val MENU_SYNC_TASKS = 0x5402
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
+        const val requestBottomWallpaper = 7003
     }
 
     private enum class NavAction(val titleRes: Int) {
@@ -945,14 +1015,20 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 tvName.text = entry.config.name
                 tvInfo.text = buildString {
                     append(layoutModeLabel(entry.config.layoutMode))
-                    append(" · ")
-                    append(effectModeLabel(displayEffectMode(entry.config)))
-                    if (entry.config.layoutMode != "standard") {
+                    if (entry.config.layoutMode == "floating") {
+                        append(" · ")
+                        append(effectModeLabel(entry.config.effectMode))
+                    }
+                    if (entry.config.layoutMode != "sidebar") {
                         append(" · ")
                         append(getString(R.string.bottom_bar_opacity))
                         append(" ")
                         append(entry.config.opacity)
                         append("%")
+                        if (entry.config.layoutMode == "standard" && !entry.config.wallpaperPath.isNullOrBlank()) {
+                            append(" · ")
+                            append(getString(R.string.bottom_bar_wallpaper))
+                        }
                     }
                     if (entry.config.updatedAt > 0) {
                         append(" · ")
