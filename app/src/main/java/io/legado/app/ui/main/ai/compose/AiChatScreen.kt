@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -138,31 +139,63 @@ fun AiChatScreen(
     val context = LocalContext.current
     val style = aiComposeStyle(context)
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     var processExpandSignal by remember { mutableStateOf(0) }
+    var stickToBottom by rememberSaveable { mutableStateOf(true) }
+    var positionedConversationKey by rememberSaveable { mutableStateOf("") }
     val uiItems = remember(context, messages) {
         buildAiChatUiItems(context, messages)
+    }
+    val displayItems = remember(uiItems) {
+        uiItems.asReversed()
     }
     val autoScrollSignal = remember(messages) {
         messages.takeLast(8).joinToString("|") { message ->
             "${message.id}:${message.updatedAt}:${message.content.length}:${message.pending}:${message.collapsed}"
         }
     }
-    val shouldAutoScroll by remember {
+    val bottomThresholdPx = remember(density) { with(density) { 32.dp.toPx().toInt() } }
+    val isAtBottom by remember {
         derivedStateOf {
-            val info = listState.layoutInfo
-            val total = info.totalItemsCount
-            total <= 1 || (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 2
+            listState.layoutInfo.totalItemsCount <= 1 ||
+                (listState.firstVisibleItemIndex == 0 &&
+                    listState.firstVisibleItemScrollOffset <= bottomThresholdPx)
         }
     }
-    LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, requesting, autoScrollSignal, processExpandSignal) {
-        if (uiItems.isNotEmpty() && shouldAutoScroll && !listState.isScrollInProgress) {
-            if (requesting) {
-                listState.scrollToItem(uiItems.lastIndex)
-            } else {
-                listState.animateScrollToItem(uiItems.lastIndex)
+    val conversationRootId = remember(uiItems) { uiItems.firstOrNull()?.id.orEmpty() }
+    LaunchedEffect(uiItems.isEmpty()) {
+        if (uiItems.isEmpty()) {
+            positionedConversationKey = ""
+            stickToBottom = true
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtBottom) {
+        if (isAtBottom) {
+            stickToBottom = true
+        } else if (listState.isScrollInProgress) {
+            stickToBottom = false
+        }
+    }
+    LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.role) {
+        if (messages.lastOrNull()?.role == AiChatMessage.Role.USER) {
+            stickToBottom = true
+            if (displayItems.isNotEmpty()) {
+                listState.scrollToItem(0)
             }
+        }
+    }
+    LaunchedEffect(conversationRootId) {
+        if (displayItems.isNotEmpty() && positionedConversationKey != conversationRootId) {
+            listState.scrollToItem(0)
+            stickToBottom = true
+            positionedConversationKey = conversationRootId
+        }
+    }
+    LaunchedEffect(requesting, autoScrollSignal, processExpandSignal, stickToBottom) {
+        if (displayItems.isNotEmpty() && stickToBottom && !listState.isScrollInProgress) {
+            listState.scrollToItem(0)
         }
     }
     Box(
@@ -194,6 +227,7 @@ fun AiChatScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
+                        reverseLayout = true,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
                             start = 14.dp,
                             top = 10.dp,
@@ -202,7 +236,7 @@ fun AiChatScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(uiItems, key = { it.id }) { item ->
+                        items(displayItems, key = { it.id }) { item ->
                             AiMessageRow(
                                 item = item,
                                 style = style,
@@ -210,8 +244,8 @@ fun AiChatScreen(
                                 onProcessExpanded = {
                                     processExpandSignal += 1
                                     coroutineScope.launch {
-                                        if (uiItems.isNotEmpty()) {
-                                            listState.animateScrollToItem(uiItems.lastIndex)
+                                        if (displayItems.isNotEmpty() && stickToBottom) {
+                                            listState.scrollToItem(0)
                                         }
                                     }
                                 }
@@ -242,13 +276,12 @@ fun AiChatScreen(
                     .padding(end = 16.dp, bottom = 92.dp),
                 onPrevious = {
                     val current = listState.firstVisibleItemIndex
-                    val target = (current - 1).coerceAtLeast(0)
+                    val target = (current + 1).coerceAtMost(displayItems.lastIndex)
                     coroutineScope.launch { listState.animateScrollToItem(target) }
                 },
                 onNext = {
-                    val current = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
-                        ?: listState.firstVisibleItemIndex
-                    val target = (current + 1).coerceAtMost(uiItems.lastIndex)
+                    val current = listState.firstVisibleItemIndex
+                    val target = (current - 1).coerceAtLeast(0)
                     coroutineScope.launch { listState.animateScrollToItem(target) }
                 }
             )
