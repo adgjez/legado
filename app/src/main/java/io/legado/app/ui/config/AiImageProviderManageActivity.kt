@@ -235,9 +235,6 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun parseRule(json: JSONObject): AiImageProviderConfig? {
-        if (json.has("showRule") || json.has("urlRule")) {
-            return parseDictRule(json)
-        }
         val type = json.optString("type").ifBlank {
             if (json.optString("script").isNotBlank()) AiImageProviderConfig.TYPE_JS else ""
         }
@@ -257,68 +254,6 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             order = json.optInt("order", 0),
             enabled = json.optBoolean("enabled", true)
         )
-    }
-
-    private fun parseDictRule(json: JSONObject): AiImageProviderConfig? {
-        val showRule = stripJsPrefix(json.optString("showRule"))
-        if (showRule.isBlank()) return null
-        return AiImageProviderConfig(
-            name = json.optString("name").ifBlank { "生图规则" },
-            type = AiImageProviderConfig.TYPE_JS,
-            model = json.optString("model").ifBlank { "dict-image-rule" },
-            jsLib = json.optString("jsLib"),
-            loginUrl = json.optString("loginUrl"),
-            loginUi = json.optString("loginUi"),
-            enabledCookieJar = json.optBoolean("enabledCookieJar", false),
-            script = buildDictRuleScript(showRule),
-            timeoutMillisecond = json.optLong("timeoutMillisecond", 300_000L).takeIf { it > 0L } ?: 300_000L,
-            order = json.optInt("sortNumber", 0),
-            enabled = json.optBoolean("enabled", true)
-        )
-    }
-
-    private fun stripJsPrefix(value: String): String {
-        val text = value.trim()
-        return when {
-            text.startsWith("@js:", true) -> text.substring(4).trim()
-            text.startsWith("<js>", true) && text.lastIndexOf("<") > 3 ->
-                text.substring(4, text.lastIndexOf("<")).trim()
-            else -> text
-        }
-    }
-
-    private fun buildDictRuleScript(showRule: String): String {
-        val quotedShowRule = JSONObject.quote(showRule)
-        return """
-            function run(prompt, provider) {
-                var text = String(prompt || '');
-                var key = text;
-                var result = java.hexEncodeToString(text);
-                var html = eval($quotedShowRule);
-                return __archiveReadImageResult(html);
-            }
-
-            function __archiveReadImageResult(value) {
-                if (value == null) throw '未返回图片结果';
-                if (Array.isArray(value)) {
-                    if (value.length === 0) throw '未返回图片结果';
-                    return __archiveReadImageResult(value[0]);
-                }
-                if (typeof value === 'object') {
-                    var fields = ['url', 'imageUrl', 'image', 'result', 'src'];
-                    for (var i = 0; i < fields.length; i++) {
-                        if (value[fields[i]]) return __archiveReadImageResult(value[fields[i]]);
-                    }
-                }
-                var raw = String(value).trim();
-                if (/^https?:\/\//i.test(raw) || /^data:image\//i.test(raw)) return raw;
-                var img = raw.match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
-                if (img && img[1]) return img[1];
-                var url = raw.match(/https?:\/\/[^\s"'<>]+/i);
-                if (url && url[0]) return url[0];
-                throw '未找到图片链接：' + raw.replace(/<[^>]+>/g, '').slice(0, 120);
-            }
-        """.trimIndent()
     }
 
     private fun importRules(rules: List<AiImageProviderConfig>) {
