@@ -30,6 +30,7 @@ object ImageLoader {
             path.isDataUrl() -> Glide.with(context).load(path)
             path.isAbsUrl() -> Glide.with(context).load(path)
             path.isContentScheme() -> Glide.with(context).load(path.toUri())
+            path.startsWith("file://", true) -> Glide.with(context).load(path.toUri())
             else -> kotlin.runCatching {
                 Glide.with(context).load(File(path))
             }.getOrElse {
@@ -45,6 +46,7 @@ object ImageLoader {
             path.isDataUrl() -> requestManager.load(path)
             path.isAbsUrl() -> requestManager.load(path)
             path.isContentScheme() -> requestManager.load(path.toUri())
+            path.startsWith("file://", true) -> requestManager.load(path.toUri())
 
             else -> kotlin.runCatching {
                 requestManager.load(File(path))
@@ -61,6 +63,7 @@ object ImageLoader {
             path.isDataUrl() -> requestManager.load(path)
             path.isAbsUrl() -> requestManager.load(path)
             path.isContentScheme() -> requestManager.load(path.toUri())
+            path.startsWith("file://", true) -> requestManager.load(path.toUri())
             else -> kotlin.runCatching {
                 requestManager.load(File(path))
             }.getOrElse {
@@ -74,6 +77,7 @@ object ImageLoader {
             path.isNullOrEmpty() -> Glide.with(context).asFile().load(path)
             path.isAbsUrl() -> Glide.with(context).asFile().load(path)
             path.isContentScheme() -> Glide.with(context).asFile().load(path.toUri())
+            path.startsWith("file://", true) -> Glide.with(context).asFile().load(path.toUri())
             else -> kotlin.runCatching {
                 Glide.with(context).asFile().load(File(path))
             }.getOrElse {

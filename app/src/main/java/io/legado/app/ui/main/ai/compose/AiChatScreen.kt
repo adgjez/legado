@@ -3,13 +3,17 @@ package io.legado.app.ui.main.ai.compose
 import android.widget.ImageView
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -86,8 +91,10 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.parseToUri
 import kotlinx.coroutines.launch
 import android.net.Uri
+import kotlin.math.min
 
 @Stable
 data class AiChatScreenActions(
@@ -854,29 +861,61 @@ private fun AiMarkdownInlineContent(
 
 @Composable
 private fun AiMarkdownTable(table: AiMarkdownBlock.Table, style: AiComposeStyle) {
-    val scrollState = rememberScrollState()
     Surface(
         shape = RoundedCornerShape(style.metrics.chipRadius),
         color = style.colors.processSurface,
         border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(scrollState)
                 .padding(1.dp)
         ) {
-            AiMarkdownTableRow(
-                cells = table.headers,
-                style = style,
-                header = true
-            )
-            table.rows.forEach { row ->
-                AiMarkdownTableRow(
-                    cells = normalizeTableRow(row, table.headers.size),
-                    style = style,
-                    header = false
-                )
+            val columnCount = table.headers.size.coerceAtLeast(1)
+            val cellWidth = when (columnCount) {
+                1 -> maxWidth
+                2 -> maxWidth / 2
+                else -> 132.dp
+            }
+            val rows = table.rows.map { normalizeTableRow(it, columnCount) }
+            val totalWidth = cellWidth * columnCount
+            val rawHeight = 48.dp + 58.dp * rows.size
+            val scale = if (totalWidth > maxWidth) {
+                min(1f, maxWidth.value / totalWidth.value)
+            } else {
+                1f
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(rawHeight * scale)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(totalWidth)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0f, 0f)
+                        }
+                ) {
+                    AiMarkdownTableRow(
+                        cells = normalizeTableRow(table.headers, columnCount),
+                        style = style,
+                        header = true,
+                        cellWidth = cellWidth,
+                        minHeight = 48.dp
+                    )
+                    rows.forEach { row ->
+                        AiMarkdownTableRow(
+                            cells = row,
+                            style = style,
+                            header = false,
+                            cellWidth = cellWidth,
+                            minHeight = 58.dp
+                        )
+                    }
+                }
             }
         }
     }
@@ -886,20 +925,25 @@ private fun AiMarkdownTable(table: AiMarkdownBlock.Table, style: AiComposeStyle)
 private fun AiMarkdownTableRow(
     cells: List<String>,
     style: AiComposeStyle,
-    header: Boolean
+    header: Boolean,
+    cellWidth: androidx.compose.ui.unit.Dp,
+    minHeight: androidx.compose.ui.unit.Dp
 ) {
-    Row {
+    Row(
+        modifier = Modifier.height(IntrinsicSize.Min)
+    ) {
         cells.forEach { cell ->
-            Surface(
-                color = if (header) style.colors.accent.copy(alpha = 0.10f) else Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+            Box(
                 modifier = Modifier
-                    .width(138.dp)
-                    .heightIn(min = if (header) 40.dp else 48.dp)
+                    .width(cellWidth)
+                    .fillMaxHeight()
+                    .heightIn(min = minHeight)
+                    .background(if (header) style.colors.accent.copy(alpha = 0.10f) else Color.Transparent)
+                    .border(style.metrics.strokeWidth, style.colors.stroke)
+                    .padding(horizontal = 9.dp, vertical = 8.dp)
             ) {
                 val pieces = remember(cell) { parseMarkdownInlinePieces(cell) }
                 Column(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     pieces.forEach { piece ->
@@ -936,6 +980,7 @@ private fun AiMarkdownImage(
     compact: Boolean
 ) {
     val context = LocalContext.current
+    val imageUrl = remember(image.url) { normalizeAiMarkdownImageUrl(image.url) }
     val size = if (compact) 52.dp else 180.dp
     Surface(
         modifier = Modifier
@@ -944,7 +989,7 @@ private fun AiMarkdownImage(
             .clip(RoundedCornerShape(style.metrics.chipRadius))
             .clickable {
                 (context as? androidx.appcompat.app.AppCompatActivity)
-                    ?.showDialogFragment(PhotoDialog(image.url))
+                    ?.showDialogFragment(PhotoDialog(imageUrl))
             },
         shape = RoundedCornerShape(style.metrics.chipRadius),
         color = style.colors.background.copy(alpha = 0.08f),
@@ -959,7 +1004,7 @@ private fun AiMarkdownImage(
                 }
             },
             update = {
-                ImageLoader.load(context, image.url)
+                ImageLoader.load(context, imageUrl)
                     .error(R.drawable.image_loading_error)
                     .into(it)
             }
@@ -1122,6 +1167,14 @@ private fun parseMarkdownInlinePieces(text: String): List<AiMarkdownInlinePiece>
         pieces += AiMarkdownInlinePiece.Text(text.substring(index))
     }
     return pieces.ifEmpty { listOf(AiMarkdownInlinePiece.Text(text)) }
+}
+
+private fun normalizeAiMarkdownImageUrl(raw: String): String {
+    val value = raw.trim()
+    if (value.isBlank()) return value
+    if (value.startsWith("file://", true)) return value
+    if (value.startsWith("/", true)) return value.parseToUri().toString()
+    return value
 }
 
 private fun buildAiInlineMarkdown(text: String, color: Color, accent: Color): AnnotatedString {
