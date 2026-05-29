@@ -20,6 +20,7 @@ import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.cloud.S3ContainerManager
 import io.legado.app.lib.cloud.S3ContainerScope
 import io.legado.app.lib.cloud.WebDavCloudStorageBackend
+import io.legado.app.lib.webdav.ObjectNotFoundException
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.FileUtils
@@ -405,8 +406,16 @@ object AppCloudStorage {
             if (emptyOnError) return emptyList()
             throw NoStackTraceException("Network unavailable")
         }
-        backend.makeDir(path)
-        return backend.listFiles(path).filter { !it.isDir && it.displayName.endsWith(".zip", ignoreCase = true) }
+        val files = runCatching {
+            backend.listFiles(path)
+        }.getOrElse {
+            if (it is ObjectNotFoundException) {
+                emptyList()
+            } else {
+                throw it
+            }
+        }
+        return files.filter { !it.isDir && it.displayName.endsWith(".zip", ignoreCase = true) }
     }
 
     private suspend fun uploadZip(path: String, remoteDirName: String, zipFile: File, backend: CloudStorageBackend) {
