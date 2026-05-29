@@ -3893,7 +3893,13 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 长按图片
      */
     @SuppressLint("RtlHardcoded")
-    override fun onImageLongPress(x: Float, y: Float, src: String) {
+    override fun onImageLongPress(
+        x: Float,
+        y: Float,
+        src: String,
+        paragraphNum: Int,
+        imageIndexInParagraph: Int
+    ) {
         popupAction.setItems(
             listOf(
                 SelectItem(getString(R.string.show), "show"),

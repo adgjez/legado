@@ -359,9 +359,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             return true
         }
         var handled = false
-        touch(x, y) { _, textPos, _, _, column ->
+        touch(x, y) { _, textPos, _, textLine, column ->
             when (column) {
-                is ImageColumn -> callBack.onImageLongPress(x, y, column.src)
+                is ImageColumn -> callBack.onImageLongPress(
+                    x = x,
+                    y = y,
+                    src = column.src,
+                    paragraphNum = textLine.paragraphNum,
+                    imageIndexInParagraph = imageIndexInParagraph(textLine, column)
+                )
                 is TextColumn -> {
                     if (!selectAble) return@touch
                     column.selected = true
@@ -377,6 +383,24 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         return handled
+    }
+
+    private fun imageIndexInParagraph(textLine: TextLine, target: ImageColumn): Int {
+        if (textLine.paragraphNum <= 0) return 0
+        var index = 0
+        val paragraph = textLine.textPage.textChapter
+            .getParagraphs(pageSplit = false)
+            .firstOrNull { it.realNum == textLine.paragraphNum }
+            ?: return 0
+        paragraph.textLines.forEach { line ->
+            line.columns.forEach { column ->
+                if (column is ImageColumn && column.src == target.src) {
+                    if (column === target) return index
+                    index++
+                }
+            }
+        }
+        return 0
     }
 
     /**
@@ -1042,7 +1066,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         var isSelectingSearchResult: Boolean
         fun upSelectedStart(x: Float, y: Float, top: Float)
         fun upSelectedEnd(x: Float, y: Float)
-        fun onImageLongPress(x: Float, y: Float, src: String)
+        fun onImageLongPress(
+            x: Float,
+            y: Float,
+            src: String,
+            paragraphNum: Int,
+            imageIndexInParagraph: Int
+        )
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
         fun oldClickImg(src: String): Boolean
