@@ -395,6 +395,25 @@ private fun parseToolDisplayPayload(
                 images = listOfNotNull(image)
             )
         }
+        "list_book_characters" -> {
+            val images = parseCharacterAvatarResults(root)
+            if (images.isNotEmpty()) {
+                AiToolDisplayPayload(
+                    type = AiToolPreviewType.ImageResult,
+                    title = "角色头像",
+                    summary = "找到 ${images.size} 张角色头像",
+                    raw = raw,
+                    images = images
+                )
+            } else {
+                AiToolDisplayPayload(
+                    type = AiToolPreviewType.Generic,
+                    title = "角色资料",
+                    summary = summarizeProcessDetail(raw, context.getString(R.string.ai_tool_status_done)),
+                    raw = raw
+                )
+            }
+        }
         else -> AiToolDisplayPayload(
             type = AiToolPreviewType.Generic,
             title = name.ifBlank { context.getString(R.string.ai_tool_default_name) },
@@ -420,6 +439,29 @@ private fun JSONObject.toSearchBookUi(): AiSearchBookUi? {
         origin = origin,
         target = optString("target")
     )
+}
+
+private fun parseCharacterAvatarResults(root: JSONObject?): List<AiImageResultUi> {
+    val characters = root?.optJSONArray("characters") ?: return emptyList()
+    return buildList {
+        for (index in 0 until characters.length()) {
+            val character = characters.optJSONObject(index) ?: continue
+            val avatarImage = character.optJSONObject("avatarImage")
+            val image = avatarImage?.optString("imagePath")
+                ?.takeIf { it.isNotBlank() }
+                ?: character.optString("avatar").takeIf { it.isNotBlank() }
+                ?: continue
+            add(
+                AiImageResultUi(
+                    imageId = "",
+                    image = image,
+                    prompt = avatarImage?.optString("alt")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: character.optString("name")
+                )
+            )
+        }
+    }.distinctBy { it.image }
 }
 
 private fun parseImageResult(raw: String): AiImageResultUi? {

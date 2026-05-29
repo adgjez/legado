@@ -43,7 +43,7 @@ object AiBookCharacterTool {
 
     private fun listCharactersDefinition() = function(
         TOOL_LIST_CHARACTERS,
-        "读取指定书籍的角色资料列表。优先传 bookUrl；没有 bookUrl 时可传 bookName 和 author。"
+        "读取指定书籍的角色资料列表，返回角色头像 avatar 和 avatarImage。用户要求查看或展示已有头像时使用本工具，不要生成新头像。优先传 bookUrl；没有 bookUrl 时可传 bookName 和 author。"
     ) {
         bookProps(this)
     }
@@ -126,7 +126,7 @@ object AiBookCharacterTool {
 
     private fun generateCharacterAvatarDefinition() = function(
         TOOL_GENERATE_CHARACTER_AVATAR,
-        "根据指定角色资料生成头像，自动保存到 AI 图片库、收藏，并设为角色头像。"
+        "根据指定角色资料生成全新头像，自动保存到 AI 图片库、收藏，并设为角色头像。只有用户明确要求生成、重绘、重新生成或换头像时才调用；用户只是查看已有头像时不要调用。"
     ) {
         bookProps(this)
         put("characterId", intProp("可选，角色 ID。"))
@@ -384,6 +384,13 @@ object AiBookCharacterTool {
             put("bookUrl", character.bookUrl)
             put("name", character.name)
             put("avatar", character.avatar)
+            if (character.avatar.isNotBlank()) {
+                put("avatarImage", JSONObject().apply {
+                    put("type", "character_avatar")
+                    put("imagePath", character.avatar)
+                    put("alt", character.displayName())
+                })
+            }
             put("identity", character.identity)
             put("skills", character.skills)
             put("attributes", character.attributes)
