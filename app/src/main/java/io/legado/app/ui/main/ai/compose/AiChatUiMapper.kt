@@ -118,30 +118,33 @@ fun buildAiChatUiItems(
 ): List<AiChatUiItem> {
     val result = mutableListOf<AiChatUiItem>()
     var assistantId: String? = null
-    val assistantParts = mutableListOf<AiMessagePartUi>()
-    val processSteps = mutableListOf<AiProcessStepUi>()
-
-    fun flushProcessSteps() {
-        if (processSteps.isEmpty()) return
-        assistantParts += AiMessagePartUi.ProcessChain(
-            id = "process-${processSteps.first().id}",
-            steps = processSteps.toList()
-        )
-        processSteps.clear()
-    }
+    val assistantMessages = mutableListOf<AiChatMessage>()
 
     fun flushAssistant() {
-        flushProcessSteps()
         val id = assistantId
-        if (id != null && assistantParts.isNotEmpty()) {
-            result += AiChatUiItem.Assistant(
-                id = id,
-                parts = assistantParts.toList()
-            )
+        if (id != null && assistantMessages.isNotEmpty()) {
+            val processSteps = assistantMessages
+                .filter { it.isProcessMessage() }
+                .map { it.toProcessStep(context) }
+            val assistantParts = mutableListOf<AiMessagePartUi>()
+            if (processSteps.isNotEmpty()) {
+                assistantParts += AiMessagePartUi.ProcessChain(
+                    id = "process-${processSteps.first().id}",
+                    steps = processSteps
+                )
+            }
+            assistantMessages
+                .filterNot { it.isProcessMessage() }
+                .forEach { assistantParts += it.toTextParts() }
+            if (assistantParts.isNotEmpty()) {
+                result += AiChatUiItem.Assistant(
+                    id = id,
+                    parts = assistantParts.toList()
+                )
+            }
         }
         assistantId = null
-        assistantParts.clear()
-        processSteps.clear()
+        assistantMessages.clear()
     }
 
     messages.filterNot { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
@@ -158,21 +161,20 @@ fun buildAiChatUiItems(
                     if (assistantId == null) {
                         assistantId = "assistant-${message.id}"
                     }
-                    when (message.kind ?: AiChatMessage.Kind.TEXT) {
-                        AiChatMessage.Kind.THINKING,
-                        AiChatMessage.Kind.TOOL -> {
-                            processSteps += message.toProcessStep(context)
-                        }
-                        else -> {
-                            flushProcessSteps()
-                            assistantParts += message.toTextParts()
-                        }
-                    }
+                    assistantMessages += message
                 }
             }
         }
     flushAssistant()
     return result
+}
+
+private fun AiChatMessage.isProcessMessage(): Boolean {
+    return when (kind ?: AiChatMessage.Kind.TEXT) {
+        AiChatMessage.Kind.THINKING,
+        AiChatMessage.Kind.TOOL -> true
+        else -> false
+    }
 }
 
 private fun AiChatMessage.toTextParts(): List<AiMessagePartUi> {
