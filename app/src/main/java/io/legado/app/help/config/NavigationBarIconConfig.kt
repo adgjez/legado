@@ -19,6 +19,7 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.lib.theme.ThemeStore
@@ -468,7 +469,10 @@ object NavigationBarIconConfig {
     private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         return AppCloudStorage.listNavigationBarPackages(isNight, containerId, scope).mapNotNull { file ->
             val name = remoteZipBaseName(file.displayName)
-            val dirName = name.normalizeFileName().ifBlank { return@mapNotNull null }
+            val dirName = name.normalizeFileName().ifBlank {
+                AppLog.put("跳过异常远端底栏包: ${file.displayName}")
+                return@mapNotNull null
+            }
             Entry(
                 Config(name = name.ifBlank { dirName }, isNightMode = isNight, updatedAt = file.lastModify),
                 Source.REMOTE,
@@ -500,6 +504,10 @@ object NavigationBarIconConfig {
         }.onSuccess { remote ->
             writeRemoteCache(isNight, remote, containerId)
         }.getOrElse {
+            AppLog.put(
+                "加载远端底栏包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${it.localizedMessage}",
+                it
+            )
             cached
         }
     }

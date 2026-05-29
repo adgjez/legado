@@ -367,7 +367,10 @@ object ThemePackageManager {
     private suspend fun loadRemote(isNightTheme: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         return AppCloudStorage.listThemePackages(isNightTheme, containerId, scope).mapNotNull { remoteDir ->
             val rawName = remoteZipBaseName(remoteDir.displayName)
-            val dirName = rawName.normalizeFileName().ifBlank { return@mapNotNull null }
+            val dirName = rawName.normalizeFileName().ifBlank {
+                AppLog.put("跳过异常远端主题包: ${remoteDir.displayName}")
+                return@mapNotNull null
+            }
             Entry(
                 packageInfo = Package(
                     name = rawName.ifBlank { dirName },
@@ -406,6 +409,10 @@ object ThemePackageManager {
                 writeRemoteCache(isNightTheme, remote, containerId)
             }
         }.getOrElse {
+            AppLog.put(
+                "加载远端主题包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${it.localizedMessage}",
+                it
+            )
             cached
         }
     }
