@@ -742,7 +742,7 @@ fun CharacterRelationScreen(
                 CharacterGraph(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 14.dp, bottom = 108.dp),
+                        .padding(start = 14.dp, end = 14.dp, bottom = 108.dp),
                     characters = characters,
                     relations = relations,
                     selectedCenterId = selectedCenterId,
@@ -752,7 +752,7 @@ fun CharacterRelationScreen(
                 RelationListPanel(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 14.dp, bottom = 10.dp),
+                        .padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
                     relations = relations,
                     characters = characters,
                     onEdit = onEditRelation,
