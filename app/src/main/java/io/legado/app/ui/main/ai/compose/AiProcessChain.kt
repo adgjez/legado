@@ -65,7 +65,8 @@ fun AiProcessTimelineCard(
     steps: List<AiProcessStepUi>,
     style: AiComposeStyle,
     modifier: Modifier = Modifier,
-    onToolClick: (AiProcessStepUi) -> Unit = {}
+    onToolClick: (AiProcessStepUi) -> Unit = {},
+    onExpandedChange: () -> Unit = {}
 ) {
     if (steps.isEmpty()) return
     var expanded by remember(steps.first().id) { mutableStateOf(false) }
@@ -91,7 +92,10 @@ fun AiProcessTimelineCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(style.metrics.chipRadius))
-                    .clickable { expanded = !expanded }
+                    .clickable {
+                        expanded = !expanded
+                        onExpandedChange()
+                    }
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -149,6 +153,7 @@ fun AiProcessTimelineCard(
                                 } else {
                                     expandedStepIds + step.id
                                 }
+                                onExpandedChange()
                             }
                         }
                     )

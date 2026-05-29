@@ -145,8 +145,14 @@ fun AiChatScreen(
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
+    var processExpandSignal by remember { mutableStateOf(0) }
     val uiItems = remember(context, messages) {
         buildAiChatUiItems(context, messages)
+    }
+    val autoScrollSignal = remember(messages) {
+        messages.takeLast(8).joinToString("|") { message ->
+            "${message.id}:${message.updatedAt}:${message.content.length}:${message.pending}:${message.collapsed}"
+        }
     }
     val shouldAutoScroll by remember {
         derivedStateOf {
@@ -155,9 +161,13 @@ fun AiChatScreen(
             total <= 1 || (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= total - 2
         }
     }
-    LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, requesting) {
+    LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, requesting, autoScrollSignal, processExpandSignal) {
         if (uiItems.isNotEmpty() && shouldAutoScroll) {
-            listState.animateScrollToItem(uiItems.lastIndex)
+            if (requesting) {
+                listState.scrollToItem(uiItems.lastIndex)
+            } else {
+                listState.animateScrollToItem(uiItems.lastIndex)
+            }
         }
     }
     Box(
@@ -201,7 +211,15 @@ fun AiChatScreen(
                             AiMessageRow(
                                 item = item,
                                 style = style,
-                                onToolPreview = { toolPreviewPayload = it }
+                                onToolPreview = { toolPreviewPayload = it },
+                                onProcessExpanded = {
+                                    processExpandSignal += 1
+                                    coroutineScope.launch {
+                                        if (uiItems.isNotEmpty()) {
+                                            listState.animateScrollToItem(uiItems.lastIndex)
+                                        }
+                                    }
+                                }
                             )
                         }
                     }
@@ -431,11 +449,12 @@ private fun AiEmptyState(style: AiComposeStyle) {
 private fun AiMessageRow(
     item: AiChatUiItem,
     style: AiComposeStyle,
-    onToolPreview: (AiToolDisplayPayload) -> Unit
+    onToolPreview: (AiToolDisplayPayload) -> Unit,
+    onProcessExpanded: () -> Unit
 ) {
     when (item) {
         is AiChatUiItem.User -> AiUserMessageRow(item, style)
-        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview, onProcessExpanded)
     }
 }
 
@@ -478,7 +497,8 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
 private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
     style: AiComposeStyle,
-    onToolPreview: (AiToolDisplayPayload) -> Unit
+    onToolPreview: (AiToolDisplayPayload) -> Unit,
+    onProcessExpanded: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -491,7 +511,7 @@ private fun AiAssistantMessageRow(
             message.parts.forEach { part ->
                 when (part) {
                     is AiMessagePartUi.Text -> AiAssistantTextPart(part, style)
-                    is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview)
+                    is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                     is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
                     is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
                 }
@@ -510,15 +530,24 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
             bottomEnd = 20.dp
         ),
         color = style.colors.assistantBubble,
-        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke),
-        modifier = Modifier.animateContentSize()
+        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.assistantBubbleStroke)
     ) {
         SelectionContainer {
-            AiMarkdownText(
-                content = part.content,
-                style = style,
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
-            )
+            if (part.pending) {
+                Text(
+                    text = part.content,
+                    color = style.colors.primaryText,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+                )
+            } else {
+                AiMarkdownText(
+                    content = part.content,
+                    style = style,
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+                )
+            }
         }
     }
 }
@@ -527,14 +556,16 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
 private fun AiProcessPart(
     part: AiMessagePartUi.ProcessChain,
     style: AiComposeStyle,
-    onToolPreview: (AiToolDisplayPayload) -> Unit
+    onToolPreview: (AiToolDisplayPayload) -> Unit,
+    onProcessExpanded: () -> Unit
 ) {
     AiProcessTimelineCard(
         steps = part.steps,
         style = style,
         onToolClick = { step ->
             step.payload?.let(onToolPreview)
-        }
+        },
+        onExpandedChange = onProcessExpanded
     )
 }
 
@@ -635,10 +666,14 @@ private fun AiMarkdownText(
         update = { textView ->
             textView.setTextColor(style.colors.primaryText.toArgb())
             textView.setLinkTextColor(style.colors.accent.toArgb())
-            markwon.setMarkdown(textView, content.ifBlank { " " })
+            val normalizedContent = content.ifBlank { " " }
+            if (textView.tag != normalizedContent) {
+                markwon.setMarkdown(textView, normalizedContent)
+                textView.tag = normalizedContent
+                installSearchBookLinks(textView)
+            }
             textView.setTextColor(style.colors.primaryText.toArgb())
             textView.setLinkTextColor(style.colors.accent.toArgb())
-            installSearchBookLinks(textView)
             textView.movementMethod = LinkMovementMethod.getInstance()
         }
     )
