@@ -1,6 +1,9 @@
 package io.legado.app.ui.main.ai.compose
 
+import android.net.Uri
+import android.text.method.LinkMovementMethod
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -82,18 +86,24 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.RequestOptions
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.widget.dialog.PhotoDialog
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.parseToUri
+import io.legado.app.utils.showDialogFragment
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.image.glide.GlideImagesPlugin
 import kotlinx.coroutines.launch
-import android.net.Uri
 import kotlin.math.min
 
 @Stable
@@ -680,100 +690,43 @@ private fun AiMarkdownText(
     style: AiComposeStyle,
     modifier: Modifier = Modifier
 ) {
-    val blocks = remember(content) { parseAiMarkdownBlocks(content) }
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        blocks.forEach { block ->
-            when (block) {
-                is AiMarkdownBlock.Paragraph -> AiMarkdownInlineContent(
-                    text = block.text,
-                    style = style
+    val context = LocalContext.current
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(
+                GlideImagesPlugin.create(
+                    Glide.with(context)
+                        .applyDefaultRequestOptions(
+                            RequestOptions()
+                                .override((context.resources.displayMetrics.widthPixels * 0.84f).toInt())
+                                .encodeQuality(88)
+                        )
                 )
-                is AiMarkdownBlock.Heading -> AiMarkdownRichText(
-                    text = block.text,
-                    style = style,
-                    fontSize = when (block.level) {
-                        1 -> 20.sp
-                        2 -> 18.sp
-                        else -> 16.sp
-                    },
-                    lineHeight = when (block.level) {
-                        1 -> 26.sp
-                        2 -> 24.sp
-                        else -> 22.sp
-                    },
-                    fontWeight = FontWeight.SemiBold
-                )
-                is AiMarkdownBlock.Bullet -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("•", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
-                    AiMarkdownInlineContent(
-                        text = block.text,
-                        style = style,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                is AiMarkdownBlock.Numbered -> Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("${block.number}.", color = style.colors.secondaryText, fontSize = 15.sp, lineHeight = 21.sp)
-                    AiMarkdownInlineContent(
-                        text = block.text,
-                        style = style,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                is AiMarkdownBlock.Quote -> Surface(
-                    shape = RoundedCornerShape(style.metrics.chipRadius),
-                    color = style.colors.processSurface,
-                    border = androidx.compose.foundation.BorderStroke(
-                        style.metrics.strokeWidth,
-                        style.colors.stroke
-                    )
-                ) {
-                    AiMarkdownInlineContent(
-                        text = block.text,
-                        style = style,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        color = style.colors.secondaryText
-                    )
-                }
-                is AiMarkdownBlock.Table -> AiMarkdownTable(block, style)
-                is AiMarkdownBlock.Code -> Surface(
-                    shape = RoundedCornerShape(style.metrics.chipRadius),
-                    color = style.colors.processSurface,
-                    border = androidx.compose.foundation.BorderStroke(
-                        style.metrics.strokeWidth,
-                        style.colors.stroke
-                    )
-                ) {
-                    Text(
-                        text = block.text,
-                        color = style.colors.primaryText,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                    )
-                }
-                AiMarkdownBlock.Divider -> Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .background(style.colors.stroke)
-                        .heightIn(min = style.metrics.strokeWidth)
-                )
-            }
-        }
+            )
+            .usePlugin(HtmlPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .build()
     }
+    val normalizedContent = remember(content) { normalizeAiMarkdownContent(content) }
+    val markdown = remember(markwon, normalizedContent) { markwon.toMarkdown(normalizedContent) }
+    AndroidView(
+        modifier = modifier.fillMaxWidth(),
+        factory = {
+            TextView(it).apply {
+                includeFontPadding = true
+                linksClickable = true
+                movementMethod = LinkMovementMethod.getInstance()
+                setTextIsSelectable(false)
+                setLineSpacing(2f, 1.05f)
+            }
+        },
+        update = { textView ->
+            textView.setTextColor(style.colors.primaryText.toArgb())
+            textView.textSize = 15f
+            textView.setLinkTextColor(style.colors.accent.toArgb())
+            markwon.setParsedMarkdown(textView, markdown)
+        }
+    )
 }
 
 @Composable
@@ -1169,9 +1122,23 @@ private fun parseMarkdownInlinePieces(text: String): List<AiMarkdownInlinePiece>
     return pieces.ifEmpty { listOf(AiMarkdownInlinePiece.Text(text)) }
 }
 
+private fun normalizeAiMarkdownContent(content: String): String {
+    val markdownNormalized = markdownImageRegex.replace(content) { match ->
+        val alt = match.groupValues[1]
+        val url = normalizeAiMarkdownImageUrl(match.groupValues[2])
+        "![${alt}](${url})"
+    }
+    return htmlImageSrcRegex.replace(markdownNormalized) { match ->
+        val quote = match.groupValues[1]
+        val url = normalizeAiMarkdownImageUrl(match.groupValues[2])
+        """src=$quote$url$quote"""
+    }
+}
+
 private fun normalizeAiMarkdownImageUrl(raw: String): String {
     val value = raw.trim()
     if (value.isBlank()) return value
+    AiImageGalleryManager.resolveImageFile(value)?.let { return it.toURI().toString() }
     if (value.startsWith("file://", true)) return value
     if (value.startsWith("/", true)) return value.parseToUri().toString()
     return value
@@ -1254,6 +1221,7 @@ private val bulletRegex = Regex("^[-*+]\\s+(.+)$")
 private val numberedRegex = Regex("^(\\d+)\\.\\s+(.+)$")
 private val markdownTableSeparatorRegex = Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$")
 private val markdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
+private val htmlImageSrcRegex = Regex("""src\s*=\s*(['"])([^'"]+)\1""", RegexOption.IGNORE_CASE)
 private val inlineMarkdownRegex = Regex("`([^`]+)`|\\[([^\\]]+)]\\(([^)]+)\\)|\\*\\*([^*]+)\\*\\*")
 
 @Composable
