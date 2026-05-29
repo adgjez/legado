@@ -434,13 +434,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         bottomControls.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val height = windowInsets.navigationBarHeight
             bottomNavigationInset = height
-            if (isStandardBottomMode()) {
-                view.bottomPadding = 0
-                applyBottomNavigationShape(standardMode = true)
-            } else {
-                view.bottomPadding = height + 14.dpToPx()
-                applyBottomNavigationShape(standardMode = false)
-            }
+            view.bottomPadding = if (isStandardBottomMode()) 0 else floatingBottomControlsBottomPadding()
+            applyBottomNavigationShape(standardMode = isStandardBottomMode())
             windowInsets.inset(0, 0, 0, height)
         }
         sideNavigationPanel.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
@@ -674,12 +669,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.main_bottom_nav_horizontal_padding)
         val standardContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_standard_height)
         val floatingContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height)
-        val floatingBottomPadding = resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding)
         bottomControls.setPadding(
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             bottomControls.paddingTop,
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
-            if (standardMode) 0 else floatingBottomPadding
+            if (standardMode) 0 else floatingBottomControlsBottomPadding()
         )
         bottomControls.requestLayout()
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
@@ -795,6 +789,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun floatingBottomControlsBottomPadding(): Int {
+        return bottomNavigationInset +
+                resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding)
+    }
+
     private fun placeAiFloatingBall(ball: View, animate: Boolean, attached: Boolean): Boolean = binding.run {
         val parentWidth = root.width
         val parentHeight = root.height
@@ -804,8 +803,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val hiddenOffset = 0f
         val targetX = if (side == 0) -hiddenOffset else parentWidth - ball.width + hiddenOffset
         val safeMargin = resources.getDimensionPixelSize(R.dimen.main_ai_floating_ball_safe_margin)
-        val targetY = ((parentHeight - ball.height) * yPercent / 100f)
-            .coerceIn(safeMargin.toFloat(), (parentHeight - ball.height - safeMargin).toFloat())
+        val availableHeight = (parentHeight - bottomNavigationInset - ball.height).coerceAtLeast(1)
+        val maxY = (parentHeight - bottomNavigationInset - ball.height - safeMargin)
+            .coerceAtLeast(safeMargin)
+        val targetY = (availableHeight * yPercent / 100f)
+            .coerceIn(safeMargin.toFloat(), maxY.toFloat())
         if (animate) {
             ball.animate()
                 .x(targetX)
@@ -846,14 +848,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     if (aiFloatingBallDragged) {
                         val parent = binding.root
                         target.x = (downX + dx).coerceIn(0f, (parent.width - target.width).toFloat())
-                        target.y = (downY + dy).coerceIn(12.dpToPx().toFloat(), (parent.height - target.height - 12.dpToPx()).toFloat())
+                        val topLimit = 12.dpToPx().toFloat()
+                        val bottomLimit = (parent.height - bottomNavigationInset - target.height - 12.dpToPx())
+                            .coerceAtLeast(12.dpToPx())
+                            .toFloat()
+                        target.y = (downY + dy).coerceIn(topLimit, bottomLimit)
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (aiFloatingBallDragged) {
                         val side = if (target.x + target.width / 2f < binding.root.width / 2f) 0 else 1
-                        val yPercent = ((target.y / (binding.root.height - target.height).coerceAtLeast(1)) * 100).toInt()
+                        val availableHeight = (binding.root.height - bottomNavigationInset - target.height).coerceAtLeast(1)
+                        val yPercent = ((target.y / availableHeight) * 100).toInt()
                             .coerceIn(8, 92)
                         putPrefInt(PreferKey.aiFloatingBallSide, side)
                         putPrefInt(PreferKey.aiFloatingBallYPercent, yPercent)
