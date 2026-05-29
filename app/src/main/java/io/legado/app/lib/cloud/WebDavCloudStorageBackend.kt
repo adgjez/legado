@@ -2,6 +2,7 @@ package io.legado.app.lib.cloud
 
 import android.net.Uri
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
@@ -16,6 +17,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import splitties.init.appCtx
 import java.io.File
+import kotlin.system.measureTimeMillis
 
 class WebDavCloudStorageBackend : CloudStorageBackend {
 
@@ -39,7 +41,7 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
         private set
 
     override val isOk: Boolean
-        get() = configuredWebDav != null
+        get() = latestConfigOrNull() != null
 
     override val isJianGuoYun: Boolean
         get() = (configuredWebDav?.config?.rootUrl ?: normalizedRootUrl()).startsWith(defaultWebDavUrl, true)
@@ -66,11 +68,11 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
     }
 
     override suspend fun upConfig() {
-        ensureConfigured(required = false)
+        ensureConfigured(required = false, prepareRoot = false, checkAuth = false)
     }
 
     override suspend fun check() {
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false, checkAuth = false)
         checkAuthorization(webDav.config.rootUrl, webDav.authorization)
     }
 
@@ -85,30 +87,38 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
     }
 
     private suspend fun makeRootDirs(rootUrl: String, auth: Authorization) {
-        listOf("", "bookProgress/", "books/", "background/", "themes/", "navigationBars/", "topBars/", "coverCollections/", "bubbles/")
-            .forEach { WebDav(rootUrl + it, auth).makeAsDir() }
+        val elapsed = measureTimeMillis {
+            listOf("", "bookProgress/", "books/", "background/", "themes/", "navigationBars/", "topBars/", "coverCollections/", "bubbles/")
+                .forEach { WebDav(rootUrl + it, auth).makeAsDir() }
+        }
+        AppLog.put("WebDAV目录初始化完成: ${elapsed}ms")
     }
 
     override suspend fun makeDir(path: String): Boolean {
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false)
         return WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).makeAsDir()
     }
 
     override suspend fun listFiles(path: String): List<CloudStorageFile> {
-        val webDav = ensureConfigured()
-        return WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).listFiles().map {
-            CloudStorageFile(
-                path = it.path,
-                displayName = it.displayName,
-                size = it.size,
-                lastModify = it.lastModify,
-                isDir = it.isDir
-            )
+        val webDav = ensureConfigured(prepareRoot = false)
+        var files = emptyList<CloudStorageFile>()
+        val elapsed = measureTimeMillis {
+            files = WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).listFiles().map {
+                CloudStorageFile(
+                    path = it.path,
+                    displayName = it.displayName,
+                    size = it.size,
+                    lastModify = it.lastModify,
+                    isDir = it.isDir
+                )
+            }
         }
+        AppLog.put("WebDAV列出目录完成: path=$path, count=${files.size}, ${elapsed}ms")
+        return files
     }
 
     override suspend fun exists(path: String): Boolean {
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false)
         return WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).exists()
     }
 
@@ -133,18 +143,18 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
     }
 
     override suspend fun download(path: String): ByteArray {
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false)
         return WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).download()
     }
 
     override suspend fun downloadTo(path: String, file: File, replaceExisting: Boolean) {
         file.parentFile?.mkdirs()
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false)
         WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).downloadTo(file.absolutePath, replaceExisting)
     }
 
     override suspend fun delete(path: String): Boolean {
-        val webDav = ensureConfigured()
+        val webDav = ensureConfigured(prepareRoot = false)
         return WebDav(resolve(webDav.config.rootUrl, path), webDav.authorization).delete()
     }
 
@@ -152,7 +162,11 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
         return rootUrl + path.trimStart('/')
     }
 
-    private suspend fun ensureConfigured(required: Boolean = true): ConfiguredWebDav {
+    private suspend fun ensureConfigured(
+        required: Boolean = true,
+        prepareRoot: Boolean = true,
+        checkAuth: Boolean = true
+    ): ConfiguredWebDav {
         val latestConfig = latestConfigOrNull()
         if (latestConfig == null) {
             configuredWebDav = null
@@ -161,7 +175,7 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
             return ConfiguredWebDav(WebDavConfig(normalizedRootUrl(), "", ""), Authorization("", ""))
         }
         configuredWebDav?.takeIf { it.config == latestConfig }?.let { configured ->
-            if (configured.rootReady) return configured
+            if (!prepareRoot || configured.rootReady) return configured
         }
         return configMutex.withLock {
             val lockedConfig = latestConfigOrNull()
@@ -172,17 +186,26 @@ class WebDavCloudStorageBackend : CloudStorageBackend {
                 return@withLock ConfiguredWebDav(WebDavConfig(normalizedRootUrl(), "", ""), Authorization("", ""))
             }
             configuredWebDav?.takeIf { it.config == lockedConfig }?.let { configured ->
-                if (configured.rootReady) return@withLock configured
+                if (!prepareRoot || configured.rootReady) return@withLock configured
             }
             val auth = Authorization(lockedConfig.account, lockedConfig.password)
-            if (configuredWebDav?.config != lockedConfig) {
+            if (checkAuth && configuredWebDav?.config != lockedConfig) {
                 checkAuthorization(lockedConfig.rootUrl, auth)
             }
-            makeRootDirs(lockedConfig.rootUrl, auth)
-            ConfiguredWebDav(lockedConfig, auth, rootReady = true).also {
-                defaultBookWebDav = RemoteBookWebDav("${lockedConfig.rootUrl}books/", auth)
-                configuredWebDav = it
+            val base = ConfiguredWebDav(
+                config = lockedConfig,
+                authorization = auth,
+                rootReady = configuredWebDav?.takeIf { it.config == lockedConfig }?.rootReady == true
+            )
+            val configured = if (prepareRoot && !base.rootReady) {
+                makeRootDirs(lockedConfig.rootUrl, auth)
+                base.copy(rootReady = true)
+            } else {
+                base
             }
+            defaultBookWebDav = RemoteBookWebDav("${lockedConfig.rootUrl}books/", auth)
+            configuredWebDav = configured
+            configured
         }
     }
 }

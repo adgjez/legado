@@ -36,7 +36,6 @@ import io.legado.app.utils.isJson
 import io.legado.app.utils.normalizeFileName
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
 import java.io.File
 
@@ -58,27 +57,25 @@ object AppCloudStorage {
         get() = CloudStorageType.from(appCtx.getPrefString(PreferKey.cloudStorageType))
 
     val isOk: Boolean
-        get() = backend.isOk
+        get() = selectBackend().isOk
 
     val isJianGuoYun: Boolean
-        get() = backend.isJianGuoYun
+        get() = selectBackend().isJianGuoYun
 
     val defaultBookWebDav: RemoteBookWebDav?
         get() = webDavBackend.defaultBookWebDav
 
-    init {
-        runBlocking {
-            upConfig()
-        }
-    }
-
-    suspend fun upConfig() {
-        if (type == CloudStorageType.S3) S3ContainerManager.containers()
+    private fun selectBackend(): CloudStorageBackend {
         backend = when (type) {
             CloudStorageType.WEBDAV -> webDavBackend
             CloudStorageType.S3 -> s3Backend
         }
-        backend.upConfig()
+        return backend
+    }
+
+    suspend fun upConfig() {
+        if (type == CloudStorageType.S3) S3ContainerManager.containers()
+        selectBackend().upConfig()
     }
 
     suspend fun getBackupNames(): ArrayList<String> {
@@ -105,7 +102,7 @@ object AppCloudStorage {
         return if (type == CloudStorageType.S3) {
             findBackupLocation(name) != null
         } else {
-            backend.exists(name)
+            selectBackend().exists(name)
         }
     }
 
@@ -340,7 +337,7 @@ object AppCloudStorage {
     }
 
     suspend fun uploadBookProgress(book: Book, toast: Boolean = false, onSuccess: (() -> Unit)? = null) {
-        if (!AppConfig.syncBookProgress || !NetworkUtils.isAvailable() || !backend.isOk) return
+        if (!AppConfig.syncBookProgress || !NetworkUtils.isAvailable() || !selectBackend().isOk) return
         try {
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
@@ -354,7 +351,7 @@ object AppCloudStorage {
     }
 
     suspend fun uploadBookProgress(bookProgress: BookProgress, onSuccess: (() -> Unit)? = null) {
-        if (!AppConfig.syncBookProgress || !NetworkUtils.isAvailable() || !backend.isOk) return
+        if (!AppConfig.syncBookProgress || !NetworkUtils.isAvailable() || !selectBackend().isOk) return
         val json = GSON.toJson(bookProgress)
         storage(S3ContainerScope.DEFAULT).upload(getProgressPath(bookProgress.name, bookProgress.author), json.toByteArray(), "application/json")
         onSuccess?.invoke()
@@ -376,7 +373,7 @@ object AppCloudStorage {
     }
 
     suspend fun downloadAllBookProgress() {
-        if (!NetworkUtils.isAvailable() || !backend.isOk) return
+        if (!NetworkUtils.isAvailable() || !selectBackend().isOk) return
         val files = storage(S3ContainerScope.DEFAULT).listFiles(BOOK_PROGRESS_DIR)
         val map = files.associateBy { it.displayName }
         appDb.bookDao.all.forEach { book ->
@@ -441,12 +438,12 @@ object AppCloudStorage {
         return if (type == CloudStorageType.S3) {
             S3CloudStorageBackend(scope)
         } else {
-            backend
+            selectBackend()
         }
     }
 
     private fun scopedBackend(defaultScope: S3ContainerScope, containerId: String?, scope: String?): CloudStorageBackend {
-        if (type != CloudStorageType.S3) return backend
+        if (type != CloudStorageType.S3) return selectBackend()
         val targetScope = scope?.let { S3ContainerScope.from(it) } ?: defaultScope
         return S3CloudStorageBackend(targetScope, containerId)
     }
