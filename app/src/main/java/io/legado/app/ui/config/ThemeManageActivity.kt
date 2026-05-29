@@ -78,6 +78,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -179,7 +180,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }
             loadThemes()
         }
-        flushPendingRemoteSyncTasks()
+        schedulePendingRemoteSyncTasks()
         observeWebDavTasks()
     }
 
@@ -1317,6 +1318,15 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             savePendingRemoteSyncTasksLocked()
         }
         flushPendingRemoteSyncTasks()
+    }
+
+    private fun schedulePendingRemoteSyncTasks() {
+        lifecycleScope.launch {
+            delay(1_500L)
+            if (!isFinishing && !isDestroyed) {
+                flushPendingRemoteSyncTasks()
+            }
+        }
     }
 
     private fun restorePendingRemoteSyncTasks() {
