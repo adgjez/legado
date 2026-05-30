@@ -61,8 +61,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -678,13 +680,23 @@ private fun RoleSelector(role: Int, onRoleChange: (Int) -> Unit) {
                         shape = RoundedCornerShape(style.smallRadius),
                         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) style.colors.accent else style.colors.stroke)
                     ) {
-                        Text(
-                            text = label,
-                            color = if (selected) style.colors.accent else style.colors.text,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(vertical = 10.dp),
-                            maxLines = 1
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .padding(horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selected) style.colors.accent else style.colors.text,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -910,14 +922,20 @@ private fun CharacterGraph(
                     )
                     layout.edges.sortedBy { it.relation.strength }.forEach { edge ->
                         val start = transformGraphPoint(edge.start, layout, scale, pan, size.width, size.height)
+                        val control = transformGraphPoint(edge.control, layout, scale, pan, size.width, size.height)
                         val end = transformGraphPoint(edge.end, layout, scale, pan, size.width, size.height)
                         val strength = edge.relation.strength.coerceIn(0, 100)
-                        drawLine(
+                        val path = Path().apply {
+                            moveTo(start.x, start.y)
+                            quadraticBezierTo(control.x, control.y, end.x, end.y)
+                        }
+                        drawPath(
+                            path = path,
                             color = style.colors.accent.copy(alpha = 0.18f + strength / 380f),
-                            start = start,
-                            end = end,
-                            strokeWidth = (1.4f + strength / 58f).dp.toPx(),
-                            cap = StrokeCap.Round
+                            style = Stroke(
+                                width = (1.4f + strength / 58f).dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
                         )
                     }
                 }
@@ -1094,6 +1112,7 @@ private data class GraphNodeLayout(
 private data class GraphEdgeLayout(
     val relation: BookCharacterRelation,
     val start: Offset,
+    val control: Offset,
     val end: Offset,
     val labelPoint: Offset,
     val showLabel: Boolean
@@ -1134,11 +1153,15 @@ private fun buildGraphLayout(
     val relationStrength = relations.flatMap {
         listOf(it.fromCharacterId to it.strength, it.toCharacterId to it.strength)
     }.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.maxOrNull() ?: 0 }
-    val orderedOthers = others.sortedWith(
-        compareByDescending<BookCharacter> { relationStrength[it.id] ?: 0 }
-            .thenByDescending { it.roleLevel }
-            .thenBy { it.sortOrder }
-            .thenBy { it.id }
+    val orderedOthers = minimizeGraphCrossings(
+        others.sortedWith(
+            compareByDescending<BookCharacter> { relationStrength[it.id] ?: 0 }
+                .thenByDescending { it.roleLevel }
+                .thenBy { it.sortOrder }
+                .thenBy { it.id }
+        ),
+        relations,
+        center.id
     )
     val slots = graphSlotRatios(orderedOthers.size)
     orderedOthers.forEachIndexed { index, character ->
@@ -1151,13 +1174,15 @@ private fun buildGraphLayout(
             )
         )
     }
-    val edges = buildGraphEdges(relations, result, density)
+    val edges = buildGraphEdges(relations, result, centerPoint, center.id, density)
     return GraphLayout(canvasWidth, canvasHeight, centerPoint, result, edges)
 }
 
 private fun buildGraphEdges(
     relations: List<BookCharacterRelation>,
     nodes: Map<Long, GraphNodeLayout>,
+    graphCenter: Offset,
+    centerId: Long,
     density: Float
 ): List<GraphEdgeLayout> {
     val acceptedLabels = mutableListOf<Offset>()
@@ -1166,14 +1191,22 @@ private fun buildGraphEdges(
         .filter { it.fromCharacterId in nodes && it.toCharacterId in nodes }
         .sortedWith(compareByDescending<BookCharacterRelation> { it.strength }.thenBy { it.sortOrder }.thenBy { it.id })
         .mapIndexed { index, relation ->
-            val start = nodes.getValue(relation.fromCharacterId).center
-            val end = nodes.getValue(relation.toCharacterId).center
-            val labelPoint = relationLabelPoint(start, end, index, density)
+            val startNode = nodes.getValue(relation.fromCharacterId)
+            val endNode = nodes.getValue(relation.toCharacterId)
+            val (start, end) = trimGraphEdge(
+                start = startNode.center,
+                end = endNode.center,
+                startRadius = graphEdgeRadius(startNode.character, centerId, density),
+                endRadius = graphEdgeRadius(endNode.character, centerId, density)
+            )
+            val control = relationControlPoint(start, end, graphCenter, relation, centerId, index, density)
+            val labelPoint = quadraticPoint(start, control, end, 0.5f)
             val labelAllowed = acceptedLabels.none { distance(it, labelPoint) < minLabelDistance }
             if (labelAllowed) acceptedLabels += labelPoint
             GraphEdgeLayout(
                 relation = relation,
                 start = start,
+                control = control,
                 end = end,
                 labelPoint = labelPoint,
                 showLabel = labelAllowed
@@ -1181,16 +1214,137 @@ private fun buildGraphEdges(
         }
 }
 
-private fun relationLabelPoint(start: Offset, end: Offset, index: Int, density: Float): Offset {
+private fun graphEdgeRadius(character: BookCharacter, centerId: Long, density: Float): Float {
+    val radiusDp = when {
+        character.id == centerId -> 52f
+        character.roleLevel == BookCharacter.ROLE_IMPORTANT -> 42f
+        else -> 38f
+    }
+    return radiusDp * density
+}
+
+private fun trimGraphEdge(
+    start: Offset,
+    end: Offset,
+    startRadius: Float,
+    endRadius: Float
+): Pair<Offset, Offset> {
     val dx = end.x - start.x
     val dy = end.y - start.y
     val length = sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
-    val direction = if (index % 2 == 0) 1f else -1f
-    val offset = (14f + (index % 3) * 5f) * density * direction
+    if (length <= startRadius + endRadius + 1f) return start to end
+    val ux = dx / length
+    val uy = dy / length
+    return Offset(start.x + ux * startRadius, start.y + uy * startRadius) to
+        Offset(end.x - ux * endRadius, end.y - uy * endRadius)
+}
+
+private fun relationControlPoint(
+    start: Offset,
+    end: Offset,
+    graphCenter: Offset,
+    relation: BookCharacterRelation,
+    centerId: Long,
+    index: Int,
+    density: Float
+): Offset {
+    val dx = end.x - start.x
+    val dy = end.y - start.y
+    val length = sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+    var nx = -dy / length
+    var ny = dx / length
+    val midX = (start.x + end.x) / 2f
+    val midY = (start.y + end.y) / 2f
+    val dot = nx * (midX - graphCenter.x) + ny * (midY - graphCenter.y)
+    if (dot < 0f || (dot == 0f && index % 2 == 1)) {
+        nx = -nx
+        ny = -ny
+    }
+    val outerEdge = relation.fromCharacterId != centerId && relation.toCharacterId != centerId
+    val curve = if (outerEdge) {
+        (length * 0.24f).coerceIn(42f * density, 96f * density)
+    } else {
+        (18f + (index % 2) * 8f) * density
+    }
     return Offset(
-        x = (start.x + end.x) / 2f + (-dy / length) * offset,
-        y = (start.y + end.y) / 2f + (dx / length) * offset
+        x = midX + nx * curve,
+        y = midY + ny * curve
     )
+}
+
+private fun quadraticPoint(start: Offset, control: Offset, end: Offset, t: Float): Offset {
+    val oneMinusT = 1f - t
+    return Offset(
+        x = oneMinusT * oneMinusT * start.x + 2f * oneMinusT * t * control.x + t * t * end.x,
+        y = oneMinusT * oneMinusT * start.y + 2f * oneMinusT * t * control.y + t * t * end.y
+    )
+}
+
+private fun minimizeGraphCrossings(
+    characters: List<BookCharacter>,
+    relations: List<BookCharacterRelation>,
+    centerId: Long
+): List<BookCharacter> {
+    if (characters.size < 4) return characters
+    val ids = characters.map { it.id }.toSet()
+    val graphRelations = relations.filter {
+        it.fromCharacterId != centerId &&
+            it.toCharacterId != centerId &&
+            it.fromCharacterId in ids &&
+            it.toCharacterId in ids
+    }
+    if (graphRelations.size < 2) return characters
+    var best = characters
+    var bestScore = graphCrossingScore(best, graphRelations)
+    var pass = 0
+    while (pass < 24) {
+        var changed = false
+        for (index in 0 until best.lastIndex) {
+            val candidate = best.toMutableList().apply {
+                val item = this[index]
+                this[index] = this[index + 1]
+                this[index + 1] = item
+            }
+            val score = graphCrossingScore(candidate, graphRelations)
+            if (score < bestScore) {
+                best = candidate
+                bestScore = score
+                changed = true
+            }
+        }
+        if (!changed) break
+        pass++
+    }
+    return best
+}
+
+private fun graphCrossingScore(
+    characters: List<BookCharacter>,
+    relations: List<BookCharacterRelation>
+): Int {
+    val positions = characters.mapIndexed { index, character -> character.id to index }.toMap()
+    val edges = relations.mapNotNull { relation ->
+        val from = positions[relation.fromCharacterId] ?: return@mapNotNull null
+        val to = positions[relation.toCharacterId] ?: return@mapNotNull null
+        if (from == to) return@mapNotNull null
+        minOf(from, to) to max(from, to)
+    }
+    var score = 0
+    for (i in 0 until edges.lastIndex) {
+        for (j in i + 1 until edges.size) {
+            if (graphEdgesCross(edges[i], edges[j])) score++
+        }
+    }
+    return score
+}
+
+private fun graphEdgesCross(first: Pair<Int, Int>, second: Pair<Int, Int>): Boolean {
+    val (a, b) = first
+    val (c, d) = second
+    if (a == c || a == d || b == c || b == d) return false
+    val cInside = c in (a + 1) until b
+    val dInside = d in (a + 1) until b
+    return cInside != dInside
 }
 
 private fun distance(a: Offset, b: Offset): Float {

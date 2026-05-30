@@ -68,9 +68,15 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
             ContextCompat.getColor(this, R.color.background_menu),
             UiCorner.actionRadius(this)
         )
-        listOf(binding.btnBatchGroup, binding.btnBatchDelete, binding.btnBatchCancel).forEach {
+        listOf(
+            binding.btnBatchSelectAll,
+            binding.btnBatchGroup,
+            binding.btnBatchDelete,
+            binding.btnBatchCancel
+        ).forEach {
             it.background = actionBackground
         }
+        binding.btnBatchSelectAll.setOnClickListener { selectAllVisibleImages() }
         binding.btnBatchGroup.setOnClickListener { showBatchGroupDialog() }
         binding.btnBatchDelete.setOnClickListener { confirmBatchDelete() }
         binding.btnBatchCancel.setOnClickListener { clearSelection() }
@@ -169,6 +175,14 @@ class AiImageGalleryActivity : BaseActivity<ActivityAiImageGalleryBinding>() {
 
     private fun clearSelection() {
         selectedIds.clear()
+        adapter.notifyDataSetChanged()
+        updateBatchBar()
+    }
+
+    private fun selectAllVisibleImages() {
+        val ids = adapter.getItems().map { it.id }
+        if (ids.isEmpty()) return
+        selectedIds.addAll(ids)
         adapter.notifyDataSetChanged()
         updateBatchBar()
     }
