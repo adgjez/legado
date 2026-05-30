@@ -1,44 +1,70 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
-import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
-import androidx.core.view.doOnLayout
-import androidx.core.view.isGone
-import androidx.core.view.isVisible
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.databinding.ItemReadAiMessageBinding
-import io.legado.app.databinding.ViewReadAiFloatingPanelBinding
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiMarkdownRender
-import io.legado.app.utils.ColorUtils
+import io.legado.app.ui.main.ai.compose.AiComposeStyle
+import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.toastOnUi
 import io.noties.markwon.Markwon
@@ -76,73 +102,73 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val bottomY: Int
     )
 
-    private val binding = ViewReadAiFloatingPanelBinding.inflate(LayoutInflater.from(context), this, true)
+    private val composeView = ComposeView(context)
     private val markwon: Markwon by lazy {
         AiMarkdownRender.createMarkwon(context)
     }
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-    private val messageAdapter = MessageAdapter()
-    private var lifecycleOwner: LifecycleOwner? = null
     private var readContext: ReadContext? = null
     private var currentSessionId: String = ""
     private var answerJob: Job? = null
-    private var showingHistory = false
     private var streamingAssistantContent: String? = null
     private var streamingAssistantMessageId: String? = null
-    private var stickToBottom = true
-    private var forceScrollToBottom = false
     private var downRawX = 0f
     private var downRawY = 0f
     private var startX = 0f
     private var startY = 0f
 
+    private var messages by mutableStateOf<List<ReadAiMessage>>(emptyList())
+    private var historySessions by mutableStateOf<List<ReadAiSession>>(emptyList())
+    private var contextLabel by mutableStateOf("")
+    private var showingHistory by mutableStateOf(false)
+    private var requesting by mutableStateOf(false)
+    private var modelLabel by mutableStateOf(currentModelLabel())
+
     init {
         orientation = VERTICAL
-        binding.root.applyUiBodyTypefaceDeep(context.uiTypeface())
-        binding.answerContainer.layoutManager = LinearLayoutManager(context).apply {
-            stackFromEnd = true
+        clipChildren = false
+        clipToPadding = false
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        addView(
+            composeView,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        )
+        composeView.setContent {
+            ReadAiPanelContent(
+                messages = messages,
+                historySessions = historySessions,
+                contextLabel = contextLabel,
+                showingHistory = showingHistory,
+                requesting = requesting,
+                modelLabel = modelLabel,
+                markwon = markwon,
+                timeFormat = timeFormat,
+                onTopDrag = ::handleDrag,
+                onSelectModel = ::selectModel,
+                onNewChat = ::startNewChat,
+                onToggleHistory = ::toggleHistory,
+                onClose = ::close,
+                onStop = ::stopAnswer,
+                onSend = ::submitQuestion,
+                onOpenSession = ::openHistorySession,
+                onDeleteSession = ::deleteSession,
+                onClearHistory = ::confirmClearHistory
+            )
         }
-        binding.answerContainer.adapter = messageAdapter
-        binding.answerContainer.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                stickToBottom = !recyclerView.canScrollVertically(1)
-            }
-        })
-        binding.btnClose.setOnClickListener { close() }
-        binding.btnNewChat.setOnClickListener { startNewChat() }
-        binding.btnHistory.setOnClickListener { toggleHistory() }
-        binding.btnSend.setOnClickListener {
-            if (answerJob?.isActive == true) {
-                stopAnswer()
-            } else {
-                askFromInput()
-            }
-        }
-        binding.etQuestion.setOnEditorActionListener { _, actionId, _ ->
-            if (AppConfig.aiEnterToSend && actionId == EditorInfo.IME_ACTION_SEND) {
-                askFromInput()
-                true
-            } else {
-                false
-            }
-        }
-        binding.dragHandle.setOnTouchListener { _, event -> handleDrag(event) }
-        applyTheme()
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun attach(lifecycleOwner: LifecycleOwner) {
-        this.lifecycleOwner = lifecycleOwner
+        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
     }
 
     fun open(readContext: ReadContext, anchor: Anchor? = null) {
         this.readContext = readContext
         currentSessionId = ensureSession(readContext, createNew = false).id
         showingHistory = false
-        forceScrollToBottom = true
-        stickToBottom = true
-        showMessages()
-        binding.tvContext.text = buildContextLabel(readContext)
-        binding.etQuestion.setText("")
+        modelLabel = currentModelLabel()
+        contextLabel = buildContextLabel(readContext)
+        renderCurrentSession()
         animate().cancel()
         translationY = 0f
         if (visibility != VISIBLE) {
@@ -152,7 +178,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             visibility = VISIBLE
         }
         bringToFront()
-        doOnLayout {
+        doOnLayoutCompat {
             if (anchor != null) {
                 placeNearAnchor(anchor)
             }
@@ -170,7 +196,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     fun close() {
-        updateSendButtonState()
+        updateRequestingState()
         visibility = GONE
     }
 
@@ -190,7 +216,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 replaceMessage(context, pending.id, resources.getString(R.string.ai_chat_cancelled))
             }
         }
-        updateSendButtonState()
+        updateRequestingState()
         if (!showingHistory) renderCurrentSession()
     }
 
@@ -201,27 +227,22 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         streamingAssistantMessageId = null
         currentSessionId = ensureSession(context, createNew = true).id
         showingHistory = false
-        forceScrollToBottom = true
-        stickToBottom = true
-        showMessages()
-        binding.tvContext.text = buildContextLabel(context)
+        contextLabel = buildContextLabel(context)
+        renderCurrentSession()
     }
 
-    private fun askFromInput() {
-        val question = binding.etQuestion.text?.toString().orEmpty().trim()
-        if (question.isBlank()) return
-        binding.etQuestion.setText("")
+    private fun submitQuestion(question: String): Boolean {
+        val content = question.trim()
+        if (content.isBlank()) return false
         showingHistory = false
-        showMessages()
-        ask(question)
+        ask(content)
+        return true
     }
 
     private fun ask(question: String) {
         val context = readContext ?: return
         answerJob?.cancel()
         val requestSessionId = currentSessionId
-        forceScrollToBottom = true
-        stickToBottom = true
         appendMessage(context, ReadAiMessage.Role.USER, question)
         val pendingAssistantId = appendMessage(
             context,
@@ -231,7 +252,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val requestMessages = buildRequestMessages(context, question)
         streamingAssistantMessageId = pendingAssistantId
         answerJob = requestScope.launch {
-            post { updateSendButtonState() }
+            post { updateRequestingState() }
             val result = runCatching {
                 withContext(IO) {
                     AiChatService.chatStream(
@@ -268,76 +289,37 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 )
                 replaceMessage(context, pendingAssistantId, content, requestSessionId)
                 answerJob = null
-                updateSendButtonState()
+                updateRequestingState()
                 if (!showingHistory) renderCurrentSession()
             }
         }
-        updateSendButtonState()
-    }
-
-    private fun showMessages() {
-        binding.historyContainer.isGone = true
-        binding.answerContainer.isVisible = true
-        renderCurrentSession()
+        updateRequestingState()
     }
 
     private fun renderCurrentSession() {
         val context = readContext ?: return
         val session = currentBookHistory(context).sessions.firstOrNull { it.id == currentSessionId }
-        val messages = session?.messages.orEmpty()
+        val sessionMessages = session?.messages.orEmpty()
         val displayMessages = streamingAssistantContent?.let { partial ->
-            messages.dropLast(1) + (messages.lastOrNull()?.copy(content = partial)
-                ?: ReadAiMessage(role = ReadAiMessage.Role.ASSISTANT, content = partial))
-        } ?: messages
-        if (displayMessages.isEmpty()) {
-            renderMessages(
-                listOf(
-                    ReadAiMessage(
-                        role = ReadAiMessage.Role.ASSISTANT,
-                        content = resources.getString(R.string.ai_chat_empty)
-                    )
+            sessionMessages.dropLast(1) + (sessionMessages.lastOrNull()?.copy(content = partial)
+                ?: ReadAiMessage(id = "read-ai-streaming", role = ReadAiMessage.Role.ASSISTANT, content = partial))
+        } ?: sessionMessages
+        messages = if (displayMessages.isEmpty()) {
+            listOf(
+                ReadAiMessage(
+                    id = "read-ai-empty",
+                    role = ReadAiMessage.Role.ASSISTANT,
+                    content = resources.getString(R.string.ai_chat_empty)
                 )
             )
         } else {
-            renderMessages(displayMessages)
+            displayMessages
         }
-    }
-
-    private fun renderMessages(messages: List<ReadAiMessage>) {
-        val shouldScrollToBottom = forceScrollToBottom ||
-            stickToBottom ||
-            !binding.answerContainer.canScrollVertically(1)
-        messageAdapter.streamingMessageId = streamingAssistantMessageId
-        messageAdapter.submit(messages)
-        if (messageAdapter.itemCount > 0 && shouldScrollToBottom) {
-            scrollToLatestMessageBottom()
-            stickToBottom = true
-        }
-        forceScrollToBottom = false
-    }
-
-    private fun scrollToLatestMessageBottom() {
-        val target = messageAdapter.itemCount - 1
-        if (target < 0) return
-        binding.answerContainer.post {
-            binding.answerContainer.scrollToPosition(target)
-            binding.answerContainer.post {
-                val holder = binding.answerContainer.findViewHolderForAdapterPosition(target)
-                val bottom = holder?.itemView?.bottom ?: return@post
-                val viewportBottom = binding.answerContainer.height - binding.answerContainer.paddingBottom
-                val delta = bottom - viewportBottom
-                if (delta > 0) {
-                    binding.answerContainer.scrollBy(0, delta)
-                }
-                stickToBottom = true
-            }
-        }
+        updateRequestingState()
     }
 
     private fun toggleHistory() {
         showingHistory = !showingHistory
-        binding.historyContainer.isVisible = showingHistory
-        binding.answerContainer.isGone = showingHistory
         if (showingHistory) {
             renderHistory()
         } else {
@@ -347,78 +329,15 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun renderHistory() {
         val context = readContext ?: return
-        val sessions = currentBookHistory(context).sessions
-        binding.historyList.removeAllViews()
-        if (sessions.isEmpty()) {
-            binding.historyList.addView(makeHistoryEmptyView())
-            return
-        }
-        sessions.forEach { session ->
-            binding.historyList.addView(makeHistoryItem(session))
-        }
-        binding.historyList.addView(makeClearAllView())
+        historySessions = currentBookHistory(context).sessions
     }
 
-    private fun makeHistoryEmptyView(): View {
-        return TextView(context).apply {
-            text = resources.getString(R.string.ai_read_history_empty)
-            applyUiLabelStyle(context)
-            setTextColor(context.secondaryTextColor)
-            setPadding(12.dpToPx(), 18.dpToPx(), 12.dpToPx(), 18.dpToPx())
-        }
-    }
-
-    private fun makeHistoryItem(session: ReadAiSession): View {
-        val row = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            background = resources.getDrawable(R.drawable.bg_read_ai_history_item, context.theme)
-            setPadding(12.dpToPx(), 10.dpToPx(), 8.dpToPx(), 10.dpToPx())
-            val lp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-            lp.setMargins(0, 0, 0, 8.dpToPx())
-            layoutParams = lp
-        }
-        val titleView = TextView(context).apply {
-            text = buildString {
-                append(session.title.ifBlank { resources.getString(R.string.ai_new_chat) })
-                if (session.chapterTitle.isNotBlank()) append("\n").append(session.chapterTitle)
-                append(" · ").append(timeFormat.format(Date(session.updatedAt)))
-            }
-            applyUiLabelStyle(context)
-            maxLines = 3
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        row.addView(titleView, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        val deleteView = TextView(context).apply {
-            text = resources.getString(R.string.delete)
-            applyUiLabelStyle(context)
-            setTextColor(context.accentColor)
-            gravity = android.view.Gravity.CENTER
-            setPadding(10.dpToPx(), 0, 4.dpToPx(), 0)
-            setOnClickListener { deleteSession(session.id) }
-        }
-        row.addView(deleteView, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
-        row.setOnClickListener {
-            currentSessionId = session.id
-            setCurrentSession(readContext ?: return@setOnClickListener, session.id)
-            showingHistory = false
-            showMessages()
-        }
-        row.setOnLongClickListener {
-            deleteSession(session.id)
-            true
-        }
-        return row
-    }
-
-    private fun makeClearAllView(): View {
-        return TextView(context).apply {
-            text = resources.getString(R.string.ai_read_clear_history)
-            applyUiSectionTitleStyle(context)
-            setTextColor(context.accentColor)
-            gravity = android.view.Gravity.CENTER
-            setPadding(12.dpToPx(), 12.dpToPx(), 12.dpToPx(), 12.dpToPx())
-            setOnClickListener { confirmClearHistory() }
-        }
+    private fun openHistorySession(sessionId: String) {
+        val context = readContext ?: return
+        currentSessionId = sessionId
+        setCurrentSession(context, sessionId)
+        showingHistory = false
+        renderCurrentSession()
     }
 
     private fun ensureSession(context: ReadContext, createNew: Boolean): ReadAiSession {
@@ -477,16 +396,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 }
             )
         }
-    }
-
-    private fun deleteMessage(context: ReadContext, messageId: String) {
-        updateSession(context, currentSessionId) { session ->
-            session.copy(
-                updatedAt = System.currentTimeMillis(),
-                messages = session.messages.filterNot { it.id == messageId }
-            )
-        }
-        renderCurrentSession()
     }
 
     private fun deleteSession(sessionId: String) {
@@ -626,31 +535,46 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
-    private fun applyTheme() {
-        binding.btnSend.backgroundTintList = ColorStateList.valueOf(context.accentColor)
-        binding.btnSend.setColorFilter(Color.WHITE)
-        binding.btnClose.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
-        binding.btnHistory.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
-        binding.btnNewChat.imageTintList = ColorStateList.valueOf(context.secondaryTextColor)
-        binding.inputContainer.backgroundTintList =
-            ColorStateList.valueOf(ColorUtils.adjustAlpha(context.primaryTextColor, 0.06f))
-        updateSendButtonState()
+    private fun updateRequestingState() {
+        requesting = answerJob?.isActive == true
     }
 
-    private fun updateSendButtonState() {
-        val requesting = answerJob?.isActive == true
-        binding.btnSend.contentDescription = resources.getString(
-            if (requesting) R.string.ai_chat_stop else R.string.ai_chat_send
-        )
-        binding.btnSend.setImageResource(
-            if (requesting) R.drawable.ic_stop_black_24dp else R.drawable.ic_arrow_right
-        )
+    private fun currentModelLabel(): String {
+        val model = AppConfig.aiCurrentModelConfig ?: return ""
+        val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+        return providerName?.let { "${model.modelId} - $it" } ?: model.modelId
+    }
+
+    private fun selectModel() {
+        if (answerJob?.isActive == true) {
+            context.toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        val models = AppConfig.aiModelConfigList
+        if (models.isEmpty()) {
+            context.toastOnUi(R.string.ai_no_models)
+            return
+        }
+        val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+        context.selector(
+            context.getString(R.string.ai_current_model),
+            models.map { model ->
+                providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                    ?.let { "${model.modelId} - $it" }
+                    ?: model.modelId
+            }
+        ) { _, _, index ->
+            AppConfig.aiCurrentModelId = models[index].id
+            modelLabel = currentModelLabel()
+        }
     }
 
     private fun buildContextLabel(context: ReadContext): String {
         return buildString {
             append(context.bookName.ifBlank { resources.getString(R.string.book_name) })
-            if (context.chapterTitle.isNotBlank()) append(" · ").append(context.chapterTitle)
+            if (context.chapterTitle.isNotBlank()) append(" - ").append(context.chapterTitle)
         }
     }
 
@@ -691,142 +615,491 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         )
     }
 
-    private fun createBubble(fillColor: Int, strokeColor: Int, isUser: Boolean): GradientDrawable {
-        val large = 18f.dpToPx()
-        val small = 7f.dpToPx()
-        return GradientDrawable().apply {
-            cornerRadii = if (isUser) {
-                floatArrayOf(
-                    large, large,
-                    large, large,
-                    small, small,
-                    large, large
-                )
-            } else {
-                floatArrayOf(
-                    large, large,
-                    large, large,
-                    large, large,
-                    small, small
-                )
-            }
-            setColor(fillColor)
-            setStroke(1.dpToPx(), strokeColor)
-        }
-    }
-
-    private inner class MessageAdapter : RecyclerView.Adapter<MessageAdapter.Holder>() {
-        private val messages = arrayListOf<ReadAiMessage>()
-        var streamingMessageId: String? = null
-
-        init {
-            setHasStableIds(true)
-        }
-
-        fun submit(items: List<ReadAiMessage>) {
-            val oldItems = messages.toList()
-            val newItems = items.toList()
-            val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-                override fun getOldListSize(): Int = oldItems.size
-
-                override fun getNewListSize(): Int = newItems.size
-
-                override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                    return oldItems[oldItemPosition].id == newItems[newItemPosition].id
-                }
-
-                override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                    return oldItems[oldItemPosition] == newItems[newItemPosition]
+    private fun doOnLayoutCompat(action: () -> Unit) {
+        if (isLaidOut) {
+            action()
+        } else {
+            addOnLayoutChangeListener(object : OnLayoutChangeListener {
+                override fun onLayoutChange(
+                    v: View,
+                    left: Int,
+                    top: Int,
+                    right: Int,
+                    bottom: Int,
+                    oldLeft: Int,
+                    oldTop: Int,
+                    oldRight: Int,
+                    oldBottom: Int
+                ) {
+                    removeOnLayoutChangeListener(this)
+                    action()
                 }
             })
-            messages.clear()
-            messages.addAll(newItems)
-            diffResult.dispatchUpdatesTo(this)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(
-                ItemReadAiMessageBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
-        }
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            holder.bind(messages[position])
-        }
-
-        override fun getItemCount(): Int = messages.size
-
-        override fun getItemId(position: Int): Long {
-            return AiMarkdownRender.stableId(messages[position].id)
-        }
-
-        inner class Holder(private val itemBinding: ItemReadAiMessageBinding) :
-            RecyclerView.ViewHolder(itemBinding.root) {
-
-            private var lastMarkdownKey: String? = null
-
-            fun bind(message: ReadAiMessage) = itemBinding.run {
-                val isUser = message.role == ReadAiMessage.Role.USER
-                val params = tvMessage.layoutParams as FrameLayout.LayoutParams
-                params.gravity = if (isUser) Gravity.END else Gravity.START
-                tvMessage.layoutParams = params
-                val backgroundColor = context.backgroundColor
-                val bubbleColor = if (isUser) {
-                    ColorUtils.blendColors(backgroundColor, context.accentColor, 0.18f)
-                } else if (ColorUtils.isColorLight(backgroundColor)) {
-                    ColorUtils.blendColors(
-                        backgroundColor,
-                        ContextCompat.getColor(context, R.color.background_card),
-                        0.68f
-                    )
-                } else {
-                    ColorUtils.blendColors(
-                        backgroundColor,
-                        ContextCompat.getColor(context, R.color.white),
-                        0.12f
-                    )
-                }
-                val strokeColor = if (isUser) {
-                    ColorUtils.adjustAlpha(context.accentColor, 0.18f)
-                } else {
-                    ColorUtils.adjustAlpha(context.secondaryTextColor, 0.08f)
-                }
-                tvMessage.background = createBubble(bubbleColor, strokeColor, isUser)
-                tvMessage.ellipsize = null
-                tvMessage.maxLines = Int.MAX_VALUE
-                tvMessage.setTextColor(context.primaryTextColor)
-                tvMessage.typeface = context.uiTypeface()
-                tvMessage.setOnLongClickListener(null)
-                if (message.id == streamingMessageId) {
-                    AiMarkdownRender.clearNativeSelectionWithLinkTap(tvMessage)
-                    tvMessage.text = message.content
-                    lastMarkdownKey = null
-                } else {
-                    val renderKey = AiMarkdownRender.renderKey(
-                        message.id,
-                        message.content,
-                        pending = false,
-                        textView = tvMessage,
-                        context = context
-                    )
-                    if (renderKey != lastMarkdownKey) {
-                        markwon.setParsedMarkdown(
-                            tvMessage,
-                            markwon.toMarkdown(message.content.ifBlank { " " })
-                        )
-                        lastMarkdownKey = renderKey
-                    }
-                    AiMarkdownRender.setNativeSelectionWithLinkTap(tvMessage)
-                }
-            }
         }
     }
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
     }
+}
+
+@Composable
+private fun ReadAiPanelContent(
+    messages: List<ReadAiMessage>,
+    historySessions: List<ReadAiSession>,
+    contextLabel: String,
+    showingHistory: Boolean,
+    requesting: Boolean,
+    modelLabel: String,
+    markwon: Markwon,
+    timeFormat: SimpleDateFormat,
+    onTopDrag: (MotionEvent) -> Boolean,
+    onSelectModel: () -> Unit,
+    onNewChat: () -> Unit,
+    onToggleHistory: () -> Unit,
+    onClose: () -> Unit,
+    onStop: () -> Unit,
+    onSend: (String) -> Boolean,
+    onOpenSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
+    onClearHistory: () -> Unit
+) {
+    val context = LocalContext.current
+    val style = aiComposeStyle(context)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = style.colors.background,
+        shadowElevation = 12.dp,
+        border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+    ) {
+        Column(
+            modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    onClick = onSelectModel,
+                    enabled = !requesting,
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = style.colors.accent.copy(alpha = if (requesting) 0.06f else 0.10f)
+                ) {
+                    Text(
+                        text = modelLabel.ifBlank { stringResource(R.string.ai_current_model_summary_empty) },
+                        color = if (requesting) style.colors.secondaryText else style.colors.accent,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .widthIn(max = 132.dp)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.ask_ai),
+                    color = style.colors.primaryText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .padding(start = 10.dp)
+                        .pointerInteropFilter(onTouchEvent = onTopDrag)
+                )
+                ReadAiIconButton(R.drawable.ic_add, R.string.ai_new_chat, style, onNewChat)
+                ReadAiIconButton(R.drawable.ic_history, R.string.history, style, onToggleHistory)
+                ReadAiIconButton(R.drawable.ic_close_x, R.string.close, style, onClose)
+            }
+            Text(
+                text = contextLabel,
+                color = style.colors.secondaryText,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            if (showingHistory) {
+                ReadAiHistoryList(
+                    sessions = historySessions,
+                    style = style,
+                    timeFormat = timeFormat,
+                    onOpenSession = onOpenSession,
+                    onDeleteSession = onDeleteSession,
+                    onClearHistory = onClearHistory
+                )
+            } else {
+                ReadAiMessageList(
+                    messages = messages,
+                    requesting = requesting,
+                    style = style,
+                    markwon = markwon
+                )
+            }
+            ReadAiComposer(
+                requesting = requesting,
+                enterToSend = AppConfig.aiEnterToSend,
+                style = style,
+                onStop = onStop,
+                onSend = onSend,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadAiIconButton(
+    iconRes: Int,
+    contentDescriptionRes: Int,
+    style: AiComposeStyle,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(38.dp)) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = stringResource(contentDescriptionRes),
+            tint = style.colors.primaryText,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun ReadAiMessageList(
+    messages: List<ReadAiMessage>,
+    requesting: Boolean,
+    style: AiComposeStyle,
+    markwon: Markwon
+) {
+    val listState = rememberLazyListState()
+    var stickToBottom by remember { mutableStateOf(true) }
+    val isAtBottom by remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            messages.isEmpty() || lastVisible >= messages.lastIndex
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, isAtBottom) {
+        if (isAtBottom) {
+            stickToBottom = true
+        } else if (listState.isScrollInProgress) {
+            stickToBottom = false
+        }
+    }
+    LaunchedEffect(messages.size, messages.lastOrNull()?.content, requesting) {
+        if (messages.isNotEmpty() && stickToBottom && !listState.isScrollInProgress) {
+            listState.scrollToItem(messages.lastIndex)
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(messages, key = { it.id }) { message ->
+            ReadAiMessageRow(
+                message = message,
+                streaming = requesting && message == messages.lastOrNull(),
+                style = style,
+                markwon = markwon
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadAiMessageRow(
+    message: ReadAiMessage,
+    streaming: Boolean,
+    style: AiComposeStyle,
+    markwon: Markwon
+) {
+    val isUser = message.role == ReadAiMessage.Role.USER
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(min = 72.dp, max = 280.dp),
+            shape = RoundedCornerShape(
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomEnd = if (isUser) 7.dp else 18.dp,
+                bottomStart = if (isUser) 18.dp else 7.dp
+            ),
+            color = if (isUser) style.colors.userBubble else style.colors.assistantBubble,
+            border = BorderStroke(
+                style.metrics.strokeWidth,
+                if (isUser) style.colors.userBubbleStroke else style.colors.assistantBubbleStroke
+            )
+        ) {
+            ReadAiMarkdownText(
+                messageId = message.id,
+                content = message.content,
+                streaming = streaming,
+                markwon = markwon,
+                textColor = if (isUser) style.colors.userText else style.colors.primaryText,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadAiMarkdownText(
+    messageId: String,
+    content: String,
+    streaming: Boolean,
+    markwon: Markwon,
+    textColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    AndroidView(
+        modifier = modifier.fillMaxWidth(),
+        factory = {
+            TextView(it).apply {
+                includeFontPadding = true
+                setLineSpacing(2.dpToPx().toFloat(), 1f)
+                textSize = 14f
+                typeface = it.uiTypeface()
+            }
+        },
+        update = { textView ->
+            textView.setTextColor(textColor.toArgbCompat())
+            textView.typeface = context.uiTypeface()
+            if (streaming) {
+                AiMarkdownRender.clearNativeSelectionWithLinkTap(textView)
+                if (textView.text?.toString() != content) {
+                    textView.text = content
+                }
+                textView.tag = null
+            } else {
+                val renderKey = AiMarkdownRender.renderKey(
+                    messageId,
+                    content,
+                    pending = false,
+                    textView = textView,
+                    context = context
+                )
+                if (textView.tag != renderKey) {
+                    markwon.setParsedMarkdown(
+                        textView,
+                        markwon.toMarkdown(content.ifBlank { " " })
+                    )
+                    textView.tag = renderKey
+                }
+                AiMarkdownRender.setNativeSelectionWithLinkTap(textView)
+            }
+        }
+    )
+}
+
+@Composable
+private fun ReadAiHistoryList(
+    sessions: List<ReadAiSession>,
+    style: AiComposeStyle,
+    timeFormat: SimpleDateFormat,
+    onOpenSession: (String) -> Unit,
+    onDeleteSession: (String) -> Unit,
+    onClearHistory: () -> Unit
+) {
+    if (sessions.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = stringResource(R.string.ai_read_history_empty),
+                color = style.colors.secondaryText,
+                fontSize = 13.sp
+            )
+        }
+        return
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(sessions, key = { it.id }) { session ->
+            Surface(
+                onClick = { onOpenSession(session.id) },
+                shape = RoundedCornerShape(style.metrics.cardRadius),
+                color = style.colors.cardSurface,
+                border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = session.title.ifBlank { stringResource(R.string.ai_new_chat) },
+                            color = style.colors.primaryText,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = buildString {
+                                if (session.chapterTitle.isNotBlank()) {
+                                    append(session.chapterTitle).append(" - ")
+                                }
+                                append(timeFormat.format(Date(session.updatedAt)))
+                            },
+                            color = style.colors.secondaryText,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { onDeleteSession(session.id) },
+                        shape = RoundedCornerShape(style.metrics.chipRadius),
+                        color = Color.Transparent
+                    ) {
+                        Text(
+                            text = stringResource(R.string.delete),
+                            color = style.colors.accent,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Surface(
+                onClick = onClearHistory,
+                shape = RoundedCornerShape(style.metrics.chipRadius),
+                color = style.colors.accent.copy(alpha = 0.08f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.ai_read_clear_history),
+                        color = style.colors.accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadAiComposer(
+    requesting: Boolean,
+    enterToSend: Boolean,
+    style: AiComposeStyle,
+    onStop: () -> Unit,
+    onSend: (String) -> Boolean,
+    modifier: Modifier = Modifier
+) {
+    var text by remember { mutableStateOf("") }
+    fun submitDraft() {
+        val content = text.trim()
+        if (!requesting && content.isNotEmpty() && onSend(content)) {
+            text = ""
+        }
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = style.colors.composerSurface,
+        shadowElevation = 8.dp,
+        border = BorderStroke(style.metrics.strokeWidth, style.colors.composerStroke)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 8.dp, bottom = 8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 44.dp, max = 132.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (text.isBlank()) {
+                    Text(
+                        text = stringResource(R.string.ai_chat_hint),
+                        color = style.colors.secondaryText.copy(alpha = 0.72f),
+                        fontSize = 15.sp
+                    )
+                }
+                BasicTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (enterToSend) submitDraft()
+                        }
+                    ),
+                    textStyle = TextStyle(
+                        color = style.colors.primaryText,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Surface(
+                onClick = {
+                    if (requesting) {
+                        onStop()
+                    } else {
+                        submitDraft()
+                    }
+                },
+                enabled = requesting || text.isNotBlank(),
+                shape = CircleShape,
+                color = style.colors.accent,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(
+                            if (requesting) R.drawable.ic_stop_black_24dp else R.drawable.ic_arrow_right
+                        ),
+                        contentDescription = stringResource(
+                            if (requesting) R.string.ai_chat_stop else R.string.ai_chat_send
+                        ),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Color.toArgbCompat(): Int {
+    return android.graphics.Color.argb(
+        (alpha * 255).toInt(),
+        (red * 255).toInt(),
+        (green * 255).toInt(),
+        (blue * 255).toInt()
+    )
 }

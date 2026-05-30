@@ -62,6 +62,7 @@ import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
+import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isAudio
@@ -77,6 +78,7 @@ import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoComponentType
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -168,6 +170,9 @@ class BookInfoActivity :
     private var tocPreviewStart = 0
     private var tocPreviewEnd = 0
     private var isUpdatingTocPreview = false
+    private val collapsedCatalogVolumeIndexes = linkedSetOf<Int>()
+    private val catalogCacheFileNames = hashSetOf<String>()
+    private var catalogCacheBookUrl: String? = null
     private val catalogAdapter by lazy { CatalogAdapter() }
     private val bookInfoPageAdapter by lazy { BookInfoPageAdapter() }
     private lateinit var bookInfoPager: ViewPager2
@@ -293,6 +298,7 @@ class BookInfoActivity :
         }
     }
     private lateinit var tvAiImagesSummary: TextView
+    private lateinit var aiImagesPreviewScroll: HorizontalScrollView
     private lateinit var llAiImagesPreview: LinearLayout
     private lateinit var tvAiImagesEmpty: TextView
     private val aiImagesPanel by lazy { createAiImagesPanel() }
@@ -391,23 +397,15 @@ class BookInfoActivity :
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            addView(HorizontalScrollView(context).apply {
+            aiImagesPreviewScroll = HorizontalScrollView(context).apply {
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_NEVER
                 addView(llAiImagesPreview)
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 112.dpToPx()))
-            tvAiImagesEmpty = TextView(context).apply {
-                text = getString(R.string.ai_image_gallery_empty)
-                gravity = Gravity.CENTER
-                textSize = 13f
-                setTextColor(secondaryTextColor)
-                background = UiCorner.opaqueRounded(
-                    ContextCompat.getColor(context, R.color.background_menu),
-                    UiCorner.actionRadius(context)
-                )
-                applyUiBodyTypefaceDeep(context.uiTypeface())
             }
-            addView(tvAiImagesEmpty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 96.dpToPx()))
+            addView(aiImagesPreviewScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 112.dpToPx()))
+            tvAiImagesEmpty = TextView(context).apply {
+                visibility = View.GONE
+            }
             setOnClickListener { openBookAiImageGallery() }
         }
     }
@@ -425,7 +423,8 @@ class BookInfoActivity :
             } else {
                 "共 ${images.size} 张相关图片，点击查看完整图库"
             }
-            tvAiImagesEmpty.isVisible = images.isEmpty()
+            tvAiImagesEmpty.isVisible = false
+            aiImagesPreviewScroll.isVisible = images.isNotEmpty()
             llAiImagesPreview.isVisible = images.isNotEmpty()
             llAiImagesPreview.removeAllViews()
             images.take(12).forEach { image ->
@@ -1932,18 +1931,19 @@ class BookInfoActivity :
     private fun renderTocPreview(chapterList: List<BookChapter>?) = binding.run {
         isUpdatingTocPreview = true
         llTocPreview.removeAllViews()
-        val chapters = chapterList.orEmpty().filterNot { it.isVolume }
+        refreshCatalogCacheState()
+        val chapters = filterCatalogRows(chapterList.orEmpty(), "")
         val currentBook = book
         if (chapters.isEmpty() || currentBook == null) {
             tocPreviewChapters = emptyList()
             tocPreviewStart = 0
             tocPreviewEnd = 0
-            llTocPreview.addView(tocPreviewText(getString(R.string.chapter_list_empty), false))
+            llTocPreview.addView(createCatalogRow(null, compact = true))
             isUpdatingTocPreview = false
             return@run
         }
         tocPreviewChapters = chapters
-        val currentPosition = chapters.indexOfFirst { it.index == currentBook.durChapterIndex }
+        val currentPosition = chapters.indexOfFirst { !it.isVolume && it.index == currentBook.durChapterIndex }
             .coerceAtLeast(0)
         var start = (currentPosition - tocBatchSize / 2).coerceAtLeast(0)
         var end = (start + tocBatchSize).coerceAtMost(chapters.size)
@@ -1989,11 +1989,16 @@ class BookInfoActivity :
     private fun addTocPreviewRange(start: Int, end: Int, insertAt: Int? = null) = binding.run {
         val chapters = tocPreviewChapters
         if (start !in 0..chapters.size || end !in 0..chapters.size || start >= end) return@run
-        val currentIndex = book?.durChapterIndex ?: -1
         chapters.subList(start, end).forEachIndexed { offset, chapter ->
-            val itemView = tocPreviewText(chapter.title, chapter.index == currentIndex).apply {
+            val itemView = createCatalogRow(chapter, compact = true).apply {
                 tag = chapter.index
-                setOnClickListener { openChapterDirect(chapter) }
+                setOnClickListener {
+                    if (chapter.isVolume) {
+                        toggleCatalogVolume(chapter)
+                    } else {
+                        openChapterDirect(chapter)
+                    }
+                }
             }
             val targetIndex = insertAt?.let { it + offset }
             if (targetIndex == null) {
@@ -2029,39 +2034,216 @@ class BookInfoActivity :
         }
     }
 
-    private fun tocPreviewText(text: CharSequence, selected: Boolean): TextView {
-        return TextView(this).apply {
-            this.text = text
+    private data class CatalogRowViews(
+        val root: LinearLayout,
+        val icon: ImageView,
+        val title: TextView,
+        val meta: TextView
+    )
+
+    private fun catalogRowHeight(): Int = 52.dpToPx()
+
+    private fun createCatalogRow(chapter: BookChapter?, compact: Boolean): LinearLayout {
+        val views = createCatalogRowViews(compact)
+        bindCatalogRow(views, chapter, compact)
+        return views.root
+    }
+
+    private fun createCatalogRowViews(compact: Boolean): CatalogRowViews {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = catalogRowHeight()
+            setPadding(if (compact) 0 else 8.dpToPx(), 0, if (compact) 0 else 8.dpToPx(), 0)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, catalogRowHeight())
+        }
+        val icon = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER
+            setColorFilter(secondaryTextColor)
+        }
+        root.addView(icon, LinearLayout.LayoutParams(30.dpToPx(), ViewGroup.LayoutParams.MATCH_PARENT))
+        val textColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6.dpToPx(), 0, 0, 0)
+        }
+        val title = TextView(this).apply {
             includeFontPadding = false
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            textSize = if (selected) 14.5f else 13.5f
+            textSize = if (compact) 13.5f else 14f
             typeface = uiTypeface()
-            setTextColor(if (selected) accentColor else primaryTextColor)
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 9.dpToPx(), 0, 9.dpToPx())
+        }
+        val meta = TextView(this).apply {
+            includeFontPadding = false
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            textSize = 11.5f
+            typeface = uiTypeface()
+            setTextColor(secondaryTextColor)
+        }
+        textColumn.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        textColumn.addView(meta, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = 4.dpToPx()
+        })
+        root.addView(textColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        return CatalogRowViews(root, icon, title, meta)
+    }
+
+    private fun bindCatalogRow(
+        views: CatalogRowViews,
+        chapter: BookChapter?,
+        compact: Boolean
+    ) {
+        val root = views.root
+        val icon = views.icon
+        val title = views.title
+        val meta = views.meta
+        root.layoutParams = (root.layoutParams ?: ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            catalogRowHeight()
+        )).apply {
+            height = catalogRowHeight()
+        }
+        root.background = null
+        root.isEnabled = chapter != null
+        if (chapter == null) {
+            icon.visibility = View.GONE
+            title.text = getString(R.string.chapter_list_empty)
+            title.textSize = if (compact) 13.5f else 14f
+            title.typeface = uiTypeface()
+            title.setTextColor(secondaryTextColor)
+            meta.visibility = View.GONE
+            root.setOnClickListener(null)
+            return
+        }
+
+        val selected = !chapter.isVolume && chapter.index == (book?.durChapterIndex ?: -1)
+        val cached = isCatalogChapterCached(chapter)
+        title.text = chapter.title
+        title.textSize = if (selected) 14.5f else if (compact) 13.5f else 14f
+        title.setTextColor(
+            when {
+                selected -> accentColor
+                chapter.isVolume -> primaryTextColor
+                else -> primaryTextColor
+            }
+        )
+        title.setTypeface(uiTypeface(), if (chapter.isVolume) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+
+        val metaParts = buildList {
+            chapter.tag?.takeIf { it.isNotBlank() }?.let(::add)
+            if (AppConfig.tocCountWords && !chapter.isVolume) {
+                chapter.wordCount?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+            if (!chapter.isVolume) {
+                add(getString(if (cached) R.string.cache_manage_cached else R.string.cache_manage_not_cached))
+            }
+        }
+        meta.text = metaParts.joinToString("  ")
+        meta.visibility = if (meta.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        meta.setTextColor(secondaryTextColor)
+
+        when {
+            chapter.isVolume -> {
+                icon.visibility = View.VISIBLE
+                icon.setImageResource(
+                    if (collapsedCatalogVolumeIndexes.contains(chapter.index)) {
+                        R.drawable.ic_expand_more
+                    } else {
+                        R.drawable.ic_expand_less
+                    }
+                )
+                icon.setColorFilter(secondaryTextColor)
+                root.background = UiCorner.opaqueRounded(
+                    ContextCompat.getColor(this, R.color.background_menu),
+                    UiCorner.actionRadius(this)
+                )
+            }
+            chapter.isVip && !chapter.isPay -> {
+                icon.visibility = View.VISIBLE
+                icon.setImageResource(R.drawable.ic_lock_outline)
+                icon.setColorFilter(secondaryTextColor)
+            }
+            else -> {
+                icon.visibility = View.GONE
+            }
         }
     }
 
     private fun renderCatalogPager(chapterList: List<BookChapter>?) = binding.run {
-        val chapters = chapterList.orEmpty().filterNot { it.isVolume }
+        refreshCatalogCacheState()
+        val chapters = chapterList.orEmpty()
         val query = etCatalogSearch.text?.toString().orEmpty().trim()
-        val filtered = if (query.isBlank()) {
-            chapters
-        } else {
-            chapters.filter { it.title.contains(query, ignoreCase = true) }
-        }
+        val filtered = filterCatalogRows(chapters, query)
         catalogAdapter.submitList(filtered)
         updateCatalogPageIndicator(filtered.size, chapters.size)
         if (query.isBlank()) {
             val currentPosition = book?.durChapterIndex?.let { currentIndex ->
-                chapters.indexOfFirst { it.index == currentIndex }
+                filtered.indexOfFirst { !it.isVolume && it.index == currentIndex }
             }?.takeIf { it >= 0 } ?: return@run
             rvCatalog.post {
                 (rvCatalog.layoutManager as? LinearLayoutManager)
                     ?.scrollToPositionWithOffset(currentPosition, (rvCatalog.height / 3).coerceAtLeast(0))
             }
         }
+    }
+
+    private fun filterCatalogRows(chapters: List<BookChapter>, query: String): List<BookChapter> {
+        if (query.isNotBlank()) {
+            return chapters.filter { it.title.contains(query, ignoreCase = true) }
+        }
+        if (collapsedCatalogVolumeIndexes.isEmpty()) return chapters
+        val result = arrayListOf<BookChapter>()
+        var hideUntilNextVolume = false
+        chapters.forEach { chapter ->
+            if (chapter.isVolume) {
+                result.add(chapter)
+                hideUntilNextVolume = collapsedCatalogVolumeIndexes.contains(chapter.index)
+            } else if (!hideUntilNextVolume) {
+                result.add(chapter)
+            }
+        }
+        return result
+    }
+
+    private fun toggleCatalogVolume(chapter: BookChapter) {
+        if (!chapter.isVolume) return
+        if (!collapsedCatalogVolumeIndexes.add(chapter.index)) {
+            collapsedCatalogVolumeIndexes.remove(chapter.index)
+        }
+        renderTocPreview(viewModel.chapterListData.value)
+        renderCatalogPager(viewModel.chapterListData.value)
+    }
+
+    private fun refreshCatalogCacheState() {
+        val currentBook = book ?: return
+        if (catalogCacheBookUrl == currentBook.bookUrl) return
+        catalogCacheBookUrl = currentBook.bookUrl
+        catalogCacheFileNames.clear()
+        lifecycleScope.launch {
+            val fileNames = withContext(IO) {
+                runCatching { BookHelp.getChapterFiles(currentBook) }.getOrDefault(hashSetOf())
+            }
+            if (catalogCacheBookUrl != currentBook.bookUrl) return@launch
+            catalogCacheFileNames.clear()
+            catalogCacheFileNames.addAll(fileNames)
+            catalogAdapter.notifyDataSetChanged()
+            if (detailPage == DetailPage.TOC) {
+                renderTocPreview(viewModel.chapterListData.value)
+            }
+        }
+    }
+
+    private fun isCatalogChapterCached(chapter: BookChapter): Boolean {
+        val currentBook = book ?: return false
+        return currentBook.isLocal ||
+            chapter.isVolume ||
+            if (currentBook.isAudio) {
+                ExoPlayerHelper.isMediaCached(chapter.resourceUrl)
+            } else {
+                BookHelp.getChapterCacheFileNames(currentBook, chapter).any(catalogCacheFileNames::contains)
+            }
     }
 
     private fun updateCatalogPageIndicator(count: Int, total: Int) {
@@ -2196,7 +2378,7 @@ class BookInfoActivity :
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(tocPreviewText("", false))
+            return Holder(createCatalogRowViews(compact = false))
         }
 
         override fun getItemCount(): Int = chapters.size.coerceAtLeast(1)
@@ -2210,21 +2392,22 @@ class BookInfoActivity :
         }
 
         inner class Holder(
-            private val textView: TextView
-        ) : RecyclerView.ViewHolder(textView) {
+            private val rowViews: CatalogRowViews
+        ) : RecyclerView.ViewHolder(rowViews.root) {
 
             fun bind(chapter: BookChapter?) {
+                bindCatalogRow(rowViews, chapter, compact = false)
                 if (chapter == null) {
-                    textView.text = getString(R.string.chapter_list_empty)
-                    textView.setTextColor(secondaryTextColor)
-                    textView.setOnClickListener(null)
-                    return
+                    rowViews.root.setOnClickListener(null)
+                } else {
+                    rowViews.root.setOnClickListener {
+                        if (chapter.isVolume) {
+                            toggleCatalogVolume(chapter)
+                        } else {
+                            openChapterDirect(chapter)
+                        }
+                    }
                 }
-                val selected = chapter.index == (book?.durChapterIndex ?: -1)
-                textView.text = chapter.title
-                textView.textSize = if (selected) 14.5f else 13.5f
-                textView.setTextColor(if (selected) accentColor else primaryTextColor)
-                textView.setOnClickListener { openChapterDirect(chapter) }
             }
         }
     }
