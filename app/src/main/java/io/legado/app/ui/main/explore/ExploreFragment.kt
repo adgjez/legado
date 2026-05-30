@@ -55,7 +55,6 @@ import io.legado.app.databinding.ItemFilletSelectorSingleBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemFindBookBinding
 import io.legado.app.databinding.FragmentExploreBinding
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
@@ -549,7 +548,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun observeDiscoverBookshelf() {
         if (discoverBookshelfFlowJob?.isActive == true) return
         discoverBookshelfFlowJob = viewLifecycleOwner.lifecycleScope.launch {
-            appDb.bookDao.flowAll()
+            appDb.bookDao.flowShelfIdentities()
                 .flowWithLifecycleAndDatabaseChange(
                     viewLifecycleOwner.lifecycle,
                     Lifecycle.State.STARTED,

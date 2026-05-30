@@ -1019,10 +1019,10 @@ object ReadBook : CoroutineScope by MainScope() {
             it.charset = charset
             callBack?.loadChapterList(it)
         }
-        saveRead()
+        saveRead(fullUpdate = true)
     }
 
-    fun saveRead(pageChanged: Boolean = false) {
+    fun saveRead(pageChanged: Boolean = false, fullUpdate: Boolean = false) {
         val book = book ?: return
         executor.execute {
             kotlin.runCatching {
@@ -1042,7 +1042,18 @@ object ReadBook : CoroutineScope by MainScope() {
                         SourceCallBack.callBackBook(SourceCallBack.SAVE_READ, bookSource, book, it, durTime.toString())
                     }
                 }
-                book.update()
+                if (fullUpdate) {
+                    book.update()
+                } else {
+                    appDb.bookDao.updateReadProgress(
+                        bookUrl = book.bookUrl,
+                        lastCheckCount = book.lastCheckCount,
+                        durChapterTitle = book.durChapterTitle,
+                        durChapterIndex = book.durChapterIndex,
+                        durChapterPos = book.durChapterPos,
+                        durChapterTime = book.durChapterTime
+                    )
+                }
                 appDb.readRecentBookDao.insert(ReadRecentBook(book.bookUrl, durTime))
                 ReadRecordWidgetStore.updateRecentSnapshot(book, durTime)
             }.onFailure {

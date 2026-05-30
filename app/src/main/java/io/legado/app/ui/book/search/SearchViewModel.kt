@@ -10,7 +10,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.utils.ConflateLiveData
@@ -63,7 +62,7 @@ class SearchViewModel(application: Application) : BaseViewModel(application) {
 
     init {
         execute {
-            appDb.bookDao.flowAll().mapLatest { books ->
+            appDb.bookDao.flowShelfIdentities().mapLatest { books ->
                 val keys = arrayListOf<String>()
                 books.filterNot { it.isNotShelf }
                     .forEach {

@@ -19,6 +19,12 @@ class EpubImageResolver(
         override fun sizeOf(key: String, value: Bitmap): Int {
             return value.allocationByteCount
         }
+
+        override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
+            if (!oldValue.isRecycled) {
+                oldValue.recycle()
+            }
+        }
     }
 
     private val metaCache = hashMapOf<String, EpubImageMeta?>()
@@ -34,17 +40,19 @@ class EpubImageResolver(
         if (metaCache.containsKey(href)) return metaCache[href]
         val bytes = readBytes(href)
         val meta = bytes?.let { data ->
-            if (isSvg(href, data)) {
-                SvgUtils.getSize(ByteArrayInputStream(data))?.toMeta(svg = true)
-            } else {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-                if (bounds.outWidth > 0 && bounds.outHeight > 0) {
-                    EpubImageMeta(bounds.outWidth, bounds.outHeight, svg = false)
+            runCatching {
+                if (isSvg(href, data)) {
+                    SvgUtils.getSize(ByteArrayInputStream(data))?.toMeta(svg = true)
                 } else {
-                    null
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+                    if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                        EpubImageMeta(bounds.outWidth, bounds.outHeight, svg = false)
+                    } else {
+                        null
+                    }
                 }
-            }
+            }.onFailure(::handleDecodeFailure).getOrNull()
         }
         metaCache[href] = meta
         return meta
@@ -56,13 +64,17 @@ class EpubImageResolver(
         val key = "${href}|${width}x$height"
         bitmapCache.get(key)?.takeIf { !it.isRecycled }?.let { return it }
         val bytes = readBytes(href) ?: return null
-        val bitmap = if (isSvg(href, bytes)) {
-            SvgUtils.createBitmap(ByteArrayInputStream(bytes), width, height)
-        } else {
-            decodeBitmap(bytes, width, height)
-        } ?: return null
-        bitmapCache.put(key, bitmap)
-        return bitmap
+        return runCatching {
+            val bitmap = if (isSvg(href, bytes)) {
+                SvgUtils.createBitmap(ByteArrayInputStream(bytes), width, height)
+            } else {
+                decodeBitmap(bytes, width, height)
+            } ?: return null
+            if (bitmap.allocationByteCount <= bitmapCache.maxSize()) {
+                bitmapCache.put(key, bitmap)
+            }
+            bitmap
+        }.onFailure(::handleDecodeFailure).getOrNull()
     }
 
     fun clear() {
@@ -72,9 +84,17 @@ class EpubImageResolver(
 
     private fun readBytes(href: String): ByteArray? {
         return if (href.startsWith("data:", ignoreCase = true)) {
-            decodeDataUrl(href)
+            runCatching { decodeDataUrl(href) }
+                .onFailure(::handleDecodeFailure)
+                .getOrNull()
         } else {
             runCatching { archive.readBytes(EpubPath.stripFragment(href)) }.getOrNull()
+        }
+    }
+
+    private fun handleDecodeFailure(error: Throwable) {
+        if (error is OutOfMemoryError) {
+            bitmapCache.evictAll()
         }
     }
 

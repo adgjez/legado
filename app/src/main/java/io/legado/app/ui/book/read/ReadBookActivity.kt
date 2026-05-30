@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -101,6 +102,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ImageProvider
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
@@ -663,6 +665,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         autoPageStop()
         backupJob?.cancel()
         ReadBook.upReadTime(forceWidgetUpdate = true)
+        if (isFinishing) {
+            ImageProvider.clear()
+        } else {
+            ImageProvider.trimMemory()
+        }
         ReadBook.saveRead()
         ReadBook.cancelPreDownloadTask()
         unregisterReceiver(timeBatteryReceiver)
@@ -4236,7 +4243,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun changeReplaceRuleState() {
         ReadBook.book?.let {
             it.setUseReplaceRule(!it.getUseReplaceRule())
-            ReadBook.saveRead()
+            ReadBook.saveRead(fullUpdate = true)
             menu?.findItem(R.id.menu_enable_replace)?.isChecked = it.getUseReplaceRule()
             viewModel.replaceRuleChanged()
         }
@@ -4329,6 +4336,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         commentWebViewSession?.trimMemory(level)
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+                    level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> ImageProvider.clear()
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> ImageProvider.trimMemory()
+        }
     }
     override fun observeLiveBus() = binding.run {
         observeEvent<String>(EventBus.TIME_CHANGED) { readView.upTime() }

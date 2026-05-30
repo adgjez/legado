@@ -47,6 +47,9 @@ interface BookDao {
     @Query("SELECT * FROM books order by durChapterTime desc")
     fun flowAll(): Flow<List<Book>>
 
+    @Query("SELECT bookUrl, name, author, (type & ${BookType.notShelf}) > 0 AS isNotShelf FROM books")
+    fun flowShelfIdentities(): Flow<List<BookShelfIdentity>>
+
     @Query("SELECT * FROM books WHERE type & ${BookType.audio} > 0")
     fun flowAudio(): Flow<List<Book>>
 
@@ -164,6 +167,26 @@ interface BookDao {
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)
 
+    @Query(
+        """
+        update books set
+        lastCheckCount = :lastCheckCount,
+        durChapterTitle = :durChapterTitle,
+        durChapterIndex = :durChapterIndex,
+        durChapterPos = :durChapterPos,
+        durChapterTime = :durChapterTime
+        where bookUrl = :bookUrl
+        """
+    )
+    fun updateReadProgress(
+        bookUrl: String,
+        lastCheckCount: Int,
+        durChapterTitle: String?,
+        durChapterIndex: Int,
+        durChapterPos: Int,
+        durChapterTime: Long
+    )
+
     @Query("update books set `group` = :newGroupId where `group` = :oldGroupId")
     fun upGroup(oldGroupId: Long, newGroupId: Long)
 
@@ -173,3 +196,10 @@ interface BookDao {
     @Query("delete from books where type & ${BookType.notShelf} > 0")
     fun deleteNotShelfBook()
 }
+
+data class BookShelfIdentity(
+    val bookUrl: String,
+    val name: String,
+    val author: String,
+    val isNotShelf: Boolean
+)

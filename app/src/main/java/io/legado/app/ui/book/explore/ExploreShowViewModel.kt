@@ -10,7 +10,6 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.printOnDebug
@@ -38,7 +37,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
     init {
         execute {
-            appDb.bookDao.flowAll().mapLatest { books ->
+            appDb.bookDao.flowShelfIdentities().mapLatest { books ->
                 val keys = arrayListOf<String>()
                 books.filterNot { it.isNotShelf }
                     .forEach {

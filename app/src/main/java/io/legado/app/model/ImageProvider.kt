@@ -25,6 +25,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -52,12 +53,18 @@ object ImageProvider {
      * filePath bitmap
      */
     private const val M = 1024 * 1024
+    private const val MIN_CACHE_SIZE = 8 * M
+    private const val HARD_CACHE_SIZE = 96 * M
     val cacheSize: Int
         get() {
             if (AppConfig.bitmapCacheSize !in 1..1024) {
                 AppConfig.bitmapCacheSize = 50
             }
-            return AppConfig.bitmapCacheSize * M
+            val userSize = AppConfig.bitmapCacheSize * M
+            val heapBound = (Runtime.getRuntime().maxMemory() / 8)
+                .coerceIn(MIN_CACHE_SIZE.toLong(), HARD_CACHE_SIZE.toLong())
+                .toInt()
+            return min(userSize, heapBound)
         }
 
     val bitmapLruCache = BitmapLruCache()
@@ -94,7 +101,10 @@ object ImageProvider {
     }
 
     fun put(key: String, bitmap: Bitmap) {
-        ensureLruCacheSize(bitmap)
+        if (bitmap != errorBitmap && bitmap.byteCount > cacheSize) {
+            return
+        }
+        ensureLruCacheSize()
         bitmapLruCache.put(key, bitmap)
     }
 
@@ -115,19 +125,22 @@ object ImageProvider {
         return bitmap
     }
 
-    private fun ensureLruCacheSize(bitmap: Bitmap) {
-        val lruMaxSize = bitmapLruCache.maxSize()
-        val lruSize = bitmapLruCache.size()
-        val byteCount = bitmap.byteCount
-        val size = if (byteCount > lruMaxSize) {
-            min(256 * M, (byteCount * 1.3).toInt())
-        } else if (lruSize + byteCount > lruMaxSize && bitmapLruCache.count < 5) {
-            min(256 * M, (lruSize + byteCount * 1.3).toInt())
-        } else {
-            lruMaxSize
+    private fun ensureLruCacheSize() {
+        val targetSize = cacheSize
+        if (bitmapLruCache.maxSize() != targetSize) {
+            bitmapLruCache.resize(targetSize)
         }
-        if (size > lruMaxSize) {
-            bitmapLruCache.resize(size)
+    }
+
+    private fun handleDecodeFailure(key: String?, error: Throwable) {
+        if (error is CancellationException) throw error
+        if (error is OutOfMemoryError) {
+            putDebug("ImageProvider: bitmap decode OOM, clear cache")
+            clear()
+        }
+        key?.let {
+            ensureLruCacheSize()
+            bitmapLruCache.put(it, errorBitmap)
         }
     }
 
@@ -146,7 +159,11 @@ object ImageProvider {
             val vFile = BookHelp.getImage(book, src)
             if (!BookHelp.isImageExist(book, src)) {
                 val inputStream = when {
-                    src.isDataUrl() -> src.decodeBase64DataUrlBytes()?.let(::ByteArrayInputStream)
+                    src.isDataUrl() -> kotlin.runCatching {
+                        src.decodeBase64DataUrlBytes()?.let(::ByteArrayInputStream)
+                    }.onFailure {
+                        handleDecodeFailure(null, it)
+                    }.getOrNull()
                     book.isEpub -> EpubFile.getImage(book, src)
                     book.isPdf -> PdfFile.getImage(book, src)
                     book.isMobi -> MobiFile.getImage(book, src)
@@ -207,31 +224,35 @@ object ImageProvider {
         if (ParagraphBubbleRenderer.isBubbleSrc(src)) {
             return ParagraphBubbleRenderer.getSize(src)
         }
-        val file = cacheImage(book, src, bookSource)
-        val op = BitmapFactory.Options()
+        return kotlin.runCatching {
+            val file = cacheImage(book, src, bookSource)
+            val op = BitmapFactory.Options()
         // inJustDecodeBounds如果设置为true,仅仅返回图片实际的宽和高,宽和高是赋值给opts.outWidth,opts.outHeight;
-        op.inJustDecodeBounds = true
-        BitmapFactory.decodeFile(file.absolutePath, op)
-        if (op.outWidth < 1 && op.outHeight < 1) {
-            if (src.isDataUrl()) {
-                src.decodeBase64DataUrlBytes()?.let { bytes ->
-                    val dataOptions = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                    }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, dataOptions)
-                    if (dataOptions.outWidth > 0 && dataOptions.outHeight > 0) {
-                        return Size(dataOptions.outWidth, dataOptions.outHeight)
+            op.inJustDecodeBounds = true
+            BitmapFactory.decodeFile(file.absolutePath, op)
+            if (op.outWidth < 1 && op.outHeight < 1) {
+                if (src.isDataUrl()) {
+                    src.decodeBase64DataUrlBytes()?.let { bytes ->
+                        val dataOptions = BitmapFactory.Options().apply {
+                            inJustDecodeBounds = true
+                        }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, dataOptions)
+                        if (dataOptions.outWidth > 0 && dataOptions.outHeight > 0) {
+                            return Size(dataOptions.outWidth, dataOptions.outHeight)
+                        }
                     }
                 }
+                //svg size
+                val size = SvgUtils.getSize(file.absolutePath)
+                if (size != null) return size
+                putDebug("ImageProvider: $src Unsupported image type")
+                //file.delete() 重复下载
+                return Size(errorBitmap.width, errorBitmap.height)
             }
-            //svg size
-            val size = SvgUtils.getSize(file.absolutePath)
-            if (size != null) return size
-            putDebug("ImageProvider: $src Unsupported image type")
-            //file.delete() 重复下载
-            return Size(errorBitmap.width, errorBitmap.height)
-        }
-        return Size(op.outWidth, op.outHeight)
+            Size(op.outWidth, op.outHeight)
+        }.onFailure {
+            handleDecodeFailure(null, it)
+        }.getOrDefault(Size(errorBitmap.width, errorBitmap.height))
     }
 
     /**
@@ -273,7 +294,7 @@ object ImageProvider {
             }.onSuccess {
                 put(cacheKey, it)
             }.onFailure {
-                put(cacheKey, errorBitmap)
+                handleDecodeFailure(cacheKey, it)
             }.getOrDefault(errorBitmap)
         }
         //src为空白时 可能被净化替换掉了 或者规则失效
@@ -308,7 +329,7 @@ object ImageProvider {
             bitmap
         }.onFailure {
             //错误图片占位,防止重复获取
-            put(cacheKey, errorBitmap)
+            handleDecodeFailure(cacheKey, it)
         }.getOrDefault(errorBitmap)
     }
 
@@ -352,8 +373,15 @@ object ImageProvider {
             put(cacheKey, bitmap)
             bitmap
         }.onFailure {
-            put(cacheKey, errorBitmap)
+            handleDecodeFailure(cacheKey, it)
         }.getOrDefault(errorBitmap)
+    }
+
+    fun trimMemory() {
+        val trimSize = (cacheSize / 2).coerceAtLeast(MIN_CACHE_SIZE)
+        if (bitmapLruCache.maxSize() > trimSize) {
+            bitmapLruCache.resize(trimSize)
+        }
     }
 
     fun clear() {
