@@ -30,6 +30,7 @@ class DiscoverySubscriptionConfigFragment : PreferenceFragment(),
             booleanKey = PreferKey.modernDiscoveryPage,
             defaultValue = true
         )
+        updateDiscoveryLayoutVisibility()
         bindModePreference(
             preference = rssModePref,
             booleanKey = PreferKey.modernRssPage,
@@ -63,7 +64,10 @@ class DiscoverySubscriptionConfigFragment : PreferenceFragment(),
             PreferKey.showDiscovery,
             PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
 
-            PreferKey.modernDiscoveryPage,
+            PreferKey.modernDiscoveryPage -> {
+                updateDiscoveryLayoutVisibility()
+                postEvent(EventBus.NOTIFY_MAIN, false)
+            }
             PreferKey.modernRssPage,
             PreferKey.discoveryPageLayout,
             PreferKey.mergeDiscoveryRss -> postEvent(EventBus.NOTIFY_MAIN, false)
@@ -98,9 +102,19 @@ class DiscoverySubscriptionConfigFragment : PreferenceFragment(),
             preferenceManager.sharedPreferences?.edit()
                 ?.putBoolean(booleanKey, useModernMode)
                 ?.apply()
+            if (booleanKey == PreferKey.modernDiscoveryPage) {
+                updateDiscoveryLayoutVisibility(useModernMode)
+            }
             postEvent(EventBus.NOTIFY_MAIN, false)
             true
         }
+    }
+
+    private fun updateDiscoveryLayoutVisibility(
+        useModern: Boolean = preferenceManager.sharedPreferences
+            ?.getBoolean(PreferKey.modernDiscoveryPage, true) ?: true
+    ) {
+        findPreference<Preference>(PreferKey.discoveryPageLayout)?.isVisible = useModern
     }
 
     private fun consumeTargetKey() {

@@ -8,8 +8,11 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.lib.cloud.S3CapacityFullException
+import io.legado.app.lib.cloud.S3ContainerManager
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
@@ -61,6 +64,9 @@ object Backup {
         appCtx.filesDir.getFile("backup").createFolderIfNotExist().absolutePath
     }
     val zipFilePath = "${appCtx.externalFiles.absolutePath}${File.separator}tmp_backup.zip"
+    internal const val bookCharactersFileName = "bookCharacters.json"
+    internal const val bookCharacterRelationsFileName = "bookCharacterRelations.json"
+    internal const val bookCharacterAvatarsDirName = "bookCharacterAvatars"
 
     private const val TAG = "Backup"
 
@@ -82,6 +88,8 @@ object Backup {
             "httpTTS.json",
             "keyboardAssists.json",
             "dictRule.json",
+            bookCharactersFileName,
+            bookCharacterRelationsFileName,
             "servers.json",
             DirectLinkUpload.ruleFileName,
             ReadBookConfig.configFileName,
@@ -111,35 +119,44 @@ object Backup {
     }
 
     fun autoBack(context: Context) {
-        if (shouldBackup()) {
-            Coroutine.async {
-                mutex.withLock {
-                    if (shouldBackup()) {
-                        val backupZipFileName = getNowZipFileName()
-                        if (!AppWebDav.hasBackUp(backupZipFileName)) {
-                            backup(context, AppConfig.backupPath)
-                        } else {
-                            LocalConfig.lastBackup = System.currentTimeMillis()
-                        }
-                    }
+        Coroutine.async {
+            mutex.withLock {
+                if (shouldBackup()) {
+                    AppLog.put("自动备份触发")
+                    AppLog.put("Auto backup trigger")
+                    LogUtils.d(TAG, "auto backup trigger")
+                    backup(context, AppConfig.backupPath)
+                } else {
+                    AppLog.put("自动备份跳过: 今日已备份")
+                    AppLog.put("Auto backup skipped: already backed up today")
+                    LogUtils.d(TAG, "auto backup skipped by interval")
                 }
-            }.onError {
-                AppLog.put("自动备份失败\n${it.localizedMessage}")
             }
+        }.onError {
+            AppLog.put("自动备份失败\n${it.localizedMessage}", it)
         }
     }
 
-    suspend fun backupLocked(context: Context, path: String?) {
+    suspend fun backupLocked(
+        context: Context,
+        path: String?,
+        uploadCloud: Boolean = true,
+        uploadWebDavFallback: Boolean = false
+    ) {
         mutex.withLock {
             withContext(IO) {
-                backup(context, path)
+                backup(context, path, uploadCloud, uploadWebDavFallback)
             }
         }
     }
 
-    private suspend fun backup(context: Context, path: String?) {
+    private suspend fun backup(
+        context: Context,
+        path: String?,
+        uploadCloud: Boolean = true,
+        uploadWebDavFallback: Boolean = false
+    ) {
         LogUtils.d(TAG, "开始备份 path:$path")
-        LocalConfig.lastBackup = System.currentTimeMillis()
         val aes = BackupAES()
         FileUtils.delete(backupPath)
         writeListToJson(appDb.bookDao.all, "bookshelf.json", backupPath)
@@ -156,6 +173,9 @@ object Backup {
         writeListToJson(appDb.httpTTSDao.all, "httpTTS.json", backupPath)
         writeListToJson(appDb.keyboardAssistsDao.all, "keyboardAssists.json", backupPath)
         writeListToJson(appDb.dictRuleDao.all, "dictRule.json", backupPath)
+        writeListToJson(appDb.bookCharacterDao.allCharacters(), bookCharactersFileName, backupPath)
+        writeListToJson(appDb.bookCharacterDao.allRelations(), bookCharacterRelationsFileName, backupPath)
+        exportBookCharacterAvatars()
         GSON.toJson(appDb.serverDao.all).let { json ->
             aes.runCatching {
                 encryptBase64(json)
@@ -192,10 +212,14 @@ object Backup {
             appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
                 if (BackupConfig.keyIsNotIgnore(key)) {
                     when (key) {
-                        PreferKey.webDavPassword -> {
+                        PreferKey.webDavPassword, PreferKey.s3SecretKey, PreferKey.s3SessionToken -> {
                             edit.putString(key, aes.runCatching {
                                 encryptBase64(value.toString())
                             }.getOrDefault(value.toString()))
+                        }
+
+                        PreferKey.s3Containers -> {
+                            edit.putString(key, S3ContainerManager.toEncryptedBackupJson(aes) ?: value.toString())
                         }
 
                         else -> when (value) {
@@ -234,6 +258,7 @@ object Backup {
         for (i in 0 until paths.size) {
             paths[i] = backupPath + File.separator + paths[i]
         }
+        File(backupPath, bookCharacterAvatarsDirName).takeIf { it.exists() }?.let { paths.add(it.absolutePath) }
         FileUtils.delete(zipFilePath)
         FileUtils.delete(zipFilePath.replace("tmp_", ""))
         val backupFileName = if (AppConfig.onlyLatestBackup) {
@@ -241,6 +266,7 @@ object Backup {
         } else {
             zipFileName
         }
+        var backupSuccess = false
         if (ZipUtils.zipFiles(paths, zipFilePath)) {
             when {
                 path.isNullOrBlank() -> {
@@ -255,11 +281,23 @@ object Backup {
                     copyBackup(File(path), backupFileName)
                 }
             }
-            try {
-                AppWebDav.backUpWebDav(zipFileName)
-            } catch (e: Exception) {
-                AppLog.put("上传备份至webdav失败\n$e", e)
+            if (uploadCloud) {
+                val cloudType = if (uploadWebDavFallback) CloudStorageType.WEBDAV else AppCloudStorage.type
+                AppLog.put("Upload cloud backup: ${cloudType.name} $zipFileName")
+                if (uploadWebDavFallback) {
+                    AppCloudStorage.backupToWebDav(zipFileName)
+                } else {
+                    AppCloudStorage.backup(zipFileName)
+                }
+                AppLog.put("Cloud backup finished: ${cloudType.name} $zipFileName")
             }
+            backupSuccess = true
+        } else {
+            throw NoStackTraceException("创建备份压缩包失败")
+        }
+        if (backupSuccess) {
+            LocalConfig.lastBackup = System.currentTimeMillis()
+            LogUtils.d(TAG, "备份完成")
         }
         FileUtils.delete(backupPath)
         FileUtils.delete(zipFilePath)
@@ -271,7 +309,7 @@ object Backup {
                 appCtx.externalFiles.getFile("bg", it)
             }
         }.let {
-            AppWebDav.upBgs(it.toTypedArray())
+            AppCloudStorage.upBgs(it.toTypedArray())
         }
     }
 
@@ -322,6 +360,35 @@ object Backup {
             sourceVariable = sourceVariable,
             sourceValues = sourceValues
         )
+    }
+
+    private fun exportBookCharacterAvatars() {
+        val sourceDir = appCtx.externalFiles.getFile("bookCharacters", "avatars")
+        if (!sourceDir.exists() || !sourceDir.isDirectory) {
+            return
+        }
+        val targetDir = File(backupPath, bookCharacterAvatarsDirName)
+        sourceDir.listFiles()?.takeIf { it.isNotEmpty() } ?: return
+        kotlin.runCatching {
+            copyDir(sourceDir, targetDir)
+        }.onFailure {
+            AppLog.put("备份角色头像出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun copyDir(source: File, target: File) {
+        if (!target.exists()) {
+            target.mkdirs()
+        }
+        source.listFiles()?.forEach { file ->
+            val targetFile = File(target, file.name)
+            if (file.isDirectory) {
+                copyDir(file, targetFile)
+            } else {
+                targetFile.parentFile?.mkdirs()
+                file.copyTo(targetFile, overwrite = true)
+            }
+        }
     }
 
     private suspend fun writeListToJson(list: List<Any>, fileName: String, path: String) {

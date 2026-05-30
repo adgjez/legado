@@ -1,6 +1,7 @@
 <resources>
     <!--App-->
     <string name="app_name">阅读Archive</string>
+    <string name="app_launcher_name">阅读</string>
     <string name="app_name_a">阅读Archive·A</string>
     <string name="app_name_s">阅读ArchivePlus</string>
     <string name="receiving_shared_label">阅读Archive·搜索</string>
@@ -95,6 +96,10 @@
     <string name="web_service">Web 服务</string>
     <string name="web_service_desc">用浏览器写源或看书</string>
     <string name="web_edit_source">Web 编辑书源</string>
+    <string name="epub_read_engine">EPUB阅读引擎</string>
+    <string name="epub_read_engine_summary">默认转换为纯文本阅读；EPUB引擎为实验性功能，可能存在排版或性能问题。</string>
+    <string name="epub_read_engine_text">转换为纯文本</string>
+    <string name="epub_read_engine_core">EPUB引擎（实验性）</string>
     <string name="offline_cache">离线缓存</string>
     <string name="offline_cache_t">离线缓存</string>
     <string name="offline_cache_s">缓存选择的章节到本地</string>
@@ -189,6 +194,8 @@
     <string name="paste_source">粘贴源</string>
     <string name="source_rule_s">源规则说明</string>
     <string name="check_update">检查更新</string>
+    <string name="update_no_new_version">暂无更新</string>
+    <string name="update_acceleration_manage">加速管理</string>
     <string name="camera_scan">扫描二维码</string>
     <string name="scan_image">扫描本地图片</string>
     <string name="rule_summary">规则说明</string>
@@ -200,7 +207,13 @@
     <string name="content_select_default_open">默认打开</string>
     <string name="content_select_speak_from_selection">已切换为从选择处开始连续朗读</string>
     <string name="content_select_speak_selected">已切换为朗读选择内容</string>
+    <string name="selection_search_engine_manage">搜索引擎</string>
+    <string name="selection_search_engine_name">引擎名称</string>
+    <string name="selection_search_engine_url">搜索 URL</string>
+    <string name="selection_search_engine_url_hint">使用 {query} 代表选中文字</string>
+    <string name="selection_search_engine_url_error">搜索 URL 必须以 http:// 或 https:// 开头</string>
     <string name="default_none">不默认打开</string>
+    <string name="default_search">搜索</string>
     <string name="default_dict">字典</string>
     <string name="default_ask_ai">问AI</string>
     <string name="ai_reply">AI回复</string>
@@ -729,7 +742,7 @@
     <string name="ui_corner_scale">圆角倍率</string>
     <string name="ui_corner_scale_summary">当前圆角倍率：%s，范围 0-3</string>
     <string name="ui_corner_scale_invalid">请输入 0 到 3 之间的数字</string>
-    <string name="ui_layout_alpha">界面布局透明度</string>
+    <string name="ui_layout_alpha">界面不透明度</string>
     <string name="ui_layout_alpha_value">%d%%</string>
     <string name="ui_corner_search_follow">搜索栏跟随圆角</string>
     <string name="ui_corner_search_follow_summary">允许搜索栏使用全局圆角倍率</string>
@@ -1180,6 +1193,30 @@
     <string name="read_bar_style_follow_page">工具栏样式跟随页面</string>
     <string name="read_menu_alpha">正文菜单不透明度</string>
     <string name="read_menu_alpha_summary">调整顶部与底部正文菜单的不透明程度</string>
+    <string name="read_menu_edit">菜单编辑</string>
+    <string name="read_menu_button_manage">正文菜单按键</string>
+    <string name="read_menu_button_summary">配置正文菜单第一排和第二排按键，长按拖动可以排序。</string>
+    <string name="read_menu_first_row">第一排</string>
+    <string name="read_menu_second_row">第二排</string>
+    <string name="read_menu_add_button">添加按键</string>
+    <string name="read_menu_no_available_button">没有可添加的内置按键</string>
+    <string name="read_menu_builtin_button">内置</string>
+    <string name="read_menu_custom_button">自定义</string>
+    <string name="read_menu_custom_button_edit">编辑自定义按键</string>
+    <string name="read_menu_create_custom_button">新建自定义按键</string>
+    <string name="read_menu_existing_custom_button">已有自定义</string>
+    <string name="read_menu_button_script">按键 JS</string>
+    <string name="read_menu_custom_button_save_invalid">名称和按键 JS 不能为空</string>
+    <string name="read_menu_custom_button_help">自定义按键可以直接读取 book、chapter、content、source、baseUrl、result、java、cache、cookie 等对象，只用于获取信息和执行动作，不应该修改正文内容。</string>
+    <string name="read_menu_custom_button_missing">自定义按键不存在</string>
+    <string name="read_menu_no_current_chapter">没有当前章节</string>
+    <string name="read_menu_move_to_first">移到第一排</string>
+    <string name="read_menu_move_to_second">移到第二排</string>
+    <string name="read_menu_icon_set_day">设置日间图标</string>
+    <string name="read_menu_icon_set_night">设置夜间图标</string>
+    <string name="read_menu_icon_clear_day">清除日间图标</string>
+    <string name="read_menu_icon_clear_night">清除夜间图标</string>
+    <string name="read_menu_icon_select_file">选择菜单图标</string>
     <string name="rule_image_decode">图片解密（imageDecode）</string>
     <string name="like_source">赞</string>
     <string name="not_like_source">踩</string>
@@ -1292,6 +1329,10 @@
     <string name="screen_landscape_reversed">反向横屏</string>
     <string name="del_ruby_tag">删除ruby标签</string>
     <string name="del_h_tag">删除h标签</string>
+    <string name="epub_core_schedule_mode">EPUB调度模式</string>
+    <string name="epub_core_schedule_mode_light">轻量</string>
+    <string name="epub_core_schedule_mode_normal">常规</string>
+    <string name="epub_core_schedule_mode_performance">性能</string>
     <string name="adjust_chapter_page">调整本章页数</string>
     <string name="adjust_chapter_index">调整章节位置</string>
     <string name="clear_webview_data_success">清除成功，3秒后自动重启应用</string>
@@ -1408,8 +1449,6 @@
     <string name="ai_tavily_enable">启用 Tavily 搜索</string>
     <string name="ai_tavily_enable_summary">将 Tavily 暴露给 AI 作为实时联网搜索工具。</string>
     <string name="ai_tavily_enable_summary_missing">请先填写 Tavily API Key，再启用工具。</string>
-    <string name="ai_show_tool_summary">显示工具摘要</string>
-    <string name="ai_show_tool_summary_summary">在助手回复下方显示一个可折叠的工具摘要。</string>
     <string name="ai_manage_native_tools">管理原生工具</string>
     <string name="ai_manage_native_tools_summary">启用或停用内置工具能力</string>
     <string name="ai_enter_to_send">回车发送</string>
@@ -1537,6 +1576,8 @@
     <string name="ai_tool_call">调用工具：%1$s\n参数：%2$s</string>
     <string name="ai_tool_result">工具返回：%1$s\n%2$s</string>
     <string name="ai_tool_default_name">工具</string>
+    <string name="ai_tool_book_source_search">书源搜索</string>
+    <string name="ai_tool_web_search">联网搜索</string>
     <string name="ai_tool_status_calling">调用中</string>
     <string name="ai_tool_status_done">调用完成</string>
     <string name="ai_tool_status_failed">调用失败</string>
@@ -1590,6 +1631,7 @@
     <string name="bottom_bar_effect_solid">常规</string>
     <string name="bottom_bar_effect_glass">玻璃</string>
     <string name="bottom_bar_effect_frosted">磨砂玻璃</string>
+    <string name="bottom_bar_material_mode">材质样式</string>
     <string name="bottom_bar_layout_mode">底栏样式</string>
     <string name="bottom_bar_layout_floating">悬浮底栏</string>
     <string name="bottom_bar_layout_sidebar">侧边栏</string>
@@ -1614,6 +1656,7 @@
     <string name="theme_export_zip">导出 ZIP</string>
     <string name="theme_download_local">下载到本地</string>
     <string name="theme_upload_remote">上传到云端</string>
+    <string name="theme_s3_container_switch">切换 S3 容器</string>
     <string name="theme_delete_local">删除本地</string>
     <string name="theme_delete_remote">删除云端</string>
     <string name="theme_delete_both">同时删除</string>
@@ -1655,6 +1698,11 @@
     <string name="cache_manage_books">书籍</string>
     <string name="cache_manage_audio">音频</string>
     <string name="cache_manage_manga">漫画</string>
+    <string name="cache_manage_search_book">搜索缓存</string>
+    <string name="cache_manage_sort_title">缓存排序</string>
+    <string name="cache_manage_sort_current">排序：%1$s</string>
+    <string name="cache_manage_sort_name">名称</string>
+    <string name="cache_manage_sort_time">最近</string>
     <string name="cache_manage_summary_state">共 %1$d 本，已缓存 %2$d 章</string>
     <string name="cache_manage_empty">暂无%1$s缓存</string>
     <string name="cache_manage_chapters">缓存目录</string>
@@ -1763,13 +1811,18 @@
 作者：%2$s
 书源：%3$s
 当前章节：%4$s（第 %5$d 章）
+bookUrl：%7$s
 
 用户选中或追问：
 %6$s</string>
 
     <string name="source_runtime_backup">忽略书源登录与变量</string>
+    <string name="auto_refresh_media_toc">自动刷新空媒体目录链接</string>
+    <string name="auto_refresh_media_toc_summary">音频或视频章节链接为空或失效时，自动刷新一次目录后重试</string>
     <string name="book_info_manage">详情页管理</string>
     <string name="book_info_manage_summary">管理详情页组件与显示顺序</string>
+    <string name="bubble_manage">气泡管理</string>
+    <string name="bubble_manage_summary">管理段评气泡 SVG、颜色、大小与同步</string>
     <string name="book_info_components_hint">勾选启用组件，拖动调整顺序。重新打开详情页后生效。</string>
     <string name="book_info_component_header">书籍主卡片</string>
     <string name="book_info_component_header_hint">封面、书名、作者、最新章节与标签。</string>
@@ -1777,6 +1830,8 @@
     <string name="book_info_component_meta_hint">分组、书源、换源和目录入口。</string>
     <string name="book_info_component_detail">简介与目录卡片</string>
     <string name="book_info_component_detail_hint">简介、章节预览和展开目录入口。</string>
+    <string name="book_info_component_ai_images">本书图库</string>
+    <string name="book_info_component_ai_images_hint">暂无本书生成图片。</string>
     <string name="book_info_component_keep_one">至少保留一个详情组件。</string>
     <string name="discovery_page_layout">发现页布局</string>
     <string name="discovery_page_layout_summary">当前：%1$s</string>
@@ -1805,6 +1860,7 @@
     <string name="cover_collection_mode">封面模式</string>
     <string name="cover_collection_mode_random">随机</string>
     <string name="cover_collection_mode_sequence">顺序</string>
+    <string name="cover_collection_mode_mixed">混合</string>
     <string name="cover_collection_name">图集名称</string>
     <string name="cover_collection_no_images_to_export">没有可导出的图片</string>
     <string name="cover_collection_export_failed_simple">导出图集失败</string>
@@ -1867,6 +1923,9 @@
     <string name="rule_call_back">&#22238;&#35843;&#25805;&#20316;&#65288;callBackJs&#65289;</string>
     <string name="time_hour">&#23567;&#26102;</string>
     <string name="custom_button">&#23450;&#21046;&#25353;&#38062;</string>
+    <string name="book_cloud_entry_mode">&#20113;&#31471;&#20837;&#21475;</string>
+    <string name="book_cloud_library_chapter_mode">书库容器</string>
+    <string name="book_cloud_cache_package_mode">云端备份</string>
     <string name="welcome_show_time">&#27426;&#36814;&#39029;&#26174;&#31034;&#26102;&#38388;</string>
     <string name="welcome_show_time_summary">&#35774;&#20026;0&#19981;&#26174;&#31034;&#27426;&#36814;&#39029;</string>
     <string name="domain">&#22495;&#21517;</string>
@@ -1944,6 +2003,8 @@
     <string name="top_bar_tag_bar_alpha">标签栏不透明度</string>
     <string name="top_bar_wallpaper">顶栏壁纸</string>
     <string name="top_bar_wallpaper_alpha">壁纸不透明度</string>
+    <string name="bottom_bar_wallpaper">底栏壁纸</string>
+    <string name="bottom_bar_border_alpha">底栏边框不透明度</string>
     <string name="top_bar_tag_selected_color">选中标签背景色</string>
     <string name="top_bar_tag_selected_alpha">选中标签不透明度</string>
     <string name="top_bar_filter_default">筛选栏默认状态</string>
@@ -1966,11 +2027,12 @@
     <string name="cache_manage_webdav_task_duplicate">任务已在队列中</string>
     <string name="cache_manage_batch_upload_queued">已加入 %1$d 个上传任务</string>
     <string name="theme_panel_border_color">圆角卡片边框色</string>
-    <string name="theme_panel_border_alpha">圆角卡片边框不透明度</string>
+    <string name="theme_panel_border_alpha">边框不透明度</string>
     <string name="bottom_bar_border_color">底栏边框色</string>
     <string name="top_bar_border_color">顶栏边框色</string>
     <string name="select_color">选择颜色</string>
     <string name="paragraph_rule_manage">&#27573;&#33853;&#35268;&#21017;&#31649;&#29702;</string>
+    <string name="paragraph_rule">段落规则</string>
     <string name="paragraph_rule_add_hint">&#28155;&#21152;&#27573;&#33853;&#35268;&#21017;</string>
     <string name="paragraph_rule_all_rules">&#20840;&#37096;&#27573;&#33853;&#35268;&#21017;</string>
     <string name="paragraph_rule_current_book">&#24403;&#21069;&#20070;&#31821;</string>
@@ -1993,4 +2055,67 @@
     <string name="cache_manage_manifest_missing">&#32531;&#23384;&#28165;&#21333;&#32570;&#22833;</string>
     <string name="cache_manage_legacy_manifest_missing">&#26087;&#29256;&#32531;&#23384;&#21253;&#32570;&#23569;&#30446;&#24405;&#28165;&#21333;&#65292;&#35831;&#20808;&#25171;&#24320;&#20070;&#31821;&#29983;&#25104;&#30446;&#24405;&#65292;&#25110;&#22312;&#26377;&#30446;&#24405;&#30340;&#35774;&#22791;&#19978;&#37325;&#26032;&#19978;&#20256;&#12290;</string>
     <string name="top_bar_style_immersive">&#24120;&#35268;&#39030;&#26639;</string>
+    <string name="webdav_account_manage">WebDAV 账号配置</string>
+    <string name="webdav_account_manage_summary">配置服务器地址、账号和密钥</string>
+    <string name="sync_theme_packages">同步云端主题</string>
+    <string name="sync_theme_packages_summary">开启后保存主题、顶栏、底栏时会后台同步到云端</string>
+    <string name="package_sync_task_menu">同步任务</string>
+    <string name="package_sync_task_title">云端同步任务</string>
+    <string name="package_sync_task_empty">暂无云端同步任务</string>
+    <string name="package_sync_task_line">%1$s · %2$s</string>
+    <string name="package_sync_task_status_pending">排队中</string>
+    <string name="package_sync_task_status_running">上传中</string>
+    <string name="package_sync_task_status_completed">已完成</string>
+    <string name="package_sync_task_status_cancelled">已取消</string>
+    <string name="package_sync_task_status_failed">失败</string>
+    <string name="package_sync_task_type_theme">主题</string>
+    <string name="package_sync_task_type_top_bar">顶栏</string>
+    <string name="package_sync_task_type_navigation_bar">底栏</string>
+    <string name="package_sync_task_type_bubble">气泡</string>
+    <string name="package_sync_task_type_cache_upload">缓存上传</string>
+    <string name="package_sync_task_type_cache_download">缓存下载</string>
+    <string name="s3_container_manage">管理 S3 容器</string>
+    <string name="s3_container_manage_summary">添加、编辑、测试和设置备份用 S3 容器</string>
+    <string name="s3_auto_switch_container">自动切换 S3 容器</string>
+    <string name="s3_auto_switch_container_summary">当前容器空间不足时，允许备份使用下一个可用容器</string>
+    <string name="s3_container_add">添加 S3 容器</string>
+    <string name="s3_container_edit">编辑 S3 容器</string>
+    <string name="s3_container_delete">删除 S3 容器</string>
+    <string name="s3_container_delete_confirm">确定删除 %1$s 吗？</string>
+    <string name="s3_container_name">容器名称</string>
+    <string name="s3_container_capacity_gb">容量（GB，0 或留空表示不限制）</string>
+    <string name="s3_container_advanced_show">显示高级设置</string>
+    <string name="s3_container_advanced_hide">隐藏高级设置</string>
+    <string name="s3_container_enabled">启用</string>
+    <string name="s3_container_disabled">停用</string>
+    <string name="s3_container_enable">启用</string>
+    <string name="s3_container_disable">停用</string>
+    <string name="s3_container_test">测试连接</string>
+    <string name="s3_container_test_success">S3 连接测试成功</string>
+    <string name="s3_container_test_failed">S3 连接测试失败：%1$s</string>
+    <string name="s3_container_set_default">设为默认</string>
+    <string name="s3_container_set_default_success">已设为默认容器</string>
+    <string name="s3_container_refresh_capacity">刷新容量</string>
+    <string name="s3_container_capacity_refreshed">已刷新容量状态</string>
+    <string name="s3_container_endpoint_bucket_required">Endpoint 和 Bucket 不能为空</string>
+    <string name="s3_container_key_required">Access Key 和 Secret Key 不能为空</string>
+    <string name="s3_container_default_name">%1$s（默认）</string>
+    <string name="s3_container_capacity_line">容量 %1$s，已用 %2$s，剩余 %3$s，已满：%4$s</string>
+    <string name="s3_container_capacity_unlimited_line">容量不限制，已用 %1$s</string>
+    <string name="s3_container_state_line">状态：%1$s</string>
+    <string name="s3_full_webdav_fallback_title">S3 容器已满</string>
+    <string name="s3_full_webdav_fallback_message">主备份 S3 容器已无可用空间。检测到 WebDAV 已配置，是否本次上传到 WebDAV？</string>
+    <string name="s3_full_no_webdav_fallback_message">主备份 S3 容器已无可用空间。WebDAV 未配置，本次只会保留本地备份。</string>
+    <string name="s3_full_webdav_fallback_ignore">本次忽略</string>
+    <string name="s3_full_webdav_fallback_upload">上传到 WebDAV</string>
+    <string name="s3_full_webdav_fallback_never">永不提醒</string>
+    <string name="s3_endpoint">Endpoint</string>
+    <string name="s3_endpoint_summary">S3/R2 Endpoint</string>
+    <string name="s3_bucket">Bucket</string>
+    <string name="s3_region">Region</string>
+    <string name="s3_prefix">Prefix</string>
+    <string name="s3_access_key">Access Key</string>
+    <string name="s3_secret_key">Secret Key</string>
+    <string name="s3_session_token">Session Token</string>
+    <string name="s3_path_style">Path style</string>
 </resources>

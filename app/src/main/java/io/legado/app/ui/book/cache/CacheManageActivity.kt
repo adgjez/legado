@@ -2,7 +2,12 @@ package io.legado.app.ui.book.cache
 
 import android.os.Bundle
 import android.graphics.Color
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
 import androidx.activity.viewModels
+import androidx.appcompat.R as AppCompatR
+import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -13,12 +18,17 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ActivityCacheManageBinding
+import io.legado.app.help.AppCloudStorage
+import io.legado.app.lib.cloud.CloudStorageType
+import io.legado.app.lib.cloud.S3ContainerScope
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.gone
+import io.legado.app.utils.cnCompare
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
@@ -36,6 +46,10 @@ class CacheManageActivity :
     CacheManageAdapter.Callback,
     CacheChapterDialog.Callback {
 
+    companion object {
+        const val EXTRA_INITIAL_SEARCH_KEY = "initialSearchKey"
+    }
+
     override val binding by viewBinding(ActivityCacheManageBinding::inflate)
     override val viewModel by viewModels<CacheManageViewModel>()
 
@@ -43,12 +57,28 @@ class CacheManageActivity :
     private var audioTaskReloadJob: Job? = null
     private var lastMissingTaskReloadAt = 0L
     private val handledTerminalTaskReloads = hashSetOf<String>()
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
+    private var sortMenuItem: MenuItem? = null
+    private var searchMenuItem: MenuItem? = null
+    private var rawItems: List<CacheBookItem> = emptyList()
+    private var searchKey: String = ""
+    private var sortMode: CacheManageSortMode = CacheManageSortMode.RECENT
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
         observeData()
         observeTasks()
+        val initialSearchKey = intent.getStringExtra(EXTRA_INITIAL_SEARCH_KEY).orEmpty().trim()
+        if (initialSearchKey.isNotBlank()) {
+            searchKey = initialSearchKey
+        }
         viewModel.load(CacheManageMode.BOOK)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
     }
 
     private fun initView() = binding.run {
@@ -72,19 +102,118 @@ class CacheManageActivity :
         btnUploadAll.setOnClickListener { uploadAll() }
         btnDeleteAll.setOnClickListener { deleteAll() }
         updateTabs(CacheManageMode.BOOK)
+        updateSortButton()
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        searchMenuItem = menu.add(0, MENU_SEARCH, 0, R.string.cache_manage_search_book).apply {
+            setIcon(R.drawable.ic_search)
+            actionView = SearchView(this@CacheManageActivity).also(::setupSearchView)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW)
+            setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
+                override fun onMenuItemActionExpand(item: MenuItem): Boolean = true
+
+                override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+                    updateSearchKey("")
+                    return true
+                }
+            })
+        }
+        sortMenuItem = menu.add(0, MENU_SORT, 1, R.string.cache_manage_sort_title).apply {
+            setIcon(R.drawable.ic_baseline_sort_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 2, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateSortButton()
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == MENU_SORT) {
+            showSortSelector()
+            return true
+        }
+        if (item.itemId == MENU_CONTAINER) {
+            showContainerSelector()
+            return true
+        }
+        return super.onCompatOptionsItemSelected(item)
+    }
+
+    private fun setupSearchView(view: SearchView) {
+        view.applyTint(primaryTextColor)
+        view.queryHint = getString(R.string.cache_manage_search_book)
+        view.isSubmitButtonEnabled = false
+        view.maxWidth = Int.MAX_VALUE
+        hideSearchActionButtons(view)
+        view.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                updateSearchKey(query.orEmpty())
+                view.clearFocus()
+                view.post { hideSearchActionButtons(view) }
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                updateSearchKey(newText.orEmpty())
+                view.post { hideSearchActionButtons(view) }
+                return true
+            }
+        })
+    }
+
+    private fun hideSearchActionButtons(view: SearchView) {
+        view.findViewById<View?>(AppCompatR.id.search_close_btn)?.gone()
+        view.findViewById<View?>(AppCompatR.id.search_go_btn)?.gone()
+        view.findViewById<View?>(AppCompatR.id.search_voice_btn)?.gone()
+    }
+
+    private fun updateContainerMenu() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        val item = containerMenuItem ?: return
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(S3ContainerScope.CACHE)?.id
+            ?: containers.firstOrNull()?.id
+        item.isVisible = true
+        item.title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+    }
+
+    private fun showContainerSelector() {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) {
+                AppCloudStorage.listContainers().filter { it.enabled }
+            }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(S3ContainerScope.CACHE)?.id
+            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
+                val container = containers.getOrNull(index) ?: return@selector
+                if (container.id == selected) return@selector
+                AppCloudStorage.selectContainer(S3ContainerScope.CACHE, container.id)
+                cloudContainerId = container.id
+                updateContainerMenu()
+                viewModel.clearDisplay()
+                viewModel.load()
+            }
+        }
     }
 
     private fun observeData() {
         viewModel.itemsLiveData.observe(this) { items ->
-            adapter.setItems(items)
-            binding.tvEmpty.run {
-                if (items.isEmpty()) {
-                    text = getString(R.string.cache_manage_empty, getString(viewModel.mode.titleRes))
-                    visible()
-                } else {
-                    gone()
-                }
-            }
+            rawItems = items
+            applyFilters()
         }
         viewModel.summaryLiveData.observe(this) { summary ->
             binding.tvSummary.text = getString(
@@ -95,6 +224,45 @@ class CacheManageActivity :
         }
         viewModel.loadingLiveData.observe(this) { loading ->
             if (loading) binding.rotateLoading.visible() else binding.rotateLoading.gone()
+        }
+    }
+
+    private fun updateSearchKey(key: String) {
+        val value = key.trim()
+        if (searchKey == value) return
+        searchKey = value
+        applyFilters()
+    }
+
+    private fun showSortSelector() {
+        val modes = CacheManageSortMode.entries
+        selector(getString(R.string.cache_manage_sort_title), modes.map { getString(it.titleRes) }) { _, index ->
+            val mode = modes.getOrNull(index) ?: return@selector
+            if (sortMode == mode) return@selector
+            sortMode = mode
+            updateSortButton()
+            applyFilters()
+        }
+    }
+
+    private fun updateSortButton() {
+        sortMenuItem?.title = getString(R.string.cache_manage_sort_current, getString(sortMode.titleRes))
+    }
+
+    private fun applyFilters() {
+        val items = rawItems
+            .asSequence()
+            .filter { it.matchesSearch(searchKey) }
+            .sortedWith(sortMode.comparator())
+            .toList()
+        adapter.setItems(items)
+        binding.tvEmpty.run {
+            if (items.isEmpty()) {
+                text = getString(R.string.cache_manage_empty, getString(viewModel.mode.titleRes))
+                visible()
+            } else {
+                gone()
+            }
         }
     }
 
@@ -172,6 +340,8 @@ class CacheManageActivity :
     private fun switchMode(mode: CacheManageMode) {
         if (viewModel.mode == mode) return
         updateTabs(mode)
+        rawItems = emptyList()
+        applyFilters()
         viewModel.load(mode)
     }
 
@@ -418,6 +588,48 @@ private fun WebDavTaskStatus.isTerminalForListRefresh(): Boolean {
 private const val MISSING_TASK_RELOAD_INTERVAL_MS = 2500L
 private const val MISSING_TASK_RELOAD_DELAY_MS = 250L
 private const val TERMINAL_TASK_RELOAD_DELAY_MS = 600L
+private const val MENU_SEARCH = 0x53ff
+private const val MENU_SORT = 0x5400
+private const val MENU_CONTAINER = 0x5401
+
+enum class CacheManageSortMode(val titleRes: Int) {
+    RECENT(R.string.cache_manage_sort_time),
+    NAME(R.string.cache_manage_sort_name);
+
+    fun comparator(): Comparator<CacheBookItem> {
+        return when (this) {
+            RECENT -> Comparator { o1, o2 ->
+                o2.lastCacheUpdatedAt().compareTo(o1.lastCacheUpdatedAt()).takeIf { it != 0 }
+                    ?: o1.book.name.cnCompare(o2.book.name).takeIf { it != 0 }
+                    ?: o1.sourceName.cnCompare(o2.sourceName)
+            }
+            NAME -> Comparator { o1, o2 ->
+                o1.book.name.cnCompare(o2.book.name).takeIf { it != 0 }
+                    ?: o1.sourceName.cnCompare(o2.sourceName).takeIf { it != 0 }
+                    ?: o2.lastCacheUpdatedAt().compareTo(o1.lastCacheUpdatedAt())
+            }
+        }
+    }
+}
+
+private fun CacheBookItem.matchesSearch(key: String): Boolean {
+    if (key.isBlank()) return true
+    return book.name.contains(key, ignoreCase = true) ||
+        book.author.contains(key, ignoreCase = true) ||
+        sourceName.contains(key, ignoreCase = true) ||
+        sourceVariants.any {
+            it.book.name.contains(key, ignoreCase = true) ||
+                it.book.author.contains(key, ignoreCase = true) ||
+                it.sourceName.contains(key, ignoreCase = true)
+        }
+}
+
+private fun CacheBookItem.lastCacheUpdatedAt(): Long {
+    val variantTime = sourceVariants.maxOfOrNull {
+        maxOf(it.localUpdatedAt, it.remoteUpdatedAt)
+    } ?: 0L
+    return maxOf(localUpdatedAt, remoteUpdatedAt, variantTime)
+}
 
 private fun CacheBookItem.hasLockedCacheTask(): Boolean {
     if (AudioCacheTaskManager.snapshot(book.bookUrl).locksCacheActions()) return true

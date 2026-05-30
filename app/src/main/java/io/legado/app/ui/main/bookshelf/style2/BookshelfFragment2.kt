@@ -88,7 +88,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelf.clipToPadding = true
+        binding.rvBookshelf.clipToPadding = false
         binding.rvBookshelf.applyMainBottomBarPadding()
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
@@ -274,6 +274,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             is Book -> startActivity<BookInfoActivity> {
                 putExtra("name", item.name)
                 putExtra("author", item.author)
+                putExtra("bookUrl", item.bookUrl)
             }
 
             is BookGroup -> showDialogFragment(GroupEditDialog(item))

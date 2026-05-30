@@ -11,6 +11,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.book.library.LibraryCloudSync
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.EpubFile
@@ -172,6 +174,7 @@ object BookHelp {
     ) {
         try {
             saveText(book, bookChapter, content)
+            LibraryCloudSync.enqueueUpload(book, bookChapter, content)
             //saveImages(bookSource, book, bookChapter, content)
             postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
         } catch (e: Exception) {
@@ -399,7 +402,7 @@ object BookHelp {
             val matcher = AppPattern.imgPattern.matcher(it)
             while (matcher.find()) {
                 val src = matcher.group(1)!!
-                val image = getImage(book, src)
+                val image = AiImageGalleryManager.resolveImageFile(src) ?: getImage(book, src)
                 if (!image.exists()) {
                     ret = false
                     continue
@@ -447,9 +450,14 @@ object BookHelp {
             }
             val needRefreshEpubContent = book.isEpub &&
                 AppConfig.adaptSpecialStyle &&
-                (!string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
-                    !string.contains(EpubFile.NATIVE_LAYOUT_FLAG) ||
-                    !string.contains(EpubFile.NATIVE_CONTENT_VERSION_FLAG))
+                if (AppConfig.useExperimentalEpubCore) {
+                    !string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
+                        !string.contains(EpubFile.NATIVE_LAYOUT_FLAG) ||
+                        !string.contains(EpubFile.NATIVE_CONTENT_VERSION_FLAG)
+                } else {
+                    string.contains(EpubFile.NATIVE_CONTENT_FLAG) ||
+                        !string.contains(EpubFile.TEXT_CONTENT_VERSION_FLAG)
+                }
             if (needRefreshEpubContent) {
                 val epubContent = LocalBook.getContent(book, bookChapter)
                 if (epubContent != null) {
@@ -493,6 +501,7 @@ object BookHelp {
         val matcher = AppPattern.imgPattern.matcher(content)
         while (matcher.find()) {
             val src = matcher.group(1) ?: continue
+            if (AiImageGalleryManager.imageIdFromUri(src) != null) continue
             val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
             getImage(book, mSrc).takeIf { it.exists() }?.delete()
         }

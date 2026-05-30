@@ -22,8 +22,8 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
             "official_version" -> AppVariant.OFFICIAL
             "beta_release_version" -> AppVariant.BETA_RELEASE
             "beta_releaseA_version" -> AppVariant.BETA_RELEASEA
-            "beta_releaseS_version" -> AppVariant.BETA_RELEASES
-            else -> AppConst.appInfo.appVariant
+            "beta_releaseS_version" -> AppVariant.OFFICIAL
+            else -> AppVariant.OFFICIAL
         }
 
     private suspend fun getLatestRelease(): List<AppReleaseInfo> {
@@ -47,8 +47,8 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
                 .getOrElse {
                     throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
                 }
-                .first { !it.prerelease }
-                .gitReleaseToAppReleaseInfo()
+                .filterNot { it.prerelease }
+                .flatMap { it.gitReleaseToAppReleaseInfo() }
                 .sortedByDescending { it.createdAt }
         }
         return GSON.fromJsonObject<GiteeRelease>(body)
@@ -70,14 +70,16 @@ object AppUpdateGitee : AppUpdate.AppUpdateInterface {
     suspend fun checkNow(): AppUpdate.UpdateInfo {
         return getLatestRelease()
             .filter {
-                if (AppConst.appInfo.appVariant == AppVariant.BETA_RELEASE) { //不切版本
-                    it.appVariant == AppConst.appInfo.appVariant
-                } else {
-                    it.appVariant == checkVariant
-                }
+                it.appVariant == checkVariant
             }
             .filter { it.supportsDeviceAbi() }
-            .firstOrNull { it.versionName > AppConst.appInfo.versionName }
+            .firstOrNull {
+                if (it.versionCode > 0L) {
+                    it.versionCode > AppConst.appInfo.versionCode
+                } else {
+                    it.versionName > AppConst.appInfo.versionName
+                }
+            }
             ?.let {
                 AppUpdate.UpdateInfo(
                     it.versionName,

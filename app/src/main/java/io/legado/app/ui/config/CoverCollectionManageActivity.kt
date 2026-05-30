@@ -3,6 +3,8 @@ package io.legado.app.ui.config
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -16,7 +18,9 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.ActivityCoverCollectionManageBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.ItemCoverCollectionBinding
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -45,6 +49,8 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
 
     private var adapter: Adapter? = null
     private var isNight = false
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
     private val importZip = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri -> importZip(uri) }
     }
@@ -94,6 +100,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
 
     override fun onResume() {
         super.onResume()
+        invalidateOptionsMenu()
         loadCollections()
     }
 
@@ -104,9 +111,62 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
         btnNight.setTextColor(if (isNight) accentColor else primaryTextColor)
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_CONTAINER -> {
+                showContainerSelector()
+                true
+            }
+            else -> super.onCompatOptionsItemSelected(item)
+        }
+    }
+
+    private fun updateContainerMenu() {
+        val item = containerMenuItem ?: return
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+        item.isVisible = true
+        item.title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+    }
+
+    private fun showContainerSelector() {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) { AppCloudStorage.listContainers().filter { it.enabled } }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
+                val container = containers[index]
+                if (container.id == selected) return@selector
+                AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                cloudContainerId = container.id
+                updateContainerMenu()
+                loadCollections()
+            }
+        }
+    }
+
     private fun loadCollections() {
         lifecycleScope.launch {
-            val items = CoverCollectionManager.loadEntries(isNight)
+            val items = CoverCollectionManager.loadEntries(isNight, cloudContainerId, CLOUD_SCOPE)
             adapter?.setItems(items)
         }
     }
@@ -190,7 +250,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
 
     private fun openDetail(entry: CoverCollectionManager.Entry) {
         if (entry.source == CoverCollectionManager.Source.REMOTE) {
-            runAction { CoverCollectionManager.download(entry) }
+            runAction { CoverCollectionManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
             return
         }
         val item = entry.collection
@@ -235,10 +295,10 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
             when (actions[index]) {
                 CoverAction.RENAME -> showRenameDialog(entry)
                 CoverAction.EXPORT -> exportCollection(entry)
-                CoverAction.UPLOAD -> runAction { CoverCollectionManager.upload(entry) }
-                CoverAction.DOWNLOAD -> runAction { CoverCollectionManager.download(entry) }
+                CoverAction.UPLOAD -> runAction { CoverCollectionManager.upload(entry, cloudContainerId, CLOUD_SCOPE) }
+                CoverAction.DOWNLOAD -> runAction { CoverCollectionManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
                 CoverAction.DELETE_LOCAL -> runAction { CoverCollectionManager.deleteLocal(entry) }
-                CoverAction.DELETE_REMOTE -> runAction { CoverCollectionManager.deleteRemote(entry) }
+                CoverAction.DELETE_REMOTE -> runAction { CoverCollectionManager.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE) }
             }
         }
     }
@@ -287,6 +347,11 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                 getItem(holder.bindingAdapterPosition - getHeaderCount())?.let { openDetail(it) }
             }
         }
+    }
+
+    private companion object {
+        private const val CLOUD_SCOPE = "coverCollection"
+        private const val MENU_CONTAINER = 0x5401
     }
 
     private enum class CoverAction(val titleRes: Int) {

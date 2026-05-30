@@ -238,9 +238,32 @@
     <string-array name="cover_collection_mode_entries">
 		<item>@string/cover_collection_mode_random</item>
 		<item>@string/cover_collection_mode_sequence</item>
+		<item>@string/cover_collection_mode_mixed</item>
 	</string-array>
     <string-array name="cover_collection_mode_values">
 		<item>random</item>
 		<item>sequence</item>
+		<item>mixed</item>
 	</string-array>
+
+    <string-array name="cloud_storage_types">
+        <item>WebDAV</item>
+        <item>S3</item>
+    </string-array>
+
+    <string-array name="cloud_storage_type_values">
+        <item>WEBDAV</item>
+        <item>S3</item>
+    </string-array>
+
+    <string-array name="epub_read_engine_entries">
+        <item>@string/epub_read_engine_text</item>
+        <item>@string/epub_read_engine_core</item>
+    </string-array>
+
+    <string-array name="epub_read_engine_values">
+        <item>text</item>
+        <item>core</item>
+    </string-array>
+
 </resources>

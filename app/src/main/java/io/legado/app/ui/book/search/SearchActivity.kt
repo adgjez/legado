@@ -9,13 +9,17 @@ import android.view.MenuItem
 import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
+import android.view.ViewGroup
 import android.widget.PopupWindow
 import android.widget.TextView
+import android.widget.LinearLayout
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -51,19 +55,22 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
-import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.gone
+import io.legado.app.utils.imeHeight
 import io.legado.app.utils.invisible
+import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -100,6 +107,13 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var booksFlowJob: Job? = null
     private var modernMenuPopup: PopupWindow? = null
     private var isManualStopSearch = false
+    private var sourceGroupBarBaseBottomMargin = 0
+    private var inputHelpBaseBottomMargin = 0
+    private var currentBottomInset = 0
+    private var currentImeInset = 0
+    private var rootBaseTopPadding = 0
+    private val searchEditText: TextView?
+        get() = searchView.findViewById(androidx.appcompat.R.id.search_src_text)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initTopBar()
@@ -143,7 +157,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initTopBar() {
-        binding.root.applyStatusBarPadding()
+        rootBaseTopPadding = binding.root.paddingTop
         binding.btnMenu.setColorFilter(secondaryTextColor)
         val isNight = AppConfig.isNightTheme
         val cardColor = if (isNight) {
@@ -163,13 +177,13 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         val strokeColor = TopBarSearchStyle.strokeColor(this)
         TopBarSearchStyle.apply(binding.searchView)
-        binding.llBookshelfHintCard.background = UiCorner.roundedStroke(
+        binding.llBookshelfHintCard.background = UiCorner.opaqueRoundedStroke(
             cardColor,
             UiCorner.searchRadius(20f),
             1.dpToPx(),
             strokeColor
         )
-        binding.llHistoryCard.background = UiCorner.roundedStroke(
+        binding.llHistoryCard.background = UiCorner.opaqueRoundedStroke(
             cardColor,
             UiCorner.searchRadius(20f),
             1.dpToPx(),
@@ -180,6 +194,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             chipPressedColor,
             UiCorner.searchRadius(14f)
         )
+        updateSourceGroupTags()
         binding.btnMenu.setOnClickListener {
             showSearchMenu(it)
         }
@@ -238,12 +253,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     private fun initSearchView() {
         searchView.applyTint(primaryTextColor)
-        searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
-            ?.apply {
-                setBackgroundColor(Color.TRANSPARENT)
-                setTextColor(primaryTextColor)
-                setHintTextColor(secondaryTextColor)
+        searchEditText?.apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setTextColor(primaryTextColor)
+            setHintTextColor(secondaryTextColor)
+            setOnFocusChangeListener { _, _ ->
+                updateKeyboardGroupBarVisible()
             }
+        }
         searchView.findViewById<android.view.View>(androidx.appcompat.R.id.search_plate)
             ?.setBackgroundColor(Color.TRANSPARENT)
         searchView.findViewById<android.view.View>(androidx.appcompat.R.id.search_edit_frame)
@@ -268,7 +285,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             override fun onQueryTextChange(newText: String): Boolean {
                 viewModel.stop()
                 binding.fbStartStop.invisible()
-                searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)?.apply {
+                searchEditText?.apply {
                     setTextColor(primaryTextColor)
                     setHintTextColor(secondaryTextColor)
                 }
@@ -277,6 +294,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         })
         searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
+            updateKeyboardGroupBarVisible()
             if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank())) {
                 visibleInputHelp(false)
             } else {
@@ -349,15 +367,38 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         binding.fbStartStop.applyNavigationBarMargin(true)
         binding.tvClearHistory.setOnClickListener { alertClearHistory() }
+        sourceGroupBarBaseBottomMargin =
+            (binding.hsvSourceGroupBar.layoutParams as? ViewGroup.MarginLayoutParams)
+                ?.bottomMargin ?: 0
+        inputHelpBaseBottomMargin =
+            (binding.llInputHelp.layoutParams as? ViewGroup.MarginLayoutParams)
+                ?.bottomMargin ?: 0
+        binding.hsvSourceGroupBar.bringToFront()
+        binding.root.setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+            val statusInset = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            binding.root.setPadding(
+                binding.root.paddingLeft,
+                rootBaseTopPadding + statusInset,
+                binding.root.paddingRight,
+                binding.root.paddingBottom
+            )
+            val imeInset = windowInsets.imeHeight
+            currentImeInset = imeInset
+            val bottomInset = if (imeInset > 0) imeInset else windowInsets.navigationBarHeight
+            currentBottomInset = bottomInset
+            binding.hsvSourceGroupBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                bottomMargin = sourceGroupBarBaseBottomMargin + bottomInset
+            }
+            updateKeyboardGroupBarVisible()
+            updateInputHelpBottomMargin()
+            windowInsets
+        }
     }
 
     private fun initData() {
         viewModel.searchScope.stateLiveData.observe(this) {
-            if (!binding.llInputHelp.isVisible) {
-                searchView.query?.toString()?.trim()?.let {
-                    searchView.setQuery(it, true)
-                }
-            }
+            updateSourceGroupTags()
+            updateKeyboardGroupBarVisible()
         }
         viewModel.isSearchLiveData.observe(this) {
             if (it) {
@@ -372,6 +413,8 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         lifecycleScope.launch {
             appDb.bookSourceDao.flowEnabledGroups().collect {
                 groups = it
+                updateSourceGroupTags()
+                updateKeyboardGroupBarVisible()
             }
         }
         lifecycleScope.launch {
@@ -396,8 +439,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         }
         val key = intent?.getStringExtra("key")
         if (key.isNullOrBlank()) {
-            searchView.findViewById<TextView>(androidx.appcompat.R.id.search_src_text)
-                .requestFocus()
+            searchEditText?.requestFocus()
         } else {
             searchView.setQuery(key, true)
         }
@@ -424,10 +466,107 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun visibleInputHelp(visible: Boolean) {
         if (visible) {
             upHistory(searchView.query.toString())
+            updateSourceGroupTags()
+            updateKeyboardGroupBarVisible()
             binding.llInputHelp.visibility = VISIBLE
         } else {
             binding.llInputHelp.visibility = GONE
         }
+    }
+
+    private fun updateSourceGroupTags() {
+        val currentGroups = groups.orEmpty()
+        val container = binding.llSourceGroupTags
+        container.removeAllViews()
+        if (currentGroups.isEmpty()) {
+            binding.hsvSourceGroupBar.gone()
+            return
+        }
+        updateKeyboardGroupBarVisible()
+        val selectedNames = if (viewModel.searchScope.isSource()) {
+            emptySet()
+        } else {
+            viewModel.searchScope.toString().splitNotBlank(",").toSet()
+        }
+        container.addView(createSourceGroupChip(getString(R.string.all_source), selectedNames.isEmpty()) {
+            updateSearchScopeFromTag("")
+        })
+        currentGroups.forEach { group ->
+            container.addView(createSourceGroupChip(group, selectedNames.contains(group)) {
+                updateSearchScopeFromTag(group)
+            })
+        }
+    }
+
+    private fun updateKeyboardGroupBarVisible() {
+        val show = currentImeInset > 0 && groups.orEmpty().isNotEmpty()
+        val oldVisible = binding.hsvSourceGroupBar.isVisible
+        if (show) {
+            binding.hsvSourceGroupBar.bringToFront()
+            binding.hsvSourceGroupBar.visible()
+        } else {
+            binding.hsvSourceGroupBar.gone()
+        }
+        if (oldVisible != binding.hsvSourceGroupBar.isVisible) {
+            updateInputHelpBottomMargin()
+        }
+    }
+
+    private fun updateInputHelpBottomMargin() {
+        val groupBarHeight = binding.hsvSourceGroupBar.height
+            .takeIf { it > 0 } ?: 46.dpToPx()
+        val inputHelpBottomInset = currentBottomInset +
+            if (binding.hsvSourceGroupBar.isVisible) groupBarHeight else 0
+        binding.llInputHelp.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+            bottomMargin = inputHelpBaseBottomMargin + inputHelpBottomInset
+        }
+    }
+
+    private fun createSourceGroupChip(
+        title: String,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): TextView {
+        val bgColor = if (selected) {
+            ColorUtils.adjustAlpha(accentColor, if (AppConfig.isNightTheme) 0.28f else 0.16f)
+        } else {
+            ContextCompat.getColor(this, R.color.background_menu)
+        }
+        val strokeColor = if (selected) {
+            accentColor
+        } else {
+            TopBarSearchStyle.strokeColor(this)
+        }
+        return TextView(this).apply {
+            text = title
+            isSelected = selected
+            gravity = android.view.Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            minWidth = 52.dpToPx()
+            setTextColor(if (selected) accentColor else primaryTextColor)
+            textSize = 12f
+            includeFontPadding = false
+            setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+            background = UiCorner.opaqueRoundedStroke(
+                bgColor,
+                UiCorner.actionRadius(this@SearchActivity),
+                1.dpToPx(),
+                strokeColor
+            )
+            setOnClickListener { onClick() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                30.dpToPx()
+            ).apply {
+                setMargins(0, 4.dpToPx(), 8.dpToPx(), 4.dpToPx())
+            }
+        }
+    }
+
+    private fun updateSearchScopeFromTag(group: String) {
+        viewModel.searchScope.update(group)
+        updateSourceGroupTags()
     }
 
     /**

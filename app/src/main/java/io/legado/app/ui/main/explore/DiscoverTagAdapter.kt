@@ -12,9 +12,20 @@ import io.legado.app.lib.theme.UiCorner
 data class DiscoverTagItem(
     val kind: ExploreKind,
     val text: String,
-    val isButton: Boolean,
+    val role: Role,
     val group: String? = null,
-)
+) {
+    enum class Role {
+        UrlTag,
+        GlobalSelect,
+        Toggle,
+        ActionButton,
+        ScriptUrl
+    }
+
+    val isButton: Boolean
+        get() = role == Role.ActionButton || role == Role.ScriptUrl || role == Role.Toggle
+}
 
 class DiscoverTagAdapter(
     private val onItemClick: (index: Int, item: DiscoverTagItem) -> Unit

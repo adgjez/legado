@@ -4,10 +4,14 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
@@ -23,9 +27,11 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -39,6 +45,7 @@ import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.externalFiles
@@ -69,6 +76,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private var pendingColorTarget = 0
     private var pendingWallpaperCropRequest: ImageCropHelper.Request? = null
     private val handledWebDavTasks = mutableSetOf<String>()
+    private var loadVersion = 0
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
+    private var containerMenuPopup: PopupWindow? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val importPackage = registerForActivityResult(HandleFileContract()) {
@@ -99,6 +110,11 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         initView()
         loadPackages()
         observeWebDavTasks()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
     }
 
     override fun observeLiveBus() {
@@ -145,16 +161,40 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }
         }
         updateTabs()
-        titleBar.toolbar.menu.add(R.string.import_str).setOnMenuItemClickListener {
-            importPackage.launch {
-                mode = HandleFileContract.FILE
-                title = getString(R.string.import_str)
-                allowExtensions = arrayOf("zip")
-            }
-            true
-        }
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            setActionView(R.layout.view_action_button)
+            actionView?.let { view ->
+                view.contentDescription = title
+                view.findViewById<ImageButton>(R.id.item)?.setImageDrawable(icon)
+                view.setOnClickListener { showContainerSelector(view) }
+            }
+        }
+        menu.add(0, MENU_SYNC_TASKS, 1, R.string.package_sync_task_menu).apply {
+            setIcon(R.drawable.ic_history)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_CONTAINER -> {
+                showContainerSelector(item.actionView)
+                true
+            }
+            MENU_SYNC_TASKS -> {
+                showTopBarSyncTasks()
+                true
+            }
+            else -> super.onCompatOptionsItemSelected(item)
+        }
+    }
     private fun showAddDialog() {
         selector(
             getString(R.string.theme_add),
@@ -178,16 +218,58 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         btnNight.setTextColor(if (isNightMode) accentColor else primaryTextColor)
     }
 
+    private fun updateContainerMenu() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        val item = containerMenuItem ?: return
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            ?: containers.firstOrNull()?.id
+        item.isVisible = true
+        val title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+        item.title = title
+        item.actionView?.contentDescription = title
+    }
+
+    private fun showContainerSelector(anchor: View? = null) {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) { AppCloudStorage.listContainers().filter { it.enabled } }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            val popupAnchor = anchor ?: containerMenuItem?.actionView ?: binding.titleBar.toolbar
+            val actions = containers.map { container ->
+                ModernActionPopup.Action(AppCloudStorage.containerDisplayLabel(container)) {
+                    if (container.id == selected) return@Action
+                    AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                    cloudContainerId = container.id
+                    updateContainerMenu()
+                    loadPackages()
+                }
+            }
+            containerMenuPopup = ModernActionPopup.show(popupAnchor, actions, containerMenuPopup)
+        }
+    }
     private fun loadPackages() {
+        val version = ++loadVersion
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
-                    TopBarConfig.loadEntries(this@TopBarManageActivity, isNightMode, includeRemote = true)
+                    TopBarConfig.loadEntries(this@TopBarManageActivity, isNightMode, includeRemote = true, cloudContainerId, CLOUD_SCOPE)
                 }
             }.onSuccess {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 adapter.submit(it, TopBarConfig.activeDirName(isNightMode))
                 binding.tvSummary.text = getString(R.string.top_bar_manage_summary)
             }.onFailure {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 binding.tvSummary.text = it.localizedMessage
             }
         }
@@ -204,7 +286,15 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             return
         }
         if (base.localDir == null && entry != null && base.source == TopBarConfig.Source.REMOTE) {
-            toastOnUi(R.string.navigation_bar_download_first)
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) { TopBarConfig.download(base, cloudContainerId, CLOUD_SCOPE) }
+                }.onSuccess {
+                    showEditDialog(it)
+                }.onFailure {
+                    toastOnUi(it.localizedMessage)
+                }
+            }
             return
         }
         editingEntry = base
@@ -445,6 +535,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 }
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
+                if (enqueueUploadIfNeeded(it)) {
+                    showTopBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -454,10 +547,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private fun showActions(entry: TopBarConfig.Entry) {
         val actions = buildList {
             add(Action.APPLY)
-            add(Action.EDIT)
             if (entry.dirName != TopBarConfig.DEFAULT_DIR_NAME) {
+                add(Action.EDIT)
                 add(Action.EXPORT)
-                if (AppConfig.syncThemePackages) add(Action.UPLOAD)
+                if (entry.source != TopBarConfig.Source.REMOTE) add(Action.UPLOAD)
                 if (entry.source != TopBarConfig.Source.LOCAL) add(Action.DOWNLOAD)
                 if (entry.source != TopBarConfig.Source.REMOTE) add(Action.DELETE_LOCAL)
                 if (entry.source != TopBarConfig.Source.LOCAL) add(Action.DELETE_REMOTE)
@@ -470,16 +563,16 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 Action.EDIT -> showEditDialog(entry)
                 Action.EXPORT -> exportPackage(entry)
                 Action.UPLOAD -> enqueueUpload(entry)
-                Action.DOWNLOAD -> runAction { TopBarConfig.download(entry) }
+                Action.DOWNLOAD -> runAction { TopBarConfig.download(entry, cloudContainerId, CLOUD_SCOPE) }
                 Action.DELETE_LOCAL -> confirmDelete(entry, getString(R.string.navigation_bar_delete_local_confirm)) {
                     TopBarConfig.deleteLocal(entry)
                     postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
                 }
                 Action.DELETE_REMOTE -> confirmDelete(entry, getString(R.string.navigation_bar_delete_remote_confirm)) {
-                    TopBarConfig.deleteRemote(entry)
+                    TopBarConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
                 }
                 Action.DELETE_BOTH -> confirmDelete(entry, getString(R.string.navigation_bar_delete_both_confirm)) {
-                    TopBarConfig.delete(entry)
+                    TopBarConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
                     postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
                 }
             }
@@ -487,36 +580,73 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     }
 
     private fun enqueueUpload(entry: TopBarConfig.Entry) {
-        val queued = WebDavTaskManager.enqueueUpload(
+        val queued = enqueueUploadTask(entry)
+        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+        if (queued) {
+            showTopBarSyncTasks()
+        }
+    }
+
+    private fun enqueueUploadIfNeeded(entry: TopBarConfig.Entry): Boolean {
+        if (!AppConfig.syncThemePackages) return false
+        return enqueueUploadTask(entry)
+    }
+
+    private fun enqueueUploadTask(entry: TopBarConfig.Entry): Boolean {
+        return WebDavTaskManager.enqueueUpload(
             key = "top_bar_upload:${entry.config.isNightMode}:${entry.dirName}",
             name = entry.config.name,
             type = WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD,
             runningMessage = getString(R.string.navigation_bar_upload)
         ) {
-            TopBarConfig.upload(entry)
+            TopBarConfig.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
-        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
     }
 
     private fun observeWebDavTasks() {
+        seedHandledWebDavTasks(WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD)
         lifecycleScope.launch {
             WebDavTaskManager.states.collectLatest { states ->
+                var shouldReload = false
+                var failedMessage: String? = null
                 states.values
                     .filter { it.type == WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD }
-                    .filter { it.status == WebDavTaskStatus.COMPLETED }
+                    .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
-                        if (handledWebDavTasks.add("${state.key}:${state.status}")) {
-                            loadPackages()
+                        if (handledWebDavTasks.add(webDavTaskHandleKey(state.key, state.status))) {
+                            shouldReload = true
+                            if (state.status == WebDavTaskStatus.FAILED) {
+                                failedMessage = state.message
+                            }
                         }
                     }
+                if (shouldReload) {
+                    loadPackages()
+                    failedMessage?.let { toastOnUi(getString(R.string.theme_sync_failed, it)) }
+                }
             }
         }
+    }
+
+    private fun seedHandledWebDavTasks(type: WebDavTaskType) {
+        WebDavTaskManager.states.value.values
+            .filter { it.type == type }
+            .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
+            .forEach { handledWebDavTasks.add(webDavTaskHandleKey(it.key, it.status)) }
+    }
+
+    private fun webDavTaskHandleKey(key: String, status: WebDavTaskStatus): String {
+        return "$key:$status"
+    }
+
+    private fun showTopBarSyncTasks() {
+        showPackageSyncTaskDialog(setOf(WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD))
     }
 
     private fun applyPackage(entry: TopBarConfig.Entry) {
         lifecycleScope.launch {
             kotlin.runCatching {
-                withContext(Dispatchers.IO) { if (entry.source == TopBarConfig.Source.REMOTE) TopBarConfig.download(entry) else entry }
+                withContext(Dispatchers.IO) { if (entry.source == TopBarConfig.Source.REMOTE) TopBarConfig.download(entry, cloudContainerId, CLOUD_SCOPE) else entry }
             }.onSuccess {
                 TopBarConfig.apply(it)
                 postEvent(EventBus.TOP_BAR_CHANGED, it.config.isNightMode)
@@ -571,6 +701,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()
+                if (enqueueUploadIfNeeded(it)) {
+                    showTopBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -684,13 +817,13 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 tvName.text = entry.config.name
                 tvInfo.text = buildString {
                     append(styleLabel(entry.config.style))
-                    append(" 路 ")
+                    append(" · ")
                     append(getString(R.string.top_bar_tag_bar_alpha))
                     append(" ")
                     append(entry.config.tagBarAlpha)
                     append("%")
                     if (entry.config.updatedAt > 0) {
-                        append(" 路 ")
+                        append(" · ")
                         append(dateFormat.format(Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))))
                     }
                 }
@@ -710,7 +843,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                 ivPreview.alpha = 1f
                 btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.text = getString(R.string.edit)
-                btnEdit.visibility = View.VISIBLE
+                btnEdit.visibility = if (entry.dirName == TopBarConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
                 btnApply.setTextColor(accentColor)
                 btnEdit.setTextColor(primaryTextColor)
                 btnMore.setTextColor(primaryTextColor)
@@ -718,7 +851,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
                     it.typeface = this@TopBarManageActivity.uiTypeface()
                 }
                 btnApply.setOnClickListener { applyPackage(entry) }
-                btnEdit.setOnClickListener { showEditDialog(entry) }
+                btnEdit.setOnClickListener {
+                    if (entry.dirName != TopBarConfig.DEFAULT_DIR_NAME) showEditDialog(entry)
+                }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
             }
@@ -737,6 +872,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     }
 
     private companion object {
+        private const val CLOUD_SCOPE = "theme"
+        private const val MENU_CONTAINER = 0x5401
+        private const val MENU_SYNC_TASKS = 0x5402
         const val COLOR_TAG_BAR = 5101
         const val COLOR_TAG_SELECTED = 5102
         const val REQUEST_WALLPAPER = 5103

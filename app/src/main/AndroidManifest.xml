@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-sdk tools:overrideLibrary="com.qmdeve.liquidglass" />
+    <uses-sdk tools:overrideLibrary="androidx.compose.animation,androidx.compose.animation.core,androidx.compose.foundation,androidx.compose.foundation.layout,androidx.compose.material.ripple,androidx.compose.material3,androidx.compose.runtime,androidx.compose.runtime.annotation,androidx.compose.runtime.retain,androidx.compose.runtime.saveable,androidx.compose.ui,androidx.compose.ui.geometry,androidx.compose.ui.graphics,androidx.compose.ui.text,androidx.compose.ui.tooling,androidx.compose.ui.tooling.data,androidx.compose.ui.tooling.preview,androidx.compose.ui.unit,androidx.compose.ui.util,androidx.window,androidx.window.core,com.qmdeve.liquidglass" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -146,7 +146,7 @@
         <!-- 阅读界面 -->
         <activity
             android:name=".ui.book.read.ReadBookActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -239,6 +239,13 @@
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.book.read.config.ReadMenuButtonManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.read.config.ReadMenuCustomButtonEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.config.ThemeManageActivity"
             android:launchMode="standard" />
         <activity
@@ -250,6 +257,29 @@
         <activity
             android:name=".ui.config.BookInfoManageActivity"
             android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.BubbleManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.S3ContainerManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.LibraryContainerManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.AiProviderManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.AiProviderEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.config.AiImageProviderManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.config.AiImageProviderEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
             android:name=".ui.config.CoverCollectionManageActivity"
             android:launchMode="standard" />
@@ -264,10 +294,27 @@
             android:name=".ui.main.ai.AiChatActivity"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.main.ai.AiImageGalleryActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.character.BookCharacterManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.character.BookCharacterEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
+            android:name=".ui.book.character.BookCharacterCardActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.book.character.BookCharacterRelationActivity"
+            android:launchMode="standard" />
         <!-- 搜索界面 -->
         <activity
             android:name=".ui.book.search.SearchActivity"
-            android:launchMode="standard" />
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
         <!-- 关于界面 -->
         <activity
             android:name=".ui.about.AboutActivity"

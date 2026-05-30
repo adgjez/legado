@@ -12,9 +12,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.ParagraphRuleJsExtensions
+import io.legado.app.help.book.ReadMenuCustomButtonSource
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
 import io.legado.app.model.VideoPlay
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toastOnUi
 
 class SourceLoginViewModel(application: Application) : BaseViewModel(application) {
@@ -29,6 +32,8 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
     fun initData(intent: Intent, success: (bookSource: BaseSource) -> Unit, error: () -> Unit) {
         execute {
             bookType = intent.getIntExtra("bookType", 0)
+            val sourceType = intent.getStringExtra("type")
+            val contextSource = sourceType == "readMenuCustomButton" || sourceType == "paragraphRule"
             when (bookType) {
                 BookType.text -> {
                     source = ReadBook.bookSource
@@ -52,13 +57,15 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                 else -> {
                     val sourceKey = intent.getStringExtra("key")
                         ?: throw NoStackTraceException("没有参数")
-                    val type = intent.getStringExtra("type")
-                    source = when (type) {
+                    source = when (sourceType) {
                         "bookSource" ->  appDb.bookSourceDao.getBookSource(sourceKey)
                         "rssSource" -> appDb.rssSourceDao.getByKey(sourceKey)
                         "httpTts" -> appDb.httpTTSDao.get(sourceKey.toLong())
                         "paragraphRule" -> appDb.paragraphRuleDao.get(sourceKey.toLong())?.let { rule ->
                             ParagraphRuleJsExtensions(rule)
+                        }
+                        "readMenuCustomButton" -> appDb.readMenuCustomButtonDao.get(sourceKey.toLong())?.let { button ->
+                            ReadMenuCustomButtonSource(button)
                         }
                         else -> null
                     }
@@ -66,12 +73,33 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                     book = bookUrl?.let {
                         appDb.bookDao.getBook(it) ?: appDb.searchBookDao.getSearchBook(it)?.toBook()
                     }
+                    if (book == null && contextSource) {
+                        book = ReadBook.book
+                    }
+                    val chapterIndex = intent.getIntExtra("chapterIndex", -1)
+                    chapter = book?.let { currentBook ->
+                        chapterIndex.takeIf { it >= 0 }?.let {
+                            appDb.bookChapterDao.getChapter(currentBook.bookUrl, it)
+                        }
+                    } ?: if (contextSource) {
+                        ReadBook.curTextChapter?.chapter
+                    } else {
+                        null
+                    }
                 }
             }
             headerMap = runScriptWithContext {
                 source?.getHeaderMap(true) ?: emptyMap()
             }
-            source?.let{ loginInfo = it.getLoginInfoMap() }
+            source?.let {
+                loginInfo = if (contextSource) {
+                    it.getLoginInfo()?.let { json ->
+                        GSON.fromJsonObject<MutableMap<String, String>>(json).getOrNull()
+                    } ?: mutableMapOf()
+                } else {
+                    it.getLoginInfoMap()
+                }
+            }
             source
         }.onSuccess {
             if (it != null) {

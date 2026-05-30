@@ -15,7 +15,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
@@ -126,6 +126,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             ReadBook.resetData(book)
         }
         isInitFinish = true
+        notifyNoSourceIfNeeded(book)
         if (!book.isLocal && book.tocUrl.isEmpty() && !loadBookInfo(book)) {
             return
         }
@@ -162,6 +163,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         if (shouldAutoChangeSourceForCurrentChapter(book)) {
             autoChangeSource(book.name, book.author)
             return
+        }
+    }
+
+    private fun notifyNoSourceIfNeeded(book: Book) {
+        if (!book.isLocal && ReadBook.bookSource == null) {
+            context.toastOnUi(R.string.error_no_source)
         }
     }
 
@@ -270,7 +277,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     ) {
         if (!AppConfig.syncBookProgress) return
         execute {
-            AppWebDav.getBookProgress(book)
+            AppCloudStorage.getBookProgress(book)
         }.onError {
             AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)
         }.onSuccess { progress ->

@@ -34,8 +34,13 @@ class AiChatViewModel : ViewModel() {
         private var activeViewModel: AiChatViewModel? = null
         private var activePendingContent: String = ""
         private var activeThinkingMessageId: String? = null
+        private var activeThinkingKey: String? = null
+        private var activeThinkingLabel: String? = null
         private var activePendingAssistantMessageId: String? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
+        private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
+        private const val MAX_STORED_TEXT_CHARS = 20_000
+        private const val MAX_STORED_STATUS_CHARS = 4_000
     }
 
     init {
@@ -60,18 +65,14 @@ class AiChatViewModel : ViewModel() {
         val requestSessionId = currentSessionId
         activeViewModel = this
         activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
         activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
-        val pendingMessage = AiChatMessage(
-            role = AiChatMessage.Role.ASSISTANT,
-            content = pendingThinkingLabel,
-            pending = true
-        )
-        activePendingAssistantMessageId = pendingMessage.id
-        append(pendingMessage)
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
+        var updatedContextSummary = currentSessionSummary()
         activeJob = requestScope.launch {
             val result = runCatching {
                 AiChatService.chatStream(
@@ -85,6 +86,10 @@ class AiChatViewModel : ViewModel() {
                     },
                     onStatus = { status ->
                         targetFor(requestSessionId).upsertStatus(status)
+                    },
+                    contextSummary = updatedContextSummary,
+                    onContextSummary = { summary ->
+                        updatedContextSummary = summary
                     }
                 )
             }
@@ -92,10 +97,14 @@ class AiChatViewModel : ViewModel() {
             activeJob = null
             activeSessionId = null
             result.onSuccess { content ->
+                targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
                 activePendingContent = ""
                 activeToolMessageIds.clear()
+                updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
                 targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
             }.onFailure { throwable ->
+                targetFor(requestSessionId).finishActiveThinking(fallback = throwable.localizedMessage)
+                targetFor(requestSessionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
                 activePendingContent = ""
                 activeToolMessageIds.clear()
                 if (throwable is CancellationException) {
@@ -119,7 +128,8 @@ class AiChatViewModel : ViewModel() {
         activeJob = null
         activeSessionId = null
         activePendingContent = ""
-        activeThinkingMessageId = null
+        finishActiveThinking(fallback = cancelledText)
+        finishActiveTools(false, cancelledText)
         activePendingAssistantMessageId = null
         activeToolMessageIds.clear()
         setRequesting(false)
@@ -151,20 +161,175 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun upsertThinkingStatus(thinkingTitle: String, thinking: String) {
-        if (activePendingContent.isNotBlank()) return
-        val messageId = activePendingAssistantMessageId ?: return
+        if (thinking.isBlank()) return
+        val messageId = activeThinkingMessageId
+            ?: createThinkingMessage(activeThinkingKey ?: "thinking", activeThinkingLabel ?: thinkingTitle)
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
+            val current = messages[index].content
+            val content = mergeThinkingContent(current, thinking)
             messages[index] = messages[index].copy(
-                content = pendingThinkingLabel,
-                pending = true
+                content = content,
+                pending = true,
+                collapsed = false,
+                statusLabel = thinkingTitle,
+                updatedAt = System.currentTimeMillis()
             )
             publish()
         }
     }
 
     fun upsertStatus(status: org.json.JSONObject) {
-        return
+        when (status.optString("kind")) {
+            "thinking" -> upsertThinkingEvent(status)
+            "tool" -> upsertToolEvent(status)
+        }
+    }
+
+    private fun upsertThinkingEvent(status: org.json.JSONObject) {
+        val stage = status.optString("stage")
+        val key = status.optString("key").ifBlank { "thinking" }
+        when (stage) {
+            "start" -> {
+                activeThinkingKey = key
+                activeThinkingLabel = status.optString("label").ifBlank { pendingThinkingLabel }
+            }
+            "finish" -> {
+                val content = status.optString("content")
+                val label = status.optString("label").takeIf { it.isNotBlank() }
+                if (activeThinkingMessageId == null && content.isNotBlank()) {
+                    createThinkingMessage(key, label ?: activeThinkingLabel ?: pendingThinkingLabel)
+                }
+                finishActiveThinking(
+                    fallback = status.optString("fallback"),
+                    content = content,
+                    removeIfBlank = status.optBoolean("removeIfBlank", false),
+                    label = label
+                )
+            }
+        }
+    }
+
+    private fun createThinkingMessage(key: String, label: String = pendingThinkingLabel): String {
+        activeThinkingMessageId?.let { return it }
+        val message = AiChatMessage(
+            role = AiChatMessage.Role.ASSISTANT,
+            content = "",
+            pending = true,
+            kind = AiChatMessage.Kind.THINKING,
+            statusKey = key,
+            statusLabel = label,
+            collapsed = false
+        )
+        messages.add(message)
+        activeThinkingMessageId = message.id
+        publish()
+        return message.id
+    }
+
+    fun finishActiveThinking(
+        fallback: String? = null,
+        content: String = "",
+        removeIfBlank: Boolean = false,
+        label: String? = null
+    ) {
+        val messageId = activeThinkingMessageId ?: run {
+            activeThinkingKey = null
+            activeThinkingLabel = null
+            return
+        }
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) {
+            activeThinkingMessageId = null
+            activeThinkingKey = null
+            activeThinkingLabel = null
+            return
+        }
+        val current = messages[index]
+        val finalContent = content.takeIf { it.isNotBlank() }
+            ?: current.content.takeIf { it.isNotBlank() }
+            ?: fallback.orEmpty()
+        if (finalContent.isBlank()) {
+            messages.removeAt(index)
+        } else {
+            messages[index] = current.copy(
+                content = finalContent,
+                pending = false,
+                collapsed = true,
+                statusLabel = label ?: current.statusLabel,
+                updatedAt = System.currentTimeMillis()
+            )
+        }
+        activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
+        publish()
+    }
+
+    private fun upsertToolEvent(status: org.json.JSONObject) {
+        val key = status.optString("key").ifBlank { status.optString("name").ifBlank { UUID.randomUUID().toString() } }
+        val name = status.optString("name").ifBlank { appCtx.getString(R.string.ai_tool_default_name) }
+        val stage = status.optString("stage")
+        val content = status.optString("content")
+        val messageId = activeToolMessageIds[key]
+        if (stage == "call" || messageId == null) {
+            val message = AiChatMessage(
+                role = AiChatMessage.Role.ASSISTANT,
+                content = content,
+                pending = stage != "result",
+                kind = AiChatMessage.Kind.TOOL,
+                statusName = name,
+                statusStage = stage,
+                statusSuccess = status.optBoolean("success", true),
+                statusLabel = status.optString("label"),
+                statusDetail = content,
+                statusKey = key,
+                collapsed = false
+            )
+            messages.add(message)
+            activeToolMessageIds[key] = message.id
+            publish()
+            return
+        }
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index < 0) return
+        val current = messages[index]
+        val detail = buildString {
+            current.statusDetail?.takeIf { it.isNotBlank() }?.let {
+                append(it)
+                append("\n\n")
+            }
+            append(content)
+        }
+        messages[index] = current.copy(
+            content = content,
+            pending = false,
+            kind = AiChatMessage.Kind.TOOL,
+            statusName = name,
+            statusStage = stage,
+            statusSuccess = status.optBoolean("success", true),
+            statusLabel = status.optString("label"),
+            statusDetail = detail,
+            collapsed = true,
+            updatedAt = System.currentTimeMillis()
+        )
+        publish()
+    }
+
+    private fun finishActiveTools(success: Boolean, label: String) {
+        activeToolMessageIds.values.forEach { id ->
+            val index = messages.indexOfFirst { it.id == id }
+            if (index >= 0 && messages[index].pending) {
+                messages[index] = messages[index].copy(
+                    pending = false,
+                    statusSuccess = success,
+                    statusLabel = label,
+                    collapsed = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            }
+        }
+        publish()
     }
 
     fun finishPendingAssistant() {
@@ -241,8 +406,12 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun snapshotForRequest(): List<AiChatMessage> {
-        return messages.filterNot { it.pending || (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS }
+        return messages
+            .filter { !it.pending && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
+            .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) }
     }
+
+    fun currentContextSummary() = currentSessionSummary()
 
     fun restoreCurrentSession() {
         val sessions = AppConfig.aiChatSessionList
@@ -293,11 +462,7 @@ class AiChatViewModel : ViewModel() {
 
     private fun saveCurrentSession() {
         val snapshot = messages.filterNot { it.pending }
-            .filterNot {
-                (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.STATUS &&
-                    it.content.isBlank()
-            }
-            .map { it.copy(pending = false) }
+            .map { sanitizeMessageForStorage(it) }
             .filter { it.content.isNotBlank() }
         val history = AppConfig.aiChatSessionList.toMutableList()
         val index = history.indexOfFirst { it.id == currentSessionId }
@@ -312,7 +477,8 @@ class AiChatViewModel : ViewModel() {
             id = currentSessionId,
             title = resolveSessionTitle(snapshot),
             updatedAt = System.currentTimeMillis(),
-            messages = snapshot
+            messages = snapshot,
+            contextSummary = currentSessionSummary()
         )
         if (index >= 0) {
             history[index] = session
@@ -323,8 +489,33 @@ class AiChatViewModel : ViewModel() {
         AppConfig.aiCurrentChatSessionId = currentSessionId
     }
 
+    private fun sanitizeMessageForStorage(message: AiChatMessage): AiChatMessage {
+        val maxChars = when (message.kind ?: AiChatMessage.Kind.TEXT) {
+            AiChatMessage.Kind.TEXT -> MAX_STORED_TEXT_CHARS
+            AiChatMessage.Kind.STATUS,
+            AiChatMessage.Kind.THINKING,
+            AiChatMessage.Kind.TOOL -> MAX_STORED_STATUS_CHARS
+        }
+        return message.copy(
+            content = sanitizeStoredText(message.content, maxChars),
+            pending = false,
+            statusDetail = message.statusDetail?.let { sanitizeStoredText(it, MAX_STORED_STATUS_CHARS) }
+        )
+    }
+
+    private fun sanitizeStoredText(text: String, maxChars: Int): String {
+        val clean = dataImageRegex.replace(text, "data:image/<stored-in-gallery>")
+        return if (clean.length <= maxChars) {
+            clean
+        } else {
+            clean.take(maxChars) + "\n...<truncated ${clean.length - maxChars} chars>"
+        }
+    }
+
     private fun resolveSessionTitle(messages: List<AiChatMessage>): String {
-        val titleSource = messages.firstOrNull { it.role == AiChatMessage.Role.USER }?.content
+        val titleSource = messages.firstOrNull {
+            it.role == AiChatMessage.Role.USER && (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT
+        }?.content
             ?: messages.first().content
         return titleSource.replace("\n", " ")
             .replace(Regex("\\s+"), " ")
@@ -333,5 +524,28 @@ class AiChatViewModel : ViewModel() {
                 if (it.length > 24) "${it.take(24)}…" else it
             }
             .ifBlank { "AI Chat" }
+    }
+
+    private fun currentSessionSummary() =
+        AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }?.contextSummary
+
+    fun saveContextSummary(sessionId: String, summary: io.legado.app.ui.main.ai.AiContextSummary) {
+        if (!AppConfig.aiContextCompressionEnabled || !summary.isValid) return
+        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.map { session ->
+            if (session.id == sessionId) session.copy(contextSummary = summary) else session
+        }
+    }
+
+    private fun sanitizeImagePayloadsForRequest(content: String): String {
+        if (!content.contains("data:image", ignoreCase = true)) return content
+        return content.replace(dataImageRegex, "[image omitted]")
+    }
+
+    private fun mergeThinkingContent(current: String, incoming: String): String {
+        if (incoming.isBlank()) return current
+        if (current.isBlank()) return incoming
+        if (current.endsWith(incoming)) return current
+        if (incoming.startsWith(current)) return incoming
+        return current + incoming
     }
 }

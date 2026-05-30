@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.utils.GSON
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
@@ -35,55 +36,46 @@ data class CacheCloudIndexItem(
 
 object CacheCloudIndexStore {
 
-    private const val FILE_NAME = "cache_index_local.json"
     private const val REMOTE_FILE_NAME = "cache_index.json"
+    private const val LOCAL_FILE_PREFIX = "cache_index_local_"
 
     private val rootDir: File
         get() = appCtx.externalFiles.getFile("cachePackages")
 
-    private val localFile: File
-        get() = rootDir.getFile(FILE_NAME)
-
     fun remoteFileName(): String = REMOTE_FILE_NAME
 
-    fun readLocal(): List<CacheCloudIndexItem> {
-        if (!localFile.exists()) return emptyList()
-        return GSON.fromJsonObject<CacheCloudIndex>(localFile.readText()).getOrNull()?.items.orEmpty()
+    fun readLocal(storageKey: String): List<CacheCloudIndexItem> {
+        val file = localFile(storageKey)
+        if (!file.exists()) return emptyList()
+        return GSON.fromJsonObject<CacheCloudIndex>(file.readText()).getOrNull()?.items.orEmpty()
     }
 
-    fun writeLocal(items: List<CacheCloudIndexItem>) {
+    fun writeLocal(items: List<CacheCloudIndexItem>, storageKey: String) {
         rootDir.mkdirs()
-        localFile.writeText(
+        localFile(storageKey).writeText(
             GSON.toJson(
                 CacheCloudIndex(items = items.sortedByDescending { it.updatedAt })
             )
         )
     }
 
-    fun mergeRemote(items: List<CacheCloudIndexItem>): List<CacheCloudIndexItem> {
+    fun upsertLocal(item: CacheCloudIndexItem, storageKey: String) {
         val merged = linkedMapOf<String, CacheCloudIndexItem>()
-        readLocal().forEach { merged[it.cacheKey] = it }
-        items.forEach { remote ->
-            val current = merged[remote.cacheKey]
-            if (current == null || remote.updatedAt >= current.updatedAt) {
-                merged[remote.cacheKey] = remote
-            }
-        }
-        return merged.values.sortedByDescending { it.updatedAt }.also(::writeLocal)
-    }
-
-    fun upsertLocal(item: CacheCloudIndexItem) {
-        val merged = linkedMapOf<String, CacheCloudIndexItem>()
-        readLocal().forEach { merged[it.cacheKey] = it }
+        readLocal(storageKey).forEach { merged[it.cacheKey] = it }
         val current = merged[item.cacheKey]
         if (current == null || item.updatedAt >= current.updatedAt) {
             merged[item.cacheKey] = item
         }
-        writeLocal(merged.values.toList())
+        writeLocal(merged.values.toList(), storageKey)
     }
 
-    fun removeLocal(cacheKey: String) {
-        writeLocal(readLocal().filterNot { it.cacheKey == cacheKey })
+    fun removeLocal(cacheKey: String, storageKey: String) {
+        writeLocal(readLocal(storageKey).filterNot { it.cacheKey == cacheKey }, storageKey)
+    }
+
+    private fun localFile(storageKey: String): File {
+        val digest = MD5Utils.md5Encode(storageKey.ifBlank { "default" })
+        return rootDir.getFile("$LOCAL_FILE_PREFIX$digest.json")
     }
 }
 

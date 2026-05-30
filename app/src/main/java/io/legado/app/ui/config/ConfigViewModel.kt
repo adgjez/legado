@@ -5,7 +5,7 @@ import android.content.Context
 import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.restart
@@ -15,11 +15,13 @@ import splitties.init.appCtx
 
 class ConfigViewModel(application: Application) : BaseViewModel(application) {
 
-    fun upWebDavConfig() {
+    fun upCloudStorageConfig() {
         execute {
-            AppWebDav.upConfig()
+            AppCloudStorage.upConfig()
         }
     }
+
+    fun upWebDavConfig() = upCloudStorageConfig()
 
     fun clearCache() {
         execute {

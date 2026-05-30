@@ -1,5 +1,6 @@
 package io.legado.app.ui.config
 
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.text.InputType
@@ -24,6 +25,9 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
+import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiImageGalleryActivity
+import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.utils.postEvent
@@ -61,11 +65,8 @@ class AiConfigFragment : PreferenceFragment(),
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         when (preference.key) {
-            "aiAddProvider" -> showEditProviderDialog()
-            "aiManageProviders" -> showManageProvidersDialog()
-            "aiAddModel" -> showAddModelOptionsDialog()
-            "aiFetchModels" -> fetchModelsFromCurrentProvider(showSelector = true)
-            "aiManageModels" -> showManageModelsDialog()
+            "aiAddProvider", "aiManageProviders", "aiAddModel", "aiFetchModels", "aiManageModels" ->
+                startActivity(Intent(requireContext(), AiProviderManageActivity::class.java))
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
@@ -75,6 +76,12 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiTavilySearchDepth -> showTavilySearchDepthDialog()
             PreferKey.aiTavilyMaxResults -> showTavilyMaxResultsDialog()
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
+            "aiContextCompression" -> showContextCompressionDialog()
+            "aiPersonaManage" -> showPersonaManageDialog()
+            "aiImageGallery" ->
+                startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
+            "aiImageProviderManage" ->
+                startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
         }
@@ -540,6 +547,176 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
+    private fun showContextCompressionDialog() {
+        val enabledText = if (AppConfig.aiContextCompressionEnabled) "关闭上下文压缩" else "启用上下文压缩"
+        context?.selector(
+            getString(R.string.ai_context_compression),
+            arrayListOf(
+                enabledText,
+                "上下文长度: ${AppConfig.aiContextWindowTokens}",
+                "思考上下文: ${AppConfig.aiThinkingContextTokens}"
+            )
+        ) { _, index ->
+            when (index) {
+                0 -> {
+                    AppConfig.aiContextCompressionEnabled = !AppConfig.aiContextCompressionEnabled
+                    refreshUi()
+                }
+                1 -> showTokenSelector(true)
+                2 -> showTokenSelector(false)
+            }
+        }
+    }
+
+    private fun showTokenSelector(contextWindow: Boolean) {
+        val values = if (contextWindow) {
+            listOf(32_000, 64_000, 128_000, 258_000, 512_000, 1_000_000)
+        } else {
+            listOf(0, 32_000, 64_000, 128_000, 258_000)
+        }
+        context?.selector(
+            if (contextWindow) getString(R.string.ai_context_tokens) else getString(R.string.ai_thinking_context_tokens),
+            values.map { it.toString() }
+        ) { _, index ->
+            if (contextWindow) AppConfig.aiContextWindowTokens = values[index]
+            else AppConfig.aiThinkingContextTokens = values[index]
+            refreshUi()
+        }
+    }
+
+    private fun showPersonaManageDialog() {
+        val personas = AppConfig.aiPersonaList
+        val items = personas.map {
+            if (it.id == AppConfig.aiCurrentPersonaId) "✓ ${it.name}" else it.name
+        } + "新增人格提示词"
+        context?.selector(getString(R.string.ai_persona_manage), items) { _, index ->
+            if (index >= personas.size) {
+                showEditPersonaDialog()
+            } else {
+                val persona = personas[index]
+                context?.selector(persona.name, arrayListOf("设为当前", "编辑", "删除")) { _, action ->
+                    when (action) {
+                        0 -> {
+                            AppConfig.aiCurrentPersonaId = persona.id
+                            refreshUi()
+                        }
+                        1 -> showEditPersonaDialog(persona)
+                        2 -> {
+                            AppConfig.aiPersonaList = AppConfig.aiPersonaList.filterNot { it.id == persona.id }
+                            if (AppConfig.aiCurrentPersonaId == persona.id) AppConfig.aiCurrentPersonaId = null
+                            refreshUi()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showEditPersonaDialog(persona: AiPersonaConfig? = null) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_ai_persona_edit, null)
+        val editName = dialogView.findViewById<android.widget.EditText>(R.id.edit_persona_name)
+        val editPrompt = dialogView.findViewById<android.widget.EditText>(R.id.edit_persona_prompt)
+        editName.setText(persona?.name.orEmpty())
+        editPrompt.setText(persona?.prompt.orEmpty())
+        alert(titleResource = R.string.ai_persona_manage) {
+            customView { dialogView }
+            okButton {
+                val name = editName.text?.toString()?.trim().orEmpty()
+                val prompt = editPrompt.text?.toString()?.trim().orEmpty()
+                if (name.isBlank() || prompt.isBlank()) return@okButton
+                val updated = persona?.copy(name = name, prompt = prompt)
+                    ?: AiPersonaConfig(name = name, prompt = prompt)
+                AppConfig.aiPersonaList = AppConfig.aiPersonaList
+                    .filterNot { it.id == updated.id } + updated
+                AppConfig.aiCurrentPersonaId = updated.id
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showImageProviderManageDialog() {
+        val providers = AppConfig.aiImageProviderList
+        val items = providers.map {
+            "${if (it.enabled) "✓ " else ""}${it.displayName()} (${it.type})"
+        } + "新增 OpenAI 生图供应商" + "新增 JS 生图规则"
+        context?.selector(getString(R.string.ai_image_provider_manage), items) { _, index ->
+            when {
+                index < providers.size -> showImageProviderActions(providers[index])
+                index == providers.size -> showEditImageProviderDialog(AiImageProviderConfig(name = "", type = AiImageProviderConfig.TYPE_OPENAI))
+                else -> showEditImageProviderDialog(AiImageProviderConfig(name = "", type = AiImageProviderConfig.TYPE_JS))
+            }
+        }
+    }
+
+    private fun showImageProviderActions(provider: AiImageProviderConfig) {
+        context?.selector(provider.displayName(), arrayListOf("启用/停用", "编辑", "删除")) { _, action ->
+            when (action) {
+                0 -> {
+                    AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.map {
+                        if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
+                    }
+                    refreshUi()
+                }
+                1 -> showEditImageProviderDialog(provider)
+                2 -> {
+                    AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.filterNot { it.id == provider.id }
+                    refreshUi()
+                }
+            }
+        }
+    }
+
+    private fun showEditImageProviderDialog(provider: AiImageProviderConfig) {
+        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+            editView.hint = if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                "名称\nBaseUrl\nApiKey\n模型\nHeaders(JSON，可空)\n默认参数(JSON，可空)"
+            } else {
+                "名称\nJS脚本，需返回图片URL、base64或JSON"
+            }
+            editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            editView.minLines = 8
+            editView.setText(
+                if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                    listOf(
+                        provider.name,
+                        provider.baseUrl,
+                        provider.apiKey,
+                        provider.model,
+                        provider.headers,
+                        provider.defaultParamsJson
+                    ).joinToString("\n")
+                } else {
+                    provider.name + "\n" + provider.script
+                }
+            )
+        }
+        alert(titleResource = R.string.ai_image_provider_manage) {
+            customView { binding.root }
+            okButton {
+                val lines = binding.editView.text?.toString().orEmpty().lines()
+                val name = lines.firstOrNull()?.trim().orEmpty()
+                if (name.isBlank()) return@okButton
+                val updated = if (provider.type == AiImageProviderConfig.TYPE_OPENAI) {
+                    provider.copy(
+                        name = name,
+                        baseUrl = lines.getOrNull(1)?.trim().orEmpty(),
+                        apiKey = lines.getOrNull(2)?.trim().orEmpty(),
+                        model = lines.getOrNull(3)?.trim().orEmpty(),
+                        headers = lines.getOrNull(4)?.trim().orEmpty(),
+                        defaultParamsJson = lines.drop(5).joinToString("\n").trim()
+                    )
+                } else {
+                    provider.copy(name = name, script = lines.drop(1).joinToString("\n").trim())
+                }
+                AppConfig.aiImageProviderList = AppConfig.aiImageProviderList
+                    .filterNot { it.id == updated.id } + updated
+                refreshUi()
+            }
+            cancelButton()
+        }
+    }
+
     private fun showManageNativeToolsDialog() {
         lifecycleScope.launch {
             val tools = runCatching { AiToolRegistry.resolveAllToolNamesForManage() }
@@ -549,15 +726,23 @@ class AiConfigFragment : PreferenceFragment(),
                 return@launch
             }
             val enabled = AppConfig.aiEnabledToolNames.toMutableSet()
-            val checked = BooleanArray(tools.size) {
-                val name = tools[it]
-                if (enabled.isEmpty()) name in AiToolRegistry.defaultEnabledTools else name in enabled
-            }
-            val labels = tools.map(::toolDisplayName).toTypedArray()
-            alert(getString(R.string.ai_manage_native_tools)) {
-                multiChoiceItems(labels, checked) { _, which, isChecked ->
-                    if (isChecked) enabled.add(tools[which]) else enabled.remove(tools[which])
+            val groupedTools = tools.map { AiToolRegistry.metaOfTool(it) }
+                .groupBy { it.group }
+                .toSortedMap(compareBy { groupOrder(it) })
+            val displayItems = mutableListOf<ToolDisplayItem>()
+            groupedTools.forEach { (group, groupTools) ->
+                displayItems.add(ToolDisplayItem.Header(group))
+                groupTools.sortedBy { it.label }.forEach { tool ->
+                    val isEnabled = if (enabled.isEmpty()) {
+                        tool.name in AiToolRegistry.defaultEnabledTools
+                    } else {
+                        tool.name in enabled
+                    }
+                    displayItems.add(ToolDisplayItem.Tool(tool.name, tool.label, isEnabled))
                 }
+            }
+            alert(getString(R.string.ai_manage_native_tools)) {
+                customView { createToolListView(displayItems, enabled) }
                 okButton {
                     AppConfig.aiEnabledToolNames = enabled
                     refreshUi()
@@ -575,46 +760,18 @@ class AiConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun toolDisplayName(name: String): String {
-        val group = AiToolRegistry.groupLabelOfTool(name)
-        return "[${toolGroupZh(group)}] ${toolNameZh(name)}"
-    }
-
-    private fun toolGroupZh(group: String): String {
+    private fun groupOrder(group: String): Int {
         return when (group) {
-            "MCP" -> "MCP"
-            "书架" -> "书架"
-            "书源" -> "书源"
-            "阅读" -> "阅读"
-            "联网搜索" -> "联网搜索"
-            "设置" -> "设置"
-            else -> "其他"
-        }
-    }
-
-    private fun toolNameZh(name: String): String {
-        return when (name) {
-            "query_bookshelf" -> "查询书架书籍"
-            "get_bookshelf_book_info" -> "获取书籍详情"
-            "manage_bookshelf_group" -> "管理书架分组"
-            "manage_bookshelf_tag" -> "管理书架标签"
-            "set_bookshelf_book_group" -> "设置书籍分组"
-            "set_bookshelf_book_tags" -> "设置书籍标签"
-            "query_read_records" -> "查询阅读记录"
-            "list_book_chapters" -> "获取章节列表"
-            "read_book_chapter_content" -> "读取章节正文"
-            "list_book_sources" -> "列出书源"
-            "search_book_source" -> "搜索书源内容"
-            "create_book_source" -> "新增书源"
-            "get_book_source" -> "获取书源详情"
-            "update_book_source" -> "更新书源"
-            "fetch_source_html" -> "抓取网页源码"
-            "debug_book_source" -> "调试书源规则"
-            "search_web_tavily" -> "Tavily 联网搜索"
-            "get_app_settings" -> "读取设置项"
-            "set_app_setting" -> "修改单个设置"
-            "set_app_settings_batch" -> "批量修改设置"
-            else -> name
+            "书架" -> 0
+            "书源" -> 1
+            "阅读" -> 2
+            "阅读网络" -> 3
+            "联网搜索" -> 4
+            "AI 生图" -> 5
+            "角色资料" -> 6
+            "设置" -> 7
+            "MCP 工具" -> 8
+            else -> 8
         }
     }
 
@@ -952,6 +1109,26 @@ class AiConfigFragment : PreferenceFragment(),
             AppConfig.aiTavilyMaxResults.toString()
         findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
             getString(R.string.ai_system_prompt_summary)
+        findPreference<Preference>("aiContextCompression")?.summary =
+            if (AppConfig.aiContextCompressionEnabled) {
+                "${AppConfig.aiContextWindowTokens} / ${AppConfig.aiThinkingContextTokens}"
+            } else {
+                getString(R.string.ai_context_compression_summary_default)
+            }
+        findPreference<Preference>("aiPersonaManage")?.summary =
+            AppConfig.aiCurrentPersona?.name
+                ?: getString(R.string.ai_persona_manage_summary_empty)
+        val imageProviders = AppConfig.aiImageProviderList
+        findPreference<Preference>("aiImageProviderManage")?.summary =
+            if (imageProviders.isEmpty()) {
+                getString(R.string.ai_image_provider_summary_empty)
+            } else {
+                getString(
+                    R.string.ai_image_provider_summary,
+                    imageProviders.count { it.enabled },
+                    imageProviders.size
+                )
+            }
         val skills = AppConfig.aiSkillList
         val enabledSkillCount = skills.count { it.enabled }
         findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =
@@ -971,5 +1148,51 @@ class AiConfigFragment : PreferenceFragment(),
         if (notifyMain || (!canEnable && storedEnabled)) {
             postEvent(EventBus.NOTIFY_MAIN, false)
         }
+    }
+
+    private sealed class ToolDisplayItem {
+        data class Header(val title: String) : ToolDisplayItem()
+        data class Tool(val name: String, val displayName: String, var isEnabled: Boolean) : ToolDisplayItem()
+    }
+
+    private fun createToolListView(
+        items: List<ToolDisplayItem>,
+        enabled: MutableSet<String>
+    ): android.widget.ScrollView {
+        val scrollView = android.widget.ScrollView(requireContext())
+        val linearLayout = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val dp8 = (8 * resources.displayMetrics.density).toInt()
+            val dp16 = (16 * resources.displayMetrics.density).toInt()
+            setPadding(dp16, dp8, dp16, dp8)
+        }
+        items.forEach { item ->
+            when (item) {
+                is ToolDisplayItem.Header -> {
+                    val headerView = android.widget.TextView(requireContext()).apply {
+                        text = item.title
+                        textSize = 16f
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        val dp16 = (16 * resources.displayMetrics.density).toInt()
+                        val dp8 = (8 * resources.displayMetrics.density).toInt()
+                        setPadding(0, dp16, 0, dp8)
+                    }
+                    linearLayout.addView(headerView)
+                }
+                is ToolDisplayItem.Tool -> {
+                    val checkBox = android.widget.CheckBox(requireContext()).apply {
+                        text = item.displayName
+                        isChecked = item.isEnabled
+                        setOnCheckedChangeListener { _, isChecked ->
+                            item.isEnabled = isChecked
+                            if (isChecked) enabled.add(item.name) else enabled.remove(item.name)
+                        }
+                    }
+                    linearLayout.addView(checkBox)
+                }
+            }
+        }
+        scrollView.addView(linearLayout)
+        return scrollView
     }
 }

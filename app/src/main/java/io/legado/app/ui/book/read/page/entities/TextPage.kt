@@ -154,6 +154,7 @@ data class TextPage(
             if (visibleHeight - pageHeight >= lastLineHeight) return@run
             val surplus = (visibleBottom - lastLine.lineBottom)
             if (surplus == 0f) return@run
+            if (leftLineSize - 1 <= 0) return@run
             height += surplus
             val tj = surplus / (leftLineSize - 1)
             for (i in 1 until leftLineSize) {
@@ -172,7 +173,9 @@ data class TextPage(
             if (visibleHeight - pageHeight >= lastLineHeight) return@run
             val surplus = (visibleBottom - lastLine.lineBottom)
             if (surplus == 0f) return@run
-            val tj = surplus / (textLines.size - leftLineSize - 1)
+            val divider = textLines.size - leftLineSize - 1
+            if (divider <= 0) return@run
+            val tj = surplus / divider
             for (i in leftLineSize + 1 until textLines.size) {
                 val line = textLines[i]
                 val surplusIndex = i - leftLineSize

@@ -13,7 +13,12 @@ data class AiChatMessage(
     val kind: Kind? = Kind.TEXT,
     val statusName: String? = null,
     val statusStage: String? = null,
-    val statusSuccess: Boolean = true
+    val statusSuccess: Boolean = true,
+    val statusLabel: String? = null,
+    val statusDetail: String? = null,
+    val statusKey: String? = null,
+    val collapsed: Boolean = false,
+    val updatedAt: Long = createdAt
 ) {
     @Keep
     enum class Role {
@@ -24,7 +29,9 @@ data class AiChatMessage(
     @Keep
     enum class Kind {
         TEXT,
-        STATUS
+        STATUS,
+        THINKING,
+        TOOL
     }
 }
 
@@ -33,7 +40,8 @@ data class AiChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val updatedAt: Long = System.currentTimeMillis(),
-    val messages: List<AiChatMessage> = emptyList()
+    val messages: List<AiChatMessage> = emptyList(),
+    val contextSummary: AiContextSummary? = null
 )
 
 @Keep

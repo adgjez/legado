@@ -11,15 +11,35 @@ import io.legado.app.ui.video.VideoPlayerActivity
 
 object SearchBookOpenHelper {
 
+    const val EXTRA_COVER_URL = "coverUrl"
+
     fun open(context: Context, book: SearchBook, isVideo: Boolean) {
-        val target = if (isVideo) VideoPlayerActivity::class.java else BookInfoActivity::class.java
+        if (isVideo) {
+            openVideo(context, book)
+            return
+        }
+        openActivity(context, book, BookInfoActivity::class.java, false)
+    }
+
+    private fun openVideo(context: Context, book: SearchBook) {
+        openActivity(context, book, VideoPlayerActivity::class.java, true)
+    }
+
+    private fun openActivity(
+        context: Context,
+        book: SearchBook,
+        target: Class<*>,
+        prepareInPlayer: Boolean
+    ) {
         context.startActivity(Intent(context, target).apply {
             putExtra("name", book.name)
             putExtra("author", book.author)
             putExtra("bookUrl", book.bookUrl)
             putExtra("origin", book.origin)
             putExtra("originName", book.originName)
-            if (isVideo) {
+            putExtra(EXTRA_COVER_URL, book.coverUrl)
+            putExtra("videoTitle", book.name)
+            if (target == VideoPlayerActivity::class.java && prepareInPlayer) {
                 putExtra(VideoPlayerActivity.EXTRA_PREPARE_BOOK_INFO, true)
             }
         })

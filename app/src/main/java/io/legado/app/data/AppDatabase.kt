@@ -9,7 +9,10 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.dao.AiGeneratedImageDao
+import io.legado.app.data.dao.AiImageGroupDao
 import io.legado.app.data.dao.BookChapterDao
+import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookSourceDao
@@ -20,6 +23,7 @@ import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ParagraphRuleDao
+import io.legado.app.data.dao.ReadMenuCustomButtonDao
 import io.legado.app.data.dao.ReadRecentBookDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReadRecordDailyDao
@@ -33,8 +37,12 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.entities.AiGeneratedImage
+import io.legado.app.data.entities.AiImageGroup
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookParagraphRule
 import io.legado.app.data.entities.BookSource
@@ -47,6 +55,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.ParagraphRule
 import io.legado.app.data.entities.ParagraphRuleVar
+import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordDaily
@@ -75,7 +84,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 93,
+    version = 98,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -84,7 +93,9 @@ val appDb by lazy {
         HttpTTS::class, Cache::class,
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
-        ParagraphRuleVar::class],
+        ParagraphRuleVar::class, ReadMenuCustomButton::class,
+        AiImageGroup::class, AiGeneratedImage::class,
+        BookCharacter::class, BookCharacterRelation::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -143,6 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookGroupDao: BookGroupDao
     abstract val bookSourceDao: BookSourceDao
     abstract val bookChapterDao: BookChapterDao
+    abstract val bookCharacterDao: BookCharacterDao
     abstract val replaceRuleDao: ReplaceRuleDao
     abstract val searchBookDao: SearchBookDao
     abstract val searchKeywordDao: SearchKeywordDao
@@ -163,6 +175,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val keyboardAssistsDao: KeyboardAssistsDao
     abstract val serverDao: ServerDao
     abstract val paragraphRuleDao: ParagraphRuleDao
+    abstract val readMenuCustomButtonDao: ReadMenuCustomButtonDao
+    abstract val aiImageGroupDao: AiImageGroupDao
+    abstract val aiGeneratedImageDao: AiGeneratedImageDao
 
     companion object {
 

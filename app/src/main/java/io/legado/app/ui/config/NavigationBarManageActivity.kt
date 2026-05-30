@@ -4,11 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -24,8 +28,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.ItemThemePackageBinding
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
+import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -39,6 +45,7 @@ import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.externalFiles
@@ -70,7 +77,12 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var pendingColorTarget = 0
     private var pendingIconRequest: IconRequest? = null
     private var pendingSidebarBackgroundEntry: NavigationBarIconConfig.Entry? = null
+    private var pendingBottomWallpaperCropRequest: ImageCropHelper.Request? = null
     private val handledWebDavTasks = mutableSetOf<String>()
+    private var loadVersion = 0
+    private var cloudContainerId: String? = null
+    private var containerMenuItem: MenuItem? = null
+    private var containerMenuPopup: PopupWindow? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val selectIcon = registerForActivityResult(HandleFileContract()) { result ->
@@ -174,6 +186,11 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         observeWebDavTasks()
     }
 
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
+    }
+
     override fun observeLiveBus() {
         observeEvent<String>(EventBus.RECREATE) {
             loadPackages()
@@ -220,16 +237,55 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             }
         }
         updateTabs()
-        titleBar.toolbar.menu.add(R.string.import_str).setOnMenuItemClickListener {
-            importPackage.launch {
-                mode = HandleFileContract.FILE
-                title = getString(R.string.import_str)
-                allowExtensions = arrayOf("zip")
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        containerMenuItem = menu.add(0, MENU_CONTAINER, 0, R.string.s3_bucket).apply {
+            setIcon(R.drawable.ic_outline_cloud_24)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            setActionView(R.layout.view_action_button)
+            actionView?.let { view ->
+                view.contentDescription = title
+                view.findViewById<ImageButton>(R.id.item)?.setImageDrawable(icon)
+                view.setOnClickListener { showContainerSelector(view) }
             }
-            true
+        }
+        menu.add(0, MENU_SYNC_TASKS, 1, R.string.package_sync_task_menu).apply {
+            setIcon(R.drawable.ic_history)
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        }
+        updateContainerMenu()
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_CONTAINER -> {
+                showContainerSelector(item.actionView)
+                true
+            }
+            MENU_SYNC_TASKS -> {
+                showNavigationBarSyncTasks()
+                true
+            }
+            else -> super.onCompatOptionsItemSelected(item)
         }
     }
 
+    private val selectBottomWallpaper = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let(::startBottomWallpaperCrop)
+    }
+
+    private val cropBottomWallpaper = registerForActivityResult(ImageCropContract()) { result ->
+        pendingBottomWallpaperCropRequest = null
+        if (result == null) return@registerForActivityResult
+        if (File(result).exists()) {
+            pendingConfig?.wallpaperPath = result
+            refreshEditDialog()
+        } else {
+            toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
+        }
+    }
     private fun showAddDialog() {
         selector(
             getString(R.string.theme_add),
@@ -253,13 +309,54 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         btnNight.setTextColor(if (isNightMode) accentColor else primaryTextColor)
     }
 
+    private fun updateContainerMenu() {
+        val containers = AppCloudStorage.listContainers().filter { it.enabled }
+        val item = containerMenuItem ?: return
+        if (AppCloudStorage.type != CloudStorageType.S3) {
+            cloudContainerId = containers.firstOrNull()?.id
+            item.isVisible = false
+            return
+        }
+        cloudContainerId = AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            ?: containers.firstOrNull()?.id
+        item.isVisible = true
+        val title = containers.firstOrNull { it.id == cloudContainerId }
+            ?.let(AppCloudStorage::containerDisplayLabel)
+            ?: getString(R.string.s3_bucket)
+        item.title = title
+        item.actionView?.contentDescription = title
+    }
+
+    private fun showContainerSelector(anchor: View? = null) {
+        lifecycleScope.launch {
+            val containers = withContext(Dispatchers.IO) { AppCloudStorage.listContainers().filter { it.enabled } }
+            if (containers.isEmpty()) {
+                toastOnUi(R.string.cloud_storage_config_required)
+                return@launch
+            }
+            val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
+            val popupAnchor = anchor ?: containerMenuItem?.actionView ?: binding.titleBar.toolbar
+            val actions = containers.map { container ->
+                ModernActionPopup.Action(AppCloudStorage.containerDisplayLabel(container)) {
+                    if (container.id == selected) return@Action
+                    AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                    cloudContainerId = container.id
+                    updateContainerMenu()
+                    loadPackages()
+                }
+            }
+            containerMenuPopup = ModernActionPopup.show(popupAnchor, actions, containerMenuPopup)
+        }
+    }
     private fun loadPackages() {
+        val version = ++loadVersion
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
-                    NavigationBarIconConfig.loadEntries(isNightMode, includeRemote = true)
+                    NavigationBarIconConfig.loadEntries(isNightMode, includeRemote = true, cloudContainerId, CLOUD_SCOPE)
                 }
             }.onSuccess {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 adapter.submit(it, NavigationBarIconConfig.activeDirName(isNightMode))
                 binding.tvSummary.text = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
@@ -267,6 +364,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     getString(R.string.navigation_bar_package_summary)
                 }
             }.onFailure {
+                if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 binding.tvSummary.text = it.localizedMessage
             }
         }
@@ -289,12 +387,19 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             toastOnUi(R.string.navigation_bar_default_readonly)
             return
         }
-        editingEntry = if (base.localDir == null && entry != null) {
-            toastOnUi(R.string.navigation_bar_download_first)
+        if (base.localDir == null && entry != null && base.source == NavigationBarIconConfig.Source.REMOTE) {
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) { NavigationBarIconConfig.download(base, cloudContainerId, CLOUD_SCOPE) }
+                }.onSuccess {
+                    showEditDialog(it)
+                }.onFailure {
+                    toastOnUi(it.localizedMessage)
+                }
+            }
             return
-        } else {
-            base
         }
+        editingEntry = base
         pendingConfig = editingEntry!!.config.copy(icons = editingEntry!!.config.icons.toMutableMap())
         val root = buildEditView()
         editingDialog = root
@@ -309,6 +414,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     private fun buildEditView(): LinearLayout {
         val config = pendingConfig!!
+        normalizeStandardBottomConfig(config)
         val currentEntry = editingEntry
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -329,6 +435,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                         2 -> "sidebar"
                         else -> "floating"
                     }
+                    normalizeStandardBottomConfig(config)
                     refreshEditDialog()
                 }
             })
@@ -341,37 +448,34 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     postEvent(EventBus.NOTIFY_MAIN, false)
                     refreshEditDialog()
                 })
-                addView(optionRow(getString(R.string.bottom_bar_effect_mode), effectModeLabel(config.effectMode)) {
-                    selector(
-                        getString(R.string.bottom_bar_effect_mode),
-                        listOf(
-                            getString(R.string.bottom_bar_effect_solid),
-                            getString(R.string.bottom_bar_effect_glass),
-                            getString(R.string.bottom_bar_effect_frosted)
-                        )
-                    ) { _, index ->
-                        config.effectMode = when (index) {
-                            0 -> "solid"
-                            2 -> "frosted"
-                            else -> "glass"
+                if (config.layoutMode == "floating") {
+                    addView(optionRow(getString(R.string.bottom_bar_material_mode), effectModeLabel(config.effectMode)) {
+                        selector(
+                            getString(R.string.bottom_bar_material_mode),
+                            listOf(
+                                getString(R.string.bottom_bar_effect_solid),
+                                getString(R.string.bottom_bar_effect_glass),
+                                getString(R.string.bottom_bar_effect_frosted)
+                            )
+                        ) { _, index ->
+                            config.effectMode = when (index) {
+                                0 -> "solid"
+                                2 -> "frosted"
+                                else -> "glass"
+                            }
+                            refreshEditDialog()
                         }
-                        refreshEditDialog()
-                    }
-                })
+                    })
+                }
+                if (config.layoutMode == "standard") {
+                    addView(optionRow(getString(R.string.bottom_bar_wallpaper), wallpaperLabel(config.wallpaperPath)) {
+                        showBottomWallpaperSelector()
+                    })
+                }
                 addView(optionRow(getString(R.string.bottom_bar_opacity), "${config.opacity}%") {
-                    NumberPickerDialog(this@NavigationBarManageActivity)
-                        .setTitle(getString(R.string.bottom_bar_opacity))
-                        .setMinValue(0)
-                        .setMaxValue(100)
-                        .setValue(config.opacity)
-                        .setCustomButton(R.string.btn_default_s) {
-                            config.opacity = 76
-                            refreshEditDialog()
-                        }
-                        .show {
-                            config.opacity = it.coerceIn(0, 100)
-                            refreshEditDialog()
-                        }
+                    showAlphaPicker(getString(R.string.bottom_bar_opacity), config.opacity) {
+                        config.opacity = it
+                    }
                 })
                 addView(optionRow(
                     getString(R.string.bottom_bar_border_color),
@@ -382,6 +486,11 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                         config.borderColor,
                         COLOR_BORDER
                     )
+                })
+                addView(optionRow(getString(R.string.bottom_bar_border_alpha), "${config.borderAlpha}%") {
+                    showAlphaPicker(getString(R.string.bottom_bar_border_alpha), config.borderAlpha) {
+                        config.borderAlpha = it
+                    }
                 })
             } else {
                 addView(optionRow(
@@ -435,8 +544,63 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
+    private fun showBottomWallpaperSelector() {
+        val hasWallpaper = !pendingConfig?.wallpaperPath.isNullOrBlank()
+        selector(
+            getString(R.string.bottom_bar_wallpaper),
+            buildList {
+                add(getString(R.string.theme_image_select))
+                if (hasWallpaper) add(getString(R.string.theme_image_delete))
+            }
+        ) { _, index ->
+            if (index == 0) {
+                selectBottomWallpaper.launch {
+                    mode = HandleFileContract.IMAGE
+                    title = getString(R.string.bottom_bar_wallpaper)
+                }
+            } else {
+                pendingConfig?.wallpaperPath = null
+                refreshEditDialog()
+            }
+        }
+    }
+
+    private fun startBottomWallpaperCrop(uri: Uri) {
+        val metrics = resources.displayMetrics
+        val request = ImageCropHelper.buildRequest(
+            context = this,
+            sourceUri = uri,
+            requestCode = requestBottomWallpaper,
+            aspectWidth = metrics.widthPixels.coerceAtLeast(1),
+            aspectHeight = (96 * metrics.density).toInt().coerceAtLeast(1),
+            dirName = "bottomBarWallpapers",
+            prefix = "bottom_bar",
+            targetWidth = 1600
+        )
+        pendingBottomWallpaperCropRequest = request
+        cropBottomWallpaper.launch(request.params)
+    }
+
+    private fun normalizeStandardBottomConfig(config: NavigationBarIconConfig.Config) {
+        if (config.layoutMode == "standard") {
+            config.effectMode = "solid"
+        }
+    }
+
     private fun optionRow(title: String, value: String, onClick: () -> Unit): View {
         return PackageManageUi.optionRow(this, title, value, onClick)
+    }
+
+    private fun showAlphaPicker(title: String, value: Int, apply: (Int) -> Unit) {
+        NumberPickerDialog(this)
+            .setTitle(title)
+            .setMinValue(0)
+            .setMaxValue(100)
+            .setValue(value)
+            .show {
+                apply(it.coerceIn(0, 100))
+                refreshEditDialog()
+            }
     }
 
     private fun showOptionalColorSelector(title: String, color: Int?, target: Int) {
@@ -538,6 +702,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     private fun saveEditingPackage() {
         val config = pendingConfig ?: return
+        normalizeStandardBottomConfig(config)
         val name = editingDialog?.findViewWithTag<EditText>("name")?.text?.toString()?.trim().orEmpty()
         lifecycleScope.launch {
             kotlin.runCatching {
@@ -548,6 +713,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 notifyAppliedIfNeeded(it)
                 toastOnUi(R.string.theme_saved_local)
                 loadPackages()
+                if (enqueueUploadIfNeeded(it)) {
+                    showNavigationBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -560,7 +728,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) {
                 add(NavAction.EDIT)
                 add(NavAction.EXPORT)
-                if (AppConfig.syncThemePackages) add(NavAction.UPLOAD)
+                if (entry.source != NavigationBarIconConfig.Source.REMOTE) add(NavAction.UPLOAD)
                 if (entry.source != NavigationBarIconConfig.Source.LOCAL) add(NavAction.DOWNLOAD)
                 if (entry.source != NavigationBarIconConfig.Source.REMOTE) add(NavAction.DELETE_LOCAL)
                 if (entry.source != NavigationBarIconConfig.Source.LOCAL) add(NavAction.DELETE_REMOTE)
@@ -573,16 +741,16 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 NavAction.EDIT -> showEditDialog(entry)
                 NavAction.EXPORT -> exportPackage(entry)
                 NavAction.UPLOAD -> enqueueUpload(entry)
-                NavAction.DOWNLOAD -> runAction { NavigationBarIconConfig.download(entry) }
+                NavAction.DOWNLOAD -> runAction { NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) }
                 NavAction.DELETE_LOCAL -> confirmDelete(entry, getString(R.string.navigation_bar_delete_local_confirm)) {
                     NavigationBarIconConfig.deleteLocal(entry)
                     postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
                 }
                 NavAction.DELETE_REMOTE -> confirmDelete(entry, getString(R.string.navigation_bar_delete_remote_confirm)) {
-                    NavigationBarIconConfig.deleteRemote(entry)
+                    NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
                 }
                 NavAction.DELETE_BOTH -> confirmDelete(entry, getString(R.string.navigation_bar_delete_both_confirm)) {
-                    NavigationBarIconConfig.delete(entry)
+                    NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
                     postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
                 }
             }
@@ -605,7 +773,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private fun applyPackage(entry: NavigationBarIconConfig.Entry) {
         lifecycleScope.launch {
             kotlin.runCatching {
-                withContext(Dispatchers.IO) { if (entry.source == NavigationBarIconConfig.Source.REMOTE) NavigationBarIconConfig.download(entry) else entry }
+                withContext(Dispatchers.IO) { if (entry.source == NavigationBarIconConfig.Source.REMOTE) NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) else entry }
             }.onSuccess {
                 NavigationBarIconConfig.apply(it)
                 postEvent(EventBus.NAVIGATION_BAR_CHANGED, it.config.isNightMode)
@@ -617,30 +785,67 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun enqueueUpload(entry: NavigationBarIconConfig.Entry) {
-        val queued = WebDavTaskManager.enqueueUpload(
+        val queued = enqueueUploadTask(entry)
+        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
+        if (queued) {
+            showNavigationBarSyncTasks()
+        }
+    }
+
+    private fun enqueueUploadIfNeeded(entry: NavigationBarIconConfig.Entry): Boolean {
+        if (!AppConfig.syncThemePackages) return false
+        return enqueueUploadTask(entry)
+    }
+
+    private fun enqueueUploadTask(entry: NavigationBarIconConfig.Entry): Boolean {
+        return WebDavTaskManager.enqueueUpload(
             key = "navigation_bar_upload:${entry.config.isNightMode}:${entry.dirName}",
             name = entry.config.name,
             type = WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD,
             runningMessage = getString(R.string.navigation_bar_upload)
         ) {
-            NavigationBarIconConfig.upload(entry)
+            NavigationBarIconConfig.upload(entry, cloudContainerId, CLOUD_SCOPE)
         }
-        toastOnUi(if (queued) R.string.cache_manage_upload_queued else R.string.cache_manage_webdav_task_duplicate)
     }
 
     private fun observeWebDavTasks() {
+        seedHandledWebDavTasks(WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD)
         lifecycleScope.launch {
             WebDavTaskManager.states.collectLatest { states ->
+                var shouldReload = false
+                var failedMessage: String? = null
                 states.values
                     .filter { it.type == WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD }
-                    .filter { it.status == WebDavTaskStatus.COMPLETED }
+                    .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
                     .forEach { state ->
-                        if (handledWebDavTasks.add("${state.key}:${state.status}")) {
-                            loadPackages()
+                        if (handledWebDavTasks.add(webDavTaskHandleKey(state.key, state.status))) {
+                            shouldReload = true
+                            if (state.status == WebDavTaskStatus.FAILED) {
+                                failedMessage = state.message
+                            }
                         }
                     }
+                if (shouldReload) {
+                    loadPackages()
+                    failedMessage?.let { toastOnUi(getString(R.string.theme_sync_failed, it)) }
+                }
             }
         }
+    }
+
+    private fun seedHandledWebDavTasks(type: WebDavTaskType) {
+        WebDavTaskManager.states.value.values
+            .filter { it.type == type }
+            .filter { it.status == WebDavTaskStatus.COMPLETED || it.status == WebDavTaskStatus.FAILED }
+            .forEach { handledWebDavTasks.add(webDavTaskHandleKey(it.key, it.status)) }
+    }
+
+    private fun webDavTaskHandleKey(key: String, status: WebDavTaskStatus): String {
+        return "$key:$status"
+    }
+
+    private fun showNavigationBarSyncTasks() {
+        showPackageSyncTaskDialog(setOf(WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD))
     }
 
     private fun exportPackage(entry: NavigationBarIconConfig.Entry) {
@@ -671,6 +876,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()
+                if (enqueueUploadIfNeeded(it)) {
+                    showNavigationBarSyncTasks()
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -715,6 +923,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         return "#${Integer.toHexString(color).takeLast(6).uppercase(Locale.ROOT)}"
     }
 
+    private fun wallpaperLabel(path: String?): String {
+        return if (path.isNullOrBlank()) getString(R.string.theme_image_select) else getString(R.string.theme_image_selected)
+    }
+
     private fun nextPackageName(): String {
         val base = getString(R.string.navigation_bar_custom_name)
         val usedNames = adapter.items.map { it.config.name }.toSet()
@@ -734,8 +946,12 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     )
 
     private companion object {
+        private const val CLOUD_SCOPE = "theme"
+        private const val MENU_CONTAINER = 0x5401
+        private const val MENU_SYNC_TASKS = 0x5402
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
+        const val requestBottomWallpaper = 7003
     }
 
     private enum class NavAction(val titleRes: Int) {
@@ -798,12 +1014,22 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 )
                 tvName.text = entry.config.name
                 tvInfo.text = buildString {
-                    append(effectModeLabel(entry.config.effectMode))
-                    append(" · ")
-                    append(getString(R.string.bottom_bar_opacity))
-                    append(" ")
-                    append(entry.config.opacity)
-                    append("%")
+                    append(layoutModeLabel(entry.config.layoutMode))
+                    if (entry.config.layoutMode == "floating") {
+                        append(" · ")
+                        append(effectModeLabel(entry.config.effectMode))
+                    }
+                    if (entry.config.layoutMode != "sidebar") {
+                        append(" · ")
+                        append(getString(R.string.bottom_bar_opacity))
+                        append(" ")
+                        append(entry.config.opacity)
+                        append("%")
+                        if (entry.config.layoutMode == "standard" && !entry.config.wallpaperPath.isNullOrBlank()) {
+                            append(" · ")
+                            append(getString(R.string.bottom_bar_wallpaper))
+                        }
+                    }
                     if (entry.config.updatedAt > 0) {
                         append(" · ")
                         append(dateFormat.format(Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))))
@@ -822,6 +1048,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 cardPreview.visibility = View.GONE
                 btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
                 btnEdit.text = getString(R.string.edit)
+                btnEdit.visibility = if (entry.dirName == NavigationBarIconConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
                 btnApply.setTextColor(accentColor)
                 btnEdit.setTextColor(primaryTextColor)
                 btnMore.setTextColor(primaryTextColor)
@@ -829,11 +1056,17 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     it.typeface = this@NavigationBarManageActivity.uiTypeface()
                 }
                 btnApply.setOnClickListener { applyPackage(entry) }
-                btnEdit.setOnClickListener { showEditDialog(entry) }
+                btnEdit.setOnClickListener {
+                    if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) showEditDialog(entry)
+                }
                 btnMore.setOnClickListener { showActions(entry) }
                 root.setOnClickListener { showActions(entry) }
             }
         }
+    }
+
+    private fun displayEffectMode(config: NavigationBarIconConfig.Config): String {
+        return if (config.layoutMode == "standard") "solid" else config.effectMode
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()

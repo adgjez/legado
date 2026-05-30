@@ -34,6 +34,7 @@ data class TextLine(
     var lineBottom: Float = 0f,
     var indentWidth: Float = 0f,
     var paragraphNum: Int = 0,
+    var sourceIndex: Int = -1,
     var chapterPosition: Int = 0,
     var pagePosition: Int = 0,
     val isTitle: Boolean = false,
@@ -228,7 +229,7 @@ data class TextLine(
         for (i in columns.indices) {
             val column = columns[i] as TextColumn
             if (column.selected) {
-                canvas.drawRect(column.start, 0f, column.end, height, view.selectedPaint)
+                view.drawSelectedRect(canvas, column.start, 0f, column.end, height)
             }
         }
     }

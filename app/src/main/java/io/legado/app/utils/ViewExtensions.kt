@@ -485,7 +485,7 @@ fun View.applyMainBottomBarPadding(withInitialPadding: Boolean = false) {
             bottomPadding = initialPadding
             updateMainBottomBarSpaceDecoration(bottomSpace)
         } else {
-            bottomPadding = initialPadding + bottomSpace
+            bottomPadding = initialPadding
         }
         windowInsets
     }

@@ -67,11 +67,6 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             val bookUrl = intent.getStringExtra("bookUrl") ?: ""
             val origin = intent.getStringExtra("origin") ?: ""
             val originName = intent.getStringExtra("originName") ?: ""
-            appDb.bookDao.getBook(name, author)?.let {
-                inBookshelf = !it.isNotShelf
-                upBook(it)
-                return@execute
-            }
             if (bookUrl.isNotBlank()) {
                 appDb.bookDao.getBook(bookUrl)?.let {
                     inBookshelf = !it.isNotShelf
@@ -82,6 +77,11 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                     upBook(it)
                     return@execute
                 }
+            }
+            appDb.bookDao.getBook(name, author)?.let {
+                inBookshelf = !it.isNotShelf
+                upBook(it)
+                return@execute
             }
             appDb.searchBookDao.getFirstByNameAuthor(name, author)?.toBook()?.let {
                 upBook(it)
@@ -110,6 +110,13 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
         execute {
             val name = intent.getStringExtra("name") ?: ""
             val author = intent.getStringExtra("author") ?: ""
+            val bookUrl = intent.getStringExtra("bookUrl") ?: ""
+            if (bookUrl.isNotBlank()) {
+                appDb.bookDao.getBook(bookUrl)?.let { book ->
+                    upBook(book)
+                    return@execute
+                }
+            }
             appDb.bookDao.getBook(name, author)?.let { book ->
                 upBook(book)
             }
@@ -122,6 +129,9 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                 appDb.bookSourceDao.getBookSource(book.origin)?.also {
                     hasCustomBtn = it.customButton
                 }
+            if (!book.isLocal && bookSource == null) {
+                context.toastOnUi(R.string.error_no_source)
+            }
             bookData.postValue(book)
             upCoverByRule(book)
             if (book.tocUrl.isEmpty() && !book.isLocal) {

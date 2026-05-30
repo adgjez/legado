@@ -44,6 +44,12 @@
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference
+        android:key="bubble_manage"
+        android:summary="@string/bubble_manage_summary"
+        android:title="@string/bubble_manage"
+        app:iconSpaceReserved="false" />
+
+    <io.legado.app.lib.prefs.Preference
         android:key="coverConfig"
         android:summary="@string/cover_config_summary"
         android:title="@string/cover_config"

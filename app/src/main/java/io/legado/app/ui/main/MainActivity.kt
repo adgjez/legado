@@ -5,10 +5,12 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -42,7 +44,6 @@ import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentStatePagerAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager.widget.ViewPager
-import com.qmdeve.liquidglass.widget.LiquidGlassView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationBarView
 import io.legado.app.BuildConfig
@@ -55,11 +56,12 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.ActivityMainBinding
 import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
@@ -86,10 +88,12 @@ import io.legado.app.ui.main.my.MyFragment
 import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
 import io.legado.app.ui.widget.MainTopBarView
+import io.legado.app.ui.widget.StableLiquidGlassView
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.CenterCropBitmapDrawable
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.getPrefInt
@@ -101,6 +105,7 @@ import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.utils.ColorUtils as AppColorUtils
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -188,9 +193,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
     private val bottomGlassPulseInterpolator by lazy { AccelerateDecelerateInterpolator() }
     private var liquidGlassReady = false
-    private val boundLiquidGlassViewIds = hashSetOf<Int>()
+    private val liquidGlassWarmupRunnables = arrayListOf<Runnable>()
+    private val liquidGlassWarmupDelays = longArrayOf(48L, 180L, 420L, 900L)
     private val liquidGlassSetupRunnable = Runnable {
-        if (!isFinishing && !isDestroyed) {
+        if (!isFinishing && !isDestroyed && !isSidebarMode()) {
             setupLiquidGlass()
         }
     }
@@ -304,8 +310,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onResume() {
         super.onResume()
         refreshBottomNavigationConfig()
+        binding.root.post {
+            scheduleLiquidGlassWarmup()
+        }
         if (isSidebarMode()) {
             updateSideGoalHeader()
+        }
+    }
+
+    override fun upBackgroundImage() {
+        super.upBackgroundImage()
+        binding.root.post {
+            syncLiquidGlassSampleBackground()
+            scheduleLiquidGlassWarmup()
         }
     }
 
@@ -398,10 +415,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             true
         }
-        scheduleLiquidGlassSetup()
+        syncLiquidGlassSampleBackground()
+        scheduleLiquidGlassWarmup()
         contentContainer.doOnPreDraw {
             liquidGlassReady = true
-            scheduleLiquidGlassSetup(delayMillis = 32L)
+            scheduleLiquidGlassWarmup()
         }
         bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
@@ -416,13 +434,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         bottomControls.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
             val height = windowInsets.navigationBarHeight
             bottomNavigationInset = height
-            if (isStandardBottomMode()) {
-                view.bottomPadding = 0
-                applyBottomNavigationShape(standardMode = true)
-            } else {
-                view.bottomPadding = height + 14.dpToPx()
-                applyBottomNavigationShape(standardMode = false)
-            }
+            view.bottomPadding = if (isStandardBottomMode()) 0 else floatingBottomControlsBottomPadding()
+            applyBottomNavigationShape(standardMode = isStandardBottomMode())
             windowInsets.inset(0, 0, 0, height)
         }
         sideNavigationPanel.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
@@ -444,12 +457,66 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun scheduleLiquidGlassSetup(delayMillis: Long = 0L) {
+        if (isFinishing || isDestroyed || isSidebarMode()) return
         binding.bottomControls.removeCallbacks(liquidGlassSetupRunnable)
         if (delayMillis > 0L) {
             binding.bottomControls.postDelayed(liquidGlassSetupRunnable, delayMillis)
         } else {
             binding.bottomControls.post(liquidGlassSetupRunnable)
         }
+    }
+
+    private fun scheduleLiquidGlassWarmup() {
+        if (isFinishing || isDestroyed || isSidebarMode()) return
+        clearLiquidGlassCallbacks()
+        scheduleLiquidGlassSetup()
+        liquidGlassWarmupDelays.forEach { delay ->
+            val runnable = Runnable {
+                if (!isFinishing && !isDestroyed && !isSidebarMode()) {
+                    invalidateLiquidGlassSampleTarget()
+                    setupLiquidGlass()
+                }
+            }
+            liquidGlassWarmupRunnables.add(runnable)
+            binding.bottomControls.postDelayed(runnable, delay)
+        }
+    }
+
+    private fun clearLiquidGlassCallbacks() = binding.run {
+        bottomControls.removeCallbacks(liquidGlassSetupRunnable)
+        liquidGlassWarmupRunnables.forEach { bottomControls.removeCallbacks(it) }
+        liquidGlassWarmupRunnables.clear()
+    }
+
+    private fun resetLiquidGlassBindingState() {
+        liquidGlassReady = false
+    }
+
+    private fun invalidateLiquidGlassSampleTarget() = binding.run {
+        liquidGlassSampleBackground.invalidate()
+        viewPagerMain.invalidate()
+        contentContainer.invalidate()
+        bottomNavigationGlassView.invalidate()
+        bottomNavigationIndicatorGlassView.invalidate()
+        searchButtonGlassView.invalidate()
+    }
+
+    private fun syncLiquidGlassSampleBackground() = binding.run {
+        val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
+            runCatching {
+                ThemeConfig.getBgImage(this@MainActivity, windowManager.windowSize)
+            }.getOrNull()
+        } else {
+            null
+        }
+        if (wallpaper != null) {
+            liquidGlassSampleBackground.background = wallpaper
+        } else {
+            liquidGlassSampleBackground.setBackgroundColor(
+                ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
+            )
+        }
+        invalidateLiquidGlassSampleTarget()
     }
 
     private fun refreshBottomNavigationConfig() {
@@ -461,7 +528,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         applyBottomNavigationIcons()
         applyBottomLayoutMode()
-        scheduleLiquidGlassSetup()
+        scheduleLiquidGlassWarmup()
         binding.bottomNavigationView.doOnLayout {
             updateBottomNavigationIndicator(animate = false)
         }
@@ -606,8 +673,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
             bottomControls.paddingTop,
             if (standardMode) 0 else resources.getDimensionPixelSize(R.dimen.main_bottom_controls_horizontal_padding),
-            if (standardMode) 0 else bottomControls.paddingBottom
+            if (standardMode) 0 else floatingBottomControlsBottomPadding()
         )
+        bottomControls.requestLayout()
         bottomNavigationView.labelVisibilityMode = if (standardMode) {
             NavigationBarView.LABEL_VISIBILITY_UNLABELED
         } else {
@@ -653,22 +721,21 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun updateAiFloatingBall(): Unit = binding.run {
-        val shouldShow = isStandardBottomMode() && AppConfig.aiAssistantEnabled && !isSidebarMode()
-        if (!shouldShow) {
+        if (!shouldShowAiFloatingBall()) {
             aiFloatingBall?.removeCallbacks(aiFloatingBallAttachRunnable)
             aiFloatingBall?.isVisible = false
             return
         }
         val ball = aiFloatingBall ?: createAiFloatingBall().also {
             aiFloatingBall = it
+            it.visibility = View.INVISIBLE
             root.addView(it)
         }
-        ball.isVisible = true
-        ball.bringToFront()
-        ball.post {
-            placeAiFloatingBall(ball, animate = false, attached = true)
-            scheduleAiFloatingBallAttach()
-        }
+        showAiFloatingBallWhenReady(ball)
+    }
+
+    private fun shouldShowAiFloatingBall(): Boolean {
+        return isStandardBottomMode() && AppConfig.aiAssistantEnabled && !isSidebarMode()
     }
 
     private fun createAiFloatingBall(): FrameLayout {
@@ -705,17 +772,42 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         aiFloatingBall?.postDelayed(aiFloatingBallAttachRunnable, 3000L)
     }
 
-    private fun placeAiFloatingBall(ball: View, animate: Boolean, attached: Boolean) = binding.run {
+    private fun showAiFloatingBallWhenReady(ball: View) {
+        ball.bringToFront()
+        if (placeAiFloatingBall(ball, animate = false, attached = true)) {
+            ball.isVisible = true
+            scheduleAiFloatingBallAttach()
+            return
+        }
+        ball.visibility = View.INVISIBLE
+        binding.root.doOnLayout {
+            ball.doOnLayout {
+                if (aiFloatingBall === ball && shouldShowAiFloatingBall()) {
+                    showAiFloatingBallWhenReady(ball)
+                }
+            }
+        }
+    }
+
+    private fun floatingBottomControlsBottomPadding(): Int {
+        return bottomNavigationInset +
+                resources.getDimensionPixelSize(R.dimen.main_bottom_controls_bottom_padding)
+    }
+
+    private fun placeAiFloatingBall(ball: View, animate: Boolean, attached: Boolean): Boolean = binding.run {
         val parentWidth = root.width
         val parentHeight = root.height
-        if (parentWidth <= 0 || parentHeight <= 0 || ball.width <= 0 || ball.height <= 0) return@run
+        if (parentWidth <= 0 || parentHeight <= 0 || ball.width <= 0 || ball.height <= 0) return@run false
         val side = getPrefInt(PreferKey.aiFloatingBallSide, 1).coerceIn(0, 1)
         val yPercent = getPrefInt(PreferKey.aiFloatingBallYPercent, 50).coerceIn(8, 92)
-        val hiddenOffset = if (attached) (ball.width * 0.5f) else 0f
+        val hiddenOffset = 0f
         val targetX = if (side == 0) -hiddenOffset else parentWidth - ball.width + hiddenOffset
         val safeMargin = resources.getDimensionPixelSize(R.dimen.main_ai_floating_ball_safe_margin)
-        val targetY = ((parentHeight - ball.height) * yPercent / 100f)
-            .coerceIn(safeMargin.toFloat(), (parentHeight - ball.height - safeMargin).toFloat())
+        val availableHeight = (parentHeight - bottomNavigationInset - ball.height).coerceAtLeast(1)
+        val maxY = (parentHeight - bottomNavigationInset - ball.height - safeMargin)
+            .coerceAtLeast(safeMargin)
+        val targetY = (availableHeight * yPercent / 100f)
+            .coerceIn(safeMargin.toFloat(), maxY.toFloat())
         if (animate) {
             ball.animate()
                 .x(targetX)
@@ -727,6 +819,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             ball.x = targetX
             ball.y = targetY
         }
+        true
     }
 
     private inner class AiFloatingBallTouchListener(private val target: View) : View.OnTouchListener {
@@ -754,15 +847,20 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     }
                     if (aiFloatingBallDragged) {
                         val parent = binding.root
-                        target.x = (downX + dx).coerceIn(-target.width * 0.45f, parent.width - target.width * 0.55f)
-                        target.y = (downY + dy).coerceIn(12.dpToPx().toFloat(), (parent.height - target.height - 12.dpToPx()).toFloat())
+                        target.x = (downX + dx).coerceIn(0f, (parent.width - target.width).toFloat())
+                        val topLimit = 12.dpToPx().toFloat()
+                        val bottomLimit = (parent.height - bottomNavigationInset - target.height - 12.dpToPx())
+                            .coerceAtLeast(12.dpToPx())
+                            .toFloat()
+                        target.y = (downY + dy).coerceIn(topLimit, bottomLimit)
                     }
                     return true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (aiFloatingBallDragged) {
                         val side = if (target.x + target.width / 2f < binding.root.width / 2f) 0 else 1
-                        val yPercent = ((target.y / (binding.root.height - target.height).coerceAtLeast(1)) * 100).toInt()
+                        val availableHeight = (binding.root.height - bottomNavigationInset - target.height).coerceAtLeast(1)
+                        val yPercent = ((target.y / availableHeight) * 100).toInt()
                             .coerceIn(8, 92)
                         putPrefInt(PreferKey.aiFloatingBallSide, side)
                         putPrefInt(PreferKey.aiFloatingBallYPercent, yPercent)
@@ -1250,34 +1348,34 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             bottomNavigationIndicatorGlassView.visibility = android.view.View.VISIBLE
             searchButtonGlassView.visibility = if (standardMode) android.view.View.GONE else android.view.View.VISIBLE
             val glassLevel = when (effectMode) {
-                "frosted" -> AppConfig.frostedGlassLevel / 100f
-                else -> AppConfig.liquidGlassLevel / 100f
+                "frosted" -> bottomBarOpacityLevel(AppConfig.frostedGlassLevel)
+                else -> bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
             }
             val frostedMode = effectMode == "frosted"
             val blurRadius = if (frostedMode) {
-                (10f + glassLevel * 24f).dpToPx()
+                (12f + glassLevel * 18f).dpToPx()
             } else {
-                (5f + glassLevel * 14f).dpToPx()
+                (8f + glassLevel * 10f).dpToPx()
             }
             val tintAlpha = if (frostedMode) {
-                0.12f + glassLevel * 0.18f
-            } else {
                 0.05f + glassLevel * 0.10f
+            } else {
+                0.02f + glassLevel * 0.05f
             }
             val dispersion = if (frostedMode) {
-                (0.18f + glassLevel * 0.16f).coerceAtMost(0.42f)
+                (0.10f + glassLevel * 0.12f).coerceAtMost(0.28f)
             } else {
-                0.46f + glassLevel * 0.32f
+                (0.20f + glassLevel * 0.24f).coerceAtMost(0.48f)
             }
             val refractionHeight = if (frostedMode) {
-                (12f + glassLevel * 10f).dpToPx()
+                (14f + glassLevel * 8f).dpToPx()
             } else {
-                (18f + glassLevel * 14f).dpToPx()
+                (22f + glassLevel * 12f).dpToPx()
             }
             val refractionOffset = if (frostedMode) {
-                (36f + glassLevel * 18f).dpToPx()
+                (26f + glassLevel * 16f).dpToPx()
             } else {
-                (72f + glassLevel * 34f).dpToPx()
+                (42f + glassLevel * 24f).dpToPx()
             }
             bottomNavigationShellOverlay.background = createLiquidGlassShellDrawable(
                 glassLevel = glassLevel,
@@ -1364,7 +1462,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
         val baseColor = bottomBackground
-        val alpha = (AppConfig.liquidGlassLevel / 100f).coerceIn(0f, 1f)
+        val alpha = bottomBarOpacityLevel(AppConfig.liquidGlassLevel)
         return GradientDrawable().apply {
             shape = if (oval) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
             if (!oval) {
@@ -1375,14 +1473,46 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun createStandardBottomShellDrawable(): GradientDrawable {
+    private fun createStandardBottomShellDrawable(): Drawable {
+        val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
         val baseColor = bottomBackground
-        return GradientDrawable().apply {
+        val alpha = standardBottomBarOpacityLevel(config.opacity)
+        val shell = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 0f
-            setColor(baseColor)
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+            setColor(AppColorUtils.withAlpha(baseColor, alpha))
+            bottomBarBorderColor(config)?.let { setStroke(1.dpToPx(), it) }
         }
+        val wallpaper = NavigationBarIconConfig.currentBottomWallpaperPath(AppConfig.isNightTheme)
+            ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+            ?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }
+            ?.let {
+                CenterCropBitmapDrawable(resources, it).apply {
+                    setAlpha((alpha * 255).toInt().coerceIn(0, 255))
+                }
+            }
+            ?: return shell
+        val border = bottomBarBorderColor(config)?.let { color ->
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 0f
+                setColor(Color.TRANSPARENT)
+                setStroke(1.dpToPx(), color)
+            }
+        }
+        return LayerDrawable(buildList {
+            add(shell)
+            add(wallpaper)
+            if (border != null) add(border)
+        }.toTypedArray())
+    }
+
+    private fun bottomBarOpacityLevel(value: Int): Float {
+        return (value.coerceIn(0, 100) / 200f).coerceIn(0f, 0.5f)
+    }
+
+    private fun standardBottomBarOpacityLevel(value: Int): Float {
+        return (value.coerceIn(0, 100) / 100f).coerceIn(0f, 1f)
     }
 
     private fun createEInkBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
@@ -1540,15 +1670,13 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     ): GradientDrawable {
         val baseColor = bottomBackground
         val isLight = AppColorUtils.isColorLight(baseColor)
-        val surfaceColor = if (isLight) {
-            AppColorUtils.blendColors(baseColor, Color.WHITE, 0.72f)
-        } else {
-            AppColorUtils.blendColors(baseColor, Color.BLACK, 0.24f)
-        }
-        val startAlpha = (0.32f + glassLevel * 0.44f).coerceIn(0f, 0.86f)
-        val centerAlpha = (0.24f + glassLevel * 0.38f).coerceIn(0f, 0.74f)
-        val endAlpha = (0.18f + glassLevel * 0.32f).coerceIn(0f, 0.66f)
-        val selectedBoost = if (selected) 0.08f else 0f
+        val surfaceColor = if (isLight) Color.WHITE else Color.rgb(22, 24, 28)
+        val fallbackBoost = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) 0.08f else 0f
+        val startAlpha = (0.18f + glassLevel * 0.16f + fallbackBoost).coerceIn(0f, 0.44f)
+        val centerAlpha = (0.10f + glassLevel * 0.12f + fallbackBoost * 0.65f).coerceIn(0f, 0.32f)
+        val endAlpha = (0.08f + glassLevel * 0.10f + fallbackBoost * 0.45f).coerceIn(0f, 0.26f)
+        val selectedBoost = if (selected) 0.05f else 0f
+        val strokeAlpha = (0.18f + glassLevel * 0.16f + selectedBoost).coerceIn(0f, 0.42f)
         return GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
@@ -1561,16 +1689,22 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!oval) {
                 setCornerRadius(cornerRadius)
             }
-            bottomBarBorderColor()?.let { setStroke(1.dpToPx(), it) }
+            setStroke(
+                1.dpToPx(),
+                bottomBarBorderColor() ?: AppColorUtils.withAlpha(surfaceColor, strokeAlpha)
+            )
         }
     }
 
-    private fun bottomBarBorderColor(): Int? {
-        return NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config.borderColor
+    private fun bottomBarBorderColor(
+        config: NavigationBarIconConfig.Config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
+    ): Int? {
+        val color = config.borderColor ?: return null
+        return AppColorUtils.withAlpha(color, config.borderAlpha.coerceIn(0, 100) / 100f)
     }
 
     private fun setupLiquidGlassView(
-        liquidGlassView: LiquidGlassView,
+        liquidGlassView: StableLiquidGlassView,
         cornerRadius: Float,
         refractionHeight: Float,
         refractionOffset: Float,
@@ -1580,18 +1714,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         elasticEnabled: Boolean,
         touchEffectEnabled: Boolean,
     ) {
-        if (boundLiquidGlassViewIds.add(liquidGlassView.id)) {
-            liquidGlassView.bind(binding.contentContainer)
-        }
+        liquidGlassView.bind(binding.contentContainer)
         liquidGlassView.setCornerRadius(cornerRadius)
         liquidGlassView.setRefractionHeight(refractionHeight)
         liquidGlassView.setRefractionOffset(refractionOffset)
         liquidGlassView.setDispersion(dispersion)
         liquidGlassView.setBlurRadius(blurRadius)
         liquidGlassView.setTintAlpha(tintAlpha)
-        liquidGlassView.setTintColorRed(0.70f)
-        liquidGlassView.setTintColorGreen(0.79f)
-        liquidGlassView.setTintColorBlue(0.86f)
+        liquidGlassView.setTintColorRed(1f)
+        liquidGlassView.setTintColorGreen(1f)
+        liquidGlassView.setTintColorBlue(1f)
         liquidGlassView.setDraggableEnabled(false)
         liquidGlassView.setElasticEnabled(elasticEnabled)
         liquidGlassView.setTouchEffectEnabled(touchEffectEnabled)
@@ -1793,6 +1925,16 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                             showDialogFragment(
                                 UpdateDialog(it)
                             )
+                        }.onError {
+                            if (!AppUpdate.isLatestVersionError(it)) {
+                                showDialogFragment(
+                                    TextDialog(
+                                        getString(R.string.check_update),
+                                        it.localizedMessage ?: getString(R.string.check_update),
+                                        TextDialog.Mode.TEXT
+                                    )
+                                )
+                            }
                         }
                     LocalConfig.lastCheckUpdate = System.currentTimeMillis()
                 }
@@ -1869,7 +2011,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         lifecycleScope.launch {
             val lastBackupFile =
-                withContext(IO) { AppWebDav.lastBackUp().getOrNull() } ?: return@launch
+                withContext(IO) { AppCloudStorage.lastBackup().getOrNull() } ?: return@launch
             if (lastBackupFile.lastModify - LocalConfig.lastBackup > DateUtils.MINUTE_IN_MILLIS) {
                 LocalConfig.lastBackup = lastBackupFile.lastModify
                 alert(R.string.restore, R.string.webdav_after_local_restore_confirm) {
@@ -1891,14 +2033,14 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
 
     override fun onDestroy() {
         aiFloatingBall?.removeCallbacks(aiFloatingBallAttachRunnable)
+        clearLiquidGlassCallbacks()
+        resetLiquidGlassBindingState()
         clearSideNavigationBackground()
         super.onDestroy()
         Coroutine.async {
             BookHelp.clearInvalidCache()
         }
-        if (!BuildConfig.DEBUG) {
-            Backup.autoBack(this)
-        }
+        Backup.autoBack(this)
     }
 
     /**
@@ -1944,6 +2086,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     onUpBooksBadgeView = null
                 }
                 upBottomMenu()
+                updateAiFloatingBall()
                 if (it) {
                     pagePosition = resolveHomePagePosition().coerceIn(0, bottomMenuCount - 1)
                     viewPagerMain.setCurrentItem(pagePosition, false)
@@ -2056,6 +2199,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             binding.bottomNavigationView.menu.findItem(getBottomNavigationItemId(position))?.isChecked = true
             updateSideNavigationItems()
             updateBottomNavigationIndicator(animate = true)
+            scheduleLiquidGlassWarmup()
         }
 
     }

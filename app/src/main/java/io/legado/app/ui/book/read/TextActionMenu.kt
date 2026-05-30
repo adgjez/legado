@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.os.Build
+import android.text.TextPaint
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -18,6 +19,10 @@ import androidx.appcompat.view.SupportMenuInflater
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.core.view.isVisible
+import com.google.android.flexbox.AlignItems
+import com.google.android.flexbox.FlexDirection
+import com.google.android.flexbox.FlexWrap
+import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -28,9 +33,7 @@ import io.legado.app.databinding.PopupActionMenuBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.getPrefStringSet
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.isAbsUrl
@@ -39,6 +42,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.visible
+import kotlin.math.ceil
 
 @SuppressLint("RestrictedApi")
 class TextActionMenu(private val context: Context, private val callBack: CallBack) :
@@ -51,24 +55,27 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val allMenuItems: List<MenuItemImpl>
     private val visibleMenuItems = arrayListOf<MenuItemImpl>()
     private val moreMenuItems = arrayListOf<MenuItemImpl>()
-    private val expandTextMenu get() = context.getPrefBoolean(PreferKey.expandTextMenu)
+    private var lastMaxMainWidth = 0
+    private val itemTextPaint = TextPaint().apply {
+        textSize = 12f * context.resources.displayMetrics.scaledDensity
+        typeface = context.uiTypeface()
+    }
 
     private val configuredActionIds: Set<String>
-        get() = context.getPrefStringSet(
-            PreferKey.contentSelectActions,
-            mutableSetOf("replace", "copy", "bookmark", "aloud", "dict", "ask_ai")
-        )?.filterNot { it == "generate_image" }?.toSet() ?: emptySet()
+        get() = ContentSelectConfig.selectedActionIds(context)
 
     private val defaultOpenActionId: String
         get() = context.getPrefString(PreferKey.contentSelectDefaultOpen, "").orEmpty()
 
     private fun menuItemToActionId(itemId: Int): String? = when (itemId) {
-        R.id.menu_replace -> "replace"
-        R.id.menu_copy -> "copy"
-        R.id.menu_bookmark -> "bookmark"
-        R.id.menu_aloud -> "aloud"
-        R.id.menu_dict -> "dict"
-        R.id.menu_ask_ai -> "ask_ai"
+        R.id.menu_web_search -> ContentSelectConfig.ACTION_WEB_SEARCH
+        R.id.menu_replace -> ContentSelectConfig.ACTION_REPLACE
+        R.id.menu_copy -> ContentSelectConfig.ACTION_COPY
+        R.id.menu_bookmark -> ContentSelectConfig.ACTION_BOOKMARK
+        R.id.menu_aloud -> ContentSelectConfig.ACTION_ALOUD
+        R.id.menu_dict -> ContentSelectConfig.ACTION_DICT
+        R.id.menu_ask_ai -> ContentSelectConfig.ACTION_ASK_AI
+        R.id.menu_generate_image -> ContentSelectConfig.ACTION_GENERATE_IMAGE
         else -> null
     }
 
@@ -91,27 +98,21 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             onInitializeMenu(otherMenu)
         }
         allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
+        binding.recyclerView.layoutManager = FlexboxLayoutManager(context).apply {
+            flexDirection = FlexDirection.ROW
+            flexWrap = FlexWrap.WRAP
+            alignItems = AlignItems.FLEX_START
+        }
         binding.recyclerView.adapter = adapter
         binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
-            if (!context.getPrefBoolean(PreferKey.expandTextMenu)) {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
-                binding.recyclerViewMore.gone()
-                adapter.setItems(visibleMenuItems)
-                binding.recyclerView.visible()
-            }
+            showMainMenu()
         }
         binding.ivMenuMore.setOnClickListener {
-            if (binding.recyclerView.isVisible) {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
-                adapter.setItems(moreMenuItems)
-                binding.recyclerView.gone()
-                binding.recyclerViewMore.visible()
+            if (binding.recyclerView.isVisible && moreMenuItems.isNotEmpty()) {
+                showMoreMenu()
             } else {
-                binding.ivMenuMore.setImageResource(R.drawable.ic_more_vert)
-                binding.recyclerViewMore.gone()
-                adapter.setItems(visibleMenuItems)
-                binding.recyclerView.visible()
+                showMainMenu()
             }
         }
         upMenu()
@@ -124,21 +125,106 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     fun upMenu() {
+        upMenuForWidth(lastMaxMainWidth.takeIf { it > 0 } ?: context.resources.displayMetrics.widthPixels)
+    }
+
+    private fun upMenuForWidth(maxMainWidth: Int) {
+        lastMaxMainWidth = maxMainWidth
         visibleMenuItems.clear()
         moreMenuItems.clear()
         val filteredItems = filteredMenuItems()
-        visibleMenuItems.addAll(filteredItems)
-        if (expandTextMenu) {
-            adapter.setItems(filteredItems)
-            binding.ivMenuMore.gone()
+        val maxWidth = (maxMainWidth - 16.dpToPx()).coerceAtLeast(140.dpToPx())
+        val contentMaxWidth = (maxWidth - 12.dpToPx()).coerceAtLeast(120.dpToPx())
+        val noMoreLayout = flowMainMenu(filteredItems, contentMaxWidth)
+        val layout = if (noMoreLayout.overflow.isEmpty()) {
+            noMoreLayout
         } else {
-            adapter.setItems(visibleMenuItems)
-            if (moreMenuItems.isEmpty()) {
-                binding.ivMenuMore.gone()
-            } else {
-                binding.ivMenuMore.visible()
-            }
+            flowMainMenu(filteredItems, (contentMaxWidth - moreButtonWidth()).coerceAtLeast(96.dpToPx()))
         }
+        visibleMenuItems += layout.visible
+        moreMenuItems += layout.overflow
+        applyMainMenuLayout(layout)
+        showMainMenu()
+    }
+
+    private fun estimateItemWidth(item: MenuItemImpl): Int {
+        val textWidth = ceil(itemTextPaint.measureText(item.title?.toString().orEmpty())).toInt()
+        return maxOf(52.dpToPx(), textWidth + 24.dpToPx())
+            .coerceAtMost(maxMenuItemWidth()) + 6.dpToPx()
+    }
+
+    private fun maxMenuItemWidth(): Int = 132.dpToPx()
+
+    private fun moreButtonWidth(): Int = 40.dpToPx()
+
+    private fun mainRowHeight(): Int = 40.dpToPx()
+
+    private fun flowMainMenu(items: List<MenuItemImpl>, rowWidth: Int): MainMenuLayout {
+        val visible = arrayListOf<MenuItemImpl>()
+        val overflow = arrayListOf<MenuItemImpl>()
+        val lineWidths = arrayListOf<Int>()
+        var rowIndex = 0
+        var usedWidth = 0
+        var overflowStarted = false
+        items.forEach { item ->
+            val itemWidth = estimateItemWidth(item).coerceAtMost(rowWidth)
+            if (!overflowStarted) {
+                if (usedWidth == 0 || usedWidth + itemWidth <= rowWidth) {
+                    visible += item
+                    usedWidth += itemWidth
+                    return@forEach
+                }
+                if (rowIndex == 0) {
+                    lineWidths += usedWidth
+                    rowIndex = 1
+                    usedWidth = itemWidth
+                    visible += item
+                    return@forEach
+                }
+            }
+            overflowStarted = true
+            overflow += item
+        }
+        if (usedWidth > 0 || lineWidths.isEmpty()) {
+            lineWidths += usedWidth
+        }
+        val rowCount = if (visible.isEmpty()) 1 else lineWidths.size.coerceIn(1, 2)
+        val layoutWidth = lineWidths.maxOrNull()
+            ?.coerceAtLeast(if (visible.isEmpty()) 0 else 52.dpToPx())
+            ?.coerceAtMost(rowWidth)
+            ?: rowWidth
+        return MainMenuLayout(
+            visible = visible,
+            overflow = overflow,
+            rowCount = rowCount,
+            width = layoutWidth
+        )
+    }
+
+    private fun applyMainMenuLayout(layout: MainMenuLayout) = binding.run {
+        recyclerView.layoutParams = recyclerView.layoutParams.apply {
+            width = layout.width
+            height = layout.rowCount * mainRowHeight()
+        }
+    }
+
+    private fun showMainMenu() = binding.run {
+        ivMenuMore.setImageResource(R.drawable.ic_more_vert)
+        recyclerViewMore.gone()
+        adapter.setItems(visibleMenuItems)
+        recyclerView.visible()
+        ivMenuMore.visible(moreMenuItems.isNotEmpty())
+    }
+
+    private fun showMoreMenu() = binding.run {
+        ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
+        val rowHeight = 42.dpToPx()
+        recyclerViewMore.layoutParams = recyclerViewMore.layoutParams.apply {
+            height = minOf(moreMenuItems.size * rowHeight, 240.dpToPx())
+        }
+        adapter.setItems(moreMenuItems)
+        recyclerView.gone()
+        recyclerViewMore.visible()
     }
 
     fun show(
@@ -161,6 +247,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
                 return
             }
         }
+        upMenuForWidth(view.width)
         contentView.measure(
             View.MeasureSpec.UNSPECIFIED,
             View.MeasureSpec.UNSPECIFIED,
@@ -202,6 +289,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             with(binding) {
                 textView.text = item.title
                 textView.typeface = context.uiTypeface()
+                textView.maxWidth = maxMenuItemWidth()
             }
         }
 
@@ -309,4 +397,11 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
         fun onMenuActionFinally()
     }
+
+    private data class MainMenuLayout(
+        val visible: List<MenuItemImpl>,
+        val overflow: List<MenuItemImpl>,
+        val rowCount: Int,
+        val width: Int
+    )
 }

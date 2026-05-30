@@ -19,6 +19,7 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
     private val slopSquare get() = readView.pageSlopSquare2
 
     var noAnim: Boolean = false
+    private var scrollRemainder = 0f
 
     override fun onAnimStart(animationSpeed: Int) {
         readView.onScrollAnimStart()
@@ -64,7 +65,12 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
     }
 
     override fun onScroll() {
-        curPage.scroll((touchY - lastY).toInt())
+        val offset = touchY - lastY + scrollRemainder
+        val intOffset = offset.toInt()
+        scrollRemainder = offset - intOffset
+        if (intOffset != 0) {
+            curPage.scroll(intOffset)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -114,6 +120,7 @@ class ScrollPageDelegate(readView: ReadView) : PageDelegate(readView) {
         isStarted = false
         isMoved = false
         isRunning = false
+        scrollRemainder = 0f
         if (!scroller.isFinished) {
             readView.isAbortAnim = true
             scroller.abortAnimation()

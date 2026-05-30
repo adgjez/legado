@@ -79,7 +79,12 @@ object ParagraphRuleProcessor {
             processCache[cacheKey]?.let { return it }
         }
         val original = content.textList.joinToString("\n")
-        var result = ChapterResult(original, content.textList)
+        val protectedContent = SpecialContentProtector.protect(original)
+        var result = ChapterResult(
+            protectedContent.content,
+            protectedContent.content.split('\n'),
+            content.sourceIndexes.normalizedSourceIndexes(content.textList.size)
+        )
         val context = currentCoroutineContext()
         var hasFailure = false
         for (rule in rules) {
@@ -97,7 +102,14 @@ object ParagraphRuleProcessor {
                 }
             }.getOrDefault(result)
         }
-        val processed = if (result.content == original) content else content.copy(textList = result.paragraphs)
+        val restoredParagraphs = result.paragraphs.map { protectedContent.restore(it) }
+        val restoredContent = restoredParagraphs.joinToString("\n")
+        val restoredSourceIndexes = result.sourceIndexes.normalizedSourceIndexes(restoredParagraphs.size)
+        val processed = if (restoredContent == original && restoredSourceIndexes == content.sourceIndexes) {
+            content
+        } else {
+            content.copy(textList = restoredParagraphs, sourceIndexes = restoredSourceIndexes)
+        }
         if (!hasFailure) {
             synchronized(processCache) {
                 processCache[cacheKey] = processed
@@ -110,7 +122,8 @@ object ParagraphRuleProcessor {
         if (book.isEpub) return content
         val rules = appDb.paragraphRuleDao.enabledRulesForBook(book.bookUrl)
         if (rules.isEmpty()) return content
-        var result = content
+        val protectedContent = SpecialContentProtector.protect(content)
+        var result = protectedContent.content
         val context = currentCoroutineContext()
         for (rule in rules) {
             if (rule.script.isBlank()) continue
@@ -126,7 +139,7 @@ object ParagraphRuleProcessor {
                 }
             }.getOrDefault(result)
         }
-        return result
+        return protectedContent.restore(result)
     }
 
     suspend fun debug(rule: ParagraphRule, book: Book, chapter: BookChapter, content: String): DebugResult {
@@ -449,18 +462,23 @@ object ParagraphRuleProcessor {
     ): ChapterResult {
         val result = unwrap(jsResult) ?: return current
         return when (result) {
-            is String -> chapterResultOf(result)
-            is NativeArray -> fromListResult(result.toList())
-            is List<*> -> fromListResult(result)
+            is String -> chapterResultOf(result, current)
+            is NativeArray -> fromListResult(result.toList(), current)
+            is List<*> -> fromListResult(result, current)
             is NativeObject -> fromPatchResult(current, paragraphs, result.toMap())
             is Map<*, *> -> fromPatchResult(current, paragraphs, result)
-            else -> chapterResultOf(result.toString())
+            else -> chapterResultOf(result.toString(), current)
         }
     }
 
-    private fun chapterResultOf(text: String): ChapterResult {
+    private fun chapterResultOf(text: String, current: ChapterResult? = null): ChapterResult {
         val paragraphs = text.split('\n').filter { it.isNotBlank() }
-        return ChapterResult(paragraphs.joinToString("\n"), paragraphs)
+        return ChapterResult(
+            paragraphs.joinToString("\n"),
+            paragraphs,
+            current?.let { mapSourceIndexes(paragraphs, it.paragraphs, it.sourceIndexes) }
+                ?: List(paragraphs.size) { -1 }
+        )
     }
 
     private fun fromList(list: List<*>): String {
@@ -480,17 +498,21 @@ object ParagraphRuleProcessor {
         }
     }
 
-    private fun fromListResult(list: List<*>): ChapterResult {
+    private fun fromListResult(list: List<*>, current: ChapterResult): ChapterResult {
         val paragraphs = arrayListOf<String>()
+        val sourceIndexes = arrayListOf<Int>()
         list.forEach { raw ->
             val item = unwrap(raw)
             val text = when (item) {
                 is Map<*, *> -> item["text"]?.toString() ?: item["content"]?.toString()
                 else -> item?.toString()
             } ?: return@forEach
-            if (text.isNotBlank()) paragraphs.add(text)
+            if (text.isNotBlank()) {
+                paragraphs.add(text)
+                sourceIndexes.add(current.sourceIndexes.getOrElse(paragraphs.lastIndex) { -1 })
+            }
         }
-        return ChapterResult(paragraphs.joinToString("\n"), paragraphs)
+        return ChapterResult(paragraphs.joinToString("\n"), paragraphs, sourceIndexes)
     }
 
     private fun fromPatch(original: String, paragraphs: List<ParagraphItem>, patch: Map<*, *>): String {
@@ -514,11 +536,11 @@ object ParagraphRuleProcessor {
     ): ChapterResult {
         if (patch.containsKey("content")) {
             val text = patch["content"]?.toString() ?: current.content
-            return chapterResultOf(text)
+            return chapterResultOf(text, current)
         }
         if (patch.containsKey("result")) {
             val text = patch["result"]?.toString() ?: current.content
-            return chapterResultOf(text)
+            return chapterResultOf(text, current)
         }
         val byIndex = linkedMapOf<Int, String>()
         patch.forEach { (key, value) ->
@@ -527,17 +549,25 @@ object ParagraphRuleProcessor {
         if (byIndex.isEmpty()) return current
         val paragraphIndexes = paragraphs.map { it.index }.toHashSet()
         val out = current.paragraphs.toMutableList()
+        val outSourceIndexes = current.sourceIndexes.normalizedSourceIndexes(out.size).toMutableList()
         paragraphs.forEach { item ->
             val replace = byIndex[item.index] ?: return@forEach
             val position = item.sourcePosition
-            if (position in out.indices) out[position] = replace
+            if (position in out.indices) {
+                out[position] = replace
+                outSourceIndexes[position] = current.sourceIndexes.getOrElse(position) { -1 }
+            }
         }
         byIndex
             .filterKeys { it !in paragraphIndexes }
             .toSortedMap()
             .values
-            .filterTo(out) { it.isNotBlank() }
-        return ChapterResult(out.joinToString("\n"), out)
+            .filter { it.isNotBlank() }
+            .forEach {
+                out.add(it)
+                outSourceIndexes.add(-1)
+            }
+        return ChapterResult(out.joinToString("\n"), out, outSourceIndexes)
     }
 
     private fun unwrap(value: Any?): Any? = when (value) {
@@ -597,7 +627,7 @@ object ParagraphRuleProcessor {
 
     private fun ChapterResult.wrapPclicks(ruleId: Long): ChapterResult {
         val wrapped = paragraphs.map { wrapPclicks(ruleId, it) }
-        return ChapterResult(wrapped.joinToString("\n"), wrapped)
+        return ChapterResult(wrapped.joinToString("\n"), wrapped, sourceIndexes.normalizedSourceIndexes(wrapped.size))
     }
 
     private fun dedupeParagraphRuleImages(text: String): String {
@@ -646,8 +676,54 @@ object ParagraphRuleProcessor {
         return "${book.bookUrl}|${chapter.index}|${chapter.url}|$rulesKey|$varsKey|$contentKey"
     }
 
+    private fun List<Int>.normalizedSourceIndexes(size: Int): List<Int> {
+        return List(size) { index -> getOrElse(index) { -1 } }
+    }
+
+    private fun mapSourceIndexes(
+        newParagraphs: List<String>,
+        oldParagraphs: List<String>,
+        oldSourceIndexes: List<Int>
+    ): List<Int> {
+        val used = hashSetOf<Int>()
+        return newParagraphs.mapIndexed { index, paragraph ->
+            val direct = oldSourceIndexes.getOrElse(index) { -1 }
+            if (direct >= 0 && index < oldParagraphs.size && sameParagraphAnchor(paragraph, oldParagraphs[index])) {
+                used.add(index)
+                direct
+            } else {
+                val matchIndex = oldParagraphs.indices.firstOrNull { oldIndex ->
+                    oldIndex !in used && sameParagraphAnchor(paragraph, oldParagraphs[oldIndex])
+                }
+                if (matchIndex != null) {
+                    used.add(matchIndex)
+                    oldSourceIndexes.getOrElse(matchIndex) { -1 }
+                } else {
+                    -1
+                }
+            }
+        }
+    }
+
+    private fun sameParagraphAnchor(left: String, right: String): Boolean {
+        val a = normalizeParagraphAnchor(left)
+        val b = normalizeParagraphAnchor(right)
+        if (a.isBlank() || b.isBlank()) return false
+        return a == b || (a.length > 12 && b.contains(a)) || (b.length > 12 && a.contains(b))
+    }
+
+    private fun normalizeParagraphAnchor(text: String): String {
+        return text
+            .replace(Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""<[^>]+>"""), "")
+            .replace(Regex("""\s+"""), "")
+            .replace("\u3000", "")
+            .trim()
+    }
+
     private data class ChapterResult(
         val content: String,
-        val paragraphs: List<String>
+        val paragraphs: List<String>,
+        val sourceIndexes: List<Int>
     )
 }

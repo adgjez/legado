@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read.page.provider
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
 import android.text.Layout
 import android.text.Spanned
 import android.text.StaticLayout
@@ -32,6 +33,7 @@ import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ImageProvider
+import io.legado.app.model.ParagraphBubbleRenderer
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.read.page.entities.TextChapter
@@ -145,6 +147,7 @@ class TextChapterLayout(
     private var pendingSingleImagePageBreak = false
     private var activeEpubBlockDecoration: ActiveEpubBlockDecoration? = null
     private val imageInfoCache = hashMapOf<String, ImageInfo>()
+    private var currentSourceIndex = -1
 
     private var isCompleted = false
     private val job: Coroutine<*>
@@ -352,26 +355,27 @@ class TextChapterLayout(
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
-        contents.forEach { content ->
+        contents.forEachIndexed { contentIndex, content ->
             currentCoroutineContext().ensureActive()
+            currentSourceIndex = bookContent.sourceIndexes.getOrElse(contentIndex) { contentIndex }
             if (adaptSpecialStyle) {
                 val text = content.trim()
                 if (text == "[newpage]") {
                     prepareNextPageIfNeed()
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith(EpubFile.NATIVE_CONTENT_FLAG)) {
                     setTypeNativeEpubLayout(text)
-                    return@forEach
+                    return@forEachIndexed
                 } else if (text.startsWith("<usehtml")) {
                     val contentStart = text.indexOf('>')
                     val contentEnd = text.lastIndexOf("<")
                     if (contentStart >= 0 && contentEnd > contentStart) {
-                        if (book.isEpub) {
+                        if (book.isEpub && AppConfig.useExperimentalEpubCore) {
                             setTypeEpubDiagnosticPage("旧 EPUB 缓存仍是 usehtml，请重新打开或刷新章节缓存", text.take(180))
-                            return@forEach
+                            return@forEachIndexed
                         }
                         setTypeHtml(imageStyle, book, text.substring(contentStart + 1, contentEnd))
-                        return@forEach
+                        return@forEachIndexed
                     }
                 }
             }
@@ -379,11 +383,14 @@ class TextChapterLayout(
             if (isTextImageStyle) {
                 //图片样式为文字嵌入类型
                 val srcList = LinkedList<String>()
+                val clickList = LinkedList<String?>()
                 sb.setLength(0)
                 val matcher = AppPattern.imgPattern.matcher(text)
                 while (matcher.find()) {
                     matcher.group(1)?.let { src ->
-                        srcList.add(src)
+                        val imageInfo = parseImageInfo(src)
+                        srcList.add(imageInfo.renderSrc)
+                        clickList.add(imageInfo.click)
                         matcher.appendReplacement(sb, srcReplaceStr)
                     }
                 }
@@ -398,7 +405,7 @@ class TextChapterLayout(
                     contentPaintFontMetrics,
                     imageStyle,
                     srcList = srcList,
-                    clickList = null
+                    clickList = clickList
                 )
             } else {
                 if (isSingleImageStyle && isSetTypedImage) {
@@ -1626,7 +1633,7 @@ class TextChapterLayout(
             val mLineTop = staticLayout.getLineTop(lineIndex).toFloat()
             val mLineBottom = staticLayout.getLineBottom(lineIndex).toFloat()
             val lineHeight = mLineBottom - mLineTop
-            prepareNextPageIfNeed(durY + lineHeight)
+            prepareNextPageIfNeed(fullLineRequestHeight(lineHeight, textPaint.fontMetrics))
             textLine.upTopBottom(durY, lineHeight, textPaint.fontMetrics) //y坐标
 
             val columns = mutableListOf<BaseColumn>()
@@ -1673,7 +1680,9 @@ class TextChapterLayout(
                         }
                         when (iStyle?.uppercase()) {
                             "TEXT" -> {
-                                ImageProvider.cacheImage(book, imageInfo.renderSrc, ReadBook.bookSource)
+                                if (!ParagraphBubbleRenderer.isBubbleSrc(imageInfo.renderSrc)) {
+                                    ImageProvider.cacheImage(book, imageInfo.renderSrc, ReadBook.bookSource)
+                                }
                                 columns.add(
                                     ImageColumn(
                                         start = lineAbsStartX + charX,
@@ -1949,6 +1958,7 @@ class TextChapterLayout(
         breakAfterSingleImageIfNeed()
         val widthsArray = allocateFloatArray(text.length)
         textPaint.getTextWidthsCompat(text, widthsArray, reviewCharWidth)
+        applyInlineImageWidths(text, widthsArray, srcList)
         val layout = if (useZhLayout) {
             val (words, widths) = measureTextSplit(text, widthsArray)
             val indentSize = if (isFirstLine) paragraphIndent.length else 0
@@ -1993,7 +2003,7 @@ class TextChapterLayout(
         }
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)
-            prepareNextPageIfNeed(durY + textHeight)
+            prepareNextPageIfNeed(fullLineRequestHeight(textHeight, fontMetrics))
             val lineStart = layout.getLineStart(lineIndex)
             val lineEnd = layout.getLineEnd(lineIndex)
             val lineText = text.substring(lineStart, lineEnd)
@@ -2075,6 +2085,7 @@ class TextChapterLayout(
             else -> lastLine.paragraphNum
         }
         textLine.paragraphNum = paragraphNum
+        textLine.sourceIndex = currentSourceIndex
         val previousPageEndPosition = textPages.lastOrNull()?.let { lastPage ->
             lastPage.lines.lastOrNull()?.run {
                 chapterPosition + charSize + if (isParagraphEnd) 1 else 0
@@ -2247,7 +2258,9 @@ class TextChapterLayout(
             !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
                 val src = srcList.removeFirst()
                 val click = clickList?.removeFirst()
-                ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                if (!ParagraphBubbleRenderer.isBubbleSrc(src)) {
+                    ImageProvider.cacheImage(book, src, ReadBook.bookSource)
+                }
                 ImageColumn(
                     start = absStartX + xStart,
                     end = absStartX + xEnd,
@@ -2274,6 +2287,24 @@ class TextChapterLayout(
         textLine.addColumn(column)
     }
 
+    private fun applyInlineImageWidths(
+        text: String,
+        widthsArray: FloatArray,
+        srcList: LinkedList<String>?
+    ) {
+        if (srcList.isNullOrEmpty()) return
+        var imageIndex = 0
+        text.forEachIndexed { index, char ->
+            if (char == srcReplaceChar || char == reviewChar) {
+                val src = srcList.getOrNull(imageIndex)
+                if (src != null && ParagraphBubbleRenderer.isBubbleSrc(src)) {
+                    widthsArray[index] = ParagraphBubbleRenderer.inlineWidth(widthsArray[index])
+                }
+                imageIndex++
+            }
+        }
+    }
+
     /**
      * 超出边界处理
      */
@@ -2293,20 +2324,15 @@ class TextChapterLayout(
         val endX = endColumn.end.roundToInt()
         if (endX > visibleEnd) {
             textLine.exceed = true
-            val cc = (endX - visibleEnd) / size
-            for (i in 0..<size) {
-                textLine.getColumnReverseAt(i, offset).let {
-                    val py = cc * (size - i)
-                    it.start -= py
-                    it.end -= py
-                }
-            }
         }
     }
 
     private suspend fun prepareNextPageIfNeed(requestHeight: Float = -1f) {
         if (requestHeight > visibleHeight || requestHeight == -1f) {
             val textPage = pendingTextPage
+            if (textPage.lines.isEmpty() && stringBuilder.isEmpty()) {
+                return
+            }
             // 双页的 durY 不正确，可能会小于实际高度
             if (textPage.height < durY) {
                 textPage.height = durY
@@ -2324,6 +2350,12 @@ class TextChapterLayout(
         }
     }
 
+    private fun fullLineRequestHeight(lineHeight: Float, fontMetrics: Paint.FontMetrics): Float {
+        val descent = fontMetrics.descent.coerceAtLeast(0f)
+        val safety = maxOf(2f.dpToPx(), descent * 0.25f)
+        return durY + lineHeight + safety
+    }
+
     private data class AdvancedTitleLayout(
         val blockWidth: Float,
         val blockHeight: Float,
@@ -2338,6 +2370,7 @@ class TextChapterLayout(
     )
 
     private companion object {
+        const val PARAGRAPH_BUBBLE_PREFIX = "dp:"
         const val ADVANCED_TITLE_SIZE_FACTOR = 1.25f
         const val ADVANCED_TITLE_WIDTH_FACTOR = 0.86f
         const val DEFAULT_LOTTIE_WIDTH = 720f
@@ -2346,6 +2379,9 @@ class TextChapterLayout(
 
     private suspend fun parseImageInfo(src: String): ImageInfo {
         imageInfoCache[src]?.let { return it }
+        if (src.startsWith(PARAGRAPH_BUBBLE_PREFIX)) {
+            return parseParagraphBubble(src).also { imageInfoCache[src] = it }
+        }
         val urlMatcher = paramPattern.matcher(src)
         if (!urlMatcher.find()) return ImageInfo(src).also { imageInfoCache[src] = it }
         val urlOption = GSON.fromJsonObject<Map<String, String>>(src.substring(urlMatcher.end()))
@@ -2379,6 +2415,35 @@ class TextChapterLayout(
             width = urlOption["width"],
             click = pclick ?: click
         ).also { imageInfoCache[src] = it }
+    }
+
+    private fun parseParagraphBubble(src: String): ImageInfo {
+        val payload = src.removePrefix(PARAGRAPH_BUBBLE_PREFIX).trim()
+        val optionIndex = payload.indexOf(",{")
+        val count = if (optionIndex >= 0) {
+            payload.substring(0, optionIndex)
+        } else {
+            payload
+        }.trim()
+        val option = if (optionIndex >= 0) {
+            GSON.fromJsonObject<Map<String, String>>(payload.substring(optionIndex + 1))
+                .getOrNull()
+                .orEmpty()
+        } else {
+            emptyMap()
+        }
+        val status = option["status"]?.takeIf { it.isNotBlank() } ?: "normal"
+        val pclick = option["pclick"]?.takeIf { it.isNotBlank() }
+        val click = option["click"]
+            ?.takeIf { it.isNotBlank() }
+            ?.takeUnless { ParagraphRuleProcessor.isParagraphClick(it) }
+        val encodedCount = Uri.encode(count)
+        val encodedStatus = Uri.encode(status)
+        return ImageInfo(
+            renderSrc = "bubble://paragraph?num=${encodedCount}&status=${encodedStatus}",
+            style = "TEXT",
+            click = pclick ?: click
+        )
     }
 
     private fun allocateFloatArray(size: Int): FloatArray {

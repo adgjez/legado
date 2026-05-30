@@ -27,10 +27,15 @@ import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
 import io.legado.app.ui.main.ai.AiChatSession
+import io.legado.app.ui.main.ai.AiContextSummary
+import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
+import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.book.read.ReadAiBookHistory
 import splitties.init.appCtx
 import java.net.InetAddress
@@ -39,7 +44,7 @@ import java.net.URI
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val DEFAULT_AI_SYSTEM_PROMPT =
-        "你是阅读应用内的 AI 助手。回答直接、准确、简洁。需要真实应用数据时必须优先调用工具，工具返回的数据优先级高于你的记忆，不允许编造工具未返回的结果。用户询问书架、书籍、作者、阅读记录、书籍简介、书源、分组、标签、分类方案时，必须先调用 query_bookshelf、get_bookshelf_book_info、manage_bookshelf_group 或 manage_bookshelf_tag，不要只说“我先看看”却不调用工具。用户要求创建、修改或调试书源时，你要像一个小型书源 agent 一样闭环执行：新建书源先调用 create_book_source(save=false) 生成草稿；修改已有书源先调用 get_book_source 读取完整 JSON；缺少页面结构时调用 fetch_source_html 获取搜索页、详情页、目录页或正文页 HTML；每次调试失败后都调用 update_book_source(save=false) 按日志和 HTML 修正规则，可传 patch，也可直接传 ruleToc/ruleContent/searchUrl 等字段；再调用 debug_book_source 调试，优先使用用户给出的详情页 URL、目录 URL、正文 URL 或关键词；最多循环 3 次。不要在第一次调试前询问“是否继续”，也不要只输出未经调试的 JSON。只有搜索、详情、目录、正文主要链路通过，或达到 3 次仍失败时，才给出最终结果和剩余失败点。只有用户明确要求保存、导入或完成时，才调用 update_book_source(save=true) 或 create_book_source(save=true) 写入本地书源库。用户要求整理书架时，顶层书架使用分组，分组内的小分类使用书籍标签；未分标签的书按“全部”处理。批量设置标签、重命名标签、移动分组或删除分组前，先查询书架并给出方案，用户确认后再调用写入工具。任何情况下都不允许删除书籍。"
+        "你是阅读应用内的 AI 助手。回答直接、准确、简洁。需要真实应用数据时必须优先调用工具，工具返回的数据优先级高于你的记忆，不允许编造工具未返回的结果。用户询问书架、书籍、作者、阅读记录、书籍简介、书源、分组、标签、分类方案时，必须先调用 query_bookshelf、get_bookshelf_book_info、manage_bookshelf_group 或 manage_bookshelf_tag，不要只说“我先看看”却不调用工具。用户要求创建、修改或调试书源时，你要像一个小型书源 agent 一样闭环执行：新建书源先调用 create_book_source(save=false) 生成草稿；修改已有书源先调用 get_book_source 读取完整 JSON；缺少页面结构时调用 fetch_source_html 获取搜索页、详情页、目录页或正文页 HTML；每次调试失败后都调用 update_book_source(save=false) 按日志和 HTML 修正规则，可传 patch，也可直接传 ruleToc/ruleContent/searchUrl 等字段；再调用 debug_book_source 调试，优先使用用户给出的详情页 URL、目录 URL、正文 URL 或关键词；最多循环 3 次。不要在第一次调试前询问“是否继续”，也不要只输出未经调试的 JSON。只有搜索、详情、目录、正文主要链路通过，或达到 3 次仍失败时，才给出最终结果和剩余失败点。只有用户明确要求保存、导入或完成时，才调用 update_book_source(save=true) 或 create_book_source(save=true) 写入本地书源库。用户要求整理书架时，顶层书架使用分组，分组内的小分类使用书籍标签；未分标签的书按“全部”处理。批量设置标签、重命名标签、移动分组或删除分组前，先查询书架并给出方案，用户确认后再调用写入工具。任何情况下都不允许删除书籍。工具返回图片路径时直接展示已有图片；用户只要求查看、展示头像时不要调用生图工具，只有明确要求生成、重绘或重新生成时才生成图片。"
 
     val isCronet = appCtx.getPrefBoolean(PreferKey.cronet)
     var useAntiAlias = appCtx.getPrefBoolean(PreferKey.antiAlias)
@@ -549,7 +554,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     }
                 }
                 .sortedByDescending { it.updatedAt }
-                .take(30)
+                .take(100)
             if (sessions.isEmpty()) {
                 appCtx.removePref(PreferKey.aiChatSessionList)
             } else {
@@ -729,13 +734,79 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             persistAiSkills(normalizeAiSkills(value))
         }
 
+    var aiPersonaList: List<AiPersonaConfig>
+        get() = normalizeAiPersonas(
+            GSON.fromJsonArray<AiPersonaConfig>(appCtx.getPrefString(PreferKey.aiPersonaList))
+                .getOrDefault(emptyList())
+        )
+        set(value) {
+            val personas = normalizeAiPersonas(value)
+            if (personas.isEmpty()) appCtx.removePref(PreferKey.aiPersonaList)
+            else appCtx.putPrefString(PreferKey.aiPersonaList, GSON.toJson(personas))
+        }
+
+    var aiCurrentPersonaId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentPersonaId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentPersonaId)
+            else appCtx.putPrefString(PreferKey.aiCurrentPersonaId, value)
+        }
+
+    val aiCurrentPersona: AiPersonaConfig?
+        get() = aiPersonaList.firstOrNull { it.id == aiCurrentPersonaId }
+
+    var aiImageProviderList: List<AiImageProviderConfig>
+        get() = normalizeAiImageProviders(
+            GSON.fromJsonArray<AiImageProviderConfig>(appCtx.getPrefString(PreferKey.aiImageProviderList))
+                .getOrDefault(emptyList())
+        )
+        set(value) {
+            val providers = normalizeAiImageProviders(value)
+            if (providers.isEmpty()) appCtx.removePref(PreferKey.aiImageProviderList)
+            else appCtx.putPrefString(PreferKey.aiImageProviderList, GSON.toJson(providers))
+        }
+
+    val aiEnabledImageProviders: List<AiImageProviderConfig>
+        get() = aiImageProviderList.filter { it.enabled }
+
+    var aiCurrentImageProviderId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentImageProviderId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentImageProviderId)
+            else appCtx.putPrefString(PreferKey.aiCurrentImageProviderId, value)
+        }
+
+    val aiCurrentImageProvider: AiImageProviderConfig?
+        get() {
+            val providers = aiEnabledImageProviders
+            val currentId = aiCurrentImageProviderId
+            if (currentId.isNullOrBlank()) {
+                return providers.firstOrNull()?.also { aiCurrentImageProviderId = it.id }
+            }
+            return providers.firstOrNull { it.id == currentId }
+        }
+
+    fun findEnabledImageProvider(id: String?): AiImageProviderConfig? {
+        val cleanId = id?.trim().orEmpty()
+        if (cleanId.isBlank()) return null
+        return aiEnabledImageProviders.firstOrNull { it.id == cleanId }
+    }
+
+    var aiContextCompressionEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)
+
+    var aiContextWindowTokens: Int
+        get() = appCtx.getPrefInt(PreferKey.aiContextWindowTokens, 258_000).coerceIn(8_000, 2_000_000)
+        set(value) = appCtx.putPrefInt(PreferKey.aiContextWindowTokens, value.coerceIn(8_000, 2_000_000))
+
+    var aiThinkingContextTokens: Int
+        get() = appCtx.getPrefInt(PreferKey.aiThinkingContextTokens, 128_000).coerceIn(0, 1_000_000)
+        set(value) = appCtx.putPrefInt(PreferKey.aiThinkingContextTokens, value.coerceIn(0, 1_000_000))
+
     var aiTavilyEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiTavilyEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiTavilyEnabled, value)
-
-    var aiShowToolSummary: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiShowToolSummary, false)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiShowToolSummary, value)
 
     var aiEnterToSend: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiEnterToSend, true)
@@ -802,17 +873,19 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiProviders(value: List<AiProviderConfig>): List<AiProviderConfig> {
         return value.mapNotNull { provider ->
-            val name = provider.name.trim()
-            val id = provider.id.trim()
+            val name = safeString { provider.name }.trim()
+            val id = safeString { provider.id }.trim()
             if (name.isEmpty() || id.isEmpty()) {
                 null
             } else {
-                provider.copy(
+                AiProviderConfig(
                     id = id,
                     name = name,
-                    baseUrl = provider.baseUrl.trim(),
-                    apiKey = provider.apiKey.trim(),
-                    headers = provider.headers?.trim().orEmpty()
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    apiMode = normalizeAiApiMode(safeString { provider.apiMode }),
+                    promptCache = safeBoolean(false) { provider.promptCache }
                 )
             }
         }.distinctBy { it.id }
@@ -823,13 +896,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         validProviderIds: Set<String>
     ): List<AiModelConfig> {
         return value.mapNotNull { model ->
-            val id = model.id.trim()
-            val providerId = model.providerId.trim()
-            val modelId = model.modelId.trim()
+            val id = safeString { model.id }.trim()
+            val providerId = safeString { model.providerId }.trim()
+            val modelId = safeString { model.modelId }.trim()
             if (id.isEmpty() || providerId !in validProviderIds || modelId.isEmpty()) {
                 null
             } else {
-                model.copy(id = id, providerId = providerId, modelId = modelId)
+                AiModelConfig(id = id, providerId = providerId, modelId = modelId)
             }
         }.distinctBy { "${it.providerId}|${it.modelId}" }
     }
@@ -859,17 +932,18 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiMcpServers(value: List<AiMcpServerConfig>): List<AiMcpServerConfig> {
         return value.mapNotNull { server ->
-            val id = server.id.trim()
-            val name = server.name.trim()
-            val endpoint = server.endpoint.trim()
+            val id = safeString { server.id }.trim()
+            val name = safeString { server.name }.trim()
+            val endpoint = safeString { server.endpoint }.trim()
             if (id.isEmpty() || name.isEmpty() || endpoint.isEmpty()) {
                 null
             } else {
-                server.copy(
+                AiMcpServerConfig(
                     id = id,
                     name = name,
                     endpoint = endpoint,
-                    apiKey = server.apiKey.trim()
+                    apiKey = safeString { server.apiKey }.trim(),
+                    enabled = safeBoolean(true) { server.enabled }
                 )
             }
         }.distinctBy { it.id }
@@ -893,21 +967,101 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private fun normalizeAiSkills(value: List<AiSkillConfig>): List<AiSkillConfig> {
         return value.mapNotNull { skill ->
-            val id = skill.id.trim()
-            val name = skill.name.trim()
-            val content = skill.content.trim()
+            val id = safeString { skill.id }.trim()
+            val name = safeString { skill.name }.trim()
+            val content = safeString { skill.content }.trim()
             if (id.isEmpty() || name.isEmpty() || content.isEmpty()) {
                 null
             } else {
-                skill.copy(
+                AiSkillConfig(
                     id = id,
                     name = name,
-                    description = skill.description.trim(),
+                    description = safeString { skill.description }.trim(),
                     content = content,
-                    sourceUrl = skill.sourceUrl.trim()
+                    sourceUrl = safeString { skill.sourceUrl }.trim(),
+                    enabled = safeBoolean(true) { skill.enabled }
                 )
             }
         }.distinctBy { it.id }
+    }
+
+    private fun normalizeAiPersonas(value: List<AiPersonaConfig>): List<AiPersonaConfig> {
+        return value.mapNotNull { persona ->
+            val id = safeString { persona.id }.trim()
+            val name = safeString { persona.name }.trim()
+            val prompt = safeString { persona.prompt }.trim()
+            if (id.isEmpty() || name.isEmpty() || prompt.isEmpty()) {
+                null
+            } else {
+                AiPersonaConfig(
+                    id = id,
+                    name = name,
+                    prompt = prompt,
+                    current = safeBoolean(false) { persona.current }
+                )
+            }
+        }.distinctBy { it.id }
+    }
+
+    private fun normalizeAiImageProviders(value: List<AiImageProviderConfig>): List<AiImageProviderConfig> {
+        return value.mapNotNull { provider ->
+            val id = safeString { provider.id }.trim()
+            val name = safeString { provider.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val type = safeString { provider.type }.trim()
+                    .takeIf { it == AiImageProviderConfig.TYPE_JS || it == AiImageProviderConfig.TYPE_OPENAI }
+                    ?: AiImageProviderConfig.TYPE_OPENAI
+                AiImageProviderConfig(
+                    id = id,
+                    name = name,
+                    type = type,
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    model = safeString { provider.model }.trim(),
+                    defaultParamsJson = safeString { provider.defaultParamsJson }.trim(),
+                    stylePrompt = safeString { provider.stylePrompt }.trim(),
+                    jsLib = safeString { provider.jsLib },
+                    loginUrl = safeString { provider.loginUrl }.trim(),
+                    loginUi = safeString { provider.loginUi },
+                    enabledCookieJar = safeBoolean(false) { provider.enabledCookieJar },
+                    script = safeString { provider.script },
+                    timeoutMillisecond = safeLong(120_000L) { provider.timeoutMillisecond }
+                        .takeIf { it > 0L } ?: 120_000L,
+                    order = safeInt(0) { provider.order },
+                    enabled = safeBoolean(true) { provider.enabled }
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedBy { it.order }
+            .mapIndexed { index, provider -> provider.copy(order = index) }
+    }
+
+    private fun normalizeAiApiMode(value: String): String {
+        return if (value.trim() == AI_API_MODE_RESPONSES) {
+            AI_API_MODE_RESPONSES
+        } else {
+            AI_API_MODE_CHAT_COMPLETIONS
+        }
+    }
+
+    private inline fun safeString(block: () -> String?): String {
+        return runCatching { block() }.getOrNull().orEmpty()
+    }
+
+    private inline fun safeBoolean(default: Boolean, block: () -> Boolean): Boolean {
+        return runCatching { block() }.getOrDefault(default)
+    }
+
+    private inline fun safeInt(default: Int, block: () -> Int): Int {
+        return runCatching { block() }.getOrDefault(default)
+    }
+
+    private inline fun safeLong(default: Long, block: () -> Long): Long {
+        return runCatching { block() }.getOrDefault(default)
     }
 
     private fun persistAiSkills(skills: List<AiSkillConfig>) {
@@ -1322,6 +1476,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.openBookInfoByClickTitle, value)
         }
 
+    var autoRefreshMediaToc: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.autoRefreshMediaToc, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.autoRefreshMediaToc, value)
+        }
+
     var showBookshelfFastScroller: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showBookshelfFastScroller, false)
         set(value) {
@@ -1375,6 +1535,30 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val webDavDir get() = appCtx.getPrefString(PreferKey.webDavDir, "legado")
 
+    val cloudStorageType get() = appCtx.getPrefString(PreferKey.cloudStorageType, "WEBDAV")
+
+    val s3Endpoint get() = appCtx.getPrefString(PreferKey.s3Endpoint)
+
+    val s3Region get() = appCtx.getPrefString(PreferKey.s3Region, "us-east-1")
+
+    val s3Bucket get() = appCtx.getPrefString(PreferKey.s3Bucket)
+
+    val s3Prefix get() = appCtx.getPrefString(PreferKey.s3Prefix, "legado")
+
+    val s3AccessKey get() = appCtx.getPrefString(PreferKey.s3AccessKey)
+
+    val s3SecretKey get() = appCtx.getPrefString(PreferKey.s3SecretKey)
+
+    val s3SessionToken get() = appCtx.getPrefString(PreferKey.s3SessionToken)
+
+    val s3Containers get() = appCtx.getPrefString(PreferKey.s3Containers)
+
+    val s3ContainerSelections get() = appCtx.getPrefString(PreferKey.s3ContainerSelections)
+
+    var autoSwitchS3Container
+        get() = appCtx.getPrefBoolean(PreferKey.autoSwitchS3Container, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.autoSwitchS3Container, value)
+
     val webDavDeviceName get() = appCtx.getPrefString(PreferKey.webDavDeviceName, Build.MODEL)
 
     var syncThemePackages
@@ -1405,6 +1589,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val doublePageHorizontal: String?
         get() = appCtx.getPrefString(PreferKey.doublePageHorizontal)
+
+    var epubReadEngine: String
+        get() = appCtx.getPrefString(PreferKey.epubReadEngine, "text") ?: "text"
+        set(value) = appCtx.putPrefString(PreferKey.epubReadEngine, value)
+
+    val useExperimentalEpubCore: Boolean
+        get() = epubReadEngine == "core"
+
+    var epubCoreScheduleMode: String
+        get() = appCtx.getPrefString(PreferKey.epubCoreScheduleMode, "normal") ?: "normal"
+        set(value) = appCtx.putPrefString(PreferKey.epubCoreScheduleMode, value)
 
     val progressBarBehavior: String?
         get() = appCtx.getPrefString(PreferKey.progressBarBehavior, "page")

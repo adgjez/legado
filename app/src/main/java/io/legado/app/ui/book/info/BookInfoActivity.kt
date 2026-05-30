@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.content.res.Configuration
-import android.view.LayoutInflater
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -16,13 +15,14 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewConfiguration
-import android.graphics.Rect
-import io.legado.app.ui.widget.text.ScrollTextView
 import android.view.textclassifier.TextClassifier
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.CheckBox
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Space
 import android.widget.TextView
@@ -34,6 +34,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.widget.doAfterTextChanged
+import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -58,6 +59,9 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
+import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.book.BookCloudEntryMode
+import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isAudio
@@ -72,6 +76,7 @@ import io.legado.app.help.config.BookInfoComponentConfig
 import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoComponentType
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -80,6 +85,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.AndroidAlertBuilder
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -94,6 +100,10 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.ui.book.cache.CacheBookItem
+import io.legado.app.ui.book.cache.CacheManageViewModel
+import io.legado.app.ui.book.cache.CacheSyncStrategy
+import io.legado.app.ui.book.cache.hasRemoteCache
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
@@ -108,6 +118,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -250,40 +261,41 @@ class BookInfoActivity :
     private val waitDialog by lazy { WaitDialog(this) }
     private var editMenuItem: MenuItem? = null
     private var menuCustomBtn: MenuItem? = null
+    private var menuCloudEntryMode: MenuItem? = null
     private val book get() = viewModel.getBook(false)
     private var introRawText: CharSequence = ""
     private var detailIntroOnly = false
-    private var blockRefreshForIntroTouch = false
-    private var pageTouchDownX = 0f
-    private var pageTouchDownY = 0f
-    private var pageTouchDirection = 0
-    private val tempHitRect = Rect()
     private var bookInfoComponentsReady = false
     private var lastBookInfoBgPath: String? = null
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
     override val viewModel by viewModels<BookInfoViewModel>()
+    private val cacheManageViewModel by viewModels<CacheManageViewModel>()
     private var initIntroView = false
     private val introTextView by lazy {
         initIntroView = true
-        val inflater = LayoutInflater.from(this)
-        val view = inflater.inflate(R.layout.view_book_intro, binding.tvIntroContainer, false) as ScrollTextView
-        view.onScrollInterceptChange = { disallow ->
-            requestBookInfoPagerDisallowIntercept(disallow || blockRefreshForIntroTouch)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-            view.revealOnFocusHint = false
-        }
-        view.typeface = uiTypeface()
-        view.setOnTouchListener(
-            verticalScrollTouchListener(
-                target = view,
-                preferVertical = true,
-                blockRefreshArea = true
-            )
-        )
-        view
+        createIntroTextView()
     }
+    private val introScrollView by lazy {
+        NestedScrollView(this).apply {
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isNestedScrollingEnabled = true
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnTouchListener(childScrollTouchListener())
+            addView(
+                introTextView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+    }
+    private lateinit var tvAiImagesSummary: TextView
+    private lateinit var llAiImagesPreview: LinearLayout
+    private lateinit var tvAiImagesEmpty: TextView
+    private val aiImagesPanel by lazy { createAiImagesPanel() }
 
     private var pooledWebView: PooledWebView? = null
 
@@ -311,6 +323,147 @@ class BookInfoActivity :
         })
     }
 
+    private fun createIntroTextView(): TextView {
+        return TextView(this).apply {
+            id = R.id.tv_intro
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+            minHeight = 48.dpToPx()
+            setLineSpacing(3.dpToPx().toFloat(), 1f)
+            setPadding(12.dpToPx(), 10.dpToPx(), 12.dpToPx(), 10.dpToPx())
+            setTextColor(ContextCompat.getColor(this@BookInfoActivity, R.color.secondaryText))
+            textSize = 13.5f
+            includeFontPadding = true
+            typeface = uiTypeface()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+                revealOnFocusHint = false
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setTextClassifier(TextClassifier.NO_OP)
+            }
+            setTextIsSelectable(false)
+        }
+    }
+
+    private fun createAiImagesPanel(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 14.dpToPx())
+            background = UiCorner.panelRounded(
+                this@BookInfoActivity,
+                ContextCompat.getColor(this@BookInfoActivity, R.color.background_card),
+                UiCorner.panelRadius(this@BookInfoActivity)
+            )
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = getString(R.string.book_info_component_ai_images)
+                    textSize = 16f
+                    setTextColor(primaryTextColor)
+                    includeFontPadding = false
+                    applyUiTitleTypeface(context)
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(TextView(context).apply {
+                    text = getString(R.string.ai_image_gallery)
+                    textSize = 12.5f
+                    gravity = Gravity.CENTER
+                    setTextColor(accentColor)
+                    minHeight = 30.dpToPx()
+                    setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+                    background = UiCorner.actionSelector(
+                        ContextCompat.getColor(context, R.color.background_menu),
+                        ContextCompat.getColor(context, R.color.background_card),
+                        UiCorner.actionRadius(context)
+                    )
+                    applyUiBodyTypefaceDeep(context.uiTypeface())
+                })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            tvAiImagesSummary = TextView(context).apply {
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 8.dpToPx(), 0, 10.dpToPx())
+                applyUiBodyTypefaceDeep(context.uiTypeface())
+            }
+            addView(tvAiImagesSummary, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            llAiImagesPreview = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            addView(HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                addView(llAiImagesPreview)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 112.dpToPx()))
+            tvAiImagesEmpty = TextView(context).apply {
+                text = getString(R.string.ai_image_gallery_empty)
+                gravity = Gravity.CENTER
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                background = UiCorner.opaqueRounded(
+                    ContextCompat.getColor(context, R.color.background_menu),
+                    UiCorner.actionRadius(context)
+                )
+                applyUiBodyTypefaceDeep(context.uiTypeface())
+            }
+            addView(tvAiImagesEmpty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 96.dpToPx()))
+            setOnClickListener { openBookAiImageGallery() }
+        }
+    }
+
+    private fun updateBookAiImagesPanel(targetBook: Book? = book) {
+        if (!::tvAiImagesSummary.isInitialized) return
+        val safeBook = targetBook ?: return
+        lifecycleScope.launch {
+            val images = withContext(IO) {
+                val key = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
+                AiImageGalleryManager.listImages(AiImageGalleryManager.GalleryFilter.BOOK(key))
+            }
+            tvAiImagesSummary.text = if (images.isEmpty()) {
+                getString(R.string.book_info_component_ai_images_hint)
+            } else {
+                "共 ${images.size} 张相关图片，点击查看完整图库"
+            }
+            tvAiImagesEmpty.isVisible = images.isEmpty()
+            llAiImagesPreview.isVisible = images.isNotEmpty()
+            llAiImagesPreview.removeAllViews()
+            images.take(12).forEach { image ->
+                llAiImagesPreview.addView(createAiImageThumb(image.id, image.localPath))
+            }
+        }
+    }
+
+    private fun createAiImageThumb(imageId: String, path: String): View {
+        return androidx.cardview.widget.CardView(this).apply {
+            radius = UiCorner.scaledDp(12f)
+            cardElevation = 0f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            addView(ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = getString(R.string.ai_image_gallery)
+                ImageLoader.load(context, path)
+                    .error(R.drawable.image_loading_error)
+                    .into(this)
+            }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            setOnClickListener {
+                showDialogFragment(io.legado.app.ui.main.ai.AiImagePreviewDialog(imageId))
+            }
+            layoutParams = LinearLayout.LayoutParams(88.dpToPx(), 104.dpToPx()).apply {
+                marginEnd = 10.dpToPx()
+            }
+        }
+    }
+
+    private fun openBookAiImageGallery() {
+        val safeBook = book ?: return
+        val key = AiImageGalleryManager.buildBookKey(safeBook.name, safeBook.author)
+        startActivity(Intent(this, AiImageGalleryActivity::class.java).apply {
+            putExtra(AiImageGalleryActivity.EXTRA_BOOK_KEY, key)
+            putExtra(AiImageGalleryActivity.EXTRA_TITLE, getString(R.string.book_info_component_ai_images))
+        })
+    }
+
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.bgBook.setBackgroundColor(backgroundColor)
@@ -331,7 +484,10 @@ class BookInfoActivity :
         initDetailTabs()
         initCatalogPager()
         binding.vwBg.doOnLayout { updateDetailContentPanelHeight() }
-        viewModel.bookData.observe(this) { showBook(it) }
+        viewModel.bookData.observe(this) {
+            showBook(it)
+            updateBookCloudEntryMenu()
+        }
         viewModel.chapterListData.observe(this) {
             upLoading(false, it)
             if (detailPage == DetailPage.TOC) {
@@ -342,6 +498,11 @@ class BookInfoActivity :
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
         viewModel.initData(intent)
         initViewEvent()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateBookAiImagesPanel()
     }
 
     private fun applyUiCorners() = binding.run {
@@ -394,7 +555,7 @@ class BookInfoActivity :
 
     private fun restoreBookInfoComponentBackgrounds() = binding.run {
         val panelColor = ContextCompat.getColor(this@BookInfoActivity, R.color.background_card)
-        listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel).forEach {
+        listOfNotNull(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, aiImagesPanel).forEach {
             it.background = UiCorner.panelRounded(this@BookInfoActivity, panelColor, UiCorner.panelRadius(this@BookInfoActivity))
         }
     }
@@ -403,7 +564,8 @@ class BookInfoActivity :
             BookInfoComponentType.HEADER to llDetailPanel,
             BookInfoComponentType.META to llInfoPage,
             BookInfoComponentType.DETAIL to llDetailContentPanel,
-            BookInfoComponentType.CATALOG to llCatalogPanel
+            BookInfoComponentType.CATALOG to llCatalogPanel,
+            BookInfoComponentType.AI_IMAGES to aiImagesPanel
         )
         val orderedComponents: List<BookInfoComponentItem> = BookInfoComponentConfig.load()
             .filter { item -> item.enabled && componentViews.containsKey(item.type) }
@@ -434,7 +596,7 @@ class BookInfoActivity :
     private fun initBookInfoPager(): Unit = binding.run {
         configurePagedRefreshLayout()
         ensureCoverInsideHeader()
-        listOf(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, flAction).forEach {
+        listOf(llDetailPanel, llInfoPage, llDetailContentPanel, llCatalogPanel, aiImagesPanel, flAction).forEach {
             (it.parent as? ViewGroup)?.removeView(it)
         }
         llInfo.removeAllViews()
@@ -511,13 +673,9 @@ class BookInfoActivity :
             params.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             refreshLayout.layoutParams = params
         }
-        refreshLayout.setOnTouchListener { _, event ->
-            handlePagedRefreshTouch(event)
-            false
-        }
-        refreshLayout.setOnChildScrollUpCallback { _, _ ->
-            shouldBlockPagedRefresh()
-        }
+        refreshLayout.isEnabled = true
+        refreshLayout.setOnTouchListener(null)
+        refreshLayout.setOnChildScrollUpCallback(null)
         flAction.visibility = View.GONE
     }
 
@@ -607,7 +765,7 @@ class BookInfoActivity :
         orderedComponents.forEach { item ->
             val view = componentViews[item.type] ?: return@forEach
             view.visibility = View.VISIBLE
-            if (item.type == BookInfoComponentType.CATALOG) {
+            if (item.type.isBookInfoFullPage()) {
                 flushCurrent()
                 val height = measureBookInfoComponent(view, pageWidth, pageHeight)
                 pages += BookInfoPage(
@@ -616,7 +774,6 @@ class BookInfoActivity :
                 )
                 return@forEach
             }
-
             val topMargin = if (current.isEmpty()) 0 else gap
             val naturalHeight = measureBookInfoComponent(view, pageWidth, 0)
             val remaining = pageHeight - usedHeight - topMargin
@@ -642,6 +799,10 @@ class BookInfoActivity :
         flushCurrent()
         appendActionToFirstPage()
         return pages
+    }
+
+    private fun BookInfoComponentType.isBookInfoFullPage(): Boolean {
+        return this == BookInfoComponentType.CATALOG || this == BookInfoComponentType.AI_IMAGES
     }
 
     private fun buildLandscapeBookInfoPages(
@@ -748,7 +909,7 @@ class BookInfoActivity :
         orderedComponents.forEach { item ->
             val view = componentViews[item.type] ?: return@forEach
             view.visibility = View.VISIBLE
-            if (item.type == BookInfoComponentType.CATALOG) {
+            if (item.type.isBookInfoFullPage()) {
                 if (currentItems().isNotEmpty()) {
                     nextColumn()
                 }
@@ -823,120 +984,66 @@ class BookInfoActivity :
         }
     }
 
-    private fun handlePagedRefreshTouch(event: MotionEvent) {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                pageTouchDownX = event.rawX
-                pageTouchDownY = event.rawY
-                pageTouchDirection = 0
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = kotlin.math.abs(event.rawX - pageTouchDownX)
-                val dy = kotlin.math.abs(event.rawY - pageTouchDownY)
-                val slop = ViewConfiguration.get(this).scaledTouchSlop
-                if (pageTouchDirection == 0) {
-                    pageTouchDirection = when {
-                        dx > slop && dx > dy * 1.15f -> 1
-                        dy > slop && dy > dx * 0.75f -> 2
-                        else -> 0
-                    }
-                }
-            }
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> {
-                pageTouchDirection = 0
-            }
-        }
-    }
-
-    private fun shouldBlockPagedRefresh(): Boolean {
-        if (pageTouchDirection == 1) return true
-        return activeDetailScrollChild()
-            ?.takeIf { it.isShown && hitView(it, pageTouchDownX.toInt(), pageTouchDownY.toInt()) }
-            ?.canScrollVertically(-1) == true
-    }
-
-    private fun activeDetailScrollChild(): View? = binding.run {
-        if (llCatalogPanel.isShown) return rvCatalog
-        if (llDetailContentPanel.isShown && llIntroPage.isShown) {
-            tvIntroContainer.getChildAt(0)?.let { return it }
-        }
-        if (llDetailContentPanel.isShown && llTocPage.isShown) {
-            return tocScrollView
-        }
-        null
-    }
-
-    private fun hitView(view: View, rawX: Int, rawY: Int): Boolean {
-        view.getGlobalVisibleRect(tempHitRect)
-        return tempHitRect.contains(rawX, rawY)
-    }
-
-    private fun verticalScrollTouchListener(
-        target: View? = null,
-        preferVertical: Boolean = false,
-        blockRefreshArea: Boolean = false
-    ): View.OnTouchListener {
+    private fun childScrollTouchListener(): View.OnTouchListener {
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
-        val horizontalSlop = (touchSlop * 0.55f).coerceAtLeast(1f)
-        val verticalSlop = (touchSlop * 0.75f).coerceAtLeast(2f)
         var downX = 0f
         var downY = 0f
-        var lastY = 0f
         var direction = 0
-        var refreshEnabledBeforeTouch = true
         return View.OnTouchListener { view, event ->
-            val scrollView = target ?: view
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downY = event.y
-                    lastY = event.y
                     direction = 0
-                    refreshEnabledBeforeTouch = binding.refreshLayout.isEnabled
-                    if (blockRefreshArea) {
-                        blockRefreshForIntroTouch = true
-                        binding.refreshLayout.isEnabled = true
-                    }
-                    requestBookInfoPagerDisallowIntercept(scrollView.canScrollVertically(-1) || scrollView.canScrollVertically(1))
+                    requestBookInfoPagerDisallowIntercept(true)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = kotlin.math.abs(event.x - downX)
                     val dy = kotlin.math.abs(event.y - downY)
                     if (direction == 0) {
                         direction = when {
-                            !preferVertical && dx > horizontalSlop && dx > dy * 0.9f -> 1
-                            dy > verticalSlop && dy > dx * if (preferVertical) 0.55f else 1.05f -> 2
-                            preferVertical && dx > horizontalSlop && dx > dy * 1.8f -> 1
+                            dy > touchSlop && dy >= dx -> 2
+                            dx > touchSlop && dx > dy * 1.35f -> 1
                             else -> 0
                         }
                     }
-                    if (direction == 1) {
-                        requestBookInfoPagerDisallowIntercept(false)
-                    } else if (direction == 2) {
-                        val dragDown = event.y > lastY
-                        val canChildScroll = if (dragDown) {
-                            scrollView.canScrollVertically(-1)
-                        } else {
-                            scrollView.canScrollVertically(1)
-                        }
-                        requestBookInfoPagerDisallowIntercept(true)
-                        binding.refreshLayout.isEnabled = !canChildScroll
-                    }
-                    lastY = event.y
+                    requestBookInfoPagerDisallowIntercept(direction != 1)
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
                     direction = 0
-                    blockRefreshForIntroTouch = false
-                    binding.refreshLayout.isEnabled = refreshEnabledBeforeTouch
                     requestBookInfoPagerDisallowIntercept(false)
                 }
             }
             false
         }
     }
+
+    private fun webIntroTouchListener(): View.OnTouchListener {
+        return View.OnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (::bookInfoPager.isInitialized) {
+                        bookInfoPager.isUserInputEnabled = false
+                    }
+                    requestBookInfoPagerDisallowIntercept(true)
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    view.postDelayed({
+                        requestBookInfoPagerDisallowIntercept(false)
+                        if (::bookInfoPager.isInitialized) {
+                            bookInfoPager.isUserInputEnabled = true
+                        }
+                    }, 160L)
+                }
+            }
+            false
+        }
+    }
+
     private fun requestBookInfoPagerDisallowIntercept(disallow: Boolean) {
+        binding.scrollView.requestDisallowInterceptTouchEvent(disallow)
         if (::bookInfoPager.isInitialized) {
             bookInfoPager.requestDisallowInterceptTouchEvent(disallow)
         }
@@ -948,6 +1055,8 @@ class BookInfoActivity :
         menuCustomBtn = menu.findItem(R.id.menu_custom_btn).also {
             it.isVisible = viewModel.hasCustomBtn
         }
+        menuCloudEntryMode = menu.findItem(R.id.menu_cloud_entry_mode)
+        updateBookCloudEntryMenu()
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -970,6 +1079,7 @@ class BookInfoActivity :
             viewModel.bookData.value?.isLocal ?: false
         menu.findItem(R.id.menu_delete_alert)?.isChecked =
             LocalConfig.bookInfoDeleteAlert
+        updateBookCloudEntryMenu()
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -977,6 +1087,10 @@ class BookInfoActivity :
         when (item.itemId) {
             R.id.menu_custom_btn -> {
                 callSourceCustomButton()
+            }
+
+            R.id.menu_cloud_entry_mode -> {
+                showBookCloudEntryModeSelector()
             }
 
             R.id.menu_edit -> {
@@ -1094,6 +1208,298 @@ class BookInfoActivity :
         return super.onCompatOptionsItemSelected(item)
     }
 
+    private fun showBookCloudEntryModeSelector() {
+        val book = viewModel.getBook() ?: return
+        val current = BookCloudEntryModeStore.get(book.bookUrl)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8.dpToPx(), 6.dpToPx(), 8.dpToPx(), 2.dpToPx())
+        }
+        val dialog = AndroidAlertBuilder(this).apply {
+            setTitle(R.string.book_cloud_entry_mode)
+            setCustomView(content)
+            negativeButton(R.string.cancel)
+        }.show()
+        BookCloudEntryMode.entries.forEach { mode ->
+            content.addView(createBookCloudEntryModeRow(mode, mode == current) {
+                if (mode != current) {
+                    BookCloudEntryModeStore.set(book.bookUrl, mode)
+                    updateBookCloudEntryMenu()
+                }
+                dialog.dismiss()
+                if (mode == BookCloudEntryMode.CACHE_PACKAGE) {
+                    showBookCloudBackupDialog(book)
+                }
+            })
+        }
+    }
+
+    private fun createBookCloudEntryModeRow(
+        mode: BookCloudEntryMode,
+        selected: Boolean,
+        onClick: () -> Unit
+    ): View {
+        val title = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> getString(R.string.book_cloud_cache_package_mode)
+            BookCloudEntryMode.LIBRARY_CHAPTER -> getString(R.string.book_cloud_library_chapter_mode)
+        }
+        val summary = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> "从云端备份包上传、下载、用缓存入架"
+            BookCloudEntryMode.LIBRARY_CHAPTER -> "阅读页显示云按钮，按当前章节切换书库正文"
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 10.dpToPx()
+            }
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = title
+                    textSize = 16f
+                    setTextColor(if (selected) accentColor else primaryTextColor)
+                    applyUiTitleTypeface(context)
+                })
+                addView(TextView(context).apply {
+                    text = summary
+                    textSize = 13f
+                    setTextColor(secondaryTextColor)
+                    setPadding(0, 4.dpToPx(), 0, 0)
+                    applyUiBodyTypefaceDeep(context.uiTypeface())
+                })
+            })
+            addView(TextView(context).apply {
+                text = "✓"
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setTextColor(accentColor)
+                isVisible = selected
+                layoutParams = LinearLayout.LayoutParams(28.dpToPx(), 28.dpToPx()).apply {
+                    marginStart = 10.dpToPx()
+                }
+                applyUiTitleTypeface(context)
+            })
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun showBookCloudBackupDialog(targetBook: Book) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
+        }
+        val summaryView = TextView(this).apply {
+            textSize = 13f
+            setTextColor(secondaryTextColor)
+            setPadding(0, 0, 0, 8.dpToPx())
+            applyUiBodyTypefaceDeep(this@BookInfoActivity.uiTypeface())
+        }
+        val listLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scrollView = NestedScrollView(this).apply {
+            addView(
+                listLayout,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.55f).toInt()
+            )
+        }
+        content.addView(summaryView)
+        content.addView(scrollView)
+        AndroidAlertBuilder(this).apply {
+            setTitle(getString(R.string.book_cloud_cache_package_mode))
+            setCustomView(content)
+            negativeButton(R.string.cancel)
+        }.show()
+
+        fun reload() {
+            summaryView.text = "正在读取《${targetBook.name}》的云端备份..."
+            listLayout.removeAllViews()
+            lifecycleScope.launch {
+                val result = runCatching {
+                    cacheManageViewModel.loadBookCloudBackupItems(targetBook)
+                }
+                result.onSuccess { items ->
+                    renderBookCloudBackupItems(targetBook, summaryView, listLayout, items, ::reload)
+                }.onFailure {
+                    summaryView.text = it.localizedMessage ?: getString(R.string.error)
+                }
+            }
+        }
+        reload()
+    }
+
+    private fun renderBookCloudBackupItems(
+        targetBook: Book,
+        summaryView: TextView,
+        listLayout: LinearLayout,
+        items: List<CacheBookItem>,
+        reload: () -> Unit
+    ) {
+        listLayout.removeAllViews()
+        if (items.isEmpty()) {
+            summaryView.text = "未找到《${targetBook.name}》的本地或云端备份"
+            return
+        }
+        val localCount = items.sumOf { if (it.localCachedCount > 0) 1 else 0 }
+        val remoteCount = items.sumOf { if (it.hasRemoteCache()) 1 else 0 }
+        summaryView.text = "共 ${items.size} 个来源，本地 $localCount 个，云端 $remoteCount 个"
+        items.forEach { item ->
+            listLayout.addView(createBookCloudBackupRow(item, reload))
+        }
+    }
+
+    private fun createBookCloudBackupRow(item: CacheBookItem, reload: () -> Unit): View {
+        val sourceTitle = if (item.sourceAvailable) {
+            item.sourceName
+        } else {
+            getString(R.string.cache_manage_source_deleted, item.sourceName)
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(14.dpToPx(), 10.dpToPx(), 14.dpToPx(), 10.dpToPx())
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.panelRadius(context)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 10.dpToPx()
+            }
+            addView(TextView(context).apply {
+                text = sourceTitle
+                textSize = 15f
+                setTextColor(primaryTextColor)
+                applyUiTitleTypeface(context)
+            })
+            addView(TextView(context).apply {
+                text = "本地 ${item.localCachedCount}/${item.totalChapterCount} · 云端 ${item.remoteCachedCount}/${item.totalChapterCount}"
+                textSize = 13f
+                setTextColor(secondaryTextColor)
+                setPadding(0, 4.dpToPx(), 0, 8.dpToPx())
+                applyUiBodyTypefaceDeep(context.uiTypeface())
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(createBookCloudBackupAction(getString(R.string.cache_manage_upload), item.localCachedCount > 0) {
+                    selectBookCloudBackupSyncStrategy(R.string.cache_manage_upload_strategy_title) { strategy ->
+                        runBookCloudBackupAction(
+                            message = "正在上传云端备份...",
+                            block = { cacheManageViewModel.uploadCacheItem(item, strategy) }
+                        ) {
+                            toastOnUi("云端备份已上传")
+                            reload()
+                        }
+                    }
+                })
+                addView(createBookCloudBackupAction(getString(R.string.action_download), item.hasRemoteCache()) {
+                    selectBookCloudBackupSyncStrategy(R.string.cache_manage_download_strategy_title) { strategy ->
+                        runBookCloudBackupAction(
+                            message = "正在下载云端备份...",
+                            block = { cacheManageViewModel.downloadRemoteCache(item, strategy) }
+                        ) {
+                            toastOnUi(R.string.cache_manage_download_success)
+                            reload()
+                        }
+                    }
+                })
+                addView(createBookCloudBackupAction(getString(if (item.inBookshelf) R.string.cache_manage_use_cache else R.string.cache_manage_add_bookshelf), item.localCachedCount > 0) {
+                    if (item.localCachedCount <= 0) {
+                        toastOnUi(R.string.cache_manage_download_first)
+                        return@createBookCloudBackupAction
+                    }
+                    runBookCloudBackupAction(
+                        message = "正在应用本地缓存...",
+                        block = { cacheManageViewModel.restoreCacheToBookshelf(item) }
+                    ) { success ->
+                        toastOnUi(
+                            if (success) {
+                                if (item.inBookshelf) R.string.cache_manage_use_cache_success
+                                else R.string.cache_manage_add_bookshelf_success
+                            } else {
+                                R.string.cache_manage_no_cache
+                            }
+                        )
+                        reload()
+                    }
+                })
+            })
+        }
+    }
+
+    private fun createBookCloudBackupAction(
+        text: String,
+        enabled: Boolean,
+        onClick: () -> Unit
+    ): TextView {
+        return TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTextColor(if (enabled) accentColor else secondaryTextColor)
+            alpha = if (enabled) 1f else 0.45f
+            isEnabled = enabled
+            setPadding(0, 4.dpToPx(), 14.dpToPx(), 4.dpToPx())
+            applyUiBodyTypefaceDeep(this@BookInfoActivity.uiTypeface())
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun selectBookCloudBackupSyncStrategy(
+        titleRes: Int,
+        onSelected: (CacheSyncStrategy) -> Unit
+    ) {
+        val strategies = CacheSyncStrategy.entries
+        selector(getString(titleRes), strategies.map { getString(it.labelRes) }) { _, index ->
+            strategies.getOrNull(index)?.let(onSelected)
+        }
+    }
+
+    private fun <T> runBookCloudBackupAction(
+        message: String,
+        block: suspend () -> T,
+        onSuccess: (T) -> Unit
+    ) {
+        waitDialog.setText(message)
+        waitDialog.show()
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(IO) { block() }
+            }
+            waitDialog.dismiss()
+            result.onSuccess(onSuccess).onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun updateBookCloudEntryMenu() {
+        val book = viewModel.getBook(false) ?: return
+        val mode = BookCloudEntryModeStore.get(book.bookUrl)
+        menuCloudEntryMode?.title = when (mode) {
+            BookCloudEntryMode.CACHE_PACKAGE -> getString(R.string.book_cloud_cache_package_mode)
+            BookCloudEntryMode.LIBRARY_CHAPTER -> getString(R.string.book_cloud_library_chapter_mode)
+        }
+    }
+
     override fun observeLiveBus() {
         viewModel.actionLive.observe(this) {
             when (it) {
@@ -1116,17 +1522,6 @@ class BookInfoActivity :
         }
     }
 
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (initIntroView && ev.action == MotionEvent.ACTION_DOWN) {
-            currentFocus?.let {
-                if (it === introTextView && introTextView.hasSelection()) {
-                    it.clearFocus()
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
     private fun isEventInsideView(view: View, event: MotionEvent): Boolean {
         val location = IntArray(2)
         view.getLocationOnScreen(location)
@@ -1137,17 +1532,15 @@ class BookInfoActivity :
     }
 
     private fun refreshBook() {
+        val book = viewModel.getBook(false) ?: return
         upLoading(true)
-        viewModel.getBook()?.let {
-            viewModel.refreshBook(it)
-        }
+        viewModel.refreshBook(book)
     }
 
     private fun refreshToc() {
+        val book = viewModel.getBook(false) ?: return
         upLoading(true)
-        viewModel.getBook()?.let {
-            viewModel.loadChapter(it, true, isFromBookInfo = true)
-        }
+        viewModel.loadChapter(book, true, isFromBookInfo = true)
     }
 
     private fun upLoadBook(
@@ -1191,6 +1584,7 @@ class BookInfoActivity :
         upTvBookshelf()
         upKinds(book)
         upGroup(book.group)
+        updateBookAiImagesPanel(book)
         updateDetailContentPanelHeight()
         renderCatalogPager(viewModel.chapterListData.value)
         root.post { applyBookInfoComponents() }
@@ -1259,14 +1653,8 @@ class BookInfoActivity :
             }
             val webView = pooledWebView.realWebView
             webView.setBackgroundColor(Color.TRANSPARENT)
-            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-            webView.setOnTouchListener(
-                verticalScrollTouchListener(
-                    target = webView,
-                    preferVertical = true,
-                    blockRefreshArea = true
-                )
-            )
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            webView.setOnTouchListener(webIntroTouchListener())
             if (initIntroView || this.pooledWebView == null) {
                 initIntroView = false
                 this.pooledWebView = pooledWebView
@@ -1301,7 +1689,7 @@ class BookInfoActivity :
             destroyWeb()
             binding.tvIntroContainer.removeAllViews()
             binding.tvIntroContainer.addView(
-                introTextView,
+                introScrollView,
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -1396,7 +1784,7 @@ class BookInfoActivity :
             return
         }
         tvIntro.text = rawText
-        tvIntro.refreshScrollBounds()
+        introScrollView.scrollTo(0, 0)
     }
 
     private fun upKinds(book: Book) = binding.run {
@@ -1473,6 +1861,9 @@ class BookInfoActivity :
     }
 
     private fun upLoading(isLoading: Boolean, chapterList: List<BookChapter>? = null) {
+        if (!isLoading) {
+            binding.refreshLayout.isRefreshing = false
+        }
         when {
             isLoading -> {
                 binding.tvToc.text = getString(R.string.toc_s, getString(R.string.loading))
@@ -1507,7 +1898,7 @@ class BookInfoActivity :
                 scrollY + view.height >= child.height - 48.dpToPx() -> appendTocPreviewBatch()
             }
         }
-        tocScrollView.setOnTouchListener(verticalScrollTouchListener(tocScrollView))
+        tocScrollView.setOnTouchListener(childScrollTouchListener())
         showDetailPage(DetailPage.INTRO)
     }
 
@@ -1515,7 +1906,7 @@ class BookInfoActivity :
         rvCatalog.layoutManager = LinearLayoutManager(this@BookInfoActivity)
         rvCatalog.adapter = catalogAdapter
         rvCatalog.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-        rvCatalog.setOnTouchListener(verticalScrollTouchListener(rvCatalog))
+        rvCatalog.setOnTouchListener(childScrollTouchListener())
 
         etCatalogSearch.doAfterTextChanged { renderCatalogPager(viewModel.chapterListData.value) }
         rvCatalog.doOnLayout { renderCatalogPager(viewModel.chapterListData.value) }
@@ -1626,7 +2017,6 @@ class BookInfoActivity :
 
     private fun updateDetailContentPanelHeight() = binding.run {
         tvIntroContainer.post {
-            (tvIntroContainer.getChildAt(0) as? ScrollTextView)?.refreshScrollBounds()
             renderCatalogPager(viewModel.chapterListData.value)
         }
     }
@@ -1634,11 +2024,9 @@ class BookInfoActivity :
     private fun relayoutUseWebIntro(webView: WebView? = binding.tvIntroContainer.getChildAt(0) as? WebView) {
         val target = webView ?: return
         if (target.parent !== binding.tvIntroContainer) return
-        target.requestLayout()
-        binding.tvIntroContainer.requestLayout()
-        binding.llIntroPage.requestLayout()
-        binding.llDetailContentPanel.requestLayout()
-        updateDetailContentPanelHeight()
+        if (binding.llDetailContentPanel.height <= 0 || binding.tvIntroContainer.height <= 0) {
+            binding.root.post { applyBookInfoComponents() }
+        }
     }
 
     private fun tocPreviewText(text: CharSequence, selected: Boolean): TextView {
@@ -1737,7 +2125,6 @@ class BookInfoActivity :
                     container.orientation = LinearLayout.VERTICAL
                     bindColumn(container, page.items)
                 }
-                container.post { updateDetailContentPanelHeight() }
             }
 
             private fun bindLandscapePage(page: BookInfoPage) {
@@ -2013,8 +2400,8 @@ class BookInfoActivity :
             }
             true
         }
+        refreshLayout.isEnabled = true
         refreshLayout.setOnRefreshListener {
-            refreshLayout.isRefreshing = false
             refreshBook()
         }
     }

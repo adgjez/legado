@@ -8,8 +8,6 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import android.widget.ScrollView
-import android.widget.TextView
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
@@ -21,6 +19,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.ui.association.OpenUrlConfirmActivity
+import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.book.read.page.delegate.PageDelegate
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
@@ -160,9 +159,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         if (callBack.isScroll) {
             if (!pageFactory.hasNext()) {
-                nativeSelectionRect?.let { rect ->
-                    canvas.drawRect(rect, selectedPaint)
-                }
+                nativeSelectionRect?.let { rect -> drawSelectedRect(canvas, rect) }
                 return
             }
             val textPage1 = relativePage(1)
@@ -176,9 +173,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                 }
             }
         }
-        nativeSelectionRect?.let { rect ->
-            canvas.drawRect(rect, selectedPaint)
-        }
+        nativeSelectionRect?.let { rect -> drawSelectedRect(canvas, rect) }
+    }
+
+    fun drawSelectedRect(canvas: Canvas, rect: RectF) {
+        canvas.drawRect(rect, selectedPaint)
+    }
+
+    fun drawSelectedRect(canvas: Canvas, left: Float, top: Float, right: Float, bottom: Float) {
+        canvas.drawRect(left, top, right, bottom, selectedPaint)
     }
 
     private fun drawPageInBounds(
@@ -356,9 +359,15 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             return true
         }
         var handled = false
-        touch(x, y) { _, textPos, _, _, column ->
+        touch(x, y) { _, textPos, _, textLine, column ->
             when (column) {
-                is ImageColumn -> callBack.onImageLongPress(x, y, column.src)
+                is ImageColumn -> callBack.onImageLongPress(
+                    x = x,
+                    y = y,
+                    src = column.src,
+                    paragraphNum = textLine.paragraphNum,
+                    imageIndexInParagraph = imageIndexInParagraph(textLine, column)
+                )
                 is TextColumn -> {
                     if (!selectAble) return@touch
                     column.selected = true
@@ -374,6 +383,24 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         return handled
+    }
+
+    private fun imageIndexInParagraph(textLine: TextLine, target: ImageColumn): Int {
+        if (textLine.paragraphNum <= 0) return 0
+        var index = 0
+        val paragraph = textLine.textPage.textChapter
+            .getParagraphs(pageSplit = false)
+            .firstOrNull { it.realNum == textLine.paragraphNum }
+            ?: return 0
+        paragraph.textLines.forEach { line ->
+            line.columns.forEach { column ->
+                if (column is ImageColumn && column.src == target.src) {
+                    if (column === target) return index
+                    index++
+                }
+            }
+        }
+        return 0
     }
 
     /**
@@ -495,20 +522,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     AppLog.put("EPUB Footnote resolve failed: href=$href")
                     context.toastOnUi(R.string.epub_footnote_load_failed)
                 } else {
-                    val textView = TextView(context).apply {
-                        textSize = 15f
-                        setTextColor(context.getCompatColor(R.color.primaryText))
-                        setPadding(20.dpToPx(), 14.dpToPx(), 20.dpToPx(), 14.dpToPx())
-                        setHtml(note.html)
-                    }
-                    val scrollView = ScrollView(context).apply {
-                        addView(textView)
-                        minimumHeight = 96.dpToPx()
-                    }
-                    context.alert(title = note.title) {
-                        customView { scrollView }
-                        okButton()
-                    }
+                    val content = note.html
+                    activity?.showDialogFragment(TextDialog(note.title, content, TextDialog.Mode.HTML))
                 }
             }
         }
@@ -1051,7 +1066,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         var isSelectingSearchResult: Boolean
         fun upSelectedStart(x: Float, y: Float, top: Float)
         fun upSelectedEnd(x: Float, y: Float)
-        fun onImageLongPress(x: Float, y: Float, src: String)
+        fun onImageLongPress(
+            x: Float,
+            y: Float,
+            src: String,
+            paragraphNum: Int,
+            imageIndexInParagraph: Int
+        )
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
         fun oldClickImg(src: String): Boolean

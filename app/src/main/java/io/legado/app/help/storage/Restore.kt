@@ -14,7 +14,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
@@ -29,9 +32,9 @@ import io.legado.app.data.entities.RuleSub
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.data.entities.Server
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.data.entities.BaseSource
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.DirectLinkUpload
+import io.legado.app.lib.cloud.S3ContainerManager
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
@@ -214,6 +217,7 @@ object Restore {
                 }
             }
         }
+        restoreBookCharacters(path)
         File(path, "servers.json").takeIf {
             it.exists()
         }?.runCatching {
@@ -280,25 +284,26 @@ object Restore {
         restoreTopBarPackages(path)
         restoreCoverCollections(path)
         restoreSourceRuntime(path)
-        //AppWebDav.downBgs()
         appCtx.getSharedPreferences(path, "config")?.all?.let { map ->
             val edit = appCtx.defaultSharedPreferences.edit()
 
             map.forEach { (key, value) ->
                 if (BackupConfig.keyIsNotIgnore(key)) {
                     when (key) {
-                        PreferKey.webDavPassword -> {
+                        PreferKey.webDavPassword, PreferKey.s3SecretKey, PreferKey.s3SessionToken -> {
                             kotlin.runCatching {
                                 aes.decryptStr(value.toString())
                             }.getOrNull()?.let {
                                 edit.putString(key, it)
                             } ?: let {
-                                if (appCtx.getPrefString(PreferKey.webDavPassword)
-                                        .isNullOrBlank()
-                                ) {
+                                if (appCtx.getPrefString(key).isNullOrBlank()) {
                                     edit.putString(key, value.toString())
                                 }
                             }
+                        }
+
+                        PreferKey.s3Containers -> {
+                            edit.putString(key, S3ContainerManager.restoreEncryptedBackupJson(value.toString(), aes))
                         }
 
                         else -> when (value) {
@@ -316,6 +321,7 @@ object Restore {
         normalizeBackgroundPrefs()
         normalizeStringPrefs()
         refreshWebDavAfterRestore()
+        restoreReadConfigBackgrounds()
         restoreAppliedUiPackages()
         appCtx.getSharedPreferences(path, "videoConfig")?.all?.let { map ->
             appCtx.getSharedPreferences(VIDEO_PREF_NAME, Context.MODE_PRIVATE).edit().apply {
@@ -347,6 +353,72 @@ object Restore {
             }
             ThemeConfig.applyDayNight(appCtx)
         }
+    }
+
+    private fun restoreBookCharacters(path: String) {
+        val characters = fileToListT<BookCharacter>(path, Backup.bookCharactersFileName) ?: return
+        kotlin.runCatching {
+            restoreBookCharacterAvatars(path)
+            val idMap = hashMapOf<Long, Long>()
+            characters.forEach { character ->
+                val oldId = character.id
+                val normalized = character.copy(
+                    avatar = restoreBookCharacterAvatarPath(character.avatar),
+                    updatedAt = character.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+                )
+                val exists = appDb.bookCharacterDao.getCharacter(normalized.bookUrl, normalized.name)
+                val newId = if (exists != null) {
+                    appDb.bookCharacterDao.updateCharacter(normalized.copy(id = exists.id))
+                    exists.id
+                } else {
+                    appDb.bookCharacterDao.insertCharacter(normalized.copy(id = 0L))
+                }
+                if (oldId > 0L) {
+                    idMap[oldId] = newId
+                }
+            }
+            fileToListT<BookCharacterRelation>(path, Backup.bookCharacterRelationsFileName)
+                ?.forEach { relation ->
+                    val fromId = idMap[relation.fromCharacterId] ?: return@forEach
+                    val toId = idMap[relation.toCharacterId] ?: return@forEach
+                    val saving = relation.copy(
+                        id = 0L,
+                        fromCharacterId = fromId,
+                        toCharacterId = toId,
+                        relationName = relation.relationName.ifBlank { "关系" },
+                        updatedAt = relation.updatedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
+                    )
+                    val exists = appDb.bookCharacterDao.getRelation(
+                        saving.bookUrl,
+                        saving.fromCharacterId,
+                        saving.toCharacterId,
+                        saving.relationName
+                    )
+                    if (exists != null) {
+                        appDb.bookCharacterDao.updateRelation(saving.copy(id = exists.id))
+                    } else {
+                        appDb.bookCharacterDao.insertRelation(saving)
+                    }
+                }
+        }.onFailure {
+            AppLog.put("恢复角色资料出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun restoreBookCharacterAvatars(path: String) {
+        val sourceDir = File(path, Backup.bookCharacterAvatarsDirName)
+        if (!sourceDir.exists() || !sourceDir.isDirectory) return
+        val targetDir = appCtx.externalFiles.getFile("bookCharacters", "avatars")
+        copyDir(sourceDir, targetDir)
+    }
+
+    private fun restoreBookCharacterAvatarPath(avatar: String): String {
+        if (avatar.isBlank() || avatar.startsWith("http", ignoreCase = true)) {
+            return avatar
+        }
+        val fileName = File(avatar).name.takeIf { it.isNotBlank() } ?: return avatar
+        val restoredFile = appCtx.externalFiles.getFile("bookCharacters", "avatars", fileName)
+        return restoredFile.takeIf { it.exists() }?.absolutePath ?: avatar
     }
 
     private fun restoreSourceRuntime(path: String) {
@@ -489,6 +561,78 @@ object Restore {
         }
     }
 
+    private suspend fun restoreReadConfigBackgrounds() {
+        val names = linkedSetOf<String>()
+        fun collect(config: ReadBookConfig.Config) {
+            readConfigBgFileName(config.bgType, config.bgStr)?.let(names::add)
+            readConfigBgFileName(config.bgTypeNight, config.bgStrNight)?.let(names::add)
+            readConfigBgFileName(config.bgTypeEInk, config.bgStrEInk)?.let(names::add)
+        }
+        ReadBookConfig.configList.forEach(::collect)
+        collect(ReadBookConfig.shareConfig)
+        if (names.isEmpty()) return
+        val restored = AppCloudStorage.downBgs(names)
+        if (restored.isEmpty()) return
+        var changed = false
+        fun normalize(config: ReadBookConfig.Config) {
+            if (normalizeReadConfigBg(config, restored)) {
+                changed = true
+            }
+        }
+        ReadBookConfig.configList.forEach(::normalize)
+        normalize(ReadBookConfig.shareConfig)
+        if (!changed) return
+        runCatching {
+            FileUtils.delete(ReadBookConfig.configFilePath)
+            FileUtils.createFileIfNotExist(ReadBookConfig.configFilePath)
+                .writeText(GSON.toJson(ReadBookConfig.configList))
+            FileUtils.delete(ReadBookConfig.shareConfigFilePath)
+            FileUtils.createFileIfNotExist(ReadBookConfig.shareConfigFilePath)
+                .writeText(GSON.toJson(ReadBookConfig.shareConfig))
+            ReadBookConfig.initConfigs()
+            ReadBookConfig.initShareConfig()
+        }.onFailure {
+            AppLog.put("恢复正文背景图片配置出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun normalizeReadConfigBg(
+        config: ReadBookConfig.Config,
+        restored: Map<String, File>
+    ): Boolean {
+        var changed = false
+        fun restorePath(bgType: Int, bgStr: String): String? {
+            val fileName = readConfigBgFileName(bgType, bgStr) ?: return null
+            return restored[fileName]?.absolutePath
+        }
+        restorePath(config.bgType, config.bgStr)?.let {
+            if (config.bgStr != it) {
+                config.bgStr = it
+                changed = true
+            }
+        }
+        restorePath(config.bgTypeNight, config.bgStrNight)?.let {
+            if (config.bgStrNight != it) {
+                config.bgStrNight = it
+                changed = true
+            }
+        }
+        restorePath(config.bgTypeEInk, config.bgStrEInk)?.let {
+            if (config.bgStrEInk != it) {
+                config.bgStrEInk = it
+                changed = true
+            }
+        }
+        return changed
+    }
+
+    private fun readConfigBgFileName(bgType: Int, bgStr: String?): String? {
+        if (bgType != 2) return null
+        val value = bgStr?.trim().orEmpty()
+        if (value.isBlank() || value.startsWith("http", ignoreCase = true)) return null
+        return File(value).name.takeIf { it.isNotBlank() }
+    }
+
     private fun restoreThemePackages(path: String) {
         val sourceDir = File(path, "themePackages")
         if (!sourceDir.exists() || !sourceDir.isDirectory) return
@@ -527,7 +671,7 @@ object Restore {
 
     private suspend fun refreshWebDavAfterRestore() {
         kotlin.runCatching {
-            AppWebDav.upConfig()
+            AppCloudStorage.upConfig()
         }.onFailure {
             AppLog.put("refresh WebDAV after restore failed\n${it.localizedMessage}", it)
         }
@@ -628,6 +772,16 @@ object Restore {
             PreferKey.webDavAccount,
             PreferKey.webDavPassword,
             PreferKey.webDavDir,
+            PreferKey.cloudStorageType,
+            PreferKey.s3Endpoint,
+            PreferKey.s3Region,
+            PreferKey.s3Bucket,
+            PreferKey.s3Prefix,
+            PreferKey.s3AccessKey,
+            PreferKey.s3SecretKey,
+            PreferKey.s3SessionToken,
+            PreferKey.s3Containers,
+            PreferKey.s3ContainerSelections,
             PreferKey.exportType,
             PreferKey.chineseConverterType,
             PreferKey.launcherIcon,
@@ -647,6 +801,8 @@ object Restore {
             PreferKey.mangaColorFilter,
             PreferKey.contentSelectMenuConfig,
             PreferKey.contentSelectDefaultOpen,
+            PreferKey.contentSelectSearchEngines,
+            PreferKey.contentSelectSearchEngineId,
             PreferKey.advancedTitleConfig,
             PreferKey.advancedTitleLottieJson,
             PreferKey.advancedTitleLottiePath,

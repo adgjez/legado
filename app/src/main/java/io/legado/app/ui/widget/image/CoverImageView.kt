@@ -37,6 +37,7 @@ import androidx.core.graphics.createBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.CoverCollectionManager
+import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.backgroundColor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +72,7 @@ class CoverImageView @JvmOverloads constructor(
     private var loadedKey: String? = null
     private var name: String? = null
     private var author: String? = null
+    private var drawNameOverlayForCurrentCover = false
     private var nameHeight = 0f
     private var authorHeight = 0f
     private val drawBookName = BookCover.drawBookName
@@ -115,7 +117,7 @@ class CoverImageView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (!drawBookName) return
         val currentName = this.name ?: return
-        if (AppConfig.useDefaultCover || needNameBitmap[bitmapPath.toString()] == true) {
+        if (drawNameOverlayForCurrentCover) {
             val currentAuthor = this.author
             val pathName = if (drawBookAuthor){
                 currentName + currentAuthor
@@ -282,15 +284,21 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(searchBook)
+        val originalCover = searchBook.coverUrl
+        val usingCollectionCover = collectionCover != null
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            originalCover.isRealCoverPath()
         load(
-            collectionCover ?: searchBook.coverUrl,
+            collectionCover ?: originalCover,
             searchBook.name,
             searchBook.author,
             loadOnlyWifi,
             searchBook.origin,
             fragment,
             lifecycle,
-            forcePath = collectionCover != null
+            forcePath = usingCollectionCover || forceOriginalCover,
+            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
         )
     }
 
@@ -302,8 +310,13 @@ class CoverImageView @JvmOverloads constructor(
         onLoadFinish: (() -> Unit)? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
+        val originalCover = book.getDisplayCover()
+        val usingCollectionCover = collectionCover != null
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            originalCover.isRealCoverPath()
         load(
-            collectionCover ?: book.getDisplayCover(),
+            collectionCover ?: originalCover,
             book.name,
             book.author,
             loadOnlyWifi,
@@ -311,7 +324,8 @@ class CoverImageView @JvmOverloads constructor(
             fragment,
             lifecycle,
             onLoadFinish,
-            forcePath = collectionCover != null
+            forcePath = usingCollectionCover || forceOriginalCover,
+            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
         )
     }
 
@@ -322,8 +336,13 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null
     ) {
         val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
+        val originalCover = book.getDisplayCover()
+        val usingCollectionCover = collectionCover != null
+        val forceOriginalCover = collectionCover == null &&
+            CoverCollectionManager.isMixedMode() &&
+            originalCover.isRealCoverPath()
         load(
-            collectionCover ?: book.getDisplayCover(),
+            collectionCover ?: originalCover,
             book.name,
             book.author,
             loadOnlyWifi,
@@ -332,7 +351,8 @@ class CoverImageView @JvmOverloads constructor(
             lifecycle,
             null,
             true,
-            forcePath = collectionCover != null
+            forcePath = usingCollectionCover || forceOriginalCover,
+            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
         )
     }
 
@@ -346,7 +366,8 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null,
         onLoadFinish: (() -> Unit)? = null,
         preferThumb: Boolean = false,
-        forcePath: Boolean = false
+        forcePath: Boolean = false,
+        allowNameOverlay: Boolean? = null
     ) {
         val currentAuthor = author?.replace(AppPattern.bdRegex, "")?.trim()?.also {
             this.author = it
@@ -362,8 +383,10 @@ class CoverImageView @JvmOverloads constructor(
             sourceOrigin.orEmpty(),
             loadOnlyWifi.toString(),
             AppConfig.useDefaultCover.toString(),
+            CoverCollectionManager.selectionKey(),
             useThumb.toString(),
-            forcePath.toString()
+            forcePath.toString(),
+            allowNameOverlay.toString()
         ).joinToString("|")
         if (loadedKey == newLoadKey && drawable != null) {
             return
@@ -371,19 +394,21 @@ class CoverImageView @JvmOverloads constructor(
         loadKey = newLoadKey
         this.bitmapPath = path
         val thumbKey = "$sourceOrigin|$path|$currentName|$currentAuthor"
+        val hasRealCover = path.isRealCoverPath()
+        drawNameOverlayForCurrentCover = allowNameOverlay ?: (AppConfig.useDefaultCover && !forcePath || !hasRealCover)
         if (AppConfig.useDefaultCover && !forcePath) {
             loadedKey = newLoadKey
             ImageLoader.load(context, BookCover.defaultDrawable)
                 .centerCrop()
                 .into(this)
         } else {
-            if (drawBookName && currentName != null) {
+            if (drawNameOverlayForCurrentCover && drawBookName && currentName != null) {
                 val pathName = if (drawBookAuthor){
                     currentName + currentAuthor
                 } else {
                     currentName
                 }
-                drawNameAuthor(pathName, currentName, currentAuthor, true)
+                drawNameAuthor(pathName, currentName, currentAuthor, false)
             }
             var options = RequestOptions()
                 .format(DecodeFormat.PREFER_ARGB_8888)

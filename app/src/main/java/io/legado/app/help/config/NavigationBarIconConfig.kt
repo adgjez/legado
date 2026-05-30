@@ -19,8 +19,9 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getSecondaryTextColor
@@ -38,6 +39,9 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
@@ -52,6 +56,7 @@ object NavigationBarIconConfig {
     const val STATE_SELECTED = "selected"
     const val DEFAULT_DIR_NAME = "default"
     private const val packageFileName = "navigation.json"
+    private const val remoteListTimeoutMillis = 4_000L
     private const val activeDayKey = PreferKey.navigationBarPackageDay
     private const val activeNightKey = PreferKey.navigationBarPackageNight
     private const val legacyMigratedDayKey = "navigationBarLegacyMigratedDay"
@@ -95,7 +100,9 @@ object NavigationBarIconConfig {
         var opacity: Int = 72,
         var updatedAt: Long = System.currentTimeMillis(),
         var sidebarBackgroundPath: String? = null,
+        var wallpaperPath: String? = null,
         var borderColor: Int? = null,
+        var borderAlpha: Int = 100,
         var icons: MutableMap<String, String> = linkedMapOf()
     )
 
@@ -138,11 +145,11 @@ object NavigationBarIconConfig {
             ?: DEFAULT_DIR_NAME
     }
 
-    suspend fun loadEntries(isNight: Boolean, includeRemote: Boolean): List<Entry> {
+    suspend fun loadEntries(isNight: Boolean, includeRemote: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         migrateLegacyIconsIfNeeded(isNight)
         val local = loadLocal(isNight).associateBy { it.dirName }
         val remote = if (includeRemote) {
-            loadRemoteOrCache(isNight).associateBy { it.dirName }
+            loadRemoteOrCache(isNight, containerId, scope).associateBy { it.dirName }
         } else {
             emptyMap()
         }
@@ -272,6 +279,8 @@ object NavigationBarIconConfig {
             sidebarGravity = source.sidebarGravity,
             effectMode = source.effectMode,
             opacity = source.opacity.coerceIn(0, 100),
+            wallpaperPath = normalizeWallpaperPath(source.wallpaperPath, dir),
+            borderAlpha = source.borderAlpha.coerceIn(0, 100),
             updatedAt = System.currentTimeMillis(),
             icons = source.icons.toMutableMap()
         )
@@ -286,12 +295,12 @@ object NavigationBarIconConfig {
         resetActiveIfNeeded(entry)
     }
 
-    suspend fun delete(entry: Entry) {
+    suspend fun delete(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
         when (entry.source) {
-            Source.REMOTE -> deleteRemote(entry)
+            Source.REMOTE -> deleteRemote(entry, containerId, scope)
             Source.BOTH -> {
-                val remoteResult = runCatching { deleteRemote(entry) }
+                val remoteResult = runCatching { deleteRemote(entry, containerId, scope) }
                 deleteLocal(entry)
                 remoteResult.getOrThrow()
             }
@@ -314,20 +323,20 @@ object NavigationBarIconConfig {
         return importZipInternal(zipFile)
     }
 
-    suspend fun upload(entry: Entry) {
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.uploadNavigationBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry))
+        AppCloudStorage.uploadNavigationBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry), containerId, scope)
     }
 
-    suspend fun download(entry: Entry): Entry {
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry {
         val zipFile = tempDir.getFile("${entry.dirName}.zip")
-        AppWebDav.downloadNavigationBarPackage(entry.config.isNightMode, entry.dirName, zipFile)
+        AppCloudStorage.downloadNavigationBarPackage(entry.config.isNightMode, entry.dirName, zipFile, containerId, scope)
         return importZipInternal(zipFile, entry.remoteUpdatedAt).copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
     }
 
-    suspend fun deleteRemote(entry: Entry) {
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.deleteNavigationBarPackage(entry.config.isNightMode, entry.dirName)
+        AppCloudStorage.deleteNavigationBarPackage(entry.config.isNightMode, entry.dirName, containerId, scope)
     }
 
     fun saveIconToPackage(
@@ -407,6 +416,41 @@ object NavigationBarIconConfig {
         return addOrUpdate(config, entry)
     }
 
+    fun saveBottomWallpaperToPackage(
+        context: Context,
+        sourcePath: String,
+        entry: Entry
+    ): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) {
+            throw IllegalArgumentException(context.getString(R.string.navigation_bar_default_readonly))
+        }
+        val source = File(sourcePath)
+        if (!source.exists() || !source.isFile) {
+            throw IllegalArgumentException(
+                context.getString(R.string.image_crop_failed, context.getString(R.string.unknown))
+            )
+        }
+        val dirName = entry.dirName.ifBlank {
+            entry.config.name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
+        }
+        val dir = entry.localDir ?: localDir(entry.config.isNightMode, dirName).apply { mkdirs() }
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.wallpaperPath = source.absolutePath
+        return addOrUpdate(config, entry.copy(dirName = dirName, localDir = dir))
+    }
+
+    fun clearBottomWallpaper(entry: Entry): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) return entry
+        entry.config.wallpaperPath?.let { name ->
+            val file = File(name)
+            val resolved = if (file.isAbsolute) file else File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), name)
+            resolved.takeIf { it.exists() }?.delete()
+        }
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.wallpaperPath = null
+        return addOrUpdate(config, entry)
+    }
+
     fun applyTo(menu: Menu, context: Context, isNight: Boolean): Boolean {
         val entry = currentEntry(isNight)
         val hasCustom = entry.dirName != DEFAULT_DIR_NAME && entry.config.icons.isNotEmpty()
@@ -437,6 +481,10 @@ object NavigationBarIconConfig {
         return resolveSidebarBackgroundPath(currentEntry(isNight))
     }
 
+    fun currentBottomWallpaperPath(isNight: Boolean): String? {
+        return resolveBottomWallpaperPath(currentEntry(isNight))
+    }
+
     fun getIconFileName(entry: Entry, itemKey: String, selected: Boolean): String? {
         val state = if (selected) STATE_SELECTED else STATE_NORMAL
         return entry.config.icons[iconKey(itemKey, state)]?.let { File(it).name }
@@ -465,35 +513,69 @@ object NavigationBarIconConfig {
             .orEmpty()
     }
 
-    private suspend fun loadRemote(isNight: Boolean): List<Entry> {
-        return AppWebDav.listNavigationBarPackages(isNight).mapNotNull { file ->
-            val name = file.displayName.removeSuffix(".zip")
+    private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        return AppCloudStorage.listNavigationBarPackages(isNight, containerId, scope).mapNotNull { file ->
+            val name = remoteZipBaseName(file.displayName)
+            val dirName = name.normalizeFileName().ifBlank {
+                AppLog.put("跳过异常远端底栏包: ${file.displayName}")
+                return@mapNotNull null
+            }
             Entry(
-                Config(name = name, isNightMode = isNight, updatedAt = file.lastModify),
+                Config(name = name.ifBlank { dirName }, isNightMode = isNight, updatedAt = file.lastModify),
                 Source.REMOTE,
-                name.normalizeFileName(),
+                dirName,
                 remoteUpdatedAt = file.lastModify
             )
+        }.dedupeRemoteEntries()
+    }
+
+    private fun remoteZipBaseName(displayName: String): String {
+        val name = displayName.trim().trimEnd('/').trim()
+        return if (name.endsWith(".zip", ignoreCase = true)) {
+            name.dropLast(4).trim()
+        } else {
+            name
         }
     }
 
-    private suspend fun loadRemoteOrCache(isNight: Boolean): List<Entry> {
-        val cached = readRemoteCache(isNight)
-        return runCatching {
-            loadRemote(isNight)
-        }.onSuccess { remote ->
-            writeRemoteCache(isNight, remote)
-        }.getOrElse {
+    private fun List<Entry>.dedupeRemoteEntries(): List<Entry> {
+        return groupBy { it.dirName }.values.mapNotNull { entries ->
+            entries.maxByOrNull { it.remoteUpdatedAt }
+        }
+    }
+
+    private suspend fun loadRemoteOrCache(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        val cached = readRemoteCache(isNight, containerId)
+        return try {
+            val remote = withTimeout(remoteListTimeoutMillis) {
+                loadRemote(isNight, containerId, scope)
+            }
+            writeRemoteCache(isNight, remote, containerId)
+            remote
+        } catch (e: TimeoutCancellationException) {
+            AppLog.put(
+                "加载远端底栏包列表超时: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}, timeout=${remoteListTimeoutMillis}ms"
+            )
+            cached
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            AppLog.put(
+                "加载远端底栏包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${e.localizedMessage}",
+                e
+            )
             cached
         }
     }
 
-    private fun remoteCacheFile(isNight: Boolean): File {
-        return remoteCacheDir.getFile(if (isNight) "night.json" else "day.json")
+    private fun remoteCacheFile(isNight: Boolean, containerId: String? = null): File {
+        val mode = if (isNight) "night" else "day"
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("$mode$suffix.json")
     }
 
-    private fun readRemoteCache(isNight: Boolean): List<Entry> {
-        val file = remoteCacheFile(isNight)
+    private fun readRemoteCache(isNight: Boolean, containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(isNight, containerId)
         if (!file.exists()) return emptyList()
         return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList())
             .filter { it.isNightMode == isNight }
@@ -513,7 +595,7 @@ object NavigationBarIconConfig {
             }
     }
 
-    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>) {
+    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>, containerId: String? = null) {
         val cache = entries.map {
             RemoteCache(
                 name = it.config.name,
@@ -522,7 +604,7 @@ object NavigationBarIconConfig {
                 updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.config.updatedAt
             )
         }
-        remoteCacheFile(isNight).writeTextIfChanged(GSON.toJson(cache))
+        remoteCacheFile(isNight, containerId).writeTextIfChanged(GSON.toJson(cache))
     }
 
     private fun readEntry(dir: File): Entry? {
@@ -593,6 +675,16 @@ object NavigationBarIconConfig {
     private fun resolveSidebarBackgroundPath(entry: Entry): String? {
         if (entry.dirName == DEFAULT_DIR_NAME) return null
         val value = entry.config.sidebarBackgroundPath ?: return null
+        val file = File(value)
+        return if (file.isAbsolute) value else File(
+            entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName),
+            value
+        ).absolutePath
+    }
+
+    private fun resolveBottomWallpaperPath(entry: Entry): String? {
+        if (entry.dirName == DEFAULT_DIR_NAME) return null
+        val value = entry.config.wallpaperPath ?: return null
         val file = File(value)
         return if (file.isAbsolute) value else File(
             entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName),
@@ -724,15 +816,40 @@ object NavigationBarIconConfig {
         val effectMode = runCatching { config.effectMode }.getOrNull()
             ?.takeIf { it in setOf("solid", "glass", "frosted") }
             ?: "glass"
+        val resolvedEffectMode = if (layoutMode == "standard") "solid" else effectMode
         val icons = runCatching { config.icons }.getOrNull() ?: linkedMapOf()
         val sidebarBackgroundPath = runCatching { config.sidebarBackgroundPath }.getOrNull()
+        val wallpaperPath = runCatching { config.wallpaperPath }.getOrNull()
+        val borderAlpha = runCatching { config.borderAlpha }.getOrDefault(100).coerceIn(0, 100)
         config.layoutMode = layoutMode
         config.sidebarGravity = sidebarGravity
-        config.effectMode = effectMode
+        config.effectMode = resolvedEffectMode
         config.opacity = config.opacity.coerceIn(0, 100)
         config.sidebarBackgroundPath = sidebarBackgroundPath
+        config.wallpaperPath = wallpaperPath?.takeIf { it.isNotBlank() }
+        config.borderAlpha = borderAlpha
         config.icons = icons.toMutableMap()
         return config
+    }
+
+    private fun normalizeWallpaperPath(path: String?, dir: File): String? {
+        val value = path?.takeIf { it.isNotBlank() } ?: return null
+        val source = File(value)
+        if (!source.isAbsolute) {
+            return value
+        }
+        if (!source.exists() || !source.isFile) {
+            return null
+        }
+        dir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("bottom_bar_wallpaper.") }
+            ?.forEach { it.delete() }
+        val suffix = source.extension.takeIf { it.isNotBlank() } ?: "jpg"
+        val target = File(dir, "bottom_bar_wallpaper.$suffix")
+        if (source.absolutePath != target.absolutePath) {
+            source.copyTo(target, overwrite = true)
+        }
+        return target.name
     }
 
     private fun resetActiveIfNeeded(entry: Entry) {

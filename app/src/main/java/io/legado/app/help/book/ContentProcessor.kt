@@ -159,6 +159,8 @@ class ContentProcessor private constructor(
                 //替换
                 effectiveReplaceRules = arrayListOf()
                 mContent = mContent.lines().joinToString("\n") { it.trim() }
+                val protectedContent = SpecialContentProtector.protect(mContent)
+                mContent = protectedContent.content
                 getContentReplaceRules().forEach { item ->
                     if (item.pattern.isEmpty()) {
                         return@forEach
@@ -190,6 +192,7 @@ class ContentProcessor private constructor(
                         appCtx.toastOnUi("替换净化: 规则 ${item.name}替换出错")
                     }
                 }
+                mContent = protectedContent.restore(mContent)
             }
             useHtmlMap.forEach { (placeholder, originalContent) ->
                 mContent = mContent.replace(placeholder, originalContent)

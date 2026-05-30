@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -14,7 +13,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -22,6 +20,7 @@ import androidx.core.view.doOnLayout
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -38,14 +37,11 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setMarkdown
 import io.legado.app.utils.toastOnUi
 import io.noties.markwon.Markwon
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
@@ -82,10 +78,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private val binding = ViewReadAiFloatingPanelBinding.inflate(LayoutInflater.from(context), this, true)
     private val markwon: Markwon by lazy {
-        Markwon.builder(context)
-            .usePlugin(HtmlPlugin.create())
-            .usePlugin(TablePlugin.create(context))
-            .build()
+        AiMarkdownRender.createMarkwon(context)
     }
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     private val messageAdapter = MessageAdapter()
@@ -96,6 +89,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var showingHistory = false
     private var streamingAssistantContent: String? = null
     private var streamingAssistantMessageId: String? = null
+    private var stickToBottom = true
+    private var forceScrollToBottom = false
     private var downRawX = 0f
     private var downRawY = 0f
     private var startX = 0f
@@ -108,6 +103,11 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             stackFromEnd = true
         }
         binding.answerContainer.adapter = messageAdapter
+        binding.answerContainer.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                stickToBottom = !recyclerView.canScrollVertically(1)
+            }
+        })
         binding.btnClose.setOnClickListener { close() }
         binding.btnNewChat.setOnClickListener { startNewChat() }
         binding.btnHistory.setOnClickListener { toggleHistory() }
@@ -138,6 +138,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         this.readContext = readContext
         currentSessionId = ensureSession(readContext, createNew = false).id
         showingHistory = false
+        forceScrollToBottom = true
+        stickToBottom = true
         showMessages()
         binding.tvContext.text = buildContextLabel(readContext)
         binding.etQuestion.setText("")
@@ -199,6 +201,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         streamingAssistantMessageId = null
         currentSessionId = ensureSession(context, createNew = true).id
         showingHistory = false
+        forceScrollToBottom = true
+        stickToBottom = true
         showMessages()
         binding.tvContext.text = buildContextLabel(context)
     }
@@ -216,6 +220,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val context = readContext ?: return
         answerJob?.cancel()
         val requestSessionId = currentSessionId
+        forceScrollToBottom = true
+        stickToBottom = true
         appendMessage(context, ReadAiMessage.Role.USER, question)
         val pendingAssistantId = appendMessage(
             context,
@@ -290,21 +296,40 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                         role = ReadAiMessage.Role.ASSISTANT,
                         content = resources.getString(R.string.ai_chat_empty)
                     )
-                ),
-                allowDelete = false
+                )
             )
         } else {
-            renderMessages(displayMessages, allowDelete = true)
+            renderMessages(displayMessages)
         }
     }
 
-    private fun renderMessages(messages: List<ReadAiMessage>, allowDelete: Boolean) {
-        messageAdapter.allowDelete = allowDelete
+    private fun renderMessages(messages: List<ReadAiMessage>) {
+        val shouldScrollToBottom = forceScrollToBottom ||
+            stickToBottom ||
+            !binding.answerContainer.canScrollVertically(1)
         messageAdapter.streamingMessageId = streamingAssistantMessageId
         messageAdapter.submit(messages)
+        if (messageAdapter.itemCount > 0 && shouldScrollToBottom) {
+            scrollToLatestMessageBottom()
+            stickToBottom = true
+        }
+        forceScrollToBottom = false
+    }
+
+    private fun scrollToLatestMessageBottom() {
+        val target = messageAdapter.itemCount - 1
+        if (target < 0) return
         binding.answerContainer.post {
-            if (messageAdapter.itemCount > 0) {
-                binding.answerContainer.scrollToPosition(messageAdapter.itemCount - 1)
+            binding.answerContainer.scrollToPosition(target)
+            binding.answerContainer.post {
+                val holder = binding.answerContainer.findViewHolderForAdapterPosition(target)
+                val bottom = holder?.itemView?.bottom ?: return@post
+                val viewportBottom = binding.answerContainer.height - binding.answerContainer.paddingBottom
+                val delta = bottom - viewportBottom
+                if (delta > 0) {
+                    binding.answerContainer.scrollBy(0, delta)
+                }
+                stickToBottom = true
             }
         }
     }
@@ -637,7 +662,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             context.sourceName.ifBlank { resources.getString(R.string.unknown) },
             context.chapterTitle.ifBlank { resources.getString(R.string.unknown) },
             context.chapterIndex + 1,
-            question
+            question,
+            context.bookUrl
         )
     }
 
@@ -689,38 +715,33 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
-    private fun showMessageActions(anchor: View, message: ReadAiMessage) {
-        PopupMenu(context, anchor).apply {
-            menu.add(0, actionCopyMessage, 0, R.string.copy_text)
-            if (message.id.isNotBlank()) {
-                menu.add(0, actionDeleteMessage, 1, R.string.delete)
-            }
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    actionCopyMessage -> {
-                        context.sendToClip(message.content)
-                        context.toastOnUi(R.string.copy_complete)
-                        true
-                    }
-                    actionDeleteMessage -> {
-                        deleteMessage(readContext ?: return@setOnMenuItemClickListener true, message.id)
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }.show()
-    }
-
     private inner class MessageAdapter : RecyclerView.Adapter<MessageAdapter.Holder>() {
         private val messages = arrayListOf<ReadAiMessage>()
-        var allowDelete: Boolean = true
         var streamingMessageId: String? = null
 
+        init {
+            setHasStableIds(true)
+        }
+
         fun submit(items: List<ReadAiMessage>) {
+            val oldItems = messages.toList()
+            val newItems = items.toList()
+            val diffResult = DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+                override fun getOldListSize(): Int = oldItems.size
+
+                override fun getNewListSize(): Int = newItems.size
+
+                override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    return oldItems[oldItemPosition].id == newItems[newItemPosition].id
+                }
+
+                override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    return oldItems[oldItemPosition] == newItems[newItemPosition]
+                }
+            })
             messages.clear()
-            messages.addAll(items)
-            notifyDataSetChanged()
+            messages.addAll(newItems)
+            diffResult.dispatchUpdatesTo(this)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
@@ -739,8 +760,14 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
         override fun getItemCount(): Int = messages.size
 
+        override fun getItemId(position: Int): Long {
+            return AiMarkdownRender.stableId(messages[position].id)
+        }
+
         inner class Holder(private val itemBinding: ItemReadAiMessageBinding) :
             RecyclerView.ViewHolder(itemBinding.root) {
+
+            private var lastMarkdownKey: String? = null
 
             fun bind(message: ReadAiMessage) = itemBinding.run {
                 val isUser = message.role == ReadAiMessage.Role.USER
@@ -773,18 +800,27 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 tvMessage.maxLines = Int.MAX_VALUE
                 tvMessage.setTextColor(context.primaryTextColor)
                 tvMessage.typeface = context.uiTypeface()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    tvMessage.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
-                }
+                tvMessage.setOnLongClickListener(null)
                 if (message.id == streamingMessageId) {
+                    AiMarkdownRender.clearNativeSelectionWithLinkTap(tvMessage)
                     tvMessage.text = message.content
+                    lastMarkdownKey = null
                 } else {
-                    tvMessage.setMarkdown(markwon, markwon.toMarkdown(message.content), imgOnLongClickListener = {})
-                }
-                tvMessage.setOnLongClickListener {
-                    if (!allowDelete) return@setOnLongClickListener false
-                    showMessageActions(tvMessage, message)
-                    true
+                    val renderKey = AiMarkdownRender.renderKey(
+                        message.id,
+                        message.content,
+                        pending = false,
+                        textView = tvMessage,
+                        context = context
+                    )
+                    if (renderKey != lastMarkdownKey) {
+                        markwon.setParsedMarkdown(
+                            tvMessage,
+                            markwon.toMarkdown(message.content.ifBlank { " " })
+                        )
+                        lastMarkdownKey = renderKey
+                    }
+                    AiMarkdownRender.setNativeSelectionWithLinkTap(tvMessage)
                 }
             }
         }
@@ -792,7 +828,5 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
-        private const val actionCopyMessage = 1
-        private const val actionDeleteMessage = 2
     }
 }

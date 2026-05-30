@@ -26,13 +26,16 @@ object ModernActionPopup {
 
     data class Action(
         val title: String,
+        val checked: Boolean = false,
         val invoke: () -> Unit
     )
 
     fun show(
         anchor: View,
         actions: List<Action>,
-        previousPopup: PopupWindow? = null
+        previousPopup: PopupWindow? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8
     ): PopupWindow? {
         if (actions.isEmpty()) return previousPopup
         val context = anchor.context
@@ -41,7 +44,7 @@ object ModernActionPopup {
             popup?.dismiss()
         }
         previousPopup?.dismiss()
-        val popupSize = measurePopupSize(anchor, content)
+        val popupSize = measurePopupSize(anchor, content, maxHeightRatio, bottomGapDp)
         popup = PopupWindow(
             content,
             popupSize.first,
@@ -63,6 +66,8 @@ object ModernActionPopup {
         anchor: View,
         @MenuRes menuRes: Int,
         previousPopup: PopupWindow? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8,
         prepare: (Menu.() -> Unit)? = null,
         onClick: (MenuItem) -> Boolean
     ): PopupWindow? {
@@ -73,10 +78,10 @@ object ModernActionPopup {
         for (index in 0 until popupMenu.menu.size()) {
             val item = popupMenu.menu.getItem(index)
             if (item.isVisible) {
-                actions.add(Action(item.title.toString()) { onClick(item) })
+                actions.add(Action(item.title.toString(), item.isChecked) { onClick(item) })
             }
         }
-        return show(anchor, actions, previousPopup)
+        return show(anchor, actions, previousPopup, maxHeightRatio, bottomGapDp)
     }
 
     private fun createContent(
@@ -122,6 +127,7 @@ object ModernActionPopup {
     ): TextView {
         return TextView(context).apply {
             text = action.title
+            isSelected = action.checked
             gravity = Gravity.CENTER_VERTICAL
             minWidth = 132.dpToPx()
             minHeight = 42.dpToPx()
@@ -130,11 +136,23 @@ object ModernActionPopup {
             applyUiMenuItemTypeface(context)
             includeFontPadding = false
             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_menu),
-                UiCorner.actionRadius(context)
-            )
+            val selectedColor = ContextCompat.getColor(context, R.color.background_menu)
+            background = if (action.checked) {
+                UiCorner.opaqueRounded(
+                    selectedColor,
+                    UiCorner.actionRadius(context)
+                )
+            } else {
+                UiCorner.actionSelector(
+                    Color.TRANSPARENT,
+                    selectedColor,
+                    UiCorner.actionRadius(context)
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && action.checked) {
+                elevation = 4.dpToPx().toFloat()
+                translationZ = 4.dpToPx().toFloat()
+            }
             setOnClickListener {
                 dismiss()
                 action.invoke()
@@ -148,12 +166,19 @@ object ModernActionPopup {
         }
     }
 
-    private fun measurePopupSize(anchor: View, content: View): Pair<Int, Int> {
+    private fun measurePopupSize(
+        anchor: View,
+        content: View,
+        maxHeightRatio: Float,
+        bottomGapDp: Int
+    ): Pair<Int, Int> {
         val gap = 8.dpToPx()
+        val bottomGap = bottomGapDp.dpToPx()
         val visibleFrame = Rect()
         anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
         content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val maxHeight = ((visibleFrame.height() - gap * 2) * 0.62f).toInt()
+        val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
+        val maxHeight = ((visibleFrame.height() - gap - bottomGap) * ratio).toInt()
             .coerceAtLeast(160.dpToPx())
         return content.measuredWidth to content.measuredHeight.coerceAtMost(maxHeight)
     }

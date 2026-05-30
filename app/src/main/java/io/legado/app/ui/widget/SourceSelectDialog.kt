@@ -33,6 +33,7 @@ object SourceSelectDialog {
         displayName: (T) -> String,
         searchTexts: (T) -> List<String>,
         itemKey: (T) -> String,
+        showTitle: Boolean = true,
         onSelect: (T) -> Unit
     ) {
         if (items.isEmpty()) return
@@ -99,20 +100,22 @@ object SourceSelectDialog {
                 UiCorner.panelRadius(context)
             )
             setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
-            addView(
-                TextView(context).apply {
-                    text = title
-                    applyUiSectionTitleStyle(context)
-                    textSize = 18f
-                    includeFontPadding = false
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(2.dpToPx(), 0, 2.dpToPx(), 12.dpToPx())
-                },
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    32.dpToPx()
+            if (showTitle) {
+                addView(
+                    TextView(context).apply {
+                        text = title
+                        applyUiSectionTitleStyle(context)
+                        textSize = 18f
+                        includeFontPadding = false
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(2.dpToPx(), 0, 2.dpToPx(), 12.dpToPx())
+                    },
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        32.dpToPx()
+                    )
                 )
-            )
+            }
             addView(
                 searchView,
                 LinearLayout.LayoutParams(

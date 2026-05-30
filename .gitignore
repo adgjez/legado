@@ -21,3 +21,11 @@ package-lock.json
 /apk/
 /build-http/
 /legado_app_*.apk
+/debug/
+/debug-http*/
+/serve-8000/
+/latest.apk
+/tmp_*.apk
+/legado_epubnewcore_*.apk
+/replay_pid*.log
+/temp*.txt

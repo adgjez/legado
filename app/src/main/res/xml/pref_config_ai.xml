@@ -34,13 +34,6 @@
             android:title="@string/ai_skill_prompt"
             app:iconSpaceReserved="false" />
 
-        <io.legado.app.lib.prefs.SwitchPreference
-            android:key="aiShowToolSummary"
-            android:defaultValue="false"
-            android:summary="@string/ai_show_tool_summary_summary"
-            android:title="@string/ai_show_tool_summary"
-            app:iconSpaceReserved="false" />
-
         <io.legado.app.lib.prefs.Preference
             android:key="aiManageNativeTools"
             android:summary="@string/ai_manage_native_tools_summary"
@@ -54,6 +47,30 @@
             android:title="@string/ai_enter_to_send"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiContextCompression"
+            android:summary="@string/ai_context_compression_summary_default"
+            android:title="@string/ai_context_compression"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiPersonaManage"
+            android:summary="@string/ai_persona_manage_summary_empty"
+            android:title="@string/ai_persona_manage"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiImageGallery"
+            android:summary="@string/ai_image_gallery_summary"
+            android:title="@string/ai_image_gallery"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiImageProviderManage"
+            android:summary="@string/ai_image_provider_summary_empty"
+            android:title="@string/ai_image_provider_manage"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
@@ -64,42 +81,9 @@
         app:layout="@layout/view_preference_category">
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiAddProvider"
-            android:summary="@string/ai_add_provider_summary"
-            android:title="@string/ai_add_provider"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiManageProviders"
             android:summary="@string/ai_no_providers"
             android:title="@string/ai_manage_providers"
-            app:iconSpaceReserved="false" />
-
-    </io.legado.app.lib.prefs.PreferenceCategory>
-
-    <io.legado.app.lib.prefs.PreferenceCategory
-        android:title="@string/ai_model"
-        app:allowDividerAbove="false"
-        app:allowDividerBelow="false"
-        app:iconSpaceReserved="false"
-        app:layout="@layout/view_preference_category">
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiAddModel"
-            android:summary="@string/ai_add_model_summary"
-            android:title="@string/ai_add_model"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiFetchModels"
-            android:summary="@string/ai_fetch_models_summary"
-            android:title="@string/ai_fetch_models"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
-            android:key="aiManageModels"
-            android:summary="@string/ai_no_models"
-            android:title="@string/ai_manage_models"
             app:iconSpaceReserved="false" />
 
     </io.legado.app.lib.prefs.PreferenceCategory>

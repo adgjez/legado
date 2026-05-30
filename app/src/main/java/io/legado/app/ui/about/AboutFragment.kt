@@ -15,6 +15,7 @@ import io.legado.app.help.CrashHandler
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.AppUpdate
+import io.legado.app.help.update.AppUpdateConfig
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
@@ -46,6 +47,7 @@ class AboutFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.about)
         findPreference<Preference>("update_log")?.summary =
             "${getString(R.string.version)} ${appInfo.versionName}"
+        updateAccelerationPreferenceSummary()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -58,6 +60,7 @@ class AboutFragment : PreferenceFragmentCompat() {
             "contributors" -> openUrl(R.string.contributors_url)
             "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
             "check_update" -> checkUpdate()
+            "update_acceleration_manage" -> showUpdateAccelerationManage()
             "mail" -> requireContext().sendMail(getString(R.string.email))
             "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
             "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
@@ -68,6 +71,17 @@ class AboutFragment : PreferenceFragmentCompat() {
             "createHeapDump" -> createHeapDump()
         }
         return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun updateAccelerationPreferenceSummary() {
+        findPreference<Preference>("update_acceleration_manage")?.summary =
+            AppUpdateConfig.summary(requireContext())
+    }
+
+    private fun showUpdateAccelerationManage() {
+        UpdateAcceleratorDialog.show(this) {
+            updateAccelerationPreferenceSummary()
+        }
     }
 
     @Suppress("SameParameterValue")
@@ -95,7 +109,17 @@ class AboutFragment : PreferenceFragmentCompat() {
                         UpdateDialog(it)
                     )
                 }.onError {
-                    appCtx.toastOnUi("${getString(R.string.check_update)}\n${it.localizedMessage}")
+                    showDialogFragment(
+                        TextDialog(
+                            getString(R.string.check_update),
+                            if (AppUpdate.isLatestVersionError(it)) {
+                                getString(R.string.update_no_new_version)
+                            } else {
+                                it.localizedMessage ?: getString(R.string.check_update)
+                            },
+                            TextDialog.Mode.TEXT
+                        )
+                    )
                 }.onFinally {
                     waitDialog.dismiss()
                 }

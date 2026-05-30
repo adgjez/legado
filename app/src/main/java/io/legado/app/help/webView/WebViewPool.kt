@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.rss.read.VisibleWebView
 import io.legado.app.utils.setDarkeningAllowed
@@ -180,6 +181,7 @@ object WebViewPool {
 
     fun scheduleDestroyScope(scope: Scope, delayMillis: Long = SCOPED_IDLE_TIME_OUT) {
         if (scope == Scope.GLOBAL) return
+        logScopedDestroy(scope, "计划销毁")
         val scopePool = synchronized(this) { pool(scope) }
         scopePool.destroyJob?.cancel()
         scopePool.destroyJob = cleanupScope.launch {
@@ -205,7 +207,18 @@ object WebViewPool {
             scopePool.resettingPool.clear()
             list
         }
+        logScopedDestroy(scope, "执行销毁", toDestroy.size)
         toDestroy.forEach { destroyNow(it) }
+    }
+
+    private fun logScopedDestroy(scope: Scope, action: String, count: Int? = null) {
+        val pageName = when (scope) {
+            Scope.DISCOVERY -> "发现页"
+            Scope.RSS -> "订阅页"
+            Scope.GLOBAL -> return
+        }
+        val countText = count?.let { ", count=$it" }.orEmpty()
+        AppLog.put("$pageName WebView $action: scope=${scope.name}$countText")
     }
 
     private fun destroyNow(pooledWebView: PooledWebView) {

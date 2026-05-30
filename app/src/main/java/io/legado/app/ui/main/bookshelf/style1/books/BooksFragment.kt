@@ -113,7 +113,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun initRecyclerView() {
         binding.rvBookshelf.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelf.clipToPadding = true
+        binding.rvBookshelf.clipToPadding = false
         binding.rvBookshelf.applyMainBottomBarPadding()
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
@@ -373,6 +373,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startActivity<BookInfoActivity> {
             putExtra("name", book.name)
             putExtra("author", book.author)
+            putExtra("bookUrl", book.bookUrl)
         }
     }
 

@@ -8,6 +8,7 @@ plugins {
 
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.android
+    alias libs.plugins.kotlin.compose
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
@@ -23,7 +24,15 @@ def name = "legado"
 def version = project.hasProperty("VERSION_NAME")
         ? project.property("VERSION_NAME").toString()
         : "3." + releaseTime()
-def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
+def gitCommitsText = ""
+try {
+    def gitRevList = ['git', 'rev-list', 'HEAD', '--count'].execute(null, rootDir)
+    gitRevList.waitFor()
+    gitCommitsText = gitRevList.in.text.trim()
+} catch (Throwable ignored) {
+    gitCommitsText = ""
+}
+def gitCommits = gitCommitsText?.isInteger() ? Integer.parseInt(gitCommitsText) : 0
 def buildVersionCode = project.hasProperty("VERSION_CODE")
         ? project.property("VERSION_CODE").toString().toInteger()
         : 10000 + gitCommits
@@ -69,18 +78,14 @@ android {
             }
         }
 
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += [
-                        "room.incremental"     : "true",
-                        "room.expandProjection": "true",
-                        "room.schemaLocation"  : "$projectDir/schemas".toString()
-                ]
-            }
+        ksp {
+            arg("room.incremental", "true")
+            arg("room.expandProjection", "true")
         }
     }
     buildFeatures {
         buildConfig = true
+        compose = true
         viewBinding = true
     }
     buildTypes {
@@ -94,7 +99,7 @@ android {
             } else if (getApplicationIdSuffix() == '.releaseS') {
                 manifestPlaceholders.put("app_name", "@string/app_name_s")
             } else {
-                manifestPlaceholders.put("app_name", "@string/app_name")
+                manifestPlaceholders.put("app_name", "@string/app_launcher_name")
             }
 
             minifyEnabled false
@@ -105,7 +110,7 @@ android {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig signingConfigs.myConfig
             }
-            manifestPlaceholders.put("app_name", "@string/app_name")
+            manifestPlaceholders.put("app_name", "@string/app_launcher_name")
 
             applicationIdSuffix '.debug'
             versionNameSuffix 'debug'
@@ -150,15 +155,6 @@ android {
     room {
         schemaDirectory "$projectDir/schemas"
     }
-    // 设定Room的KSP参数
-    ksp {
-        arg("room.incremental", "true")
-        arg("room.expandProjection", "true")
-        arg("room.generateKotlin", "false")
-        //arg("room.schemaLocation", "$projectDir/schemas")
-
-    }
-
     compileOptions {
         // Flag to enable support for the new language APIs
         coreLibraryDesugaringEnabled = true
@@ -223,6 +219,12 @@ dependencies {
     implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.material3)
 
     //google
     implementation(libs.material)
@@ -337,6 +339,7 @@ dependencies {
     //epubLib集成到应用内
     // 椒盐歌词
     implementation(libs.lyricViewx)
+    debugImplementation(libs.androidx.compose.ui.tooling)
     // sora-editor代码编辑器,更丰富的编辑功能
     implementation(platform(libs.soraEditor.bom))
     implementation(libs.soraEditor.core)

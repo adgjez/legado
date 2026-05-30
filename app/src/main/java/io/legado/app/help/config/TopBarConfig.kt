@@ -5,8 +5,9 @@ import android.graphics.Color
 import androidx.annotation.Keep
 import androidx.core.content.ContextCompat
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.AppWebDav
+import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
@@ -17,6 +18,9 @@ import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.putPrefString
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
 import java.io.File
 
@@ -26,6 +30,7 @@ object TopBarConfig {
     const val STYLE_DEFAULT = "default"
     const val STYLE_REGULAR = "regular"
     private const val packageFileName = "top_bar.json"
+    private const val remoteListTimeoutMillis = 4_000L
     private const val activeDayKey = PreferKey.topBarPackageDay
     private const val activeNightKey = PreferKey.topBarPackageNight
 
@@ -120,10 +125,10 @@ object TopBarConfig {
         return resolved.takeIf { it.exists() && it.isFile }
     }
 
-    suspend fun loadEntries(context: Context, isNight: Boolean, includeRemote: Boolean): List<Entry> {
+    suspend fun loadEntries(context: Context, isNight: Boolean, includeRemote: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
         val local = loadLocal(isNight).associateBy { it.dirName }
         val remote = if (includeRemote) {
-            loadRemoteOrCache(isNight).associateBy { it.dirName }
+            loadRemoteOrCache(isNight, containerId, scope).associateBy { it.dirName }
         } else {
             emptyMap()
         }
@@ -206,17 +211,17 @@ object TopBarConfig {
         resetActiveIfNeeded(entry)
     }
 
-    suspend fun deleteRemote(entry: Entry) {
+    suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.deleteTopBarPackage(entry.config.isNightMode, entry.dirName)
+        AppCloudStorage.deleteTopBarPackage(entry.config.isNightMode, entry.dirName, containerId, scope)
     }
 
-    suspend fun delete(entry: Entry) {
+    suspend fun delete(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
         when (entry.source) {
-            Source.REMOTE -> deleteRemote(entry)
+            Source.REMOTE -> deleteRemote(entry, containerId, scope)
             Source.BOTH -> {
-                val remoteResult = runCatching { deleteRemote(entry) }
+                val remoteResult = runCatching { deleteRemote(entry, containerId, scope) }
                 deleteLocal(entry)
                 remoteResult.getOrThrow()
             }
@@ -237,14 +242,14 @@ object TopBarConfig {
 
     fun importZip(zipFile: File): Entry = importZipInternal(zipFile)
 
-    suspend fun upload(entry: Entry) {
+    suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
-        AppWebDav.uploadTopBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry))
+        AppCloudStorage.uploadTopBarPackage(entry.config.isNightMode, entry.dirName, exportZip(entry), containerId, scope)
     }
 
-    suspend fun download(entry: Entry): Entry {
+    suspend fun download(entry: Entry, containerId: String? = null, scope: String? = null): Entry {
         val zipFile = tempDir.getFile("${entry.dirName}.zip")
-        AppWebDav.downloadTopBarPackage(entry.config.isNightMode, entry.dirName, zipFile)
+        AppCloudStorage.downloadTopBarPackage(entry.config.isNightMode, entry.dirName, zipFile, containerId, scope)
         return importZipInternal(zipFile, entry.remoteUpdatedAt).copy(source = Source.BOTH, remoteUpdatedAt = entry.remoteUpdatedAt)
     }
 
@@ -280,32 +285,63 @@ object TopBarConfig {
             .orEmpty()
     }
 
-    private suspend fun loadRemote(isNight: Boolean): List<Entry> {
-        return AppWebDav.listTopBarPackages(isNight).mapNotNull { file ->
-            val name = file.displayName.removeSuffix(".zip")
-            val dirName = name.normalizeFileName().ifBlank { return@mapNotNull null }
+    private suspend fun loadRemote(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        return AppCloudStorage.listTopBarPackages(isNight, containerId, scope).mapNotNull { file ->
+            val name = remoteZipBaseName(file.displayName)
+            val dirName = name.normalizeFileName().ifBlank {
+                AppLog.put("跳过异常远端顶栏包: ${file.displayName}")
+                return@mapNotNull null
+            }
             Entry(
-                Config(name = name, isNightMode = isNight, updatedAt = file.lastModify),
+                Config(name = name.ifBlank { dirName }, isNightMode = isNight, updatedAt = file.lastModify),
                 Source.REMOTE,
                 dirName,
                 remoteUpdatedAt = file.lastModify
             )
+        }.dedupeRemoteEntries()
+    }
+
+    private fun remoteZipBaseName(displayName: String): String {
+        val name = displayName.trim().trimEnd('/').trim()
+        return if (name.endsWith(".zip", ignoreCase = true)) {
+            name.dropLast(4).trim()
+        } else {
+            name
         }
     }
 
-    private suspend fun loadRemoteOrCache(isNight: Boolean): List<Entry> {
-        val cached = readRemoteCache(isNight)
-        return runCatching {
-            loadRemote(isNight)
-        }.onSuccess { remote ->
-            writeRemoteCache(isNight, remote)
-        }.getOrElse {
+    private fun List<Entry>.dedupeRemoteEntries(): List<Entry> {
+        return groupBy { it.dirName }.values.mapNotNull { entries ->
+            entries.maxByOrNull { it.remoteUpdatedAt }
+        }
+    }
+
+    private suspend fun loadRemoteOrCache(isNight: Boolean, containerId: String? = null, scope: String? = null): List<Entry> {
+        val cached = readRemoteCache(isNight, containerId)
+        return try {
+            val remote = withTimeout(remoteListTimeoutMillis) {
+                loadRemote(isNight, containerId, scope)
+            }
+            writeRemoteCache(isNight, remote, containerId)
+            remote
+        } catch (e: TimeoutCancellationException) {
+            AppLog.put(
+                "加载远端顶栏包列表超时: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}, timeout=${remoteListTimeoutMillis}ms"
+            )
+            cached
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            AppLog.put(
+                "加载远端顶栏包列表失败: type=${AppCloudStorage.type}, container=${containerId.orEmpty()}\n${e.localizedMessage}",
+                e
+            )
             cached
         }
     }
 
-    private fun readRemoteCache(isNight: Boolean): List<Entry> {
-        val file = remoteCacheFile(isNight)
+    private fun readRemoteCache(isNight: Boolean, containerId: String? = null): List<Entry> {
+        val file = remoteCacheFile(isNight, containerId)
         if (!file.exists()) return emptyList()
         return GSON.fromJsonArray<RemoteCache>(file.readText()).getOrDefault(emptyList())
             .filter { it.isNightMode == isNight }
@@ -321,7 +357,7 @@ object TopBarConfig {
             }
     }
 
-    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>) {
+    private fun writeRemoteCache(isNight: Boolean, entries: List<Entry>, containerId: String? = null) {
         val cache = entries.map {
             RemoteCache(
                 name = it.config.name,
@@ -330,11 +366,13 @@ object TopBarConfig {
                 updatedAt = it.remoteUpdatedAt.takeIf { time -> time > 0L } ?: it.config.updatedAt
             )
         }
-        remoteCacheFile(isNight).writeTextIfChanged(GSON.toJson(cache))
+        remoteCacheFile(isNight, containerId).writeTextIfChanged(GSON.toJson(cache))
     }
 
-    private fun remoteCacheFile(isNight: Boolean): File {
-        return remoteCacheDir.getFile(if (isNight) "night.json" else "day.json")
+    private fun remoteCacheFile(isNight: Boolean, containerId: String? = null): File {
+        val mode = if (isNight) "night" else "day"
+        val suffix = containerId?.takeIf { it.isNotBlank() }?.normalizeFileName()?.let { "_$it" }.orEmpty()
+        return remoteCacheDir.getFile("$mode$suffix.json")
     }
 
     private fun readEntry(dir: File): Entry? {
