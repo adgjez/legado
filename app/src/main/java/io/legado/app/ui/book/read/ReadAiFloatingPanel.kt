@@ -699,16 +699,10 @@ private fun ReadAiPanelContent(
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
-                Text(
-                    text = stringResource(R.string.ask_ai),
-                    color = style.colors.primaryText,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp)
-                        .padding(start = 10.dp)
                         .pointerInteropFilter(onTouchEvent = onTopDrag)
                 )
                 ReadAiIconButton(R.drawable.ic_add, R.string.ai_new_chat, style, onNewChat)
