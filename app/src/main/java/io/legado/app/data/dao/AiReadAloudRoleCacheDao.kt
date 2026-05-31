@@ -28,6 +28,23 @@ interface AiReadAloudRoleCacheDao {
         status: String = AiReadAloudRoleCache.STATUS_SUCCESS
     ): AiReadAloudRoleCache?
 
+    @Query(
+        """
+        SELECT * FROM ai_read_aloud_role_caches
+        WHERE bookUrl = :bookUrl
+          AND chapterIndex = :chapterIndex
+          AND segmentsJson != ''
+        ORDER BY
+          CASE WHEN status = 'success' THEN 0 ELSE 1 END,
+          updatedAt DESC
+        LIMIT 1
+        """
+    )
+    fun latestUsableByChapter(
+        bookUrl: String,
+        chapterIndex: Int
+    ): AiReadAloudRoleCache?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(cache: AiReadAloudRoleCache)
 

@@ -52,6 +52,7 @@ data class AiReadAloudRoleCache(
         const val STATUS_PENDING = "pending"
         const val STATUS_RUNNING = "running"
         const val STATUS_SUCCESS = "success"
+        const val STATUS_FALLBACK = "fallback"
         const val STATUS_FAILED = "failed"
     }
 }
