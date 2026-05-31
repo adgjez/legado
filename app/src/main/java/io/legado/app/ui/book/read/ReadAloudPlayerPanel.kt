@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -51,6 +52,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -59,6 +62,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -106,6 +110,7 @@ import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class ReadAloudPlayerPanel @JvmOverloads constructor(
@@ -133,6 +138,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val current: Boolean,
         val key: String = index.toString(),
         val sequence: Int = index
+    )
+
+    data class TextCueUi(
+        val index: Int,
+        val text: String,
+        val current: Boolean,
+        val key: String,
+        val sequence: Int,
+        val chapterPosition: Int
     )
 
     data class FocusTextUi(
@@ -187,6 +201,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val ttsEngines: List<TtsEngineUi> = emptyList(),
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
+        val textCues: List<TextCueUi> = emptyList(),
+        val currentCueIndex: Int = 0,
         val chapterKey: String = "",
         val paragraphKey: String = "",
         val paragraphSequence: Int = 0,
@@ -228,6 +244,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onTimerChange = ::setTimer,
                 onEngineSelect = ::selectTtsEngine,
                 onProgressSeek = ::seekToParagraphProgress,
+                onCueSelect = ::seekToChapterPosition,
                 onOpenCharacters = { callBack?.openBookCharacters() }
             )
         }
@@ -383,7 +400,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         } else {
             (progress.coerceIn(0f, 1f) * (paragraphs.size - 1)).roundToInt()
         }.coerceIn(0, paragraphs.lastIndex)
-        val targetPos = paragraphs[targetIndex].chapterPosition.coerceAtLeast(0)
+        seekToChapterPosition(paragraphs[targetIndex].chapterPosition)
+    }
+
+    private fun seekToChapterPosition(chapterPosition: Int) {
+        val chapter = ReadBook.curTextChapter ?: return
+        val totalLength = chapter.lastPage
+            ?.let { it.chapterPosition + it.charSize }
+            ?.coerceAtLeast(1)
+            ?: 1
+        val targetPos = chapterPosition.coerceIn(0, totalLength)
         val pageIndex = chapter.getPageIndexByCharIndex(targetPos)
         if (pageIndex < 0) return
         val startPos = (targetPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
@@ -442,6 +468,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             text = sentence.second.ifBlank { paragraphText.ifBlank { "暂无当前段落" } }
         )
         val nearby = paragraphs.nearbyParagraphs(paragraphIndex, chapterKey, chapterSequence)
+        val textCues = buildTextCues(paragraphs, chapterKey, chapterSequence, chapterStart)
+        val currentCueIndex = textCues.indexOfFirst { it.current }.let { if (it >= 0) it else 0 }
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
             bookName = bookName,
@@ -464,6 +492,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ttsEngines = buildTtsEngineOptions(),
             characterPreview = buildCharacterPreview(book?.bookUrl),
             nearbyParagraphs = nearby,
+            textCues = textCues,
+            currentCueIndex = currentCueIndex,
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
             paragraphSequence = paragraphSequence,
@@ -501,6 +531,82 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 sequence = chapterSequence * 100_000 + index
             )
         }
+    }
+
+    private fun buildTextCues(
+        paragraphs: List<TextParagraph>,
+        chapterKey: String,
+        chapterSequence: Int,
+        chapterStart: Int
+    ): List<TextCueUi> {
+        val cues = mutableListOf<TextCueUi>()
+        paragraphs.forEach { paragraph ->
+            paragraph.text.readAloudCueRanges().forEach { range ->
+                val text = paragraph.text.substring(range).cleanReadAloudText()
+                if (text.isBlank()) return@forEach
+                val chapterPosition = paragraph.chapterPosition + range.first
+                cues.add(
+                    TextCueUi(
+                        index = cues.size + 1,
+                        text = text,
+                        current = false,
+                        key = "$chapterKey:$chapterPosition:${text.hashCode()}",
+                        sequence = chapterSequence * 1_000_000 + cues.size,
+                        chapterPosition = chapterPosition
+                    )
+                )
+            }
+        }
+        if (cues.isEmpty()) return emptyList()
+        val currentIndex = cues.indexOfLast { it.chapterPosition <= chapterStart }
+            .coerceIn(0, cues.lastIndex)
+        return cues.mapIndexed { index, cue ->
+            cue.copy(current = index == currentIndex)
+        }
+    }
+
+    private fun String.readAloudCueRanges(): List<IntRange> {
+        if (isBlank()) return emptyList()
+        val ranges = mutableListOf<IntRange>()
+        var start = 0
+        fun emit(endExclusive: Int) {
+            val safeStart = start.coerceIn(0, length)
+            val safeEnd = endExclusive.coerceIn(safeStart, length)
+            if (safeEnd > safeStart) {
+                ranges.add(safeStart until safeEnd)
+            }
+            start = safeEnd
+        }
+        var index = 0
+        while (index < length) {
+            if (isCueBoundary(this[index])) {
+                var end = index + 1
+                while (end < length && isClosingQuote(this[end])) {
+                    end++
+                }
+                emit(end)
+                while (start < length && this[start].isWhitespace()) {
+                    start++
+                }
+                index = start
+            } else {
+                index++
+            }
+        }
+        emit(length)
+        return ranges
+    }
+
+    private fun isCueBoundary(char: Char): Boolean {
+        return char == '\u3002' || char == '\uff01' || char == '\uff1f' ||
+                char == '!' || char == '?' || char == ';' || char == '\uff1b' ||
+                char == '\n'
+    }
+
+    private fun isClosingQuote(char: Char): Boolean {
+        return char == '\u2019' || char == '\u201d' || char == '\u300b' ||
+                char == '\u300d' || char == '\u300f' || char == ')' ||
+                char == '\uff09' || char == ']' || char == '\u3011'
     }
 
     private fun buildChapterPreview(
@@ -652,6 +758,7 @@ private fun ReadAloudPlayerContent(
     onTimerChange: (Int) -> Unit,
     onEngineSelect: (String) -> Unit,
     onProgressSeek: (Float) -> Unit,
+    onCueSelect: (Int) -> Unit,
     onOpenCharacters: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
@@ -718,6 +825,7 @@ private fun ReadAloudPlayerContent(
                         colors = colors,
                         short = short,
                         animateTextChanges = animateTextChanges,
+                        onCueSelect = onCueSelect,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -729,6 +837,7 @@ private fun ReadAloudPlayerContent(
                         short = short,
                         veryShort = veryShort,
                         animateTextChanges = animateTextChanges,
+                        onCueSelect = onCueSelect,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -796,12 +905,6 @@ private enum class PlayerSheet {
     Engine,
     Characters
 }
-
-private data class LyricsTarget(
-    val key: String,
-    val sequence: Int,
-    val paragraphs: List<ReadAloudPlayerPanel.ParagraphUi>
-)
 
 private data class PlayerColors(
     val background: Color,
@@ -1098,6 +1201,7 @@ private fun PortraitPlayerBody(
     short: Boolean,
     veryShort: Boolean,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
@@ -1118,6 +1222,7 @@ private fun PortraitPlayerBody(
             maxParagraphs = if (veryShort) 5 else 7,
             currentMaxLines = if (veryShort) 4 else 6,
             animateTextChanges = animateTextChanges,
+            onCueSelect = onCueSelect,
             modifier = modifier
         )
     }
@@ -1129,6 +1234,7 @@ private fun LandscapePlayerBody(
     colors: PlayerColors,
     short: Boolean,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
@@ -1174,6 +1280,7 @@ private fun LandscapePlayerBody(
                     currentMaxLines = if (short) 4 else 6,
                     textAlign = TextAlign.Start,
                     animateTextChanges = animateTextChanges,
+                    onCueSelect = onCueSelect,
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
@@ -1234,6 +1341,7 @@ private fun LyricsPlayerStage(
     maxParagraphs: Int,
     currentMaxLines: Int,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1254,6 +1362,7 @@ private fun LyricsPlayerStage(
             maxParagraphs = maxParagraphs,
             currentMaxLines = currentMaxLines,
             animateTextChanges = animateTextChanges,
+            onCueSelect = onCueSelect,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -1393,93 +1502,91 @@ private fun LyricParagraphBody(
     maxParagraphs: Int,
     currentMaxLines: Int,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     textAlign: TextAlign = TextAlign.Center
 ) {
-    val paragraphs = state.nearbyParagraphs.ifEmpty {
+    val cues = state.textCues.ifEmpty {
         listOf(
-            ReadAloudPlayerPanel.ParagraphUi(
+            ReadAloudPlayerPanel.TextCueUi(
                 index = state.paragraphIndex.coerceAtLeast(1),
                 text = state.paragraphText.ifBlank { "暂无当前段落" },
                 current = true,
                 key = state.paragraphKey.ifBlank { state.paragraphIndex.toString() },
-                sequence = state.paragraphSequence
+                sequence = state.paragraphSequence,
+                chapterPosition = 0
             )
         )
     }
-    val currentPosition = paragraphs.indexOfFirst { it.current }.let { if (it >= 0) it else 0 }
-    val half = maxParagraphs / 2
-    val start = (currentPosition - half).coerceAtLeast(0)
-    val end = (start + maxParagraphs - 1).coerceAtMost(paragraphs.lastIndex)
-    val visible = paragraphs.subList(start, end + 1)
-    val target = remember(state.paragraphKey, visible) {
-        LyricsTarget(
-            key = state.paragraphKey,
-            sequence = state.paragraphSequence,
-            paragraphs = visible
-        )
+    val listState = rememberLazyListState()
+    var userScrolling by remember(state.chapterKey) { mutableStateOf(false) }
+    val currentIndex = state.currentCueIndex.coerceIn(0, cues.lastIndex)
+    LaunchedEffect(state.chapterKey) {
+        listState.scrollToItem((currentIndex - maxParagraphs / 2).coerceAtLeast(0))
     }
-    AnimatedContent(
-        targetState = target,
-        transitionSpec = {
-            val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
-            if (animateTextChanges) {
-                ((slideInVertically(tween(300)) { height -> height * direction / 5 } +
-                        fadeIn(tween(220))) togetherWith
-                        (slideOutVertically(tween(240)) { height -> -height * direction / 6 } +
-                                fadeOut(tween(160))))
-                    .using(SizeTransform(clip = false))
-            } else {
-                (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
-                    .using(SizeTransform(clip = false))
+    LaunchedEffect(state.chapterKey, currentIndex) {
+        if (!userScrolling && cues.isNotEmpty()) {
+            listState.animateScrollToItem((currentIndex - maxParagraphs / 2).coerceAtLeast(0))
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            userScrolling = true
+        } else if (userScrolling) {
+            userScrolling = false
+            val layoutInfo = listState.layoutInfo
+            val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+            val target = layoutInfo.visibleItemsInfo
+                .filter { it.index in cues.indices }
+                .minByOrNull { item -> abs(item.offset + item.size / 2 - center) }
+                ?.index
+            val cue = target?.let { cues.getOrNull(it) }
+            if (cue != null && !cue.current) {
+                onCueSelect(cue.chapterPosition)
             }
-        },
-        modifier = modifier.fillMaxHeight(),
-        label = "readAloudLyrics"
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = modifier
+            .fillMaxHeight()
+            .widthIn(max = 720.dp),
+        contentPadding = PaddingValues(vertical = if (compact) 84.dp else 120.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+        horizontalAlignment = when (textAlign) {
+            TextAlign.Start -> Alignment.Start
+            TextAlign.End -> Alignment.End
+            else -> Alignment.CenterHorizontally
+        }
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 720.dp),
-                horizontalAlignment = when (textAlign) {
-                    TextAlign.Start -> Alignment.Start
-                    TextAlign.End -> Alignment.End
-                    else -> Alignment.CenterHorizontally
-                },
-                verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)
-            ) {
-                it.paragraphs.forEach { paragraph ->
-                    LyricParagraphLine(
-                        paragraph = paragraph,
-                        colors = colors,
-                        compact = compact,
-                        currentMaxLines = currentMaxLines,
-                        textAlign = textAlign,
-                        animate = animateTextChanges
-                    )
-                }
-            }
+        itemsIndexed(cues, key = { _, cue -> cue.key }) { _, cue ->
+            LyricCueLine(
+                cue = cue,
+                colors = colors,
+                compact = compact,
+                currentMaxLines = currentMaxLines,
+                textAlign = textAlign,
+                animate = animateTextChanges,
+                onClick = { onCueSelect(cue.chapterPosition) }
+            )
         }
     }
 }
 
 @Composable
-private fun LyricParagraphLine(
-    paragraph: ReadAloudPlayerPanel.ParagraphUi,
+private fun LyricCueLine(
+    cue: ReadAloudPlayerPanel.TextCueUi,
     colors: PlayerColors,
     compact: Boolean,
     currentMaxLines: Int,
     textAlign: TextAlign,
-    animate: Boolean
+    animate: Boolean,
+    onClick: () -> Unit
 ) {
     val emphasis by animateFloatAsState(
-        targetValue = if (paragraph.current) 1f else 0f,
+        targetValue = if (cue.current) 1f else 0f,
         animationSpec = tween(if (animate) 220 else 1),
-        label = "readAloudLyricEmphasis"
+        label = "readAloudCueEmphasis"
     )
     val fontSize = when {
         compact -> 14f + emphasis * 6f
@@ -1490,15 +1597,17 @@ private fun LyricParagraphLine(
         else -> 23f + emphasis * 9f
     }
     Text(
-        text = paragraph.text,
+        text = cue.text,
         color = colors.primaryText.copy(alpha = 0.36f + emphasis * 0.58f),
         fontSize = fontSize.sp,
         lineHeight = lineHeight.sp,
-        fontWeight = if (paragraph.current) FontWeight.SemiBold else FontWeight.Normal,
-        maxLines = if (paragraph.current) currentMaxLines else 2,
+        fontWeight = if (cue.current) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = if (cue.current) currentMaxLines else 2,
         overflow = TextOverflow.Ellipsis,
         textAlign = textAlign,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
     )
 }
 
