@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1235,19 +1236,23 @@ private fun ReadAloudCapsule(
         val clampedBaseX = baseOffsetX.coerceIn(minX, maxX)
         val clampedBaseY = baseOffsetY.coerceIn(minY, maxY)
         val menuAvoidBounds = state.readMenuAvoidBounds
-        val displayOffsetY = menuAvoidBounds?.let { bounds ->
-            val capsuleLeft = clampedBaseX
-            val capsuleRight = clampedBaseX + capsuleWidthPx
-            val capsuleTop = clampedBaseY
-            val capsuleBottom = clampedBaseY + capsuleHeightPx
-            val horizontallyOverlapped = capsuleRight > bounds.left && capsuleLeft < bounds.right
-            val verticallyOverlapped = capsuleBottom + avoidGapPx > bounds.top && capsuleTop < bounds.bottom
-            if (horizontallyOverlapped && verticallyOverlapped) {
-                (bounds.top - capsuleHeightPx - avoidGapPx).coerceIn(minY, maxY)
-            } else {
-                clampedBaseY
-            }
-        } ?: clampedBaseY
+        val displayOffsetY = if (dragging) {
+            clampedBaseY
+        } else {
+            menuAvoidBounds?.let { bounds ->
+                val capsuleLeft = clampedBaseX
+                val capsuleRight = clampedBaseX + capsuleWidthPx
+                val capsuleTop = clampedBaseY
+                val capsuleBottom = clampedBaseY + capsuleHeightPx
+                val horizontallyOverlapped = capsuleRight > bounds.left && capsuleLeft < bounds.right
+                val verticallyOverlapped = capsuleBottom + avoidGapPx > bounds.top && capsuleTop < bounds.bottom
+                if (horizontallyOverlapped && verticallyOverlapped) {
+                    (bounds.top - capsuleHeightPx - avoidGapPx).coerceIn(minY, maxY)
+                } else {
+                    clampedBaseY
+                }
+            } ?: clampedBaseY
+        }
         val animatedX by animateFloatAsState(
             targetValue = clampedBaseX,
             animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
@@ -1258,6 +1263,8 @@ private fun ReadAloudCapsule(
             animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
             label = "readAloudCapsuleY"
         )
+        val latestClampedBaseX by rememberUpdatedState(clampedBaseX)
+        val latestDisplayOffsetY by rememberUpdatedState(displayOffsetY)
         LaunchedEffect(widthPx, heightPx, minX, maxX, minY, maxY) {
             baseOffsetX = if (baseOffsetX + capsuleWidthPx / 2f < widthPx / 2f) minX else maxX
             baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
@@ -1292,7 +1299,12 @@ private fun ReadAloudCapsule(
                 }
                 .pointerInput(widthPx, heightPx, minX, maxX, minY, maxY) {
                     detectDragGestures(
-                        onDragStart = { dragging = true },
+                        onDragStart = {
+                            baseOffsetX = latestClampedBaseX
+                            baseOffsetY = latestDisplayOffsetY
+                            dragging = true
+                            onPositionChange(baseOffsetX, baseOffsetY)
+                        },
                         onDragEnd = {
                             dragging = false
                             baseOffsetX = if (baseOffsetX + capsuleWidthPx / 2f < widthPx / 2f) {
@@ -1305,6 +1317,7 @@ private fun ReadAloudCapsule(
                         },
                         onDragCancel = {
                             dragging = false
+                            baseOffsetX = baseOffsetX.coerceIn(minX, maxX)
                             baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
                             onPositionChange(baseOffsetX, baseOffsetY)
                         }
