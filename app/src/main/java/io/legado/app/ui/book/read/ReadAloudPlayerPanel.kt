@@ -127,8 +127,6 @@ import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import kotlinx.coroutines.delay
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class ReadAloudPlayerPanel @JvmOverloads constructor(
@@ -1860,62 +1858,77 @@ private fun LyricCueBody(
     var userSeeking by remember(state.chapterKey) { mutableStateOf(false) }
     var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
     val currentIndex = state.currentCueIndex.coerceIn(0, cues.lastIndex)
-    val centerOffset = maxParagraphs / 2
-    LaunchedEffect(state.chapterKey) {
-        programmaticScroll = true
-        listState.scrollToItem((currentIndex - centerOffset).coerceAtLeast(0))
-        programmaticScroll = false
-    }
-    LaunchedEffect(state.chapterKey, currentIndex) {
-        if (!userSeeking && cues.isNotEmpty()) {
-            programmaticScroll = true
-            listState.animateScrollToItem((currentIndex - centerOffset).coerceAtLeast(0))
-            programmaticScroll = false
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            if (!programmaticScroll) {
-                userSeeking = true
-            }
-        } else if (userSeeking) {
-            delay(120)
-            val layoutInfo = listState.layoutInfo
-            val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-            val targetIndex = layoutInfo.visibleItemsInfo
-                .filter { it.index in cues.indices }
-                .minByOrNull { item -> abs(item.offset + item.size / 2 - center) }
-                ?.index
-            val target = targetIndex?.let { cues.getOrNull(it) }
-            userSeeking = false
-            if (target != null && target.index - 1 != currentIndex) {
-                onCueSelect(target.chapterPosition)
-            }
-        }
-    }
-    LazyColumn(
-        state = listState,
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
-            .widthIn(max = 720.dp),
-        contentPadding = PaddingValues(vertical = if (compact) 78.dp else 112.dp),
-        verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
-        horizontalAlignment = when (textAlign) {
-            TextAlign.Start -> Alignment.Start
-            TextAlign.End -> Alignment.End
-            else -> Alignment.CenterHorizontally
-        }
+            .widthIn(max = 720.dp)
     ) {
-        itemsIndexed(cues, key = { _, cue -> cue.key }) { _, cue ->
-            LyricCueLine(
-                cue = cue,
-                colors = colors,
-                compact = compact,
-                currentMaxLines = currentMaxLines,
-                textAlign = textAlign,
-                animate = animateTextChanges,
-                onClick = { onCueSelect(cue.chapterPosition) }
-            )
+        val centerPadding = ((maxHeight / 2) - if (compact) 42.dp else 54.dp)
+            .coerceAtLeast(if (compact) 42.dp else 58.dp)
+
+        suspend fun centerCue(index: Int, animated: Boolean) {
+            if (cues.isEmpty()) return
+            val targetIndex = index.coerceIn(0, cues.lastIndex)
+            if (animated) {
+                listState.animateScrollToItem(targetIndex)
+            } else {
+                listState.scrollToItem(targetIndex)
+            }
+            val layoutInfo = listState.layoutInfo
+            val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex } ?: return
+            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+            val targetTop = viewportCenter - item.size / 2
+            val scrollOffset = -targetTop
+            if (animated) {
+                listState.animateScrollToItem(targetIndex, scrollOffset = scrollOffset)
+            } else {
+                listState.scrollToItem(targetIndex, scrollOffset = scrollOffset)
+            }
+        }
+
+        LaunchedEffect(state.chapterKey) {
+            userSeeking = false
+            programmaticScroll = true
+            centerCue(currentIndex, animated = false)
+            programmaticScroll = false
+        }
+        LaunchedEffect(state.chapterKey, currentIndex) {
+            if (!userSeeking && cues.isNotEmpty()) {
+                programmaticScroll = true
+                centerCue(currentIndex, animated = true)
+                programmaticScroll = false
+            }
+        }
+        LaunchedEffect(listState.isScrollInProgress) {
+            if (listState.isScrollInProgress && !programmaticScroll) {
+                userSeeking = true
+            }
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = centerPadding),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+            horizontalAlignment = when (textAlign) {
+                TextAlign.Start -> Alignment.Start
+                TextAlign.End -> Alignment.End
+                else -> Alignment.CenterHorizontally
+            }
+        ) {
+            itemsIndexed(cues, key = { _, cue -> cue.key }) { _, cue ->
+                LyricCueLine(
+                    cue = cue,
+                    colors = colors,
+                    compact = compact,
+                    currentMaxLines = currentMaxLines,
+                    textAlign = textAlign,
+                    animate = animateTextChanges,
+                    onClick = {
+                        userSeeking = false
+                        onCueSelect(cue.chapterPosition)
+                    }
+                )
+            }
         }
     }
 }
