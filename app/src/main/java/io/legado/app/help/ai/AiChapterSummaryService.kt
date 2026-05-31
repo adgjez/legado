@@ -17,7 +17,10 @@ object AiChapterSummaryService {
     private const val DIRECT_LIMIT = 18_000
     private val SUMMARY_TOOL_NAMES = setOf(
         "list_book_characters",
-        "upsert_book_character"
+        "upsert_book_character",
+        "list_speech_catalogs",
+        "assign_character_speech_route",
+        "batch_assign_character_speech_routes"
     )
 
     data class SummaryInput(
@@ -164,7 +167,8 @@ object AiChapterSummaryService {
             2. 如果正文中出现新的明确角色，请调用 upsert_book_character 新增角色卡。
             3. 如果正文明确说明已有角色的新技能、新属性、身份变化或生平变化，请调用 upsert_book_character 更新对应字段。
             4. 不要删除角色，不要根据猜测覆盖旧信息；不确定的信息写入总结即可，不写入角色卡。
-            5. 最终回答只输出当前${if (chunkCount > 1) "分段" else "章节"}摘要，不要解释工具调用。
+            5. 如果角色没有配音且用户配置了发言人目录，可以读取配音目录并为角色分配发言人。
+            6. 最终回答只输出当前${if (chunkCount > 1) "分段" else "章节"}摘要，不要解释工具调用。
 
             书籍：
             - bookUrl: ${input.bookUrl}
