@@ -2845,12 +2845,27 @@ class ReadBookActivity : BaseReadBookActivity(),
             applyReadAloudPlayerSystemBars()
             binding.readAloudPlayerPanel.open(force = true)
         }
+        fun startOrOpenPlayerPanel() {
+            when {
+                !BaseReadAloudService.isRun -> {
+                    onClickReadAloud()
+                    binding.readAloudPlayerPanel.postDelayed({
+                        openPlayerPanel()
+                    }, 80)
+                }
+                BaseReadAloudService.pause -> {
+                    ReadAloud.resume(this)
+                    openPlayerPanel()
+                }
+                else -> openPlayerPanel()
+            }
+        }
         if (binding.readMenu.isVisible) {
             binding.readMenu.runMenuOut {
-                openPlayerPanel()
+                startOrOpenPlayerPanel()
             }
         } else {
-            openPlayerPanel()
+            startOrOpenPlayerPanel()
         }
     }
 

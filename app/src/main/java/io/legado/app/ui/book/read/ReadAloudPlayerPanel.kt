@@ -292,7 +292,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         when (status) {
             io.legado.app.constant.Status.PLAY -> {
                 refresh()
-                if (!dismissedForCurrentRun) {
+                if (!dismissedForCurrentRun && !expanded) {
                     showPanel()
                 }
             }

@@ -478,7 +478,7 @@ class ReadMenu @JvmOverloads constructor(
                 callBack.openChapterList()
             }
             ReadMenuButtonConfig.Builtin.READ_ALOUD -> runMenuOut {
-                callBack.onClickReadAloud()
+                callBack.showReadAloudDialog()
             }
             ReadMenuButtonConfig.Builtin.READ_STYLE -> runMenuOut {
                 callBack.showReadStyle()
