@@ -154,7 +154,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
-                val httpTts = ReadAloud.httpTTS ?: throw NoStackTraceException("tts is null")
+                val httpTts = ReadAloud.httpTTS
                 contentList.forEachIndexed { index, content ->
                     ensureActive()
                     if (index < nowSpeak) return@forEachIndexed
@@ -171,8 +171,8 @@ class HttpReadAloudService : BaseReadAloudService(),
                         createSilentSound(fileName)
                     } else if (!hasSpeakFile(fileName)) {
                         runCatching {
-                            if (route?.engineType == SpeechRoute.ENGINE_SYSTEM) {
-                                if (!synthesizeSystemSpeakFile(fileName, speakText, route)) {
+                            if (route?.engineType == SpeechRoute.ENGINE_SYSTEM || routeHttpTts == null) {
+                                if (!synthesizeSystemSpeakFile(fileName, speakText, route ?: defaultSystemRoute())) {
                                     createSilentSound(fileName)
                                 }
                             } else {
@@ -204,7 +204,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
     }
 
-    private suspend fun preDownloadAudios(httpTts: HttpTTS) {
+    private suspend fun preDownloadAudios(httpTts: HttpTTS?) {
         val textChapter = ReadBook.nextTextChapter ?: return
         val contentList = textChapter.getNeedReadAloud(0, readAloudByPage, 0, 1)
             .splitToSequence("\n")
@@ -219,11 +219,17 @@ class HttpReadAloudService : BaseReadAloudService(),
                 createSilentSound(fileName)
             } else if (!hasSpeakFile(fileName)) {
                 runCatching {
-                    val inputStream = getSpeakStream(httpTts, speakText)
-                    if (inputStream != null) {
-                        createSpeakFile(fileName, inputStream)
+                    if (httpTts == null) {
+                        if (!synthesizeSystemSpeakFile(fileName, speakText, defaultSystemRoute())) {
+                            createSilentSound(fileName)
+                        }
                     } else {
-                        createSilentSound(fileName)
+                        val inputStream = getSpeakStream(httpTts, speakText)
+                        if (inputStream != null) {
+                            createSpeakFile(fileName, inputStream)
+                        } else {
+                            createSilentSound(fileName)
+                        }
                     }
                 }
             }
@@ -236,7 +242,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         downloadTask = execute {
             downloadTaskActiveLock.withLock {
                 ensureActive()
-                val httpTts = ReadAloud.httpTTS ?: throw NoStackTraceException("tts is null")
+                val httpTts = ReadAloud.httpTTS
                 val downloaderChannel = Channel<Downloader>()
                 launch {
                     for (downloader in downloaderChannel) {
@@ -273,7 +279,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private suspend fun preDownloadAudiosStream(
-        httpTts: HttpTTS,
+        httpTts: HttpTTS?,
         downloaderChannel: Channel<Downloader>
     ) {
         val textChapter = ReadBook.nextTextChapter ?: return
@@ -286,14 +292,14 @@ class HttpReadAloudService : BaseReadAloudService(),
             currentCoroutineContext().ensureActive()
             val fileName = md5SpeakFileName(content, textChapter)
             val speakText = content.replace(AppPattern.notReadAloudRegex, "")
-            val dataSourceFactory = createDataSourceFactory(httpTts, speakText)
+            val dataSourceFactory = createDataSourceFactory(httpTts, speakText, fileName = fileName)
             val downloader = createDownloader(dataSourceFactory, fileName)
             downloaderChannel.send(downloader)
         }
     }
 
     private fun createDataSourceFactory(
-        httpTts: HttpTTS,
+        httpTts: HttpTTS?,
         speakText: String,
         route: SpeechRoute? = null,
         fileName: String? = null
@@ -302,11 +308,11 @@ class HttpReadAloudService : BaseReadAloudService(),
             InputStreamDataSource {
                 if (speakText.isEmpty()) {
                     resources.openRawResource(R.raw.silent_sound)
-                } else if (route?.engineType == SpeechRoute.ENGINE_SYSTEM && !fileName.isNullOrBlank()) {
+                } else if ((route?.engineType == SpeechRoute.ENGINE_SYSTEM || httpTts == null) && !fileName.isNullOrBlank()) {
                     val file = getSpeakFileAsMd5(fileName)
                     if (!hasSpeakFile(fileName)) {
                         runBlocking(lifecycleScope.coroutineContext[Job]!!) {
-                            synthesizeSystemSpeakFile(fileName, speakText, route)
+                            synthesizeSystemSpeakFile(fileName, speakText, route ?: defaultSystemRoute())
                         }
                     }
                     file.takeIf { it.exists() && it.length() > 0L }?.inputStream()
@@ -314,7 +320,8 @@ class HttpReadAloudService : BaseReadAloudService(),
                 } else {
                     kotlin.runCatching {
                         runBlocking(lifecycleScope.coroutineContext[Job]!!) {
-                            getSpeakStream(httpTts, speakText, route)
+                            val sourceHttpTts = httpTts ?: return@runBlocking resources.openRawResource(R.raw.silent_sound)
+                            getSpeakStream(sourceHttpTts, speakText, route)
                         }
                     }.onFailure {
                         when (it) {
@@ -454,18 +461,30 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private fun speechRouteForIndex(index: Int): SpeechRoute? {
         if (!AppConfig.aiReadAloudRoleEnabled) return null
+        speechRoutes.getOrNull(index)?.let { return it }
         val book = ReadBook.book ?: return null
         val chapter = textChapter ?: return null
         return AiReadAloudRoleService.routeForCue(
             bookUrl = book.bookUrl,
             chapterIndex = chapter.chapter.index,
-            cueIndex = index
+            cueIndex = index,
+            cueText = contentList.getOrNull(index)
         )
     }
 
-    private fun httpTtsForRoute(defaultHttpTts: HttpTTS, route: SpeechRoute?): HttpTTS {
+    private fun httpTtsForRoute(defaultHttpTts: HttpTTS?, route: SpeechRoute?): HttpTTS? {
+        if (route?.engineType == SpeechRoute.ENGINE_SYSTEM) return null
         val id = route?.engineValue?.toLongOrNull() ?: return defaultHttpTts
         return appDb.httpTTSDao.get(id) ?: defaultHttpTts
+    }
+
+    private fun defaultSystemRoute(): SpeechRoute {
+        return SpeechRoute(
+            engineType = SpeechRoute.ENGINE_SYSTEM,
+            engineValue = ReadAloud.ttsEngine.orEmpty(),
+            speakerName = "系统默认",
+            source = SpeechRoute.SOURCE_AUTO
+        )
     }
 
     private suspend fun synthesizeSystemSpeakFile(
@@ -544,8 +563,9 @@ class HttpReadAloudService : BaseReadAloudService(),
         route: SpeechRoute? = null
     ): String {
         val routeKey = route?.takeIf { it.isConfigured }?.toJson().orEmpty()
+        val engineKey = ReadAloud.httpTTS?.url ?: ReadAloud.ttsEngine.orEmpty()
         return MD5Utils.md5Encode16(textChapter.readAloudTitle()) + "_" +
-                MD5Utils.md5Encode16("${ReadAloud.httpTTS?.url}-|-$routeKey-|-$speechRate-|-$content")
+                MD5Utils.md5Encode16("$engineKey-|-$routeKey-|-$speechRate-|-$content")
     }
 
     private fun TextChapter?.readAloudTitle(): String {

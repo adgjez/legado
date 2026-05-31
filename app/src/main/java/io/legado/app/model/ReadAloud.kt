@@ -26,6 +26,13 @@ object ReadAloud {
 
     private fun getReadAloudClass(): Class<*> {
         val ttsEngine = ttsEngine
+        if (AppConfig.aiReadAloudRoleEnabled) {
+            httpTTS = ttsEngine
+                ?.takeIf { StringUtils.isNumeric(it) }
+                ?.let { appDb.httpTTSDao.get(it.toLong()) }
+                ?: appDb.httpTTSDao.all.firstOrNull()
+            return HttpReadAloudService::class.java
+        }
         if (ttsEngine.isNullOrBlank()) {
             return TTSReadAloudService::class.java
         }

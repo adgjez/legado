@@ -40,6 +40,7 @@ import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.ReadAloud
@@ -123,6 +124,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
     internal var contentList = emptyList<String>()
     internal var readAloudCues = emptyList<ReadAloudCue>()
+    internal var speechRoutes = emptyList<SpeechRoute?>()
     internal var nowSpeak: Int = 0
     internal var readAloudNumber: Int = 0
     internal var textChapter: TextChapter? = null
@@ -284,8 +286,9 @@ abstract class BaseReadAloudService : BaseService(),
                 return@execute
             }
             readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
-            readAloudCues = textChapter.buildReadAloudCues(readAloudByPage)
-            contentList = readAloudCues.map { it.text }
+            val baseCues = textChapter.buildReadAloudCues(readAloudByPage)
+            readAloudCues = baseCues
+            contentList = baseCues.map { it.text }
             val roleContentList = contentList
             if (AppConfig.aiReadAloudRoleEnabled) {
                 AiReadAloudRoleService.ensureCache(ReadBook.book, textChapter, roleContentList)
@@ -293,6 +296,10 @@ abstract class BaseReadAloudService : BaseService(),
                     prewarmNextChapterRoleCache()
                 }
             }
+            val speechPlan = buildSpeechPlan(textChapter, baseCues)
+            readAloudCues = speechPlan.first
+            speechRoutes = speechPlan.second
+            contentList = readAloudCues.map { it.text }
             if (contentList.isNotEmpty()) {
                 val startChapterPosition = textChapter.getReadLength(pageIndex) + startPos
                 nowSpeak = if (toLast) {
@@ -301,6 +308,8 @@ abstract class BaseReadAloudService : BaseService(),
                     readAloudCues.indexForChapterPosition(startChapterPosition)
                 }.coerceIn(0, contentList.lastIndex)
                 syncReadAloudPositionToCue()
+                paragraphStartPos = (startChapterPosition - readAloudNumber)
+                    .coerceIn(0, contentList.getOrNull(nowSpeak)?.length ?: 0)
             }
             if (toLast) {
                 toLast = false
@@ -311,6 +320,50 @@ abstract class BaseReadAloudService : BaseService(),
         }.onError {
             AppLog.put("启动朗读出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    private fun buildSpeechPlan(
+        chapter: TextChapter,
+        baseCues: List<ReadAloudCue>
+    ): Pair<List<ReadAloudCue>, List<SpeechRoute?>> {
+        if (!AppConfig.aiReadAloudRoleEnabled || baseCues.isEmpty()) {
+            return baseCues to List(baseCues.size) { null }
+        }
+        val bookUrl = ReadBook.book?.bookUrl
+        val chapterIndex = chapter.chapter.index
+        val plannedCues = arrayListOf<ReadAloudCue>()
+        val plannedRoutes = arrayListOf<SpeechRoute?>()
+        baseCues.forEachIndexed { cueIndex, cue ->
+            val beforeSize = plannedCues.size
+            val segments = AiReadAloudRoleService
+                .segmentsForCue(bookUrl, chapterIndex, cueIndex, cue.text)
+                .filter { it.start < cue.text.length }
+                .map { it.copy(start = it.start.coerceIn(0, cue.text.length), end = it.end.coerceIn(0, cue.text.length)) }
+                .filter { it.start < it.end }
+            segments.forEach { segment ->
+                val text = cue.text.substring(segment.start, segment.end).trim()
+                if (text.isBlank()) return@forEach
+                val chapterPosition = cue.chapterPosition + segment.start
+                val pageIndex = chapter.getPageIndexByCharIndex(chapterPosition)
+                    .takeIf { it >= 0 }
+                    ?: cue.pageIndex
+                val pageStartPos = (chapterPosition - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
+                plannedCues += ReadAloudCue(
+                    index = plannedCues.size,
+                    text = text,
+                    chapterPosition = chapterPosition,
+                    pageIndex = pageIndex,
+                    pageStartPos = pageStartPos,
+                    key = "${cue.key}:role:${segment.start}:${segment.end}:${text.hashCode()}"
+                )
+                plannedRoutes += AiReadAloudRoleService.routeForSegment(bookUrl, segment)
+            }
+            if (plannedCues.size == beforeSize) {
+                plannedCues += cue.copy(index = plannedCues.size)
+                plannedRoutes += AiReadAloudRoleService.routeForCue(bookUrl, chapterIndex, cueIndex, cue.text)
+            }
+        }
+        return plannedCues to plannedRoutes
     }
 
     private suspend fun prewarmNextChapterRoleCache() {
