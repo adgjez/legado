@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -240,6 +241,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             val wasVisible = visibility == VISIBLE
             visibility = VISIBLE
             bringToFront()
+            ViewCompat.requestApplyInsets(this)
+            ViewCompat.requestApplyInsets(composeView)
             uiState = buildState(uiState.mode).copy(foregroundActive = foregroundActive)
             if (!wasVisible) {
                 callBack?.onReadAloudPlayerVisibilityChanged(true)

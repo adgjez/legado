@@ -2827,12 +2827,16 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示朗读菜单
      */
     override fun showReadAloudDialog() {
+        fun openPlayerPanel() {
+            applyReadAloudPlayerSystemBars()
+            binding.readAloudPlayerPanel.open(force = true)
+        }
         if (binding.readMenu.isVisible) {
             binding.readMenu.runMenuOut {
-                binding.readAloudPlayerPanel.open(force = true)
+                openPlayerPanel()
             }
         } else {
-            binding.readAloudPlayerPanel.open(force = true)
+            openPlayerPanel()
         }
     }
 
