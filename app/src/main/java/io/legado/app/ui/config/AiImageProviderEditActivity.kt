@@ -137,6 +137,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             return
         }
         val old = currentProvider()
+        val needDefaultProvider = old == null && AppConfig.aiCurrentImageProvider == null
         val updated = (old ?: AiImageProviderConfig(name = name, type = providerType)).copy(
             name = name,
             type = providerType,
@@ -149,10 +150,13 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             jsLib = jsLibText,
             script = scriptText,
             timeoutMillisecond = binding.etTimeout.text?.toString()?.toLongOrNull() ?: 300_000L,
-            enabled = binding.cbEnabled.isChecked
+            enabled = if (needDefaultProvider) true else binding.cbEnabled.isChecked
         )
         AppConfig.aiImageProviderList = AppConfig.aiImageProviderList
             .filterNot { it.id == updated.id } + updated
+        if (needDefaultProvider) {
+            AppConfig.ensureCurrentImageProvider(updated.id)
+        }
         finish()
     }
 

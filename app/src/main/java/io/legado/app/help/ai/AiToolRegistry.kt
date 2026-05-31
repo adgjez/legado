@@ -177,6 +177,11 @@ object AiToolRegistry {
             .filter { it.name in enabled }
     }
 
+    fun resolveNativeTools(names: Set<String>): List<AiResolvedTool> {
+        return nativeResolvedTools()
+            .filter { it.name in names }
+    }
+
     suspend fun resolveAllTools(): List<AiResolvedTool> {
         val tools = nativeResolvedTools().toMutableList()
         tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)

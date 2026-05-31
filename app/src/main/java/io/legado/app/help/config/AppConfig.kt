@@ -764,6 +764,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             val providers = normalizeAiImageProviders(value)
             if (providers.isEmpty()) appCtx.removePref(PreferKey.aiImageProviderList)
             else appCtx.putPrefString(PreferKey.aiImageProviderList, GSON.toJson(providers))
+            syncAiImageState(providers)
         }
 
     val aiEnabledImageProviders: List<AiImageProviderConfig>
@@ -784,6 +785,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 return providers.firstOrNull()?.also { aiCurrentImageProviderId = it.id }
             }
             return providers.firstOrNull { it.id == currentId }
+                ?: providers.firstOrNull()?.also { aiCurrentImageProviderId = it.id }
         }
 
     fun findEnabledImageProvider(id: String?): AiImageProviderConfig? {
@@ -791,6 +793,55 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         if (cleanId.isBlank()) return null
         return aiEnabledImageProviders.firstOrNull { it.id == cleanId }
     }
+
+    fun ensureCurrentImageProvider(preferredId: String? = null) {
+        syncAiImageState(aiImageProviderList, preferredId)
+    }
+
+    private fun syncAiImageState(
+        providers: List<AiImageProviderConfig>,
+        preferredId: String? = null
+    ) {
+        val enabled = providers.filter { it.enabled }
+        val currentId = appCtx.getPrefString(PreferKey.aiCurrentImageProviderId)
+        val nextId = enabled.firstOrNull { it.id == preferredId }?.id
+            ?: enabled.firstOrNull { it.id == currentId }?.id
+            ?: enabled.firstOrNull()?.id
+        if (nextId.isNullOrBlank()) {
+            appCtx.removePref(PreferKey.aiCurrentImageProviderId)
+        } else if (nextId != currentId) {
+            appCtx.putPrefString(PreferKey.aiCurrentImageProviderId, nextId)
+        }
+    }
+
+    const val AI_READ_ALOUD_ROLE_MODE_FULL = "full_tool"
+    const val AI_READ_ALOUD_ROLE_MODE_CHUNK = "chunk_context"
+
+    var aiReadAloudRoleEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudRoleEnabled, value)
+
+    var aiReadAloudRoleThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleThreadCount, 2).coerceIn(1, 8)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleThreadCount, value.coerceIn(1, 8))
+
+    var aiReadAloudRoleContextParagraphs: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleContextParagraphs, 2).coerceIn(0, 20)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleContextParagraphs, value.coerceIn(0, 20))
+
+    var aiReadAloudRolePrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePrompt).orEmpty()
+        set(value) = appCtx.putPrefString(PreferKey.aiReadAloudRolePrompt, value.take(4000))
+
+    var aiReadAloudRoleMode: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRoleMode)
+            ?.takeIf { it == AI_READ_ALOUD_ROLE_MODE_FULL || it == AI_READ_ALOUD_ROLE_MODE_CHUNK }
+            ?: AI_READ_ALOUD_ROLE_MODE_CHUNK
+        set(value) = appCtx.putPrefString(
+            PreferKey.aiReadAloudRoleMode,
+            value.takeIf { it == AI_READ_ALOUD_ROLE_MODE_FULL || it == AI_READ_ALOUD_ROLE_MODE_CHUNK }
+                ?: AI_READ_ALOUD_ROLE_MODE_CHUNK
+        )
 
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)

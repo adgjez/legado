@@ -220,6 +220,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     ReadMenu.CallBack,
     SearchMenu.CallBack,
     ReadAloudDialog.CallBack,
+    ReadAloudPlayerPanel.CallBack,
     ChangeBookSourceDialog.CallBack,
     ChangeChapterSourceDialog.CallBack,
     ReadBook.CallBack,
@@ -407,6 +408,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.cursorLeft.setOnTouchListener(this)
         binding.cursorRight.setOnTouchListener(this)
         binding.readAiPanel.attach(this)
+        binding.readAiSummaryPanel.attach(this)
+        binding.readAloudPlayerPanel.attach(this, this)
         binding.epubReadView.setListener(object : EpubReadView.Listener {
             override fun onCenterTap(x: Float, y: Float) {
                 showActionMenu()
@@ -473,6 +476,10 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.register(this)
         Backup.autoBack(this)
         onBackPressedDispatcher.addCallback(this) {
+            if (binding.readAloudPlayerPanel.isVisible) {
+                binding.readAloudPlayerPanel.close()
+                return@addCallback
+            }
             if (binding.readAiPanel.isVisible) {
                 binding.readAiPanel.close()
                 return@addCallback
@@ -658,10 +665,12 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadBook.syncProgress({ progress -> sureNewProgress(progress) })
             }
         }
+        binding.readAloudPlayerPanel.setForegroundActive(true)
     }
 
     override fun onPause() {
         super.onPause()
+        binding.readAloudPlayerPanel.setForegroundActive(false)
         autoPageStop()
         backupJob?.cancel()
         ReadBook.upReadTime(forceWidgetUpdate = true)
@@ -1391,6 +1400,38 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openReadAssistant() {
         openReadAiPanel("")
+    }
+
+    override fun openReadAiSummary() {
+        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+            toastOnUi(R.string.ai_missing_config)
+            return
+        }
+        if (!AppConfig.aiAssistantEnabled) {
+            toastOnUi(R.string.ai_not_enabled)
+            return
+        }
+        val book = ReadBook.book ?: run {
+            toastOnUi(R.string.book_name)
+            return
+        }
+        val textChapter = ReadBook.curTextChapter ?: run {
+            toastOnUi(R.string.chapter_list)
+            return
+        }
+        val chapter = textChapter.chapter
+        val content = textChapter.getContent().trim()
+        if (content.isBlank()) {
+            toastOnUi(R.string.content_empty)
+            return
+        }
+        val anchor = lastTextMenuAnchor
+            ?: ReadAiFloatingPanel.Anchor(
+                centerX = binding.root.width / 2,
+                topY = binding.root.height / 4,
+                bottomY = binding.root.height / 3
+            )
+        binding.readAiSummaryPanel.open(book, chapter, content, anchor)
     }
 
     private fun openReadAiPanel(prompt: String) {
@@ -2780,7 +2821,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示朗读菜单
      */
     override fun showReadAloudDialog() {
-        showDialogFragment<ReadAloudDialog>()
+        binding.readAloudPlayerPanel.open(force = true)
     }
 
     /**
@@ -4356,6 +4397,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             handleReadConfigUpdate(it)
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
+            readAloudPlayerPanel.onAloudState(it)
             if (it == Status.STOP || it == Status.PAUSE) {
                 ReadBook.curTextChapter?.let { textChapter ->
                     val page = textChapter.getPageByReadPos(ReadBook.durChapterPos)
@@ -4366,7 +4408,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 }
             }
         }
+        observeEvent<Int>(EventBus.READ_ALOUD_DS) {
+            readAloudPlayerPanel.onTimerChanged(it)
+        }
         observeEventSticky<Int>(EventBus.TTS_PROGRESS) { chapterStart ->
+            readAloudPlayerPanel.onTtsProgress(chapterStart)
             lifecycleScope.launch(IO) {
                 if (BaseReadAloudService.isPlay()) {
                     ReadBook.curTextChapter?.let { textChapter ->

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.config
 
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,15 +14,18 @@ import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
@@ -29,6 +33,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.toastOnUi
 
 class ReadAloudConfigDialog : BasePrefDialogFragment() {
     private val readAloudPreferTag = "readAloudPreferTag"
@@ -85,6 +90,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             findPreference<SwitchPreference>(PreferKey.pauseReadAloudWhilePhoneCalls)?.let {
                 it.isEnabled = AppConfig.ignoreAudioFocus
             }
+            updateAiRolePreferences()
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -108,6 +114,25 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(
+                    title = "AI分角色线程数",
+                    value = AppConfig.aiReadAloudRoleThreadCount,
+                    min = 1,
+                    max = 8
+                ) {
+                    AppConfig.aiReadAloudRoleThreadCount = it
+                    updateAiRolePreferences()
+                }
+                PreferKey.aiReadAloudRoleContextParagraphs -> showAiRoleNumberDialog(
+                    title = "AI分角色上下文段数",
+                    value = AppConfig.aiReadAloudRoleContextParagraphs,
+                    min = 0,
+                    max = 20
+                ) {
+                    AppConfig.aiReadAloudRoleContextParagraphs = it
+                    updateAiRolePreferences()
+                }
+                PreferKey.aiReadAloudRolePrompt -> showAiRolePromptDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -127,6 +152,14 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     findPreference<SwitchPreference>(PreferKey.pauseReadAloudWhilePhoneCalls)?.let {
                         it.isEnabled = AppConfig.ignoreAudioFocus
                     }
+                }
+
+                PreferKey.aiReadAloudRoleEnabled,
+                PreferKey.aiReadAloudRoleMode,
+                PreferKey.aiReadAloudRoleThreadCount,
+                PreferKey.aiReadAloudRoleContextParagraphs,
+                PreferKey.aiReadAloudRolePrompt -> {
+                    updateAiRolePreferences()
                 }
             }
         }
@@ -149,6 +182,72 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 findPreference(PreferKey.ttsEngine),
                 speakEngineSummary
             )
+        }
+
+        private fun updateAiRolePreferences() {
+            val enabled = AppConfig.aiReadAloudRoleEnabled
+            val fullMode = AppConfig.aiReadAloudRoleMode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL
+            findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
+                it.isEnabled = enabled
+                upPreferenceSummary(it, AppConfig.aiReadAloudRoleMode)
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRoleThreadCount)?.let {
+                it.isEnabled = enabled
+                it.isVisible = !fullMode
+                it.summary = AppConfig.aiReadAloudRoleThreadCount.toString()
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRoleContextParagraphs)?.let {
+                it.isEnabled = enabled
+                it.isVisible = !fullMode
+                it.summary = AppConfig.aiReadAloudRoleContextParagraphs.toString()
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRolePrompt)?.let {
+                it.isEnabled = enabled
+                it.summary = AppConfig.aiReadAloudRolePrompt
+                    .lineSequence()
+                    .firstOrNull()
+                    ?.take(40)
+                    ?.ifBlank { null }
+                    ?: "未设置"
+            }
+        }
+
+        private fun showAiRoleNumberDialog(
+            title: String,
+            value: Int,
+            min: Int,
+            max: Int,
+            onValue: (Int) -> Unit
+        ) {
+            NumberPickerDialog(requireContext())
+                .setTitle(title)
+                .setMinValue(min)
+                .setMaxValue(max)
+                .setValue(value)
+                .show(onValue)
+        }
+
+        private fun showAiRolePromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "可选。补充角色判断规则、旁白/台词标注偏好等。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudRolePrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("预注入分角色提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最多 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudRolePrompt = value
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
         }
     }
 }

@@ -305,6 +305,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.SETTING))
             if (AppConfig.aiAssistantEnabled) {
                 add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.READ_ASSISTANT))
+                add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.AI_SUMMARY))
             }
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES))
             add(ReadMenuButtonConfig.builtin(ReadMenuButtonConfig.Builtin.CHARACTERS))
@@ -588,6 +589,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.READ_STYLE -> getString(R.string.interface_setting)
             ReadMenuButtonConfig.Builtin.SETTING -> getString(R.string.setting)
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> getString(R.string.ai_assistant)
+            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI总结"
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> getString(R.string.paragraph_rule)
             ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
             else -> ref.id
@@ -606,6 +608,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.READ_STYLE -> R.drawable.ic_interface_setting
             ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
+            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai_assistant
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
             ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
             else -> R.drawable.ic_custom

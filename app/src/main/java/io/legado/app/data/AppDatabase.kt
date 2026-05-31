@@ -9,8 +9,10 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.dao.AiReadAloudRoleCacheDao
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiImageGroupDao
+import io.legado.app.data.dao.BookAiChapterSummaryDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
@@ -39,7 +41,9 @@ import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiImageGroup
+import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
@@ -84,7 +88,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 98,
+    version = 99,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -95,7 +99,8 @@ val appDb by lazy {
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
         AiImageGroup::class, AiGeneratedImage::class,
-        BookCharacter::class, BookCharacterRelation::class],
+        BookCharacter::class, BookCharacterRelation::class,
+        BookAiChapterSummary::class, AiReadAloudRoleCache::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -178,6 +183,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val readMenuCustomButtonDao: ReadMenuCustomButtonDao
     abstract val aiImageGroupDao: AiImageGroupDao
     abstract val aiGeneratedImageDao: AiGeneratedImageDao
+    abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
+    abstract val aiReadAloudRoleCacheDao: AiReadAloudRoleCacheDao
 
     companion object {
 

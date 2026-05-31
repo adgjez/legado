@@ -127,7 +127,9 @@ object AiChatService {
         contextSummary: AiContextSummary? = null,
         onContextSummary: (AiContextSummary) -> Unit = {},
         onContextStats: (JSONObject) -> Unit = {},
-        useAllTools: Boolean = false
+        useAllTools: Boolean = false,
+        toolOverride: List<AiResolvedTool>? = null,
+        extraTools: List<AiResolvedTool> = emptyList()
     ): String {
         val provider = AppConfig.aiCurrentProvider
         val modelConfig = AppConfig.aiCurrentModelConfig
@@ -141,9 +143,17 @@ object AiChatService {
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         require(model.isNotBlank()) { "Model is empty" }
 
-        val tools = runCatching {
+        val baseTools = toolOverride ?: runCatching {
             if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
         }.getOrDefault(emptyList())
+        val tools = baseTools
+            .plus(extraTools)
+            .distinctBy { it.name }
+        val extraToolNames = extraTools.mapTo(hashSetOf()) { it.name }.apply {
+            if (toolOverride != null) {
+                addAll(toolOverride.map { it.name })
+            }
+        }
         val requestLog = StringBuilder().apply {
             append("url=$chatUrl").append('\n')
             append("model=$model").append('\n')
@@ -192,7 +202,8 @@ object AiChatService {
                 onStatus = onStatus,
                 includeStructuredBlocks = includeStructuredBlocks,
                 promptCacheKey = promptCacheKey,
-                useAllTools = useAllTools
+                useAllTools = useAllTools,
+                extraToolNames = extraToolNames
             )
         }.getOrElse { throwable ->
             if (throwable is AiChatException) {
@@ -221,7 +232,8 @@ object AiChatService {
         onStatus: (JSONObject) -> Unit,
         includeStructuredBlocks: Boolean,
         promptCacheKey: String?,
-        useAllTools: Boolean
+        useAllTools: Boolean,
+        extraToolNames: Set<String>
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -312,7 +324,7 @@ object AiChatService {
                         put("success", true)
                     }
                 )
-                val result = executeToolCall(toolCall, toolMap, useAllTools)
+                val result = executeToolCall(toolCall, toolMap, useAllTools, extraToolNames)
                 collectSearchResultCards(toolCall, result, searchResultCards)
                 val resultSuccess = parseToolResultSuccess(result)
                 toolEvents.put(
@@ -446,10 +458,11 @@ object AiChatService {
     private suspend fun executeToolCall(
         toolCall: ToolCall,
         toolMap: Map<String, AiResolvedTool>,
-        useAllTools: Boolean
+        useAllTools: Boolean,
+        extraToolNames: Set<String>
     ): String {
         val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
-        if (!useAllTools && toolCall.name !in enabled) {
+        if (!useAllTools && toolCall.name !in enabled && toolCall.name !in extraToolNames) {
             return JSONObject().apply {
                 put("ok", false)
                 put("error", "Tool is disabled: ${toolCall.name}")

@@ -35,6 +35,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
+import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
@@ -242,6 +243,10 @@ abstract class BaseReadAloudService : BaseService(),
             contentList = textChapter.getNeedReadAloud(0, readAloudByPage, 0)
                 .split("\n")
                 .filter { it.isNotEmpty() }
+            val roleContentList = contentList
+            execute {
+                AiReadAloudRoleService.ensureCache(ReadBook.book, textChapter, roleContentList)
+            }
             var pos = startPos
             val page = textChapter.getPage(pageIndex)!!
             if (pos > 0) {

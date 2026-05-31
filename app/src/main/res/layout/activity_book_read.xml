@@ -55,11 +55,23 @@
         android:layout_height="wrap_content"
         android:visibility="gone" />
 
+    <io.legado.app.ui.book.read.ReadAiSummaryPanel
+        android:id="@+id/read_ai_summary_panel"
+        android:layout_width="340dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
     <View
         android:id="@+id/navigation_bar"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:background="@color/background_menu"
         android:layout_gravity="bottom" />
+
+    <io.legado.app.ui.book.read.ReadAloudPlayerPanel
+        android:id="@+id/read_aloud_player_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
 </FrameLayout>

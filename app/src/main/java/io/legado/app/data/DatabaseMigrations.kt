@@ -21,8 +21,54 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
-            migration_95_96, migration_96_97, migration_97_98,
+            migration_95_96, migration_96_97, migration_97_98, migration_98_99,
         )
+    }
+
+    private val migration_98_99 = object : Migration(98, 99) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `book_ai_chapter_summaries` (
+                    `cacheKey` TEXT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `bookName` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT 0,
+                    `chapterKey` TEXT NOT NULL DEFAULT '',
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `contentHash` TEXT NOT NULL DEFAULT '',
+                    `modelId` TEXT NOT NULL DEFAULT '',
+                    `modelName` TEXT NOT NULL DEFAULT '',
+                    `summary` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`cacheKey`)
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_contentHash` ON `book_ai_chapter_summaries` (`bookUrl`, `contentHash`)")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_read_aloud_role_caches` (
+                    `cacheKey` TEXT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `chapterKey` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT 0,
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `contentHash` TEXT NOT NULL DEFAULT '',
+                    `mode` TEXT NOT NULL DEFAULT '',
+                    `paragraphCount` INTEGER NOT NULL DEFAULT 0,
+                    `segmentsJson` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`cacheKey`)
+                )
+                """
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_chapterIndex` ON `ai_read_aloud_role_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_contentHash` ON `ai_read_aloud_role_caches` (`bookUrl`, `contentHash`)")
+        }
     }
 
     private val migration_97_98 = object : Migration(97, 98) {

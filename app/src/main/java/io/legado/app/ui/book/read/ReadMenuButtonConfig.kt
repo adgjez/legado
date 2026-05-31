@@ -21,6 +21,7 @@ object ReadMenuButtonConfig {
         const val READ_STYLE = "readStyle"
         const val SETTING = "setting"
         const val READ_ASSISTANT = "readAssistant"
+        const val AI_SUMMARY = "aiSummary"
         const val PARAGRAPH_RULES = "paragraphRules"
         const val CHARACTERS = "characters"
 
@@ -34,6 +35,7 @@ object ReadMenuButtonConfig {
             READ_STYLE,
             SETTING,
             READ_ASSISTANT,
+            AI_SUMMARY,
             PARAGRAPH_RULES,
             CHARACTERS
         )

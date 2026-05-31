@@ -489,6 +489,9 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> runMenuOut {
                 callBack.openReadAssistant()
             }
+            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> runMenuOut {
+                callBack.openReadAiSummary()
+            }
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> runMenuOut {
                 callBack.showParagraphRuleQuickDialog()
             }
@@ -535,6 +538,7 @@ class ReadMenu @JvmOverloads constructor(
                 ReadMenuButtonConfig.Builtin.READ_STYLE -> context.getString(R.string.interface_setting)
                 ReadMenuButtonConfig.Builtin.SETTING -> context.getString(R.string.setting)
                 ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> context.getString(R.string.ai_assistant)
+                ReadMenuButtonConfig.Builtin.AI_SUMMARY -> "AI总结"
                 ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> context.getString(R.string.paragraph_rule)
                 ReadMenuButtonConfig.Builtin.CHARACTERS -> "角色"
                 else -> ref.id
@@ -558,6 +562,7 @@ class ReadMenu @JvmOverloads constructor(
             ReadMenuButtonConfig.Builtin.READ_STYLE -> R.drawable.ic_interface_setting
             ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
+            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai_assistant
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
             ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
             else -> R.drawable.ic_custom
@@ -1066,6 +1071,7 @@ class ReadMenu @JvmOverloads constructor(
         fun openBookInfoActivity()
         fun showReadStyle()
         fun showMoreSetting()
+        fun openReadAiSummary()
         fun showReadAloudDialog()
         fun upSystemUiVisibility()
         fun onClickReadAloud()

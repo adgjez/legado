@@ -48,6 +48,39 @@
             android:key="streamReadAloudAudio"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:title="AI分角色"
+            android:summary="后台分析当前章节的旁白和角色片段，并缓存结果"
+            android:key="aiReadAloudRoleEnabled"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.NameListPreference
+            android:defaultValue="chunk_context"
+            android:entries="@array/ai_read_aloud_role_mode_title"
+            android:entryValues="@array/ai_read_aloud_role_mode_value"
+            android:title="AI分角色上下文模式"
+            android:key="aiReadAloudRoleMode"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:title="AI分角色线程数"
+            android:summary="2"
+            android:key="aiReadAloudRoleThreadCount"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:title="AI分角色上下文段数"
+            android:summary="2"
+            android:key="aiReadAloudRoleContextParagraphs"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:title="预注入分角色提示词"
+            android:summary="未设置"
+            android:key="aiReadAloudRolePrompt"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:title="@string/speak_engine"
             android:summary="TTS"

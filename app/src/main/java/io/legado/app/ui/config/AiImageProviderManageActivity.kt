@@ -274,8 +274,9 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             toastOnUi(R.string.wrong_format)
             return
         }
+        val needDefaultProvider = AppConfig.aiCurrentImageProvider == null
         val startOrder = (AppConfig.aiImageProviderList.maxOfOrNull { it.order } ?: -1) + 1
-        AppConfig.aiImageProviderList = AppConfig.aiImageProviderList + validRules.mapIndexed { index, rule ->
+        val importedRules = validRules.mapIndexed { index, rule ->
             rule.copy(
                 id = UUID.randomUUID().toString(),
                 name = rule.name.trim().ifBlank { "生图规则" },
@@ -284,8 +285,13 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                 apiKey = "",
                 headers = "",
                 defaultParamsJson = "",
-                order = startOrder + index
+                order = startOrder + index,
+                enabled = if (needDefaultProvider && index == 0) true else rule.enabled
             )
+        }
+        AppConfig.aiImageProviderList = AppConfig.aiImageProviderList + importedRules
+        if (needDefaultProvider) {
+            AppConfig.ensureCurrentImageProvider(importedRules.firstOrNull()?.id)
         }
         reload()
         toastOnUi("已导入 ${validRules.size} 个生图规则")

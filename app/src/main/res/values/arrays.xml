@@ -5,6 +5,16 @@
 		<item>WEBDAV</item>
 	</string-array>
 
+    <string-array name="ai_read_aloud_role_mode_title">
+        <item>全文工具模式</item>
+        <item>分线程上下文模式</item>
+    </string-array>
+
+    <string-array name="ai_read_aloud_role_mode_value">
+        <item>full_tool</item>
+        <item>chunk_context</item>
+    </string-array>
+
 	<string-array name="book_type">
 		<item>Text</item>
 		<item>Audio</item>
