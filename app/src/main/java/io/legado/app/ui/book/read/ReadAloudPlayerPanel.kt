@@ -68,6 +68,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -85,6 +86,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.lib.theme.composeActionShape
+import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
 import io.legado.app.ui.book.read.page.entities.TextParagraph
@@ -798,11 +801,12 @@ private fun ModeSwitch(
     colors: PlayerColors,
     onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit
 ) {
+    val actionShape = LocalContext.current.composeActionShape()
     Row(
         modifier = Modifier
             .width(124.dp)
             .height(32.dp)
-            .clip(RoundedCornerShape(999.dp))
+            .clip(actionShape)
             .background(Color.White.copy(alpha = 0.13f))
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
@@ -811,6 +815,7 @@ private fun ModeSwitch(
             text = "沉浸",
             selected = mode == ReadAloudPlayerPanel.DisplayMode.Immersive,
             colors = colors,
+            shape = actionShape,
             modifier = Modifier.weight(1f)
         ) {
             onModeChange(ReadAloudPlayerPanel.DisplayMode.Immersive)
@@ -819,6 +824,7 @@ private fun ModeSwitch(
             text = "原文",
             selected = mode == ReadAloudPlayerPanel.DisplayMode.Text,
             colors = colors,
+            shape = actionShape,
             modifier = Modifier.weight(1f)
         ) {
             onModeChange(ReadAloudPlayerPanel.DisplayMode.Text)
@@ -831,13 +837,14 @@ private fun ModeChip(
     text: String,
     selected: Boolean,
     colors: PlayerColors,
+    shape: Shape,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(999.dp))
+            .clip(shape)
             .background(if (selected) colors.accent else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -1268,13 +1275,14 @@ private fun MinimalProgress(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors
 ) {
+    val actionShape = LocalContext.current.composeActionShape()
     Column(modifier = Modifier.fillMaxWidth()) {
         LinearProgressIndicator(
             progress = { state.progress },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(4.dp)
-                .clip(RoundedCornerShape(999.dp)),
+                .clip(actionShape),
             color = colors.primaryText,
             trackColor = Color.White.copy(alpha = 0.16f)
         )
@@ -1436,11 +1444,12 @@ private fun FeaturePill(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val actionShape = LocalContext.current.composeActionShape()
     Surface(
         modifier = modifier
             .fillMaxHeight()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(999.dp),
+        shape = actionShape,
         color = if (selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.13f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = if (selected) 0.28f else 0.12f)),
         shadowElevation = if (selected) 8.dp else 0.dp
@@ -1479,11 +1488,12 @@ private fun PlayerSheetPanel(
     onFollowSystemSpeechRateChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val panelShape = LocalContext.current.composePanelShape()
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .widthIn(max = 640.dp),
-        shape = RoundedCornerShape(24.dp),
+        shape = panelShape,
         color = Color.Black.copy(alpha = 0.28f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         shadowElevation = 12.dp
@@ -1503,6 +1513,7 @@ private fun TimerSheet(
     onTimerChange: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    val actionShape = context.composeActionShape()
     val times = listOf(0, 5, 10, 15, 30, 60, 90, 180)
     Column(
         modifier = Modifier.padding(16.dp),
@@ -1526,7 +1537,7 @@ private fun TimerSheet(
                             .weight(1f)
                             .height(38.dp)
                             .clickable { onTimerChange(minute) },
-                        shape = RoundedCornerShape(999.dp),
+                        shape = actionShape,
                         color = if (selected) colors.accent.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.12f)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
