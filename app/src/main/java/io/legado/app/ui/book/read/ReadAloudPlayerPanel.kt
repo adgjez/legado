@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
+import android.speech.tts.TextToSpeech
 import android.util.AttributeSet
 import android.view.View
 import android.widget.FrameLayout
@@ -53,11 +54,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -86,7 +84,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -96,9 +96,14 @@ import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
 import io.legado.app.ui.book.read.page.entities.TextParagraph
+import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
 import kotlin.math.roundToInt
 
 class ReadAloudPlayerPanel @JvmOverloads constructor(
@@ -111,6 +116,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         fun openChapterList()
         fun onClickReadAloud()
         fun finish()
+        fun openBookCharacters()
         fun onReadAloudPlayerVisibilityChanged(visible: Boolean)
     }
 
@@ -142,6 +148,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val key: String
     )
 
+    data class TtsEngineUi(
+        val title: String,
+        val subtitle: String,
+        val value: String,
+        val selected: Boolean,
+        val key: String
+    )
+
+    data class CharacterPreviewUi(
+        val id: Long,
+        val name: String,
+        val role: String,
+        val summary: String,
+        val key: String
+    )
+
     data class PlayerUiState(
         val bookName: String = "",
         val author: String = "",
@@ -160,6 +182,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterIndex: Int = 0,
         val chapterCount: Int = 0,
         val chapterPreview: List<ChapterPreviewUi> = emptyList(),
+        val ttsEngines: List<TtsEngineUi> = emptyList(),
+        val characterPreview: List<CharacterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val chapterKey: String = "",
         val paragraphKey: String = "",
@@ -176,6 +200,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var dismissedForCurrentRun = false
     private var foregroundActive = true
     private var lastChapterStart = 0
+    private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -199,8 +224,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onChapterSelect = { ReadBook.openChapter(it, upContent = true) },
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
-                onSpeechRateChange = ::setSpeechRate,
-                onFollowSystemSpeechRateChange = ::setFollowSystemSpeechRate
+                onEngineSelect = ::selectTtsEngine,
+                onOpenCharacters = { callBack?.openBookCharacters() }
             )
         }
     }
@@ -305,6 +330,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = uiState.copy(timerMinute = minute)
     }
 
+    private fun selectTtsEngine(value: String) {
+        ReadBook.book?.setTtsEngine(null)
+        AppConfig.ttsEngine = value
+        ReadAloud.upReadAloudClass()
+        value.toLongOrNull()
+            ?.let { appDb.httpTTSDao.get(it) }
+            ?.takeIf { !it.loginUrl.isNullOrBlank() && it.getLoginInfo().isNullOrBlank() }
+            ?.let { httpTts ->
+                context.startActivity<SourceLoginActivity> {
+                    putExtra("type", "httpTts")
+                    putExtra("key", httpTts.id.toString())
+                }
+            }
+        uiState = buildState(uiState.mode)
+    }
+
     private fun setSpeechRate(value: Int) {
         val rate = value.coerceIn(0, 45)
         AppConfig.ttsSpeechRate = rate
@@ -384,6 +425,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapterIndex = chapterSequence.coerceAtLeast(0),
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             chapterPreview = buildChapterPreview(book?.bookUrl, chapterSequence, ReadBook.chapterSize),
+            ttsEngines = buildTtsEngineOptions(),
+            characterPreview = buildCharacterPreview(book?.bookUrl),
             nearbyParagraphs = nearby,
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
@@ -450,6 +493,76 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         }.getOrDefault(emptyList())
     }
 
+    private fun buildTtsEngineOptions(): List<TtsEngineUi> {
+        val current = ReadAloud.ttsEngine
+        val systemItems = systemTtsOptions().map { (title, systemValue) ->
+            val value = GSON.toJson(SelectItem(title, systemValue))
+            TtsEngineUi(
+                title = title,
+                subtitle = if (systemValue.isBlank()) "系统默认" else "系统引擎",
+                value = value,
+                selected = isSystemTtsSelected(current, systemValue),
+                key = "system:$systemValue"
+            )
+        }
+        val httpItems = runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()).map { httpTts ->
+            TtsEngineUi(
+                title = httpTts.name.ifBlank { "HTTP TTS" },
+                subtitle = "HTTP TTS",
+                value = httpTts.id.toString(),
+                selected = current == httpTts.id.toString(),
+                key = "http:${httpTts.id}"
+            )
+        }
+        return systemItems + httpItems
+    }
+
+    private fun systemTtsOptions(): List<Pair<String, String>> {
+        cachedSystemTtsOptions?.let { return it }
+        return runCatching {
+            val tts = TextToSpeech(context, null)
+            try {
+                listOf("系统默认" to "") + tts.engines.map { it.label.toString() to it.name }
+            } finally {
+                tts.shutdown()
+            }
+        }.getOrDefault(listOf("系统默认" to ""))
+            .also { cachedSystemTtsOptions = it }
+    }
+
+    private fun isSystemTtsSelected(current: String?, systemValue: String): Boolean {
+        return if (current.isNullOrBlank()) {
+            systemValue.isBlank()
+        } else {
+            current.isJsonObject() &&
+                    GSON.fromJsonObject<SelectItem<String>>(current).getOrNull()?.value == systemValue
+        }
+    }
+
+    private fun buildCharacterPreview(bookUrl: String?): List<CharacterPreviewUi> {
+        if (bookUrl.isNullOrBlank()) return emptyList()
+        return runCatching {
+            appDb.bookCharacterDao.characters(bookUrl).take(8).map { character ->
+                CharacterPreviewUi(
+                    id = character.id,
+                    name = character.displayName(),
+                    role = character.roleLabel(),
+                    summary = character.previewSummary(),
+                    key = "character:${character.id}"
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun BookCharacter.previewSummary(): String {
+        return listOf(identity, skills, attributes, biography)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
+            .take(80)
+            .ifBlank { "暂无角色摘要" }
+    }
+
     private fun String.focusSentenceAt(offset: Int): Pair<Int, String> {
         if (isBlank()) return 0 to ""
         val cursor = offset.coerceIn(0, lastIndex.coerceAtLeast(0))
@@ -502,8 +615,8 @@ private fun ReadAloudPlayerContent(
     onChapterSelect: (Int) -> Unit,
     onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
-    onSpeechRateChange: (Int) -> Unit,
-    onFollowSystemSpeechRateChange: (Boolean) -> Unit
+    onEngineSelect: (String) -> Unit,
+    onOpenCharacters: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
@@ -605,6 +718,18 @@ private fun ReadAloudPlayerContent(
                     onNextChapter = onNextChapter,
                     onOpenChapterList = onOpenChapterList
                 )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .systemBarsPadding()
+                    .padding(
+                        start = sidePadding,
+                        end = sidePadding,
+                        bottom = bottomPadding + 138.dp
+                    ),
+                contentAlignment = Alignment.BottomCenter
+            ) {
                 AnimatedVisibility(
                     visible = sheetVisible && activeSheet != PlayerSheet.None,
                     enter = sheetEnter,
@@ -619,9 +744,8 @@ private fun ReadAloudPlayerContent(
                         onNextChapter = onNextChapter,
                         onChapterSelect = onChapterSelect,
                         onTimerChange = onTimerChange,
-                        onSpeechRateChange = onSpeechRateChange,
-                        onFollowSystemSpeechRateChange = onFollowSystemSpeechRateChange,
-                        modifier = Modifier.padding(top = 12.dp)
+                        onEngineSelect = onEngineSelect,
+                        onOpenCharacters = onOpenCharacters
                     )
                 }
             }
@@ -633,7 +757,8 @@ private enum class PlayerSheet {
     None,
     Chapter,
     Timer,
-    Speed
+    Engine,
+    Characters
 }
 
 private data class LyricsTarget(
@@ -1461,13 +1586,22 @@ private fun PlayerControlDock(
                 onSheetChange(PlayerSheet.Timer)
             }
             FeaturePill(
-                icon = R.drawable.ic_speed_control,
-                text = formatSpeechRate(state.speechRate),
-                selected = activeSheet == PlayerSheet.Speed,
+                icon = R.drawable.ic_settings,
+                text = "\u5f15\u64ce",
+                selected = activeSheet == PlayerSheet.Engine,
                 colors = colors,
                 modifier = Modifier.weight(1f)
             ) {
-                onSheetChange(PlayerSheet.Speed)
+                onSheetChange(PlayerSheet.Engine)
+            }
+            FeaturePill(
+                icon = R.drawable.ic_bottom_person,
+                text = "\u89d2\u8272",
+                selected = activeSheet == PlayerSheet.Characters,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            ) {
+                onSheetChange(PlayerSheet.Characters)
             }
         }
     }
@@ -1554,8 +1688,8 @@ private fun PlayerSheetPanel(
     onNextChapter: () -> Unit,
     onChapterSelect: (Int) -> Unit,
     onTimerChange: (Int) -> Unit,
-    onSpeechRateChange: (Int) -> Unit,
-    onFollowSystemSpeechRateChange: (Boolean) -> Unit,
+    onEngineSelect: (String) -> Unit,
+    onOpenCharacters: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val panelShape = LocalContext.current.composePanelShape()
@@ -1568,18 +1702,33 @@ private fun PlayerSheetPanel(
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
         shadowElevation = 12.dp
     ) {
-        when (sheet) {
-            PlayerSheet.Chapter -> ChapterSheet(
-                state = state,
-                colors = colors,
-                onOpenChapterList = onOpenChapterList,
-                onPreviousChapter = onPreviousChapter,
-                onNextChapter = onNextChapter,
-                onChapterSelect = onChapterSelect
-            )
-            PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
-            PlayerSheet.Speed -> SpeedSheet(state, colors, onSpeechRateChange, onFollowSystemSpeechRateChange)
-            PlayerSheet.None -> Unit
+        AnimatedContent(
+            targetState = sheet,
+            transitionSpec = {
+                (fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(180, easing = FastOutSlowInEasing)) { it / 10 })
+                    .togetherWith(
+                        fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                                slideOutVertically(tween(140, easing = FastOutSlowInEasing)) { -it / 12 }
+                    )
+                    .using(SizeTransform(clip = false))
+            },
+            label = "readAloudSheetContent"
+        ) { targetSheet ->
+            when (targetSheet) {
+                PlayerSheet.Chapter -> ChapterSheet(
+                    state = state,
+                    colors = colors,
+                    onOpenChapterList = onOpenChapterList,
+                    onPreviousChapter = onPreviousChapter,
+                    onNextChapter = onNextChapter,
+                    onChapterSelect = onChapterSelect
+                )
+                PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
+                PlayerSheet.Engine -> EngineSheet(state, colors, onEngineSelect)
+                PlayerSheet.Characters -> CharactersSheet(state, colors, onOpenCharacters)
+                PlayerSheet.None -> Unit
+            }
         }
     }
 }
@@ -1631,7 +1780,7 @@ private fun ChapterSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 132.dp, max = 286.dp),
+                .heightIn(min = 96.dp, max = 188.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(
@@ -1803,92 +1952,203 @@ private fun TimerSheet(
 }
 
 @Composable
-private fun SpeedSheet(
+private fun EngineSheet(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
-    onSpeechRateChange: (Int) -> Unit,
-    onFollowSystemSpeechRateChange: (Boolean) -> Unit
+    onEngineSelect: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    var pendingRate by remember(state.speechRate) { mutableStateOf(state.speechRate.toFloat()) }
+    val actionShape = LocalContext.current.composeActionShape()
     Column(
         modifier = Modifier.padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "\u6717\u8bfb\u5f15\u64ce",
+            color = colors.primaryText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 92.dp, max = 202.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(state.ttsEngines, key = { it.key }) { engine ->
+                EngineRow(
+                    engine = engine,
+                    colors = colors,
+                    shape = actionShape,
+                    onClick = { onEngineSelect(engine.value) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EngineRow(
+    engine: ReadAloudPlayerPanel.TtsEngineUi,
+    colors: PlayerColors,
+    shape: Shape,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clickable(onClick = onClick),
+        shape = shape,
+        color = if (engine.selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = if (engine.selected) 0.28f else 0.10f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = engine.title,
+                    color = if (engine.selected) colors.accentText else colors.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = if (engine.selected) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = engine.subtitle,
+                    color = if (engine.selected) colors.accentText.copy(alpha = 0.72f) else colors.subtleText,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (engine.selected) {
+                Text(
+                    text = "\u5f53\u524d",
+                    color = colors.accentText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CharactersSheet(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onOpenCharacters: () -> Unit
+) {
+    val context = LocalContext.current
+    val actionShape = context.composeActionShape()
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = context.getString(R.string.read_aloud_speed),
+                text = "\u89d2\u8272",
                 color = colors.primaryText,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
             Text(
-                text = formatSpeechRate(pendingRate.roundToInt()),
-                color = colors.primaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        Slider(
-            value = pendingRate,
-            onValueChange = { pendingRate = it },
-            onValueChangeFinished = { onSpeechRateChange(pendingRate.roundToInt()) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !state.followSystemSpeechRate,
-            valueRange = 0f..45f,
-            steps = 44
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                enabled = !state.followSystemSpeechRate,
-                onClick = {
-                    val next = (pendingRate.roundToInt() - 1).coerceIn(0, 45)
-                    pendingRate = next.toFloat()
-                    onSpeechRateChange(next)
-                }
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_reduce),
-                    contentDescription = "reduce",
-                    tint = colors.primaryText
-                )
-            }
-            IconButton(
-                enabled = !state.followSystemSpeechRate,
-                onClick = {
-                    val next = (pendingRate.roundToInt() + 1).coerceIn(0, 45)
-                    pendingRate = next.toFloat()
-                    onSpeechRateChange(next)
-                }
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_add),
-                    contentDescription = "add",
-                    tint = colors.primaryText
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = context.getString(R.string.flow_sys),
-                color = colors.secondaryText,
+                text = "${state.characterPreview.size}",
+                color = colors.subtleText,
                 fontSize = 12.sp
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Switch(
-                checked = state.followSystemSpeechRate,
-                onCheckedChange = onFollowSystemSpeechRateChange
+        }
+        if (state.characterPreview.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u6682\u65e0\u89d2\u8272",
+                    color = colors.secondaryText,
+                    fontSize = 13.sp
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 92.dp, max = 188.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(state.characterPreview, key = { it.key }) { character ->
+                    CharacterPreviewRow(character, colors, actionShape)
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+        ) {
+            SheetActionButton(
+                text = "\u5b8c\u6574\u89d2\u8272\u9875",
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenCharacters
             )
         }
     }
 }
 
-private fun formatSpeechRate(value: Int): String {
-    return ((value + 5) / 10f).toString()
+@Composable
+private fun CharacterPreviewRow(
+    character: ReadAloudPlayerPanel.CharacterPreviewUi,
+    colors: PlayerColors,
+    shape: Shape
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        shape = shape,
+        color = Color.White.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = character.role,
+                color = colors.subtleText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(66.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = character.name,
+                    color = colors.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = character.summary,
+                    color = colors.subtleText,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }
