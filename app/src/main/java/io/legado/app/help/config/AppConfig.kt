@@ -499,6 +499,32 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiCurrentModelConfig: AiModelConfig?
         get() = aiModelConfigList.firstOrNull { it.id == aiCurrentModelId }
 
+    var aiAskModelId: String?
+        get() = sceneAiModelId(PreferKey.aiAskModelId)
+        set(value) = setSceneAiModelId(PreferKey.aiAskModelId, value)
+
+    val aiAskModelConfig: AiModelConfig?
+        get() = aiModelConfigList.firstOrNull { it.id == aiAskModelId }
+
+    var aiSummaryModelId: String?
+        get() = sceneAiModelId(PreferKey.aiSummaryModelId)
+        set(value) = setSceneAiModelId(PreferKey.aiSummaryModelId, value)
+
+    val aiSummaryModelConfig: AiModelConfig?
+        get() = aiModelConfigList.firstOrNull { it.id == aiSummaryModelId }
+
+    var aiReadAloudRoleModelId: String?
+        get() = sceneAiModelId(PreferKey.aiReadAloudRoleModelId)
+        set(value) = setSceneAiModelId(PreferKey.aiReadAloudRoleModelId, value)
+
+    val aiReadAloudRoleModelConfig: AiModelConfig?
+        get() = aiModelConfigList.firstOrNull { it.id == aiReadAloudRoleModelId }
+
+    fun aiProviderForModel(model: AiModelConfig?): AiProviderConfig? {
+        val providerId = model?.providerId ?: return null
+        return aiProviderList.firstOrNull { it.id == providerId }
+    }
+
     var aiMcpServerList: List<AiMcpServerConfig>
         get() = readAiMcpServers()
         set(value) {
@@ -818,8 +844,11 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val AI_READ_ALOUD_ROLE_MODE_CHUNK = "chunk_context"
 
     var aiReadAloudRoleEnabled: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudRoleEnabled, value)
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false) &&
+                aiReadAloudRoleModelConfig != null
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.aiReadAloudRoleEnabled, value && aiReadAloudRoleModelConfig != null)
+        }
 
     var aiReadAloudRoleThreadCount: Int
         get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleThreadCount, 2).coerceIn(1, 8)
@@ -971,6 +1000,29 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.removePref(PreferKey.aiModelConfigList)
         } else {
             appCtx.putPrefString(PreferKey.aiModelConfigList, GSON.toJson(models))
+        }
+    }
+
+    private fun sceneAiModelId(key: String): String? {
+        val models = aiModelConfigList
+        val stored = appCtx.getPrefString(key)
+        val modelId = models.firstOrNull { it.id == stored }?.id
+            ?: models.firstOrNull()?.id
+        if (modelId.isNullOrBlank()) {
+            appCtx.removePref(key)
+        } else if (modelId != stored) {
+            appCtx.putPrefString(key, modelId)
+        }
+        return modelId
+    }
+
+    private fun setSceneAiModelId(key: String, value: String?) {
+        val models = aiModelConfigList
+        val modelId = models.firstOrNull { it.id == value }?.id
+        if (modelId.isNullOrBlank()) {
+            appCtx.removePref(key)
+        } else {
+            appCtx.putPrefString(key, modelId)
         }
     }
 
@@ -1147,6 +1199,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         providers: List<AiProviderConfig>,
         models: List<AiModelConfig>
     ) {
+        val sceneModelKeys = arrayOf(
+            PreferKey.aiAskModelId,
+            PreferKey.aiSummaryModelId,
+            PreferKey.aiReadAloudRoleModelId
+        )
+        val validModelIds = models.mapTo(hashSetOf()) { it.id }
         val providerId = providers.firstOrNull {
             it.id == appCtx.getPrefString(PreferKey.aiCurrentProviderId)
         }?.id ?: providers.firstOrNull()?.id
@@ -1154,7 +1212,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         if (providerId.isNullOrBlank()) {
             appCtx.removePref(PreferKey.aiCurrentProviderId)
             appCtx.removePref(PreferKey.aiCurrentModelId)
+            sceneModelKeys.forEach { appCtx.removePref(it) }
             appCtx.putPrefBoolean(PreferKey.aiAssistantEnabled, false)
+            appCtx.putPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false)
             return
         }
 
@@ -1170,8 +1230,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         if (currentModelId.isNullOrBlank()) {
             appCtx.removePref(PreferKey.aiCurrentModelId)
             appCtx.putPrefBoolean(PreferKey.aiAssistantEnabled, false)
+            appCtx.putPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false)
         } else if (currentModelId != appCtx.getPrefString(PreferKey.aiCurrentModelId)) {
             appCtx.putPrefString(PreferKey.aiCurrentModelId, currentModelId)
+        }
+
+        sceneModelKeys.forEach { key ->
+            val stored = appCtx.getPrefString(key)
+            if (!stored.isNullOrBlank() && stored !in validModelIds) {
+                appCtx.removePref(key)
+            }
         }
     }
 

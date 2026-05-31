@@ -11,6 +11,7 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
+import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -129,10 +130,12 @@ object AiChatService {
         onContextStats: (JSONObject) -> Unit = {},
         useAllTools: Boolean = false,
         toolOverride: List<AiResolvedTool>? = null,
-        extraTools: List<AiResolvedTool> = emptyList()
+        extraTools: List<AiResolvedTool> = emptyList(),
+        modelConfigOverride: AiModelConfig? = null
     ): String {
-        val provider = AppConfig.aiCurrentProvider
-        val modelConfig = AppConfig.aiCurrentModelConfig
+        val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
+        val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
+            ?: AppConfig.aiCurrentProvider
         val baseUrl = provider?.baseUrl?.trim().orEmpty()
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)

@@ -78,6 +78,7 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSystemPrompt -> showSystemPromptDialog()
             "aiContextCompression" -> showContextCompressionDialog()
             "aiPersonaManage" -> showPersonaManageDialog()
+            "aiDefaultModelSettings" -> showDefaultModelSettingsDialog()
             "aiImageGallery" ->
                 startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
             "aiImageProviderManage" ->
@@ -89,8 +90,12 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == PreferKey.aiAssistantEnabled) {
-            refreshUi(notifyMain = true)
+        when (key) {
+            PreferKey.aiAssistantEnabled -> refreshUi(notifyMain = true)
+            PreferKey.aiAskModelId,
+            PreferKey.aiSummaryModelId,
+            PreferKey.aiReadAloudRoleModelId,
+            PreferKey.aiCurrentImageProviderId -> refreshUi()
         }
     }
 
@@ -408,6 +413,85 @@ class AiConfigFragment : PreferenceFragment(),
     private fun currentProviderModels(): List<AiModelConfig> {
         val providerId = AppConfig.aiCurrentProviderId ?: return emptyList()
         return AppConfig.aiModelConfigList.filter { it.providerId == providerId }
+    }
+
+    private fun showDefaultModelSettingsDialog() {
+        val items = listOf(
+            "正文问 AI：${modelLabel(AppConfig.aiAskModelConfig)}",
+            "文章总结：${modelLabel(AppConfig.aiSummaryModelConfig)}",
+            "多角色：${modelLabel(AppConfig.aiReadAloudRoleModelConfig)}",
+            "图像生成供应商：${imageProviderLabel()}"
+        )
+        requireContext().selector("默认模型", items) { _, _, index ->
+            when (index) {
+                0 -> selectDefaultModel("正文问 AI 模型", AppConfig.aiAskModelId) {
+                    AppConfig.aiAskModelId = it
+                }
+                1 -> selectDefaultModel("文章总结模型", AppConfig.aiSummaryModelId) {
+                    AppConfig.aiSummaryModelId = it
+                }
+                2 -> selectDefaultModel("多角色模型", AppConfig.aiReadAloudRoleModelId) {
+                    AppConfig.aiReadAloudRoleModelId = it
+                }
+                3 -> selectDefaultImageProvider()
+            }
+        }
+    }
+
+    private fun selectDefaultModel(
+        title: String,
+        currentId: String?,
+        onSelect: (String) -> Unit
+    ) {
+        val models = AppConfig.aiModelConfigList
+        if (models.isEmpty()) {
+            toastOnUi(R.string.ai_no_models)
+            return
+        }
+        val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+        requireContext().selector(
+            title,
+            models.map { model ->
+                val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                    ?.let { "${model.modelId} - $it" }
+                    ?: model.modelId
+                if (model.id == currentId) "$label ✓" else label
+            }
+        ) { _, _, index ->
+            onSelect(models[index].id)
+            refreshUi()
+        }
+    }
+
+    private fun selectDefaultImageProvider() {
+        val providers = AppConfig.aiEnabledImageProviders
+        if (providers.isEmpty()) {
+            toastOnUi(R.string.ai_image_provider_summary_empty)
+            return
+        }
+        val currentId = AppConfig.aiCurrentImageProvider?.id
+        requireContext().selector(
+            "图像生成供应商",
+            providers.map { provider ->
+                val label = provider.displayName()
+                if (provider.id == currentId) "$label ✓" else label
+            }
+        ) { _, _, index ->
+            AppConfig.aiCurrentImageProviderId = providers[index].id
+            refreshUi()
+        }
+    }
+
+    private fun modelLabel(model: AiModelConfig?): String {
+        model ?: return "未配置"
+        val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+        return providerName?.let { "${model.modelId} - $it" } ?: model.modelId
+    }
+
+    private fun imageProviderLabel(): String {
+        return AppConfig.aiCurrentImageProvider?.displayName() ?: "未配置"
     }
 
     private fun showEditMcpServerDialog(server: AiMcpServerConfig? = null) {
@@ -1118,6 +1202,8 @@ class AiConfigFragment : PreferenceFragment(),
         findPreference<Preference>("aiPersonaManage")?.summary =
             AppConfig.aiCurrentPersona?.name
                 ?: getString(R.string.ai_persona_manage_summary_empty)
+        findPreference<Preference>("aiDefaultModelSettings")?.summary =
+            "问AI ${modelLabel(AppConfig.aiAskModelConfig)} / 总结 ${modelLabel(AppConfig.aiSummaryModelConfig)} / 多角色 ${modelLabel(AppConfig.aiReadAloudRoleModelConfig)} / 生图 ${imageProviderLabel()}"
         val imageProviders = AppConfig.aiImageProviderList
         findPreference<Preference>("aiImageProviderManage")?.summary =
             if (imageProviders.isEmpty()) {
