@@ -1,12 +1,17 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.SharedPreferences
+import android.graphics.Color
 import android.os.Bundle
 import android.text.InputType
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import io.legado.app.R
@@ -21,6 +26,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadAloud
@@ -28,6 +34,7 @@ import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
@@ -35,14 +42,63 @@ import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 
+enum class ReadAloudConfigGroup(
+    val title: String,
+    val preferenceKeys: Set<String>
+) {
+    Base(
+        "\u57fa\u7840",
+        setOf(
+            PreferKey.ignoreAudioFocus,
+            PreferKey.pauseReadAloudWhilePhoneCalls,
+            PreferKey.readAloudWakeLock,
+            "mediaButtonPerNext"
+        )
+    ),
+    Reading(
+        "\u6717\u8bfb",
+        setOf(
+            PreferKey.readAloudByPage,
+            PreferKey.streamReadAloudAudio
+        )
+    ),
+    AiRole(
+        "AI \u5206\u89d2\u8272",
+        setOf(
+            PreferKey.aiReadAloudRoleEnabled,
+            PreferKey.aiReadAloudRoleMode,
+            PreferKey.aiReadAloudRoleThreadCount,
+            PreferKey.aiReadAloudRoleContextParagraphs,
+            PreferKey.aiReadAloudRolePrompt
+        )
+    ),
+    Engine(
+        "\u5f15\u64ce",
+        setOf(
+            PreferKey.ttsEngine,
+            "sysTtsConfig"
+        )
+    );
+
+    companion object {
+        val allPreferenceKeys: Set<String> = values().flatMap { it.preferenceKeys }.toSet()
+    }
+}
+
 class ReadAloudConfigDialog : BasePrefDialogFragment() {
     private val readAloudPreferTag = "readAloudPreferTag"
+    private val groupTabs = arrayListOf<Pair<ReadAloudConfigGroup, TextView>>()
+    private var selectedGroup = ReadAloudConfigGroup.Base
 
     override fun onStart() {
         super.onStart()
         dialog?.window?.run {
             setBackgroundDrawableResource(R.color.transparent)
-            setLayout(0.9f, ViewGroup.LayoutParams.WRAP_CONTENT)
+            val maxHeight = minOf(
+                (resources.displayMetrics.heightPixels * 0.72f).toInt(),
+                620.dpToPx()
+            ).coerceAtLeast(360.dpToPx())
+            setLayout(0.9f, maxHeight)
         }
     }
 
@@ -51,12 +107,57 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val view = LinearLayout(requireContext())
-        view.background = requireContext().dialogSurfaceBackground
-        view.clipToOutline = true
-        view.id = R.id.tag1
-        container?.addView(view)
-        return view
+        groupTabs.clear()
+        val root = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            background = requireContext().dialogSurfaceBackground
+            clipToOutline = true
+            setPadding(10.dpToPx(), 10.dpToPx(), 10.dpToPx(), 8.dpToPx())
+        }
+        val tabBar = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(4.dpToPx(), 4.dpToPx(), 4.dpToPx(), 4.dpToPx())
+            setBackgroundResource(R.drawable.bg_bookshelf_tag_track)
+        }
+        ReadAloudConfigGroup.values().forEach { group ->
+            val tab = TextView(requireContext()).apply {
+                text = group.title
+                gravity = Gravity.CENTER
+                textSize = 14f
+                isSingleLine = true
+                background = UiCorner.actionSelector(
+                    Color.TRANSPARENT,
+                    ContextCompat.getColor(requireContext(), R.color.background_card),
+                    UiCorner.actionRadius(requireContext())
+                )
+                setOnClickListener { selectGroup(group) }
+            }
+            groupTabs.add(group to tab)
+            tabBar.addView(
+                tab,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            )
+        }
+        root.addView(
+            tabBar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                42.dpToPx()
+            ).apply {
+                bottomMargin = 8.dpToPx()
+            }
+        )
+        root.addView(
+            FrameLayout(requireContext()).apply { id = R.id.tag1 },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+        container?.addView(root)
+        return root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -64,13 +165,30 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         var preferenceFragment = childFragmentManager.findFragmentByTag(readAloudPreferTag)
         if (preferenceFragment == null) preferenceFragment = ReadAloudPreferenceFragment()
         childFragmentManager.beginTransaction()
-            .replace(view.id, preferenceFragment, readAloudPreferTag)
+            .replace(R.id.tag1, preferenceFragment, readAloudPreferTag)
             .commit()
+        selectGroup(selectedGroup)
+    }
+
+    private fun selectGroup(group: ReadAloudConfigGroup) {
+        selectedGroup = group
+        groupTabs.forEach { (tabGroup, tab) ->
+            val selected = tabGroup == group
+            tab.isSelected = selected
+            tab.setTextColor(
+                if (selected) requireContext().primaryColor
+                else ContextCompat.getColor(requireContext(), R.color.primaryText)
+            )
+        }
+        (childFragmentManager.findFragmentByTag(readAloudPreferTag) as? ReadAloudPreferenceFragment)
+            ?.selectGroup(group)
     }
 
     class ReadAloudPreferenceFragment : PreferenceFragment(),
         SpeakEngineDialog.CallBack,
         SharedPreferences.OnSharedPreferenceChangeListener {
+
+        private var selectedGroup = ReadAloudConfigGroup.Base
 
         private val speakEngineSummary: String
             get() {
@@ -91,6 +209,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 it.isEnabled = AppConfig.ignoreAudioFocus
             }
             updateAiRolePreferences()
+            selectGroup(selectedGroup)
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -112,7 +231,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
-                PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
+                PreferKey.ttsEngine -> showDialogFragment(QuickSpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
                 PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(
                     title = "AI分角色线程数",
@@ -160,6 +279,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudRoleContextParagraphs,
                 PreferKey.aiReadAloudRolePrompt -> {
                     updateAiRolePreferences()
+                    selectGroup(selectedGroup)
                 }
             }
         }
@@ -182,6 +302,22 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 findPreference(PreferKey.ttsEngine),
                 speakEngineSummary
             )
+        }
+
+        fun selectGroup(group: ReadAloudConfigGroup) {
+            selectedGroup = group
+            findPreference<Preference>("readAloudConfigCategory")?.title = group.title
+            val fullMode = AppConfig.aiReadAloudRoleMode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL
+            ReadAloudConfigGroup.allPreferenceKeys.forEach { key ->
+                val preference = findPreference<Preference>(key) ?: return@forEach
+                val visibleInGroup = key in group.preferenceKeys
+                val visibleForMode = when (key) {
+                    PreferKey.aiReadAloudRoleThreadCount,
+                    PreferKey.aiReadAloudRoleContextParagraphs -> !fullMode
+                    else -> true
+                }
+                preference.isVisible = visibleInGroup && visibleForMode
+            }
         }
 
         private fun updateAiRolePreferences() {
