@@ -119,6 +119,7 @@ import io.legado.app.ui.about.UpdateDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.utils.dpToPx
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.time.Duration.Companion.hours
 
 /**
@@ -1268,6 +1269,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private fun setupLiquidGlass() {
         binding.run {
             val standardMode = isStandardBottomMode()
+            val bottomPillRadius = measuredPillRadius(bottomNavigationGlass, bottomBarCornerRadius)
+            val searchPillRadius = measuredPillRadius(searchButtonContainer, searchButtonCornerRadius)
+            val indicatorPillRadius = measuredPillRadius(
+                bottomNavigationIndicatorContainer,
+                bottomIndicatorCornerRadius
+            )
             if (AppConfig.isEInkMode) {
                 bottomNavigationGlassView.visibility = android.view.View.GONE
                 bottomNavigationIndicatorContainer.visibility = android.view.View.GONE
@@ -1279,12 +1286,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     createStandardBottomShellDrawable()
                 } else {
                     createEInkBottomShellDrawable(
-                        cornerRadius = bottomBarCornerRadius,
+                        cornerRadius = bottomPillRadius,
                         oval = false
                     )
                 }
                 searchButtonShellOverlay.background = createEInkBottomShellDrawable(
-                    cornerRadius = searchButtonCornerRadius,
+                    cornerRadius = searchPillRadius,
                     oval = true
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
@@ -1306,7 +1313,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 bottomNavigationShellOverlay.background = createStandardBottomShellDrawable()
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
-                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
+                bottomNavigationIndicatorOverlay.background =
+                    createSolidBottomIndicatorDrawable(indicatorPillRadius)
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
@@ -1321,17 +1329,18 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 bottomNavigationIndicatorContainer.scaleX = 1f
                 bottomNavigationIndicatorContainer.scaleY = 1f
                 bottomNavigationShellOverlay.background = createSolidBottomShellDrawable(
-                    cornerRadius = bottomBarCornerRadius,
+                    cornerRadius = bottomPillRadius,
                     oval = false
                 )
                 searchButtonShellOverlay.background = createSolidBottomShellDrawable(
-                    cornerRadius = searchButtonCornerRadius,
+                    cornerRadius = searchPillRadius,
                     oval = true
                 )
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 if (!standardMode) searchButton.setBackgroundResource(R.drawable.bg_main_search_button)
                 syncSearchButtonTint()
-                bottomNavigationIndicatorOverlay.background = createSolidBottomIndicatorDrawable()
+                bottomNavigationIndicatorOverlay.background =
+                    createSolidBottomIndicatorDrawable(indicatorPillRadius)
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
@@ -1379,19 +1388,19 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             bottomNavigationShellOverlay.background = createLiquidGlassShellDrawable(
                 glassLevel = glassLevel,
-                cornerRadius = bottomBarCornerRadius,
+                cornerRadius = bottomPillRadius,
                 oval = false,
                 selected = false
             )
             searchButtonShellOverlay.background = createLiquidGlassShellDrawable(
                 glassLevel = glassLevel,
-                cornerRadius = searchButtonCornerRadius,
+                cornerRadius = searchPillRadius,
                 oval = true,
                 selected = false
             )
             bottomNavigationIndicatorOverlay.background = createLiquidGlassShellDrawable(
                 glassLevel = glassLevel,
-                cornerRadius = bottomIndicatorCornerRadius,
+                cornerRadius = indicatorPillRadius,
                 oval = false,
                 selected = true
             )
@@ -1404,7 +1413,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             setupLiquidGlassView(
                 liquidGlassView = bottomNavigationGlassView,
-                cornerRadius = bottomBarCornerRadius,
+                cornerRadius = bottomPillRadius,
                 refractionHeight = refractionHeight,
                 refractionOffset = refractionOffset,
                 blurRadius = blurRadius,
@@ -1416,7 +1425,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             if (!standardMode) {
                 setupLiquidGlassView(
                     liquidGlassView = searchButtonGlassView,
-                    cornerRadius = searchButtonCornerRadius,
+                    cornerRadius = searchPillRadius,
                     refractionHeight = refractionHeight,
                     refractionOffset = refractionOffset,
                     blurRadius = blurRadius,
@@ -1428,7 +1437,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             }
             setupLiquidGlassView(
                 liquidGlassView = bottomNavigationIndicatorGlassView,
-                cornerRadius = bottomIndicatorCornerRadius,
+                cornerRadius = indicatorPillRadius,
                 refractionHeight = (refractionHeight * 0.9f).coerceAtLeast(16f.dpToPx()),
                 refractionOffset = (refractionOffset * 0.72f).coerceAtLeast(46f.dpToPx()),
                 blurRadius = (blurRadius * 0.78f).coerceAtLeast(5f.dpToPx()),
@@ -1438,6 +1447,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 touchEffectEnabled = true
             )
         }
+    }
+
+    private fun measuredPillRadius(view: View, fallback: Float): Float {
+        val width = view.width.takeIf { it > 0 } ?: return fallback
+        val height = view.height.takeIf { it > 0 } ?: return fallback
+        return min(width, height) / 2f
     }
 
     private fun applyBottomNavigationIcons() = binding.run {
@@ -1527,10 +1542,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun createSolidBottomIndicatorDrawable(): GradientDrawable {
+    private fun createSolidBottomIndicatorDrawable(cornerRadius: Float = bottomIndicatorCornerRadius): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = bottomIndicatorCornerRadius
+            this.cornerRadius = cornerRadius
             setColor(primaryColor)
         }
     }
