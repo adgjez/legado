@@ -1595,7 +1595,8 @@ private fun PlayerControlDock(
                 onSheetChange(PlayerSheet.Engine)
             }
             FeaturePill(
-                icon = R.drawable.ic_bottom_person,
+                icon = R.drawable.ic_bottom_person_e,
+                selectedIcon = R.drawable.ic_bottom_person_s,
                 text = "\u89d2\u8272",
                 selected = activeSheet == PlayerSheet.Characters,
                 colors = colors,
@@ -1638,6 +1639,7 @@ private fun RoundTransportButton(
 @Composable
 private fun FeaturePill(
     icon: Int,
+    selectedIcon: Int = icon,
     text: String,
     selected: Boolean,
     colors: PlayerColors,
@@ -1660,7 +1662,7 @@ private fun FeaturePill(
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                painter = painterResource(icon),
+                painter = painterResource(if (selected) selectedIcon else icon),
                 contentDescription = text,
                 tint = if (selected) colors.accentText else colors.primaryText,
                 modifier = Modifier.size(17.dp)
