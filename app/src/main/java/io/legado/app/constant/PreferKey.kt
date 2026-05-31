@@ -84,6 +84,8 @@ object PreferKey {
     const val aiThinkingContextTokens = "aiThinkingContextTokens"
     const val aiEnterToSend = "aiEnterToSend"
     const val aiEnabledToolNames = "aiEnabledToolNames"
+    const val aiEnabledToolNamesVersion = "aiEnabledToolNamesVersion"
+    const val aiReadToolMode = "aiReadToolMode"
     const val aiTavilyEnabled = "aiTavilyEnabled"
     const val aiTavilyApiKey = "aiTavilyApiKey"
     const val aiTavilyBaseUrl = "aiTavilyBaseUrl"

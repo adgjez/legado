@@ -40,6 +40,12 @@
             android:title="@string/ai_manage_native_tools"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadToolMode"
+            android:summary="使用已启用工具"
+            android:title="正文问 AI 工具范围"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:key="aiEnterToSend"
             android:defaultValue="true"

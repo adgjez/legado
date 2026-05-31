@@ -70,6 +70,7 @@ class AiConfigFragment : PreferenceFragment(),
             "aiAddMcpServer" -> showEditMcpServerDialog()
             "aiManageMcpServers" -> showManageMcpServersDialog()
             "aiManageNativeTools" -> showManageNativeToolsDialog()
+            PreferKey.aiReadToolMode -> showReadToolModeDialog()
             PreferKey.aiTavilyApiKey -> showTavilyApiKeyDialog()
             PreferKey.aiTavilyBaseUrl -> showTavilyBaseUrlDialog()
             PreferKey.aiTavilyTopic -> showTavilyTopicDialog()
@@ -96,6 +97,26 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiSummaryModelId,
             PreferKey.aiReadAloudRoleModelId,
             PreferKey.aiCurrentImageProviderId -> refreshUi()
+            PreferKey.aiReadToolMode -> refreshUi()
+        }
+    }
+
+    private fun showReadToolModeDialog() {
+        val values = listOf(
+            AppConfig.AI_READ_TOOL_MODE_ENABLED,
+            AppConfig.AI_READ_TOOL_MODE_SAFE,
+            AppConfig.AI_READ_TOOL_MODE_ALL
+        )
+        val labels = listOf(
+            "使用已启用工具",
+            "阅读安全工具",
+            "全量工具"
+        )
+        requireContext().selector("正文问 AI 工具范围", labels.mapIndexed { index, label ->
+            if (values[index] == AppConfig.aiReadToolMode) "$label ✓" else label
+        }) { _, _, index ->
+            AppConfig.aiReadToolMode = values[index]
+            refreshUi()
         }
     }
 
@@ -809,7 +830,7 @@ class AiConfigFragment : PreferenceFragment(),
                 toastOnUi(R.string.not_available)
                 return@launch
             }
-            val enabled = AppConfig.aiEnabledToolNames.toMutableSet()
+            val enabled = AiToolRegistry.effectiveEnabledToolNames().toMutableSet()
             val groupedTools = tools.map { AiToolRegistry.metaOfTool(it) }
                 .groupBy { it.group }
                 .toSortedMap(compareBy { groupOrder(it) })
@@ -817,11 +838,7 @@ class AiConfigFragment : PreferenceFragment(),
             groupedTools.forEach { (group, groupTools) ->
                 displayItems.add(ToolDisplayItem.Header(group))
                 groupTools.sortedBy { it.label }.forEach { tool ->
-                    val isEnabled = if (enabled.isEmpty()) {
-                        tool.name in AiToolRegistry.defaultEnabledTools
-                    } else {
-                        tool.name in enabled
-                    }
+                    val isEnabled = tool.name in enabled
                     displayItems.add(ToolDisplayItem.Tool(tool.name, tool.label, isEnabled))
                 }
             }
@@ -1224,11 +1241,14 @@ class AiConfigFragment : PreferenceFragment(),
                 getString(R.string.ai_skill_prompt_summary, enabledSkillCount, skills.size)
             }
         findPreference<Preference>("aiManageNativeTools")?.summary = run {
-            val enabledTools = AppConfig.aiEnabledToolNames
-            if (enabledTools.isEmpty()) {
-                getString(R.string.ai_manage_native_tools_summary)
-            } else {
-                "${getString(R.string.ai_manage_native_tools_summary)} · ${enabledTools.size}"
+            val enabledTools = AiToolRegistry.effectiveEnabledToolNames()
+            "${getString(R.string.ai_manage_native_tools_summary)} · ${enabledTools.size}"
+        }
+        findPreference<Preference>(PreferKey.aiReadToolMode)?.summary = run {
+            when (AppConfig.aiReadToolMode) {
+                AppConfig.AI_READ_TOOL_MODE_ALL -> "全量工具"
+                AppConfig.AI_READ_TOOL_MODE_SAFE -> "阅读安全工具"
+                else -> "使用已启用工具"
             }
         }
         if (notifyMain || (!canEnable && storedEnabled)) {

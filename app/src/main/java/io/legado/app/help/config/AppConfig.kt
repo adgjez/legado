@@ -906,6 +906,31 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             value.filter { it.isNotBlank() }.toMutableSet()
         )
 
+    var aiEnabledToolNamesVersion: Int
+        get() = appCtx.getPrefInt(PreferKey.aiEnabledToolNamesVersion, 0)
+        set(value) = appCtx.putPrefInt(PreferKey.aiEnabledToolNamesVersion, value.coerceAtLeast(0))
+
+    const val AI_READ_TOOL_MODE_ENABLED = "enabled"
+    const val AI_READ_TOOL_MODE_SAFE = "read_safe"
+    const val AI_READ_TOOL_MODE_ALL = "all"
+
+    var aiReadToolMode: String
+        get() = appCtx.getPrefString(PreferKey.aiReadToolMode)
+            ?.takeIf {
+                it == AI_READ_TOOL_MODE_ENABLED ||
+                        it == AI_READ_TOOL_MODE_SAFE ||
+                        it == AI_READ_TOOL_MODE_ALL
+            }
+            ?: AI_READ_TOOL_MODE_ENABLED
+        set(value) = appCtx.putPrefString(
+            PreferKey.aiReadToolMode,
+            value.takeIf {
+                it == AI_READ_TOOL_MODE_ENABLED ||
+                        it == AI_READ_TOOL_MODE_SAFE ||
+                        it == AI_READ_TOOL_MODE_ALL
+            } ?: AI_READ_TOOL_MODE_ENABLED
+        )
+
     var aiTavilyApiKey: String
         get() = appCtx.getPrefString(PreferKey.aiTavilyApiKey).orEmpty()
         set(value) {

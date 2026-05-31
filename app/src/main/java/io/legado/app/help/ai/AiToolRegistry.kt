@@ -11,6 +11,34 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
+    private const val TOOL_SETTINGS_VERSION = 2
+    private val version2AddedDefaultTools = setOf(
+        "list_speech_catalogs",
+        "assign_character_speech_route",
+        "batch_assign_character_speech_routes",
+        "clear_character_speech_routes"
+    )
+
+    val readSafeToolNames = setOf(
+        "query_bookshelf",
+        "get_bookshelf_book_info",
+        "list_book_chapters",
+        "read_book_chapter_content",
+        "query_read_records",
+        "generate_image",
+        "list_book_characters",
+        "upsert_book_character",
+        "list_book_character_relations",
+        "upsert_book_character_relation",
+        "list_ai_gallery_images",
+        "set_book_character_avatar_from_gallery",
+        "generate_book_character_avatar",
+        "list_speech_catalogs",
+        "assign_character_speech_route",
+        "batch_assign_character_speech_routes",
+        "get_app_settings"
+    )
+
     data class ToolMeta(
         val name: String,
         val label: String,
@@ -183,10 +211,35 @@ object AiToolRegistry {
     suspend fun resolveAvailableTools(): List<AiResolvedTool> {
         val tools = nativeResolvedTools().toMutableList()
         tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
-        val enabled = AppConfig.aiEnabledToolNames.ifEmpty { defaultEnabledTools }
+        val enabled = effectiveEnabledToolNames()
         return tools
             .distinctBy { it.name }
             .filter { it.name in enabled }
+    }
+
+    fun effectiveEnabledToolNames(): Set<String> {
+        val stored = AppConfig.aiEnabledToolNames
+        if (AppConfig.aiEnabledToolNamesVersion < TOOL_SETTINGS_VERSION) {
+            val migrated = (stored.ifEmpty { defaultEnabledTools } + version2AddedDefaultTools)
+                .filter { it.isNotBlank() }
+                .toSet()
+            AppConfig.aiEnabledToolNames = migrated
+            AppConfig.aiEnabledToolNamesVersion = TOOL_SETTINGS_VERSION
+            return migrated
+        }
+        return stored.ifEmpty { defaultEnabledTools }
+    }
+
+    suspend fun resolveReadTools(): List<AiResolvedTool> {
+        return when (AppConfig.aiReadToolMode) {
+            AppConfig.AI_READ_TOOL_MODE_ALL -> resolveAllTools()
+            AppConfig.AI_READ_TOOL_MODE_SAFE -> {
+                val tools = nativeResolvedTools().toMutableList()
+                tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+                tools.distinctBy { it.name }.filter { it.name in readSafeToolNames }
+            }
+            else -> resolveAvailableTools()
+        }
     }
 
     fun resolveNativeTools(names: Set<String>): List<AiResolvedTool> {

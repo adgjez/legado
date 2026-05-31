@@ -11,6 +11,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogDictBinding
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
@@ -82,6 +83,7 @@ class AiSelectionDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                                 }
                             }
                         },
+                        toolOverride = AiToolRegistry.resolveReadTools(),
                         modelConfigOverride = modelConfig
                     )
                 }

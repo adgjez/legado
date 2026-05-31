@@ -62,6 +62,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.uiTypeface
@@ -279,6 +280,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                             }
                         },
                         includeStructuredBlocks = false,
+                        toolOverride = AiToolRegistry.resolveReadTools(),
                         modelConfigOverride = AppConfig.aiAskModelConfig
                     )
                 }
