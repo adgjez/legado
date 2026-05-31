@@ -23,7 +23,9 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -76,6 +78,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -255,6 +258,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var readMenuAvoidBounds: RectF? = null
     private var openToken = 0
     private val capsuleBounds = RectF()
+    private var capsulePosition by mutableStateOf(CapsulePositionState())
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -283,6 +287,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onEngineSelect = ::selectTtsEngine,
                 onProgressSeek = ::seekToParagraphProgress,
                 onCueSelect = ::seekToChapterPosition,
+                capsulePosition = capsulePosition,
+                onCapsulePositionChange = ::updateCapsulePosition,
                 onCapsuleBounds = ::updateCapsuleBounds,
                 onOpenCharacters = { callBack?.openBookCharacters() }
             )
@@ -488,6 +494,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun updateCapsuleBounds(bounds: RectF) {
         capsuleBounds.set(bounds)
+    }
+
+    private fun updateCapsulePosition(x: Float, y: Float) {
+        val current = capsulePosition
+        if (current.x != x || current.y != y) {
+            capsulePosition = CapsulePositionState(x, y)
+        }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -887,6 +900,8 @@ private fun ReadAloudPlayerContent(
     onEngineSelect: (String) -> Unit,
     onProgressSeek: (Float) -> Unit,
     onCueSelect: (Int) -> Unit,
+    capsulePosition: CapsulePositionState,
+    onCapsulePositionChange: (Float, Float) -> Unit,
     onCapsuleBounds: (RectF) -> Unit,
     onOpenCharacters: () -> Unit
 ) {
@@ -1041,6 +1056,8 @@ private fun ReadAloudPlayerContent(
                 onPlayPause = onPlayPause,
                 onExpand = onExpand,
                 onClose = onStop,
+                capsulePosition = capsulePosition,
+                onPositionChange = onCapsulePositionChange,
                 onBounds = onCapsuleBounds
             )
         }
@@ -1074,6 +1091,11 @@ private data class PlayerColors(
     val fluidA: Color,
     val fluidB: Color,
     val fluidC: Color
+)
+
+private data class CapsulePositionState(
+    val x: Float? = null,
+    val y: Float? = null
 )
 
 @Composable
@@ -1171,6 +1193,8 @@ private fun ReadAloudCapsule(
     onPlayPause: () -> Unit,
     onExpand: () -> Unit,
     onClose: () -> Unit,
+    capsulePosition: CapsulePositionState,
+    onPositionChange: (Float, Float) -> Unit,
     onBounds: (RectF) -> Unit
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -1203,9 +1227,11 @@ private fun ReadAloudCapsule(
         val maxX = (widthPx - safeRight - capsuleWidthPx - sidePx).coerceAtLeast(minX)
         val minY = safeTop + sidePx
         val maxY = (heightPx - safeBottom - capsuleHeightPx - bottomGapPx).coerceAtLeast(minY)
-        var baseOffsetX by remember { mutableStateOf(minX) }
-        var baseOffsetY by remember { mutableStateOf(maxY) }
+        var baseOffsetX by remember { mutableStateOf(capsulePosition.x ?: minX) }
+        var baseOffsetY by remember { mutableStateOf(capsulePosition.y ?: maxY) }
         var dragging by remember { mutableStateOf(false) }
+        val coverRotation = remember { Animatable(0f) }
+        val rotating = state.playing && state.foregroundActive && !AppConfig.isEInkMode
         val clampedBaseX = baseOffsetX.coerceIn(minX, maxX)
         val clampedBaseY = baseOffsetY.coerceIn(minY, maxY)
         val menuAvoidBounds = state.readMenuAvoidBounds
@@ -1235,6 +1261,25 @@ private fun ReadAloudCapsule(
         LaunchedEffect(widthPx, heightPx, minX, maxX, minY, maxY) {
             baseOffsetX = if (baseOffsetX + capsuleWidthPx / 2f < widthPx / 2f) minX else maxX
             baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
+            onPositionChange(baseOffsetX, baseOffsetY)
+        }
+        LaunchedEffect(capsulePosition.x, capsulePosition.y) {
+            if (!dragging) {
+                capsulePosition.x?.let { baseOffsetX = it }
+                capsulePosition.y?.let { baseOffsetY = it }
+            }
+        }
+        LaunchedEffect(rotating) {
+            if (rotating) {
+                while (true) {
+                    val start = coverRotation.value % 360f
+                    coverRotation.snapTo(start)
+                    coverRotation.animateTo(
+                        targetValue = start + 360f,
+                        animationSpec = tween(durationMillis = 16000, easing = LinearEasing)
+                    )
+                }
+            }
         }
         Surface(
             modifier = Modifier
@@ -1256,10 +1301,12 @@ private fun ReadAloudCapsule(
                                 maxX
                             }
                             baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
+                            onPositionChange(baseOffsetX, baseOffsetY)
                         },
                         onDragCancel = {
                             dragging = false
                             baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
+                            onPositionChange(baseOffsetX, baseOffsetY)
                         }
                     ) { change, dragAmount ->
                         change.consume()
@@ -1282,6 +1329,9 @@ private fun ReadAloudCapsule(
                 Box(
                     modifier = Modifier
                         .size(coverButtonSize)
+                        .graphicsLayer {
+                            rotationZ = coverRotation.value % 360f
+                        }
                         .clip(CircleShape)
                         .background(colors.panel)
                         .clickable(onClick = onExpand)
