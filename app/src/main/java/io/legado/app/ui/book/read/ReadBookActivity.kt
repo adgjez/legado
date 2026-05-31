@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
@@ -417,6 +418,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
+        volumeControlStream = AudioManager.STREAM_MUSIC
         binding.cursorLeft.setColorFilter(accentColor)
         binding.cursorRight.setColorFilter(accentColor)
         binding.cursorLeft.setOnTouchListener(this)
@@ -1523,6 +1525,9 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 音量键翻页
      */
     private fun volumeKeyPage(direction: PageDirection, longPress: Boolean): Boolean {
+        if (binding.readAloudPlayerPanel.isVisible) {
+            return false
+        }
         if (!AppConfig.volumeKeyPage) {
             return false
         }
