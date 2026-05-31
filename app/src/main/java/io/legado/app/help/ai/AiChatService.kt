@@ -677,7 +677,7 @@ object AiChatService {
                     name = builder.name,
                     arguments = builder.arguments.toString().ifBlank { "{}" }
                 )
-            }.filter { it.name.isNotBlank() }
+            }.filter { it.name.isValidJsonString() }
             if (rendered.isBlank() && toolCalls.isEmpty()) {
                 val fallback = runCatching { extractContent(rawPayload.toString()) }.getOrDefault("")
                 if (fallback.isNotBlank()) {
@@ -798,8 +798,8 @@ object AiChatService {
             val function = toolCall.optJSONObject("function") ?: continue
             input.put(JSONObject().apply {
                 put("type", "function_call")
-                put("call_id", toolCall.optString("id").ifBlank { "call_$index" })
-                put("name", function.optString("name"))
+                put("call_id", toolCall.optJsonString("id").ifBlank { "call_$index" })
+                put("name", function.optJsonString("name"))
                 put("arguments", extractToolArguments(function.opt("arguments")))
             })
         }
@@ -807,7 +807,7 @@ object AiChatService {
 
     private fun responsesToolDefinition(definition: JSONObject): JSONObject? {
         val function = definition.optJSONObject("function") ?: definition
-        val name = function.optString("name").takeIf { it.isNotBlank() } ?: return null
+        val name = function.optJsonString("name").takeIf { it.isNotBlank() } ?: return null
         return JSONObject().apply {
             put("type", "function")
             put("name", name)
@@ -910,11 +910,11 @@ object AiChatService {
     ) {
         val builder = responsesToolBuilder(
             toolCallBuilders = toolCallBuilders,
-            callId = root.optString("call_id").ifBlank { root.optString("item_id") },
+            callId = root.optJsonString("call_id").ifBlank { root.optJsonString("item_id") },
             outputIndex = root.optInt("output_index", -1)
         )
-        root.optString("call_id").takeIf { it.isNotBlank() }?.let { builder.id = it }
-        root.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+        root.optJsonString("call_id").takeIf { it.isNotBlank() }?.let { builder.id = it }
+        root.optJsonString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
         extractContentText(root.opt("delta")).takeIf { it.isNotEmpty() }?.let {
             builder.arguments.append(it)
         }
@@ -926,13 +926,13 @@ object AiChatService {
     ) {
         val builder = responsesToolBuilder(
             toolCallBuilders = toolCallBuilders,
-            callId = item.optString("call_id").ifBlank { item.optString("id") },
+            callId = item.optJsonString("call_id").ifBlank { item.optJsonString("id") },
             outputIndex = item.optInt("output_index", -1)
         )
-        item.optString("call_id").ifBlank { item.optString("id") }
+        item.optJsonString("call_id").ifBlank { item.optJsonString("id") }
             .takeIf { it.isNotBlank() }
             ?.let { builder.id = it }
-        item.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+        item.optJsonString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
         val arguments = extractToolArguments(item.opt("arguments"))
         if (arguments != "{}" && builder.arguments.isBlank()) {
             builder.arguments.append(arguments)
@@ -1037,9 +1037,9 @@ object AiChatService {
             val toolCall = toolCalls.optJSONObject(i) ?: continue
             val index = toolCall.optInt("index", i)
             val builder = toolCallBuilders.getOrPut(index) { ToolCallBuilder() }
-            toolCall.optString("id").takeIf { it.isNotBlank() }?.let { builder.id = it }
+            toolCall.optJsonString("id").takeIf { it.isNotBlank() }?.let { builder.id = it }
             val function = toolCall.optJSONObject("function") ?: continue
-            function.optString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
+            function.optJsonString("name").takeIf { it.isNotBlank() }?.let { builder.name = it }
             val args = function.opt("arguments")
             when (args) {
                 is String -> builder.arguments.append(args)
@@ -1280,8 +1280,8 @@ object AiChatService {
                 val function = toolCall.optJSONObject("function") ?: continue
                 add(
                     ToolCall(
-                        id = toolCall.optString("id").ifBlank { "call_$index" },
-                        name = function.optString("name"),
+                        id = toolCall.optJsonString("id").ifBlank { "call_$index" },
+                        name = function.optJsonString("name"),
                         arguments = extractToolArguments(function.opt("arguments"))
                     )
                 )
@@ -1492,6 +1492,19 @@ object AiChatService {
             is JSONArray -> arguments.toString()
             else -> "{}"
         }
+    }
+
+    private fun JSONObject.optJsonString(key: String): String {
+        val text = when (val value = opt(key)) {
+            null, JSONObject.NULL -> ""
+            is String -> value
+            else -> value.toString()
+        }.trim()
+        return if (text.equals("null", ignoreCase = true)) "" else text
+    }
+
+    private fun String.isValidJsonString(): Boolean {
+        return isNotBlank() && !equals("null", ignoreCase = true)
     }
 
     private fun contentArrayToText(content: JSONArray): String {
