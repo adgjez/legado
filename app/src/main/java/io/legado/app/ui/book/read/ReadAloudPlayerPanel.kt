@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read
 
 import android.content.Context
 import android.graphics.RectF
-import android.speech.tts.TextToSpeech
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -107,9 +106,11 @@ import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -150,6 +151,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     enum class DisplayMode {
         Immersive,
+        Scene,
         Text
     }
 
@@ -174,6 +176,20 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val current: Boolean,
         val key: String,
         val sequence: Int,
+        val chapterPosition: Int
+    )
+
+    data class SceneSegmentUi(
+        val key: String,
+        val text: String,
+        val roleType: String,
+        val characterId: Long,
+        val characterName: String,
+        val avatar: String,
+        val emotionName: String,
+        val leftSide: Boolean,
+        val narrator: Boolean,
+        val current: Boolean,
         val chapterPosition: Int
     )
 
@@ -230,6 +246,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val textCues: List<TextCueUi> = emptyList(),
+        val sceneSegments: List<SceneSegmentUi> = emptyList(),
         val currentCueIndex: Int = 0,
         val chapterKey: String = "",
         val paragraphKey: String = "",
@@ -252,7 +269,6 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var dismissedForCurrentRun = false
     private var foregroundActive = true
     private var lastChapterStart = 0
-    private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -685,6 +701,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
         val nearby = cues.nearbyCueParagraphs(cueIndex, chapterKey, chapterSequence)
         val textCues = cues.toTextCueUi(cueIndex, chapterKey, chapterSequence)
+        val sceneSegments = buildSceneSegments(
+            bookUrl = book?.bookUrl,
+            chapterIndex = chapterSequence,
+            cueIndex = cueIndex,
+            cue = cue,
+            chapterKey = chapterKey
+        )
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
             bookName = bookName,
@@ -708,6 +731,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             characterPreview = buildCharacterPreview(book?.bookUrl),
             nearbyParagraphs = nearby,
             textCues = textCues,
+            sceneSegments = sceneSegments,
             currentCueIndex = cueIndex.coerceAtLeast(0),
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
@@ -819,53 +843,24 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun buildTtsEngineOptions(): List<TtsEngineUi> {
         val current = ReadAloud.ttsEngine
-        val systemItems = systemTtsOptions().map { (title, systemValue) ->
-            val value = GSON.toJson(SelectItem(title, systemValue))
-            TtsEngineUi(
-                title = title,
-                subtitle = if (systemValue.isBlank()) "系统默认" else "系统引擎",
-                value = value,
-                selected = isSystemTtsSelected(current, systemValue),
-                key = "system:$systemValue"
-            )
-        }
-        val httpItems = runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()).map { httpTts ->
-            val speakerCount = SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson).size
-            val emotionCount = SpeechVoiceCatalogParser.flattenEmotions(httpTts.emotionsJson).size
-            val catalogSummary = buildList {
-                if (speakerCount > 0) add("${speakerCount} 个发言人")
-                if (emotionCount > 0) add("${emotionCount} 个情绪")
-            }.joinToString(" · ")
-            TtsEngineUi(
-                title = httpTts.name.ifBlank { "HTTP TTS" },
-                subtitle = catalogSummary.ifBlank { "HTTP TTS" },
-                value = httpTts.id.toString(),
-                selected = current == httpTts.id.toString(),
-                key = "http:${httpTts.id}"
-            )
-        }
-        return systemItems + httpItems
-    }
-
-    private fun systemTtsOptions(): List<Pair<String, String>> {
-        cachedSystemTtsOptions?.let { return it }
-        return runCatching {
-            val tts = TextToSpeech(context, null)
-            try {
-                listOf("系统默认" to "") + tts.engines.map { it.label.toString() to it.name }
-            } finally {
-                tts.shutdown()
+        val selectedKey = when {
+            current.isNullOrBlank() -> "system:"
+            current.isJsonObject() -> {
+                val value = GSON.fromJsonObject<SelectItem<String>>(current).getOrNull()?.value.orEmpty()
+                "system:$value"
             }
-        }.getOrDefault(listOf("系统默认" to ""))
-            .also { cachedSystemTtsOptions = it }
-    }
-
-    private fun isSystemTtsSelected(current: String?, systemValue: String): Boolean {
-        return if (current.isNullOrBlank()) {
-            systemValue.isBlank()
-        } else {
-            current.isJsonObject() &&
-                    GSON.fromJsonObject<SelectItem<String>>(current).getOrNull()?.value == systemValue
+            else -> "http:$current"
+        }
+        return SpeechVoiceCatalogRepository
+            .allGroups(context, runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()))
+            .map { group ->
+            TtsEngineUi(
+                    title = group.title,
+                    subtitle = group.subtitle,
+                    value = group.engineValue,
+                    selected = group.key == selectedKey,
+                    key = group.key
+            )
         }
     }
 
@@ -882,6 +877,91 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 )
             }
         }.getOrDefault(emptyList())
+    }
+
+    private fun buildSceneSegments(
+        bookUrl: String?,
+        chapterIndex: Int,
+        cueIndex: Int,
+        cue: ReadAloudCue?,
+        chapterKey: String
+    ): List<SceneSegmentUi> {
+        val text = cue?.text?.cleanReadAloudText().orEmpty()
+        if (text.isBlank()) return emptyList()
+        val characters = runCatching {
+            appDb.bookCharacterDao.characters(bookUrl.orEmpty())
+        }.getOrDefault(emptyList())
+        val byId = characters.associateBy { it.id }
+        val byName = characters.associateBy { it.name }
+        val segments = AiReadAloudRoleService.segmentsForCue(bookUrl, chapterIndex, cueIndex)
+            .filter { it.start < text.length }
+            .map { it.copy(start = it.start.coerceIn(0, text.length), end = it.end.coerceIn(0, text.length)) }
+            .filter { it.start < it.end }
+        if (segments.isEmpty()) {
+            return listOf(
+                SceneSegmentUi(
+                    key = "$chapterKey:scene:$cueIndex:narrator",
+                    text = text,
+                    roleType = "narrator",
+                    characterId = 0L,
+                    characterName = "旁白",
+                    avatar = "",
+                    emotionName = "",
+                    leftSide = false,
+                    narrator = true,
+                    current = true,
+                    chapterPosition = cue?.chapterPosition ?: ReadBook.durChapterPos
+                )
+            )
+        }
+        val result = mutableListOf<SceneSegmentUi>()
+        var cursor = 0
+        fun addNarrator(start: Int, end: Int) {
+            val part = text.substring(start, end).cleanReadAloudText()
+            if (part.isBlank()) return
+            result += SceneSegmentUi(
+                key = "$chapterKey:scene:$cueIndex:narrator:$start:$end",
+                text = part,
+                roleType = "narrator",
+                characterId = 0L,
+                characterName = "旁白",
+                avatar = "",
+                emotionName = "",
+                leftSide = false,
+                narrator = true,
+                current = false,
+                chapterPosition = (cue?.chapterPosition ?: 0) + start
+            )
+        }
+        segments.forEach { segment ->
+            if (segment.start > cursor) addNarrator(cursor, segment.start)
+            val part = text.substring(segment.start, segment.end).cleanReadAloudText()
+            val character = when {
+                segment.characterId > 0L -> byId[segment.characterId]
+                segment.characterName.isNotBlank() -> byName[segment.characterName]
+                else -> null
+            }
+            val name = character?.displayName()
+                ?: segment.characterName.takeIf { it.isNotBlank() }
+                ?: if (segment.roleType == "thought") "心理" else "角色"
+            val id = character?.id ?: segment.characterId
+            result += SceneSegmentUi(
+                key = "$chapterKey:scene:$cueIndex:${segment.start}:${segment.end}:${name.hashCode()}",
+                text = part,
+                roleType = segment.roleType,
+                characterId = id,
+                characterName = name,
+                avatar = character?.avatar.orEmpty(),
+                emotionName = segment.emotionName,
+                leftSide = Math.floorMod((id.takeIf { it > 0 } ?: name.hashCode().toLong()).hashCode(), 2) == 0,
+                narrator = segment.roleType == "narrator" || name == "旁白",
+                current = true,
+                chapterPosition = (cue?.chapterPosition ?: 0) + segment.start
+            )
+            cursor = cursor.coerceAtLeast(segment.end)
+        }
+        if (cursor < text.length) addNarrator(cursor, text.length)
+        return result
     }
 
     private fun BookCharacter.previewSummary(): String {
@@ -1587,7 +1667,7 @@ private fun ModeSwitch(
     val actionShape = LocalContext.current.composeActionShape()
     Row(
         modifier = Modifier
-            .width(124.dp)
+            .width(188.dp)
             .height(32.dp)
             .clip(actionShape)
             .background(Color.White.copy(alpha = 0.13f))
@@ -1602,6 +1682,15 @@ private fun ModeSwitch(
             modifier = Modifier.weight(1f)
         ) {
             onModeChange(ReadAloudPlayerPanel.DisplayMode.Immersive)
+        }
+        ModeChip(
+            text = "情景",
+            selected = mode == ReadAloudPlayerPanel.DisplayMode.Scene,
+            colors = colors,
+            shape = actionShape,
+            modifier = Modifier.weight(1f)
+        ) {
+            onModeChange(ReadAloudPlayerPanel.DisplayMode.Scene)
         }
         ModeChip(
             text = "原文",
@@ -1652,9 +1741,8 @@ private fun PortraitPlayerBody(
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
-    if (immersive) {
-        ImmersivePlayerStage(
+    when (state.mode) {
+        ReadAloudPlayerPanel.DisplayMode.Immersive -> ImmersivePlayerStage(
             state = state,
             colors = colors,
             short = short,
@@ -1662,18 +1750,26 @@ private fun PortraitPlayerBody(
             animateTextChanges = animateTextChanges,
             modifier = modifier
         )
-    } else {
-        LyricsPlayerStage(
-                    state = state,
-                    colors = colors,
-                    compact = short,
-                    maxParagraphs = if (veryShort) 5 else 7,
-                    currentMaxLines = if (veryShort) 4 else 6,
-                    animateTextChanges = animateTextChanges,
-                    onCueSelect = onCueSelect,
-                    modifier = modifier
-                )
-            }
+
+        ReadAloudPlayerPanel.DisplayMode.Scene -> ScenePlayerStage(
+            state = state,
+            colors = colors,
+            compact = short,
+            onCueSelect = onCueSelect,
+            modifier = modifier
+        )
+
+        ReadAloudPlayerPanel.DisplayMode.Text -> LyricsPlayerStage(
+            state = state,
+            colors = colors,
+            compact = short,
+            maxParagraphs = if (veryShort) 5 else 7,
+            currentMaxLines = if (veryShort) 4 else 6,
+            animateTextChanges = animateTextChanges,
+            onCueSelect = onCueSelect,
+            modifier = modifier
+        )
+    }
 }
 
 @Composable
@@ -1710,7 +1806,7 @@ private fun LandscapePlayerBody(
                 compact = short
             )
             Spacer(modifier = Modifier.height(if (short) 12.dp else 18.dp))
-            if (immersive) {
+            if (state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive) {
                 FocusSentenceBody(
                     state = state,
                     colors = colors,
@@ -1718,6 +1814,16 @@ private fun LandscapePlayerBody(
                     animateTextChanges = animateTextChanges,
                     textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth()
+                )
+            } else if (state.mode == ReadAloudPlayerPanel.DisplayMode.Scene) {
+                ScenePlayerStage(
+                    state = state,
+                    colors = colors,
+                    compact = short,
+                    onCueSelect = onCueSelect,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
                 )
             } else {
                 LyricCueBody(
@@ -1816,6 +1922,175 @@ private fun LyricsPlayerStage(
                 .weight(1f)
         )
     }
+}
+
+@Composable
+private fun ScenePlayerStage(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    compact: Boolean,
+    onCueSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        BookIdentity(
+            state = state,
+            colors = colors,
+            centered = true,
+            compact = compact
+        )
+        Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .widthIn(max = 760.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 12.dp)
+        ) {
+            items(state.sceneSegments, key = { it.key }) { segment ->
+                SceneSegmentRow(
+                    segment = segment,
+                    colors = colors,
+                    compact = compact,
+                    onClick = { onCueSelect(segment.chapterPosition) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SceneSegmentRow(
+    segment: ReadAloudPlayerPanel.SceneSegmentUi,
+    colors: PlayerColors,
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    if (segment.narrator) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 420.dp)
+                    .clickable(onClick = onClick),
+                shape = RoundedCornerShape(999.dp),
+                color = colors.panel.copy(alpha = 0.48f),
+                border = BorderStroke(1.dp, colors.panelBorder.copy(alpha = 0.55f))
+            ) {
+                Text(
+                    text = segment.text,
+                    color = colors.secondaryText,
+                    fontSize = if (compact) 12.sp else 13.sp,
+                    lineHeight = if (compact) 18.sp else 20.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (segment.leftSide) Arrangement.Start else Arrangement.End,
+        verticalAlignment = Alignment.Top
+    ) {
+        if (segment.leftSide) {
+            SceneAvatar(segment, colors, compact)
+            Spacer(modifier = Modifier.width(8.dp))
+            SceneBubble(segment, colors, compact, onClick)
+        } else {
+            SceneBubble(segment, colors, compact, onClick)
+            Spacer(modifier = Modifier.width(8.dp))
+            SceneAvatar(segment, colors, compact)
+        }
+    }
+}
+
+@Composable
+private fun SceneBubble(
+    segment: ReadAloudPlayerPanel.SceneSegmentUi,
+    colors: PlayerColors,
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    val bubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
+    val textColor = if (segment.leftSide) colors.primaryText else colors.accentText
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth(0.72f)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(
+            topStart = 18.dp,
+            topEnd = 18.dp,
+            bottomStart = if (segment.leftSide) 4.dp else 18.dp,
+            bottomEnd = if (segment.leftSide) 18.dp else 4.dp
+        ),
+        color = bubbleColor,
+        border = BorderStroke(1.dp, colors.panelBorder.copy(alpha = 0.45f))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = segment.characterName,
+                    color = textColor.copy(alpha = 0.86f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                segment.emotionName.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        color = textColor.copy(alpha = 0.70f),
+                        fontSize = 10.sp,
+                        maxLines = 1
+                    )
+                }
+            }
+            Text(
+                text = segment.text,
+                color = textColor,
+                fontSize = if (compact) 14.sp else 15.sp,
+                lineHeight = if (compact) 21.sp else 23.sp,
+                modifier = Modifier.padding(top = 5.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SceneAvatar(
+    segment: ReadAloudPlayerPanel.SceneSegmentUi,
+    colors: PlayerColors,
+    compact: Boolean
+) {
+    val context = LocalContext.current
+    val size = if (compact) 34.dp else 38.dp
+    AndroidView(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(colors.panel),
+        factory = {
+            ImageView(it).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = segment.characterName
+            }
+        },
+        update = { imageView ->
+            ImageLoader.load(context, segment.avatar.ifBlank { null })
+                .placeholder(R.drawable.ic_bottom_person)
+                .error(R.drawable.ic_bottom_person)
+                .into(imageView)
+        }
+    )
 }
 
 @Composable

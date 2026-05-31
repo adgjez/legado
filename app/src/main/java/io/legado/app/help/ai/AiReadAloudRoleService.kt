@@ -204,6 +204,39 @@ object AiReadAloudRoleService {
         }
     }
 
+    fun segmentsForCue(
+        bookUrl: String?,
+        chapterIndex: Int,
+        cueIndex: Int
+    ): List<Segment> {
+        if (bookUrl.isNullOrBlank() || cueIndex < 0) return emptyList()
+        val cache = appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
+            ?: return emptyList()
+        val segments = runCatching { JSONArray(cache.segmentsJson) }.getOrNull() ?: return emptyList()
+        val result = mutableListOf<Segment>()
+        for (index in 0 until segments.length()) {
+            val item = segments.optJSONObject(index) ?: continue
+            if (item.optInt("paragraphIndex", -1) != cueIndex) continue
+            val start = item.optInt("start", -1)
+            val end = item.optInt("end", -1)
+            if (start < 0 || end <= start) continue
+            result += Segment(
+                paragraphIndex = cueIndex,
+                start = start,
+                end = end,
+                roleType = item.optString("roleType").trim()
+                    .takeIf { it in setOf("narrator", "character", "thought", "other") }
+                    ?: "other",
+                characterName = item.optString("characterName").trim().take(80),
+                characterId = item.optLong("characterId", 0L).coerceAtLeast(0L),
+                emotionName = item.optString("emotionName").trim().take(40),
+                emotionTag = item.optString("emotionTag").trim().take(40),
+                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+            )
+        }
+        return result.sortedWith(compareBy<Segment> { it.start }.thenBy { it.end })
+    }
+
     private suspend fun requestChunkedSegments(
         book: Book,
         textChapter: TextChapter,
