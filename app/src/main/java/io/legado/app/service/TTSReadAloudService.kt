@@ -240,15 +240,9 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
         private fun nextParagraph() {
             //跳过全标点段落
-            do {
-                readAloudNumber += contentList[nowSpeak].length + 1 - paragraphStartPos
-                paragraphStartPos = 0
-                nowSpeak++
-                if (nowSpeak >= contentList.size) {
-                    nextChapter()
-                    return
-                }
-            } while (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
+            if (!moveToNextCue()) {
+                nextChapter()
+            }
         }
 
         @Deprecated("Deprecated in Java")

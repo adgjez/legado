@@ -133,11 +133,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun updateNextPos() {
-        readAloudNumber += contentList[nowSpeak].length + 1 - paragraphStartPos
-        paragraphStartPos = 0
-        if (nowSpeak < contentList.lastIndex) {
-            nowSpeak++
-        } else {
+        if (!moveToNextCue()) {
             nextChapter()
         }
     }
@@ -409,7 +405,8 @@ class HttpReadAloudService : BaseReadAloudService(),
                             throw e
                         } else {
                             AppLog.put("TTS下载音频出错，使用无声音频代替。\n朗读文本：$speakText")
-                            break
+                            delay((downloadErrorNo * 800L).coerceAtMost(4000L))
+                            continue
                         }
                     }
                 }
@@ -589,12 +586,24 @@ class HttpReadAloudService : BaseReadAloudService(),
             AppLog.put("朗读连续5次错误, 最后一次错误代码(${error.localizedMessage})", error)
             pauseReadAloud()
         } else {
-            if (exoPlayer.hasNextMediaItem()) {
-                exoPlayer.seekToNextMediaItem()
-                exoPlayer.prepare()
+            retryCurrentCue()
+        }
+    }
+
+    private fun retryCurrentCue() {
+        playIndexJob?.cancel()
+        downloadTask?.cancel()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        lifecycleScope.launch {
+            delay((playErrorNo * 700L).coerceAtMost(3500L))
+            if (pause || nowSpeak !in contentList.indices) return@launch
+            syncReadAloudPositionToCue()
+            upTtsProgress(readAloudNumber + 1)
+            if (AppConfig.streamReadAloudAudio) {
+                downloadAndPlayAudiosStream()
             } else {
-                exoPlayer.clearMediaItems()
-                updateNextPos()
+                downloadAndPlayAudios()
             }
         }
     }
