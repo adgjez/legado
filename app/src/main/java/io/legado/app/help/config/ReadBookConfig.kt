@@ -113,13 +113,7 @@ object ReadBookConfig {
         } else if (drawable is ColorDrawable) {
             bgMeanColor = drawable.color
         }
-        val tmp = bg
         bg = drawable
-        if (tmp is BitmapDrawable) { //太快执行，可能还正在被使用，延时防崩溃
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                tmp.bitmap?.recycle()
-            }
-        }
     }
 
     fun save() {

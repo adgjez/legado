@@ -11,7 +11,7 @@ import android.graphics.Shader
 import android.graphics.drawable.Drawable
 
 class ScrollFollowBackgroundDrawable(
-    bitmap: Bitmap,
+    private val bitmap: Bitmap,
     private val offsetProvider: () -> Int
 ) : Drawable() {
 
@@ -26,7 +26,7 @@ class ScrollFollowBackgroundDrawable(
 
     override fun draw(canvas: Canvas) {
         val bounds = bounds
-        if (bounds.isEmpty) return
+        if (bounds.isEmpty || bitmap.isRecycled) return
         val scale = bounds.width().toFloat() / bitmapWidth.toFloat()
         val tileHeight = bitmapHeight * scale
         val rawOffset = offsetProvider().toFloat()

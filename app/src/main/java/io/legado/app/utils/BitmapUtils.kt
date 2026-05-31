@@ -283,7 +283,9 @@ fun Bitmap.compressPreservingAlpha(outputStream: OutputStream, jpegQuality: Int 
 fun Bitmap.resizeAndRecycle(newWidth: Int, newHeight: Int): Bitmap {
     //获取新的bitmap
     val bitmap = Toolkit.resize(this, newWidth, newHeight)
-    recycle()
+    if (bitmap !== this && !isRecycled) {
+        recycle()
+    }
     return bitmap
 }
 

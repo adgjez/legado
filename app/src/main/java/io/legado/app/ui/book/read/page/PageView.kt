@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.LayerDrawable
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -117,6 +118,8 @@ class PageView(context: Context) : FrameLayout(context) {
     override fun onDetachedFromWindow() {
         binding.advancedTitleLottie.cancelAnimation()
         binding.advancedTitleLottiePair.cancelAnimation()
+        binding.contentTextView.setScrollFollowBackground(null, 255)
+        binding.vwRoot.background = null
         synchronized(lottieImageCache) {
             lottieImageCache.clear()
         }
@@ -336,12 +339,13 @@ class PageView(context: Context) : FrameLayout(context) {
      * 更新背景
      */
     fun upBg() {
-        val bgDrawable = ReadBookConfig.bg
+        val bgDrawable = ReadBookConfig.bg?.safePageBackgroundDrawable()
         val followScrollBackground =
             AppConfig.readScrollFollowBackground &&
                 isScroll &&
                 !ReadBookConfig.isNineBgImg &&
-                bgDrawable is BitmapDrawable
+                bgDrawable is BitmapDrawable &&
+                !bgDrawable.bitmap.isRecycled
         val bgAlpha = (ReadBookConfig.bgAlpha / 100f * 255).toInt()
         val foregroundDrawable = if (followScrollBackground) {
             binding.contentTextView.setScrollFollowBackground(bgDrawable.bitmap, bgAlpha)
@@ -371,9 +375,20 @@ class PageView(context: Context) : FrameLayout(context) {
         if (background is LayerDrawable && background.numberOfLayers > 1) {
             background.getDrawable(1).alpha = bgAlpha
         } else {
-            ReadBookConfig.bg?.alpha = bgAlpha
+            background?.alpha = bgAlpha
         }
         binding.vwRoot.invalidate()
+    }
+
+    private fun Drawable.safePageBackgroundDrawable(): Drawable? {
+        if (this is BitmapDrawable) {
+            val source = bitmap ?: return null
+            if (source.isRecycled) return null
+            return BitmapDrawable(resources, source).apply {
+                alpha = this@safePageBackgroundDrawable.alpha
+            }
+        }
+        return constantState?.newDrawable(resources)?.mutate() ?: mutate()
     }
 
     /**

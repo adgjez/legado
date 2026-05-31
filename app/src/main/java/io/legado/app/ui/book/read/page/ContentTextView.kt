@@ -295,7 +295,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     fun setScrollFollowBackground(bitmap: Bitmap?, alpha: Int) {
-        scrollFollowBackgroundDrawable = bitmap?.let {
+        scrollFollowBackgroundDrawable = bitmap?.takeUnless { it.isRecycled }?.let {
             ScrollFollowBackgroundDrawable(it) { getBackgroundOffset() }.apply {
                 setAlpha(alpha)
             }

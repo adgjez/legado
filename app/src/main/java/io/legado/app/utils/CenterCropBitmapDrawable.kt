@@ -20,7 +20,7 @@ class CenterCropBitmapDrawable(
 
     override fun draw(canvas: Canvas) {
         val bounds = bounds
-        if (bounds.isEmpty || bitmap.width <= 0 || bitmap.height <= 0) return
+        if (bounds.isEmpty || bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return
         val scale = max(
             bounds.width().toFloat() / bitmap.width.toFloat(),
             bounds.height().toFloat() / bitmap.height.toFloat()
