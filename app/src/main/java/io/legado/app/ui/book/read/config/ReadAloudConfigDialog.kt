@@ -71,6 +71,7 @@ enum class ReadAloudConfigGroup(
         setOf(
             PreferKey.aiReadAloudRoleEnabled,
             PreferKey.aiReadAloudRoleModelId,
+            PreferKey.aiReadAloudAutoCreateCharacters,
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRoleThreadCount,
             PreferKey.aiReadAloudRoleContextParagraphs,
@@ -289,6 +290,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.aiReadAloudRoleEnabled,
                 PreferKey.aiReadAloudRoleModelId,
+                PreferKey.aiReadAloudAutoCreateCharacters,
                 PreferKey.aiReadAloudRoleMode,
                 PreferKey.aiReadAloudRoleThreadCount,
                 PreferKey.aiReadAloudRoleContextParagraphs,
@@ -363,6 +365,15 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleModelId)?.let {
                 it.summary = modelLabel(AppConfig.aiReadAloudRoleModelConfig)
+            }
+            findPreference<SwitchPreference>(PreferKey.aiReadAloudAutoCreateCharacters)?.let {
+                it.isEnabled = enabled
+                it.isChecked = AppConfig.aiReadAloudAutoCreateCharacters
+                it.summary = if (AppConfig.aiReadAloudAutoCreateCharacters) {
+                    "新角色会自动建卡，未配置发言人时会从可用目录稳定分配"
+                } else {
+                    "只使用已有角色卡，不自动创建或分配发言人"
+                }
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
                 it.isEnabled = enabled

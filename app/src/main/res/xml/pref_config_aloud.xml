@@ -80,6 +80,13 @@
             android:title="多角色模型"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="aiReadAloudAutoCreateCharacters"
+            android:summary="识别到新角色或路人时自动创建角色，并为未配置角色分配可用发言人"
+            android:title="自动创建角色并分配发言人"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="chunk_context"
             android:entries="@array/ai_read_aloud_role_mode_title"
