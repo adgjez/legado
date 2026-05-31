@@ -71,6 +71,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -227,7 +228,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val mode: DisplayMode = DisplayMode.Immersive,
         val foregroundActive: Boolean = true,
         val expanded: Boolean = true,
-        val readMenuVisible: Boolean = false
+        val readMenuVisible: Boolean = false,
+        val openToken: Int = 0
     )
 
     private val composeView = ComposeView(context)
@@ -238,6 +240,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
     private var expanded = true
     private var readMenuVisible = false
+    private var openToken = 0
     private val capsuleBounds = RectF()
 
     private var uiState by mutableStateOf(PlayerUiState())
@@ -336,6 +339,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             val wasVisible = visibility == VISIBLE
             val wasExpanded = expanded
             expanded = expand
+            if (expand) {
+                openToken++
+            }
             visibility = VISIBLE
             bringToFront()
             ViewCompat.requestApplyInsets(this)
@@ -343,7 +349,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = expanded,
-                readMenuVisible = readMenuVisible
+                readMenuVisible = readMenuVisible,
+                openToken = openToken
             )
             if (!wasVisible || (!wasExpanded && expanded)) {
                 callBack?.onReadAloudPlayerVisibilityChanged(true)
@@ -369,7 +376,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = false,
-                readMenuVisible = readMenuVisible
+                readMenuVisible = readMenuVisible,
+                openToken = openToken
             )
             callBack?.onReadAloudPlayerVisibilityChanged(false)
         } else {
@@ -564,7 +572,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             mode = mode,
             foregroundActive = foregroundActive && visibility == VISIBLE,
             expanded = expanded,
-            readMenuVisible = readMenuVisible
+            readMenuVisible = readMenuVisible,
+            openToken = openToken
         )
     }
 
@@ -814,13 +823,23 @@ private fun ReadAloudPlayerContent(
     } else {
         shrinkVertically(tween(1), shrinkTowards = Alignment.Top) + fadeOut(tween(1))
     }
+    var expandedVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(state.expanded, state.openToken) {
+        if (state.expanded) {
+            expandedVisible = false
+            withFrameNanos { }
+            expandedVisible = true
+        } else {
+            expandedVisible = false
+        }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = state.expanded,
-            enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it } +
-                    fadeIn(tween(180)),
-            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it } +
-                    fadeOut(tween(140))
+            visible = expandedVisible,
+            enter = slideInVertically(tween(420, easing = FastOutSlowInEasing)) { it } +
+                    fadeIn(tween(260, easing = FastOutSlowInEasing)),
+            exit = slideOutVertically(tween(300, easing = FastOutSlowInEasing)) { it } +
+                    fadeOut(tween(180, easing = FastOutSlowInEasing))
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 CoverAtmosphereBackdrop(state, colors)
