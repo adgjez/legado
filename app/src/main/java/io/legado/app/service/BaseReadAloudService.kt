@@ -286,7 +286,7 @@ abstract class BaseReadAloudService : BaseService(),
             readAloudCues = textChapter.buildReadAloudCues(readAloudByPage)
             contentList = readAloudCues.map { it.text }
             val roleContentList = contentList
-            execute {
+            if (AppConfig.aiReadAloudRoleEnabled) {
                 AiReadAloudRoleService.ensureCache(ReadBook.book, textChapter, roleContentList)
             }
             if (contentList.isNotEmpty()) {
