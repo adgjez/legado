@@ -228,6 +228,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val mode: DisplayMode = DisplayMode.Immersive,
         val foregroundActive: Boolean = true,
         val expanded: Boolean = true,
+        val opening: Boolean = false,
         val readMenuVisible: Boolean = false,
         val openToken: Int = 0
     )
@@ -239,6 +240,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var lastChapterStart = 0
     private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
     private var expanded = true
+    private var opening = false
     private var readMenuVisible = false
     private var openToken = 0
     private val capsuleBounds = RectF()
@@ -255,7 +257,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ReadAloudPlayerContent(
                 state = uiState,
                 onClose = ::closeByUser,
-                onExpand = { open(force = true) },
+                onExpand = { openFromBottom(force = true) },
                 onStop = ::stopReadAloud,
                 onPlayPause = { callBack?.onClickReadAloud() },
                 onModeChange = ::setMode,
@@ -282,18 +284,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     fun open(force: Boolean = true) {
+        openFromBottom(force)
+    }
+
+    fun openFromBottom(force: Boolean = true) {
         if (force) {
             dismissedForCurrentRun = false
         }
-        showPanel(expand = true)
+        showPanel(expand = true, animateFromBottom = true)
     }
 
-    fun onAloudState(status: Int) {
+    fun onAloudState(status: Int, autoExpand: Boolean = true) {
         when (status) {
             io.legado.app.constant.Status.PLAY -> {
                 refresh()
-                if (!dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
-                    showPanel()
+                if (autoExpand && !dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
+                    showPanel(animateFromBottom = true)
                 }
             }
 
@@ -334,21 +340,50 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = buildState(uiState.mode)
     }
 
-    private fun showPanel(expand: Boolean = true) {
+    private fun showPanel(expand: Boolean = true, animateFromBottom: Boolean = true) {
         post {
             val wasVisible = visibility == VISIBLE
             val wasExpanded = expanded
-            expanded = expand
-            if (expand) {
-                openToken++
-            }
             visibility = VISIBLE
             bringToFront()
             ViewCompat.requestApplyInsets(this)
             ViewCompat.requestApplyInsets(composeView)
+            if (expand && animateFromBottom && !AppConfig.isEInkMode) {
+                expanded = false
+                opening = true
+                uiState = buildState(uiState.mode).copy(
+                    foregroundActive = foregroundActive,
+                    expanded = false,
+                    opening = true,
+                    readMenuVisible = readMenuVisible,
+                    openToken = openToken
+                )
+                postOnAnimation {
+                    expanded = true
+                    opening = false
+                    openToken++
+                    uiState = buildState(uiState.mode).copy(
+                        foregroundActive = foregroundActive,
+                        expanded = true,
+                        opening = false,
+                        readMenuVisible = readMenuVisible,
+                        openToken = openToken
+                    )
+                    if (!wasVisible || !wasExpanded) {
+                        callBack?.onReadAloudPlayerVisibilityChanged(true)
+                    }
+                }
+                return@post
+            }
+            expanded = expand
+            opening = false
+            if (expand) {
+                openToken++
+            }
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = expanded,
+                opening = opening,
                 readMenuVisible = readMenuVisible,
                 openToken = openToken
             )
@@ -361,9 +396,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private fun hidePanel() {
         val wasVisible = visibility == VISIBLE
         expanded = false
+        opening = false
         visibility = GONE
         capsuleBounds.setEmpty()
-        uiState = buildState(uiState.mode).copy(foregroundActive = false, expanded = false)
+        uiState = buildState(uiState.mode).copy(foregroundActive = false, expanded = false, opening = false)
         if (wasVisible) {
             callBack?.onReadAloudPlayerVisibilityChanged(false)
         }
@@ -373,9 +409,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (BaseReadAloudService.isRun) {
             dismissedForCurrentRun = true
             expanded = false
+            opening = false
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = false,
+                opening = false,
                 readMenuVisible = readMenuVisible,
                 openToken = openToken
             )
@@ -572,6 +610,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             mode = mode,
             foregroundActive = foregroundActive && visibility == VISIBLE,
             expanded = expanded,
+            opening = opening,
             readMenuVisible = readMenuVisible,
             openToken = openToken
         )
@@ -951,7 +990,7 @@ private fun ReadAloudPlayerContent(
         }
     }
         }
-        if (!state.expanded && state.serviceRunning) {
+        if (!state.expanded && !state.opening && state.serviceRunning) {
             ReadAloudCapsule(
                 state = state,
                 colors = colors,

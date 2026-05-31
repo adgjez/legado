@@ -236,6 +236,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     ColorPickerDialogListener,
     LayoutProgressListener {
 
+    private var pendingReadAloudPlayerOpen = false
+
     private val tocActivity =
         registerForActivityResult(TocActivityResult()) {
             it?.let {
@@ -2843,15 +2845,13 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun showReadAloudDialog() {
         fun openPlayerPanel() {
             applyReadAloudPlayerSystemBars()
-            binding.readAloudPlayerPanel.open(force = true)
+            binding.readAloudPlayerPanel.openFromBottom(force = true)
         }
         fun startOrOpenPlayerPanel() {
             when {
                 !BaseReadAloudService.isRun -> {
+                    pendingReadAloudPlayerOpen = true
                     onClickReadAloud()
-                    binding.readAloudPlayerPanel.postDelayed({
-                        openPlayerPanel()
-                    }, 80)
                 }
                 BaseReadAloudService.pause -> {
                     ReadAloud.resume(this)
@@ -4492,7 +4492,15 @@ class ReadBookActivity : BaseReadBookActivity(),
             handleReadConfigUpdate(it)
         }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
-            readAloudPlayerPanel.onAloudState(it)
+            val shouldOpenPendingPanel = pendingReadAloudPlayerOpen && it == Status.PLAY
+            readAloudPlayerPanel.onAloudState(it, autoExpand = !shouldOpenPendingPanel)
+            if (shouldOpenPendingPanel) {
+                pendingReadAloudPlayerOpen = false
+                applyReadAloudPlayerSystemBars()
+                readAloudPlayerPanel.openFromBottom(force = true)
+            } else if (it == Status.STOP) {
+                pendingReadAloudPlayerOpen = false
+            }
             if (it == Status.STOP || it == Status.PAUSE) {
                 ReadBook.curTextChapter?.let { textChapter ->
                     val page = textChapter.getPageByReadPos(ReadBook.durChapterPos)
