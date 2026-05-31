@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,14 +13,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,7 +29,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -57,6 +54,7 @@ import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
+import io.legado.app.help.readaloud.speech.SpeechVoiceOption
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
@@ -333,6 +331,7 @@ private fun SpeakEngineScreen(
     val groups = rememberSpeechGroups(httpTtsList)
     val selectedKey = selectedGroupKey ?: selectedKeyFromEngine(ttsEngine, httpTtsList)
     val selectedGroup = groups.firstOrNull { it.key == selectedKey } ?: groups.firstOrNull()
+    val selectedHttpTts = selectedGroup?.let { httpTtsForGroup(it, httpTtsList) }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = colors.page,
@@ -370,19 +369,25 @@ private fun SpeakEngineScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(groups, key = { it.key }) { group ->
+                                val httpTts = httpTtsForGroup(group, httpTtsList)
                                 EngineGroupRow(
                                     group = group,
                                     selected = group.key == selectedGroup?.key,
                                     colors = colors,
                                     onClick = { actions.selectGroup(group) },
-                                    onEdit = group.loginKey.toLongOrNull()?.let { { actions.editHttpTts(it) } },
-                                    onDelete = httpTtsList.firstOrNull { it.id.toString() == group.loginKey }
-                                        ?.let { httpTts -> { actions.deleteHttpTts(httpTts) } }
+                                    onLogin = if (!group.loginUrl.isNullOrBlank()) {
+                                        { actions.login(group) }
+                                    } else {
+                                        null
+                                    },
+                                    onEdit = httpTts?.let { { actions.editHttpTts(it.id) } },
+                                    onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
                                 )
                             }
                         }
                         EngineDetailCard(
                             group = selectedGroup,
+                            httpTts = selectedHttpTts,
                             colors = colors,
                             actions = actions,
                             modifier = Modifier.weight(0.58f).fillMaxSize()
@@ -396,23 +401,29 @@ private fun SpeakEngineScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(groups, key = { it.key }) { group ->
+                            val httpTts = httpTtsForGroup(group, httpTtsList)
                             EngineGroupRow(
                                 group = group,
                                 selected = group.key == selectedGroup?.key,
                                 colors = colors,
                                 onClick = { actions.selectGroup(group) },
-                                onEdit = null,
-                                onDelete = null
+                                onLogin = if (!group.loginUrl.isNullOrBlank()) {
+                                    { actions.login(group) }
+                                } else {
+                                    null
+                                },
+                                onEdit = httpTts?.let { { actions.editHttpTts(it.id) } },
+                                onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
                             )
                             if (group.key == selectedGroup?.key) {
                                 EngineDetailCard(
                                     group = selectedGroup,
+                                    httpTts = selectedHttpTts,
                                     colors = colors,
                                     actions = actions,
                                     modifier = Modifier
                                         .padding(top = 8.dp)
                                         .fillMaxWidth()
-                                        .heightIn(min = 260.dp, max = 460.dp)
                                 )
                             }
                         }
@@ -445,12 +456,18 @@ private fun selectedKeyFromEngine(ttsEngine: String?, httpTtsList: List<HttpTTS>
     return "http:$current".takeIf { httpTtsList.any { item -> item.id.toString() == current } } ?: "system:"
 }
 
+private fun httpTtsForGroup(group: SpeechVoiceEngineGroup, httpTtsList: List<HttpTTS>): HttpTTS? {
+    val id = group.loginKey.toLongOrNull() ?: return null
+    return httpTtsList.firstOrNull { it.id == id }
+}
+
 @Composable
 private fun EngineGroupRow(
     group: SpeechVoiceEngineGroup,
     selected: Boolean,
     colors: SpeakEngineColors,
     onClick: () -> Unit,
+    onLogin: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onDelete: (() -> Unit)?
 ) {
@@ -460,13 +477,38 @@ private fun EngineGroupRow(
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(group.title, color = colors.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(group.subtitle, color = colors.subText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (onEdit != null || onDelete != null) {
-                Row(modifier = Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    onEdit?.let { TextButton(onClick = it) { Text("编辑", color = colors.accent, fontSize = 12.sp) } }
-                    onDelete?.let { TextButton(onClick = it) { Text("删除", color = colors.danger, fontSize = 12.sp) } }
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(group.title, color = colors.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(group.subtitle, color = colors.subText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (selected) {
+                    Text("当前", color = colors.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            val explicitCount = group.options.count { it.explicitSpeaker }
+            if (explicitCount > 0 || group.emotions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (explicitCount > 0) {
+                        InfoPill("${explicitCount}发言人", colors)
+                    }
+                    if (group.emotions.isNotEmpty()) {
+                        InfoPill("${group.emotions.size}情绪", colors)
+                    }
+                }
+            }
+            if (onLogin != null || onEdit != null || onDelete != null) {
+                Row(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    onLogin?.let { InlineEngineAction("登录", colors.accent, it) }
+                    onEdit?.let { InlineEngineAction("编辑", colors.accent, it) }
+                    onDelete?.let { InlineEngineAction("删除", colors.danger, it) }
                 }
             }
         }
@@ -538,6 +580,7 @@ private fun CompactEngineAction(
 @Composable
 private fun EngineDetailCard(
     group: SpeechVoiceEngineGroup?,
+    httpTts: HttpTTS?,
     colors: SpeakEngineColors,
     actions: SpeakEngineDialogActions,
     modifier: Modifier = Modifier
@@ -548,62 +591,75 @@ private fun EngineDetailCard(
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
-        EngineDetail(group = group, colors = colors, actions = actions)
+        EngineDetail(group = group, httpTts = httpTts, colors = colors, actions = actions)
     }
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun EngineDetail(
     group: SpeechVoiceEngineGroup?,
+    httpTts: HttpTTS?,
     colors: SpeakEngineColors,
     actions: SpeakEngineDialogActions
 ) {
     if (group == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
             Text("暂无朗读引擎", color = colors.subText, fontSize = 14.sp)
         }
         return
     }
-    Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(group.title, color = colors.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 Text(group.subtitle, color = colors.subText, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
-            if (!group.loginUrl.isNullOrBlank()) {
-                TextButton(onClick = { actions.login(group) }) {
-                    Text("登录", color = colors.accent)
+        }
+        if (!group.loginUrl.isNullOrBlank() || httpTts != null) {
+            Row(
+                modifier = Modifier.padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!group.loginUrl.isNullOrBlank()) {
+                    DetailEngineAction("登录", colors.accent) { actions.login(group) }
+                }
+                httpTts?.let {
+                    DetailEngineAction("编辑", colors.accent) { actions.editHttpTts(it.id) }
+                    DetailEngineAction("删除", colors.danger) { actions.deleteHttpTts(it) }
                 }
             }
         }
-        Text("发言人", color = colors.subText, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp))
+        Text(
+            "发言人列表",
+            color = colors.subText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 14.dp)
+        )
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 220.dp).padding(top = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 74.dp, max = 300.dp)
+                .padding(top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(group.options, key = { it.key }) { option ->
-                Surface(
-                    color = colors.page,
-                    shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
-                    border = BorderStroke(1.dp, colors.stroke)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(11.dp)) {
-                        Text(option.speakerName, color = colors.text, fontSize = 14.sp)
-                        Text(
-                            option.groupName.ifBlank { option.toneID.ifBlank { option.engineName } },
-                            color = colors.subText,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
+                SpeakerOptionRow(option = option, colors = colors)
             }
         }
         if (group.emotions.isNotEmpty()) {
-            Text("情绪", color = colors.subText, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+            Text(
+                "情绪",
+                color = colors.subText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 14.dp)
+            )
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 group.emotions.forEach { emotion ->
@@ -617,13 +673,80 @@ private fun EngineDetail(
                 }
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
         Text(
             text = "选择此引擎后，普通朗读会使用该引擎；角色配音可在角色编辑页按发言人单独指定。",
             color = colors.subText,
             fontSize = 12.sp,
-            lineHeight = 18.sp
+            lineHeight = 18.sp,
+            modifier = Modifier.padding(top = 14.dp)
         )
+    }
+}
+
+@Composable
+private fun SpeakerOptionRow(option: SpeechVoiceOption, colors: SpeakEngineColors) {
+    Surface(
+        color = colors.page,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(option.speakerName, color = colors.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    option.groupName.ifBlank { option.engineName },
+                    color = colors.subText,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (option.toneID.isNotBlank()) {
+                Text(
+                    option.toneID,
+                    color = colors.subText,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 120.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoPill(text: String, colors: SpeakEngineColors) {
+    Surface(
+        color = colors.page,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(10.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Text(text, color = colors.subText, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+private fun InlineEngineAction(text: String, color: Color, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.height(32.dp)) {
+        Text(text, color = color, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun DetailEngineAction(text: String, color: Color, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.height(34.dp).clickable(onClick = onClick),
+        color = color.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.28f))
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 

@@ -110,7 +110,7 @@
         <io.legado.app.lib.prefs.Preference
             android:key="aiReadAloudRolePrompt"
             android:summary="未设置"
-            android:title="预注入提示词"
+            android:title="预注入分角色提示词"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

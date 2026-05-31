@@ -391,12 +391,13 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
             findPreference<Preference>(PreferKey.aiReadAloudRolePrompt)?.let {
                 it.isEnabled = enabled
-                it.summary = AppConfig.aiReadAloudRolePrompt
+                val prefix = if (AppConfig.aiReadAloudRoleUsingDefaultPrompt) "内置默认 · " else ""
+                it.summary = prefix + AppConfig.aiReadAloudRolePrompt
                     .lineSequence()
                     .firstOrNull()
                     ?.take(40)
                     ?.ifBlank { null }
-                    ?: "未设置"
+                    .orEmpty()
             }
         }
 
@@ -456,30 +457,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         private fun showMultiRolePromptDialog() {
             val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "可选。补充角色判断规则、旁白/台词标注偏好等。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudRolePrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("预注入提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最多 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudRolePrompt = value
-                    updateAiRolePreferences()
-                }
-                cancelButton()
-            }
-        }
-
-        private fun showAiRolePromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "可选。补充角色判断规则、旁白/台词标注偏好等。"
+                editView.hint = "内置默认会自动生效。这里可补充角色判断规则、旁白/台词标注偏好等。"
                 editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 editView.minLines = 6
                 editView.setText(AppConfig.aiReadAloudRolePrompt)
@@ -494,6 +472,37 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                         return@okButton
                     }
                     AppConfig.aiReadAloudRolePrompt = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudRolePrompt = ""
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showAiRolePromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "内置默认会自动生效。这里可补充角色判断规则、旁白/台词标注偏好等。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudRolePrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("预注入分角色提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最多 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudRolePrompt = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudRolePrompt = ""
                     updateAiRolePreferences()
                 }
                 cancelButton()
