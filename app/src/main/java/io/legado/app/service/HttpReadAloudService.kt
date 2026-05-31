@@ -419,8 +419,12 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun md5SpeakFileName(content: String, textChapter: TextChapter? = this.textChapter): String {
-        return MD5Utils.md5Encode16(textChapter?.title ?: "") + "_" +
+        return MD5Utils.md5Encode16(textChapter.readAloudTitle()) + "_" +
                 MD5Utils.md5Encode16("${ReadAloud.httpTTS?.url}-|-$speechRate-|-$content")
+    }
+
+    private fun TextChapter?.readAloudTitle(): String {
+        return this?.chapter?.title?.takeIf { it.isNotBlank() }.orEmpty()
     }
 
     private fun createSilentSound(fileName: String) {
@@ -452,7 +456,7 @@ class HttpReadAloudService : BaseReadAloudService(),
      * 移除缓存文件
      */
     private fun removeCacheFile() {
-        val titleMd5 = MD5Utils.md5Encode16(textChapter?.title ?: "")
+        val titleMd5 = MD5Utils.md5Encode16(textChapter.readAloudTitle())
         FileUtils.listDirsAndFiles(ttsFolderPath)?.forEach {
             val isSilentSound = it.length() == 2160L
             if ((!it.name.startsWith(titleMd5)
