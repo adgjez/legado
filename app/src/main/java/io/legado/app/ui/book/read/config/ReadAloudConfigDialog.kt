@@ -24,6 +24,8 @@ import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.prefs.SeekBarPreference
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.UiCorner
@@ -59,13 +61,16 @@ enum class ReadAloudConfigGroup(
         "\u6717\u8bfb",
         setOf(
             PreferKey.readAloudByPage,
-            PreferKey.streamReadAloudAudio
+            PreferKey.streamReadAloudAudio,
+            PreferKey.ttsFollowSys,
+            PreferKey.ttsSpeechRate
         )
     ),
     AiRole(
-        "AI \u5206\u89d2\u8272",
+        "\u591a\u89d2\u8272",
         setOf(
             PreferKey.aiReadAloudRoleEnabled,
+            PreferKey.aiReadAloudRoleModelId,
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRoleThreadCount,
             PreferKey.aiReadAloudRoleContextParagraphs,
@@ -208,6 +213,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             findPreference<SwitchPreference>(PreferKey.pauseReadAloudWhilePhoneCalls)?.let {
                 it.isEnabled = AppConfig.ignoreAudioFocus
             }
+            updateSpeechRatePreferences()
             updateAiRolePreferences()
             selectGroup(selectedGroup)
         }
@@ -231,8 +237,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
-                PreferKey.ttsEngine -> showDialogFragment(QuickSpeakEngineDialog())
+                PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                PreferKey.aiReadAloudRoleModelId -> showAiRoleModelDialog()
                 PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(
                     title = "AI分角色线程数",
                     value = AppConfig.aiReadAloudRoleThreadCount,
@@ -251,7 +258,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     AppConfig.aiReadAloudRoleContextParagraphs = it
                     updateAiRolePreferences()
                 }
-                PreferKey.aiReadAloudRolePrompt -> showAiRolePromptDialog()
+                PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -273,7 +280,15 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     }
                 }
 
+                PreferKey.ttsFollowSys,
+                PreferKey.ttsSpeechRate -> {
+                    updateSpeechRatePreferences()
+                    applySpeechRate()
+                    selectGroup(selectedGroup)
+                }
+
                 PreferKey.aiReadAloudRoleEnabled,
+                PreferKey.aiReadAloudRoleModelId,
                 PreferKey.aiReadAloudRoleMode,
                 PreferKey.aiReadAloudRoleThreadCount,
                 PreferKey.aiReadAloudRoleContextParagraphs,
@@ -320,9 +335,35 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
         }
 
+        private fun updateSpeechRatePreferences() {
+            val followSystem = AppConfig.ttsFlowSys
+            findPreference<SeekBarPreference>(PreferKey.ttsSpeechRate)?.let {
+                it.value = AppConfig.ttsSpeechRate.coerceIn(0, 45)
+                it.isEnabled = !followSystem
+                it.summary = formatSpeechRate(AppConfig.ttsSpeechRate)
+            }
+        }
+
+        private fun applySpeechRate() {
+            ReadAloud.upTtsSpeechRate(requireContext())
+            if (!BaseReadAloudService.pause) {
+                ReadAloud.pause(requireContext())
+                ReadAloud.resume(requireContext())
+            }
+        }
+
         private fun updateAiRolePreferences() {
             val enabled = AppConfig.aiReadAloudRoleEnabled
+            val hasModel = AppConfig.aiReadAloudRoleModelConfig != null
             val fullMode = AppConfig.aiReadAloudRoleMode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL
+            findPreference<SwitchPreference>(PreferKey.aiReadAloudRoleEnabled)?.let {
+                it.isEnabled = hasModel
+                it.isChecked = enabled
+                it.summary = if (hasModel) "后台分析当前章节的旁白和角色片段，并缓存结果" else "请先选择多角色模型"
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRoleModelId)?.let {
+                it.summary = modelLabel(AppConfig.aiReadAloudRoleModelConfig)
+            }
             findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
                 it.isEnabled = enabled
                 upPreferenceSummary(it, AppConfig.aiReadAloudRoleMode)
@@ -348,6 +389,40 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
         }
 
+        private fun showAiRoleModelDialog() {
+            val models = AppConfig.aiModelConfigList
+            if (models.isEmpty()) {
+                toastOnUi(R.string.ai_no_models)
+                return
+            }
+            val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+            requireContext().selector(
+                "多角色模型",
+                models.map { model ->
+                    val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                        ?.let { "${model.modelId} - $it" }
+                        ?: model.modelId
+                    if (model.id == AppConfig.aiReadAloudRoleModelId) "$label ✓" else label
+                }
+            ) { _, _, index ->
+                AppConfig.aiReadAloudRoleModelId = models[index].id
+                updateAiRolePreferences()
+                selectGroup(selectedGroup)
+            }
+        }
+
+        private fun modelLabel(model: io.legado.app.ui.main.ai.AiModelConfig?): String {
+            model ?: return "未配置"
+            val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
+                ?.name
+                ?.takeIf { it.isNotBlank() }
+            return providerName?.let { "${model.modelId} - $it" } ?: model.modelId
+        }
+
+        private fun formatSpeechRate(value: Int): String {
+            return ((value.coerceIn(0, 45) + 5) / 10f).toString()
+        }
+
         private fun showAiRoleNumberDialog(
             title: String,
             value: Int,
@@ -355,12 +430,40 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             max: Int,
             onValue: (Int) -> Unit
         ) {
+            val displayTitle = when (max) {
+                8 -> "多角色线程数"
+                20 -> "上下文"
+                else -> title
+            }
             NumberPickerDialog(requireContext())
-                .setTitle(title)
+                .setTitle(displayTitle)
                 .setMinValue(min)
                 .setMaxValue(max)
                 .setValue(value)
                 .show(onValue)
+        }
+
+        private fun showMultiRolePromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "可选。补充角色判断规则、旁白/台词标注偏好等。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudRolePrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("预注入提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最多 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudRolePrompt = value
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
         }
 
         private fun showAiRolePromptDialog() {
