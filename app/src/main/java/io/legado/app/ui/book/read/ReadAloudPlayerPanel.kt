@@ -54,7 +54,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -226,6 +227,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
                 onEngineSelect = ::selectTtsEngine,
+                onProgressSeek = ::seekToParagraphProgress,
                 onOpenCharacters = { callBack?.openBookCharacters() }
             )
         }
@@ -372,6 +374,30 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = buildState(mode)
     }
 
+    private fun seekToParagraphProgress(progress: Float) {
+        val chapter = ReadBook.curTextChapter ?: return
+        val paragraphs = chapter.getParagraphs(false)
+        if (paragraphs.isEmpty()) return
+        val targetIndex = if (paragraphs.size == 1) {
+            0
+        } else {
+            (progress.coerceIn(0f, 1f) * (paragraphs.size - 1)).roundToInt()
+        }.coerceIn(0, paragraphs.lastIndex)
+        val targetPos = paragraphs[targetIndex].chapterPosition.coerceAtLeast(0)
+        val pageIndex = chapter.getPageIndexByCharIndex(targetPos)
+        if (pageIndex < 0) return
+        val startPos = (targetPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
+        ReadBook.durChapterPos = targetPos
+        ReadAloud.play(
+            context = context,
+            play = BaseReadAloudService.isPlay(),
+            pageIndex = pageIndex,
+            startPos = startPos
+        )
+        lastChapterStart = targetPos
+        uiState = buildState(uiState.mode)
+    }
+
     private fun buildState(mode: DisplayMode): PlayerUiState {
         val book = ReadBook.book
         val chapter = ReadBook.curTextChapter
@@ -395,6 +421,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val paragraphIndex = findParagraphIndex(paragraphs, chapterStart)
         val paragraph = paragraphs.getOrNull(paragraphIndex)
         val paragraphText = paragraph?.text?.cleanReadAloudText().orEmpty()
+        val paragraphCount = paragraphs.size
+        val paragraphProgress = when {
+            paragraphCount <= 1 || paragraphIndex < 0 -> 0f
+            else -> (paragraphIndex.toFloat() / (paragraphCount - 1).toFloat()).coerceIn(0f, 1f)
+        }
+        val paragraphProgressText = if (paragraphCount > 0 && paragraphIndex >= 0) {
+            "${paragraphIndex + 1}/$paragraphCount"
+        } else {
+            "0/0"
+        }
         val paragraphSequence = chapterSequence * 100_000 + paragraphIndex.coerceAtLeast(0)
         val paragraphKey = "$chapterKey:${paragraph?.chapterPosition ?: paragraphIndex}"
         val sentence = paragraph?.text
@@ -406,7 +442,6 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             text = sentence.second.ifBlank { paragraphText.ifBlank { "暂无当前段落" } }
         )
         val nearby = paragraphs.nearbyParagraphs(paragraphIndex, chapterKey, chapterSequence)
-        val progress = (chapterStart.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f)
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
             bookName = bookName,
@@ -418,11 +453,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             playing = BaseReadAloudService.isPlay(),
             serviceRunning = BaseReadAloudService.isRun,
             timerMinute = timerMinute,
-            progress = progress,
-            progressText = "${(progress * 100).roundToInt()}%",
+            progress = paragraphProgress,
+            progressText = paragraphProgressText,
             paragraphText = paragraphText,
             paragraphIndex = if (paragraphIndex >= 0) paragraphIndex + 1 else 0,
-            paragraphCount = paragraphs.size,
+            paragraphCount = paragraphCount,
             chapterIndex = chapterSequence.coerceAtLeast(0),
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             chapterPreview = buildChapterPreview(book?.bookUrl, chapterSequence, ReadBook.chapterSize),
@@ -616,6 +651,7 @@ private fun ReadAloudPlayerContent(
     onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
     onEngineSelect: (String) -> Unit,
+    onProgressSeek: (Float) -> Unit,
     onOpenCharacters: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
@@ -699,7 +735,7 @@ private fun ReadAloudPlayerContent(
                     )
                 }
                 Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 14.dp))
-                MinimalProgress(state, colors)
+                MinimalProgress(state, colors, onProgressSeek)
                 Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 12.dp))
                 PlayerControlDock(
                     state = state,
@@ -1469,18 +1505,32 @@ private fun LyricParagraphLine(
 @Composable
 private fun MinimalProgress(
     state: ReadAloudPlayerPanel.PlayerUiState,
-    colors: PlayerColors
+    colors: PlayerColors,
+    onProgressSeek: (Float) -> Unit
 ) {
     val actionShape = LocalContext.current.composeActionShape()
+    var draggingProgress by remember(state.chapterKey) { mutableStateOf<Float?>(null) }
+    val progress = draggingProgress ?: state.progress
     Column(modifier = Modifier.fillMaxWidth()) {
-        LinearProgressIndicator(
-            progress = { state.progress },
+        Slider(
+            value = progress.coerceIn(0f, 1f),
+            onValueChange = { draggingProgress = it },
+            onValueChangeFinished = {
+                draggingProgress?.let(onProgressSeek)
+                draggingProgress = null
+            },
+            enabled = state.paragraphCount > 1,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
                 .clip(actionShape),
-            color = colors.primaryText,
-            trackColor = Color.White.copy(alpha = 0.16f)
+            colors = SliderDefaults.colors(
+                thumbColor = colors.primaryText,
+                activeTrackColor = colors.primaryText,
+                inactiveTrackColor = colors.panel,
+                disabledThumbColor = colors.subtleText,
+                disabledActiveTrackColor = colors.panel,
+                disabledInactiveTrackColor = colors.panel
+            )
         )
         Row(
             modifier = Modifier
