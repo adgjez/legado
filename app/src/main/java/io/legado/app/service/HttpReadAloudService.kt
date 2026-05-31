@@ -3,6 +3,9 @@ package io.legado.app.service
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.net.Uri
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
@@ -47,6 +50,7 @@ import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -57,7 +61,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.Response
+import org.json.JSONObject
 import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
 import java.io.File
@@ -164,11 +171,17 @@ class HttpReadAloudService : BaseReadAloudService(),
                         createSilentSound(fileName)
                     } else if (!hasSpeakFile(fileName)) {
                         runCatching {
-                            val inputStream = getSpeakStream(routeHttpTts, speakText, route)
-                            if (inputStream != null) {
-                                createSpeakFile(fileName, inputStream)
+                            if (route?.engineType == SpeechRoute.ENGINE_SYSTEM) {
+                                if (!synthesizeSystemSpeakFile(fileName, speakText, route)) {
+                                    createSilentSound(fileName)
+                                }
                             } else {
-                                createSilentSound(fileName)
+                                val inputStream = getSpeakStream(routeHttpTts, speakText, route)
+                                if (inputStream != null) {
+                                    createSpeakFile(fileName, inputStream)
+                                } else {
+                                    createSilentSound(fileName)
+                                }
                             }
                         }.onFailure {
                             when (it) {
@@ -244,7 +257,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     val route = speechRouteForIndex(index)
                     val routeHttpTts = httpTtsForRoute(httpTts, route)
                     val fileName = md5SpeakFileName(text, route = route)
-                    val dataSourceFactory = createDataSourceFactory(routeHttpTts, speakText, route)
+                    val dataSourceFactory = createDataSourceFactory(routeHttpTts, speakText, route, fileName)
                     val downloader = createDownloader(dataSourceFactory, fileName)
                     downloaderChannel.send(downloader)
                     val mediaSource = createMediaSource(dataSourceFactory, fileName)
@@ -282,12 +295,22 @@ class HttpReadAloudService : BaseReadAloudService(),
     private fun createDataSourceFactory(
         httpTts: HttpTTS,
         speakText: String,
-        route: SpeechRoute? = null
+        route: SpeechRoute? = null,
+        fileName: String? = null
     ): CacheDataSource.Factory {
         val upstreamFactory = DataSource.Factory {
             InputStreamDataSource {
                 if (speakText.isEmpty()) {
-                    null
+                    resources.openRawResource(R.raw.silent_sound)
+                } else if (route?.engineType == SpeechRoute.ENGINE_SYSTEM && !fileName.isNullOrBlank()) {
+                    val file = getSpeakFileAsMd5(fileName)
+                    if (!hasSpeakFile(fileName)) {
+                        runBlocking(lifecycleScope.coroutineContext[Job]!!) {
+                            synthesizeSystemSpeakFile(fileName, speakText, route)
+                        }
+                    }
+                    file.takeIf { it.exists() && it.length() > 0L }?.inputStream()
+                        ?: resources.openRawResource(R.raw.silent_sound)
                 } else {
                     kotlin.runCatching {
                         runBlocking(lifecycleScope.coroutineContext[Job]!!) {
@@ -443,6 +466,76 @@ class HttpReadAloudService : BaseReadAloudService(),
     private fun httpTtsForRoute(defaultHttpTts: HttpTTS, route: SpeechRoute?): HttpTTS {
         val id = route?.engineValue?.toLongOrNull() ?: return defaultHttpTts
         return appDb.httpTTSDao.get(id) ?: defaultHttpTts
+    }
+
+    private suspend fun synthesizeSystemSpeakFile(
+        fileName: String,
+        speakText: String,
+        route: SpeechRoute
+    ): Boolean {
+        val file = createSpeakFile(fileName)
+        if (file.exists() && file.length() > 0L) return true
+        return runCatching {
+            val engine = resolveSystemTtsEngine(route.engineValue)
+            val initResult = CompletableDeferred<Int>()
+            val tts = withContext(Main) {
+                if (engine.isNullOrBlank()) {
+                    TextToSpeech(this@HttpReadAloudService) { status ->
+                        initResult.complete(status)
+                    }
+                } else {
+                    TextToSpeech(this@HttpReadAloudService, { status ->
+                        initResult.complete(status)
+                    }, engine)
+                }
+            }
+            try {
+                if (withTimeout(20_000L) { initResult.await() } != TextToSpeech.SUCCESS) {
+                    return@runCatching false
+                }
+                if (!AppConfig.ttsFlowSys) {
+                    tts.setSpeechRate((AppConfig.ttsSpeechRate + 5) / 10f)
+                }
+                val utteranceId = "mixed_tts_$fileName"
+                val done = CompletableDeferred<Boolean>()
+                tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+
+                    override fun onDone(utteranceId: String?) {
+                        done.complete(true)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        done.complete(false)
+                    }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        done.complete(false)
+                    }
+                })
+                val params = Bundle()
+                val result = tts.synthesizeToFile(speakText, params, file, utteranceId)
+                if (result == TextToSpeech.ERROR) return@runCatching false
+                withTimeout(120_000L) { done.await() } && file.exists() && file.length() > 0L
+            } finally {
+                withContext(Main) {
+                    tts.stop()
+                    tts.shutdown()
+                }
+            }
+        }.onFailure {
+            file.takeIf { it.exists() && it.length() <= 0L }?.delete()
+            AppLog.put("系统 TTS 合成失败，使用静音占位\n${it.localizedMessage ?: it.javaClass.simpleName}", it)
+        }.getOrDefault(false)
+    }
+
+    private fun resolveSystemTtsEngine(engineValue: String): String? {
+        val value = engineValue.trim()
+        if (value.isBlank()) return null
+        return runCatching {
+            JSONObject(value).optString("value").takeIf { it.isNotBlank() }
+        }.getOrNull() ?: value
     }
 
     private fun md5SpeakFileName(
