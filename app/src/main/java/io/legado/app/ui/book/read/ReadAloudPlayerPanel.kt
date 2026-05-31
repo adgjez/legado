@@ -718,20 +718,20 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     char == ')' || char == '）' || char == ']' || char == '】'
         }
         var start = cursor
-        while (start > 0 && !isBoundary(this[start - 1])) {
+        while (start > 0 && !isCueBoundary(this[start - 1])) {
             start--
         }
         while (start < length && this[start].isWhitespace()) {
             start++
         }
         var end = cursor
-        while (end < length && !isBoundary(this[end])) {
+        while (end < length && !isCueBoundary(this[end])) {
             end++
         }
         if (end < length) {
             end++
         }
-        while (end < length && isClosingQuote(this[end])) {
+        while (end < length && this@ReadAloudPlayerPanel.isClosingQuote(this[end])) {
             end++
         }
         val safeStart = start.coerceIn(0, end.coerceAtLeast(0))
