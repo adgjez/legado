@@ -82,7 +82,8 @@ import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.help.readaloud.speech.SpeechEmotion
 import io.legado.app.help.readaloud.speech.SpeechRoute
-import io.legado.app.help.readaloud.speech.SpeechSpeaker
+import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
+import io.legado.app.help.readaloud.speech.SpeechVoiceOption
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
@@ -157,12 +158,15 @@ data class CharacterEditDraft(
 )
 
 data class CharacterSpeechEngineUi(
-    val id: Long,
-    val name: String,
-    val speakers: List<SpeechSpeaker>,
-    val emotions: List<SpeechEmotion>
+    val group: SpeechVoiceEngineGroup
 ) {
-    val engineValue: String get() = id.toString()
+    val key: String get() = group.key
+    val name: String get() = group.title
+    val subtitle: String get() = group.subtitle
+    val engineType: String get() = group.engineType
+    val engineValue: String get() = group.engineValue
+    val options: List<SpeechVoiceOption> get() = group.options
+    val emotions: List<SpeechEmotion> get() = group.emotions
 }
 
 data class RelationEditDraft(
@@ -688,7 +692,9 @@ private fun CharacterSpeechRouteEditor(
     val style = rememberCharacterStyle()
     val route = remember(speechRouteJson) { SpeechRoute.fromJson(speechRouteJson) }
     val selectedEngine = remember(speechEngines, route.engineValue) {
-        speechEngines.firstOrNull { it.engineValue == route.engineValue } ?: speechEngines.firstOrNull()
+        speechEngines.firstOrNull {
+            it.engineType == route.engineType && it.engineValue == route.engineValue
+        } ?: speechEngines.firstOrNull()
     }
     Surface(color = style.colors.card, shape = RoundedCornerShape(style.radius)) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -722,24 +728,16 @@ private fun CharacterSpeechRouteEditor(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    speechEngines.forEach { engine ->
-                        val selected = engine.engineValue == selectedEngine?.engineValue
+                speechEngines.forEach { engine ->
+                        val selected = engine.key == selectedEngine?.key
                         SpeechChoiceChip(
                             text = engine.name,
                             selected = selected,
                             onClick = {
-                                val speaker = engine.speakers.firstOrNull()
+                                val speaker = engine.options.firstOrNull()
                                 val emotion = engine.emotions.firstOrNull()
                                 onChange(
-                                    SpeechRoute(
-                                        engineType = SpeechRoute.ENGINE_HTTP,
-                                        engineValue = engine.engineValue,
-                                        speakerName = speaker?.speakerName.orEmpty(),
-                                        toneID = speaker?.toneID.orEmpty(),
-                                        emotionName = emotion?.emotionName.orEmpty(),
-                                        emotionTag = emotion?.emotionTag.orEmpty(),
-                                        source = SpeechRoute.SOURCE_MANUAL
-                                    ).toJson()
+                                    speaker?.toRoute(emotion)?.toJson().orEmpty()
                                 )
                             }
                         )
@@ -753,20 +751,20 @@ private fun CharacterSpeechRouteEditor(
                         modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        engine.speakers.take(12).forEach { speaker ->
-                            val selected = route.engineValue == engine.engineValue && route.toneID == speaker.toneID
+                        engine.options.forEach { speaker ->
+                            val selected = route.engineType == engine.engineType &&
+                                    route.engineValue == engine.engineValue &&
+                                    route.toneID == speaker.toneID &&
+                                    route.speakerName == speaker.speakerName
                             SpeechChoiceRow(
                                 title = speaker.speakerName,
                                 subtitle = speaker.groupName.ifBlank { speaker.toneID },
                                 selected = selected,
                                 onClick = {
                                     onChange(
-                                        route.copy(
-                                            engineType = SpeechRoute.ENGINE_HTTP,
-                                            engineValue = engine.engineValue,
-                                            speakerName = speaker.speakerName,
-                                            toneID = speaker.toneID,
-                                            source = SpeechRoute.SOURCE_MANUAL
+                                        speaker.toRoute(
+                                            engine.emotions.firstOrNull { it.emotionTag == route.emotionTag }
+                                                ?: engine.emotions.firstOrNull()
                                         ).toJson()
                                     )
                                 }
@@ -813,12 +811,6 @@ private fun CharacterSpeechRouteEditor(
                     SmallAction("使用默认", { onChange("") })
                 }
             }
-            CharacterTextField(
-                label = "配音路由 JSON",
-                value = speechRouteJson,
-                onChange = onChange,
-                minLines = 3
-            )
         }
     }
 }

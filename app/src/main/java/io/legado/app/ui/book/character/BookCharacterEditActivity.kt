@@ -36,7 +36,7 @@ import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -115,20 +115,9 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                 appDb.bookCharacterDao.getCharacter(characterId)
             } ?: BookCharacter(bookUrl = bookUrl)
             speechEngines = withContext(IO) {
-                appDb.httpTTSDao.all.mapNotNull { httpTts ->
-                    val speakers = SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson)
-                    val emotions = SpeechVoiceCatalogParser.flattenEmotions(httpTts.emotionsJson)
-                    if (speakers.isEmpty() && emotions.isEmpty()) {
-                        null
-                    } else {
-                        CharacterSpeechEngineUi(
-                            id = httpTts.id,
-                            name = httpTts.name.ifBlank { "HTTP TTS" },
-                            speakers = speakers,
-                            emotions = emotions
-                        )
-                    }
-                }
+                SpeechVoiceCatalogRepository
+                    .allGroups(applicationContext, appDb.httpTTSDao.all)
+                    .map { CharacterSpeechEngineUi(it) }
             }
             draft = character.toDraft()
         }
