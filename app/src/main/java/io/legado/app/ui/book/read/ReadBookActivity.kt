@@ -238,12 +238,20 @@ class ReadBookActivity : BaseReadBookActivity(),
     private val tocActivity =
         registerForActivityResult(TocActivityResult()) {
             it?.let {
+                val keepReadAloudPanel = BaseReadAloudService.isRun &&
+                        binding.readAloudPlayerPanel.isVisible
                 val chapterIndex = it[0] as Int
                 val chapterPos = it[1] as Int
                 if (isEpubCoreMode()) {
                     skipToChapter(chapterIndex)
                 } else {
                     viewModel.openChapter(chapterIndex, chapterPos)
+                }
+                if (keepReadAloudPanel) {
+                    binding.readAloudPlayerPanel.post {
+                        binding.readAloudPlayerPanel.open(force = false)
+                        binding.readAloudPlayerPanel.refresh()
+                    }
                 }
             }
         }

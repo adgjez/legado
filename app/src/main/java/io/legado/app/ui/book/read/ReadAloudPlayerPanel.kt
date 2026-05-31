@@ -48,6 +48,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -83,6 +85,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
+import io.legado.app.data.appDb
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
@@ -130,6 +133,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val text: String = ""
     )
 
+    data class ChapterPreviewUi(
+        val index: Int,
+        val title: String,
+        val indexText: String,
+        val current: Boolean,
+        val volume: Boolean,
+        val key: String
+    )
+
     data class PlayerUiState(
         val bookName: String = "",
         val author: String = "",
@@ -147,6 +159,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val paragraphCount: Int = 0,
         val chapterIndex: Int = 0,
         val chapterCount: Int = 0,
+        val chapterPreview: List<ChapterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val chapterKey: String = "",
         val paragraphKey: String = "",
@@ -179,7 +192,6 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onPlayPause = { callBack?.onClickReadAloud() },
                 onModeChange = ::setMode,
                 onOpenChapterList = {
-                    closeFromAction()
                     callBack?.openChapterList()
                 },
                 onPreviousChapter = { ReadBook.moveToPrevChapter(upContent = true, toLast = false) },
@@ -323,7 +335,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapter = ReadBook.curTextChapter
         val bookName = book?.name?.ifBlank { context.getString(R.string.book_name) }.orEmpty()
         val author = book?.author.orEmpty()
-        val chapterTitle = chapter?.title?.ifBlank { "当前章节" }.orEmpty()
+        val chapterTitle = chapter?.chapter?.title?.ifBlank { "当前章节" }.orEmpty()
         val chapterIndexText = chapter?.chapter?.let {
             "${it.index + 1}/${chapter.chaptersSize.coerceAtLeast(it.index + 1)}"
         }.orEmpty()
@@ -371,6 +383,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             paragraphCount = paragraphs.size,
             chapterIndex = chapterSequence.coerceAtLeast(0),
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
+            chapterPreview = buildChapterPreview(book?.bookUrl, chapterSequence, ReadBook.chapterSize),
             nearbyParagraphs = nearby,
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
@@ -409,6 +422,32 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 sequence = chapterSequence * 100_000 + index
             )
         }
+    }
+
+    private fun buildChapterPreview(
+        bookUrl: String?,
+        currentIndex: Int,
+        chapterCount: Int
+    ): List<ChapterPreviewUi> {
+        if (bookUrl.isNullOrBlank() || chapterCount <= 0) return emptyList()
+        val start = (currentIndex - 5).coerceAtLeast(0)
+        val end = (currentIndex + 6).coerceAtMost(chapterCount - 1)
+        return runCatching {
+            appDb.bookChapterDao.getChapterList(bookUrl, start, end).map { chapter ->
+                ChapterPreviewUi(
+                    index = chapter.index,
+                    title = chapter.title.ifBlank { "未命名章节" },
+                    indexText = if (chapter.isVolume) {
+                        "卷"
+                    } else {
+                        "${chapter.index + 1}/$chapterCount"
+                    },
+                    current = chapter.index == currentIndex,
+                    volume = chapter.isVolume,
+                    key = "$bookUrl:${chapter.index}:${chapter.title}"
+                )
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun String.focusSentenceAt(offset: Int): Pair<Int, String> {
@@ -1557,10 +1596,7 @@ private fun ChapterSheet(
     val context = LocalContext.current
     val actionShape = context.composeActionShape()
     val chapterCount = state.chapterCount.coerceAtLeast(1)
-    var pendingChapter by remember(state.chapterIndex, chapterCount) {
-        mutableStateOf(state.chapterIndex.coerceIn(0, chapterCount - 1).toFloat())
-    }
-    val pendingIndex = pendingChapter.roundToInt().coerceIn(0, chapterCount - 1)
+    val chapters = state.chapterPreview
     Column(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1586,23 +1622,29 @@ private fun ChapterSheet(
                 )
             }
             Text(
-                text = "${pendingIndex + 1}/$chapterCount",
+                text = "${state.chapterIndex.coerceIn(0, chapterCount - 1) + 1}/$chapterCount",
                 color = colors.primaryText,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
             )
         }
-        if (chapterCount > 1) {
-            Slider(
-                value = pendingChapter,
-                onValueChange = { pendingChapter = it },
-                onValueChangeFinished = {
-                    if (pendingIndex != state.chapterIndex) {
-                        onChapterSelect(pendingIndex)
-                    }
-                },
-                valueRange = 0f..(chapterCount - 1).toFloat()
-            )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 132.dp, max = 286.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(
+                items = chapters,
+                key = { it.key }
+            ) { chapter ->
+                ChapterPreviewRow(
+                    chapter = chapter,
+                    colors = colors,
+                    shape = actionShape,
+                    onClick = { onChapterSelect(chapter.index) }
+                )
+            }
         }
         Row(
             modifier = Modifier
@@ -1618,18 +1660,64 @@ private fun ChapterSheet(
                 onClick = onPreviousChapter
             )
             SheetActionButton(
+                text = context.getString(R.string.chapter_list),
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenChapterList
+            )
+            SheetActionButton(
                 text = context.getString(R.string.next_chapter),
                 colors = colors,
                 shape = actionShape,
                 modifier = Modifier.weight(1f),
                 onClick = onNextChapter
             )
-            SheetActionButton(
-                text = context.getString(R.string.chapter_list),
-                colors = colors,
-                shape = actionShape,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenChapterList
+        }
+    }
+}
+
+@Composable
+private fun ChapterPreviewRow(
+    chapter: ReadAloudPlayerPanel.ChapterPreviewUi,
+    colors: PlayerColors,
+    shape: Shape,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clickable(enabled = !chapter.volume, onClick = onClick),
+        shape = shape,
+        color = when {
+            chapter.current -> colors.accent.copy(alpha = 0.86f)
+            chapter.volume -> Color.White.copy(alpha = 0.08f)
+            else -> Color.White.copy(alpha = 0.12f)
+        },
+        border = BorderStroke(1.dp, Color.White.copy(alpha = if (chapter.current) 0.28f else 0.10f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = chapter.indexText,
+                color = if (chapter.current) colors.accentText else colors.subtleText,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier.width(56.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = chapter.title,
+                color = if (chapter.current) colors.accentText else colors.primaryText,
+                fontSize = if (chapter.volume) 12.sp else 13.sp,
+                fontWeight = if (chapter.current || chapter.volume) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -1749,6 +1837,7 @@ private fun SpeedSheet(
             value = pendingRate,
             onValueChange = { pendingRate = it },
             onValueChangeFinished = { onSpeechRateChange(pendingRate.roundToInt()) },
+            modifier = Modifier.fillMaxWidth(),
             enabled = !state.followSystemSpeechRate,
             valueRange = 0f..45f,
             steps = 44
