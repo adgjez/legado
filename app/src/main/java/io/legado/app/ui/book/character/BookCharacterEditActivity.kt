@@ -36,6 +36,7 @@ import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
@@ -44,6 +45,7 @@ import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.character.compose.CharacterEditDraft
 import io.legado.app.ui.book.character.compose.CharacterEditScreen
+import io.legado.app.ui.book.character.compose.CharacterSpeechEngineUi
 import io.legado.app.ui.book.character.compose.toDraft
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -74,6 +76,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
     private var characterId: Long = 0L
     private var character = BookCharacter()
     private var draft by mutableStateOf(CharacterEditDraft())
+    private var speechEngines by mutableStateOf<List<CharacterSpeechEngineUi>>(emptyList())
     private val waitDialog by lazy { WaitDialog(this) }
 
     private val selectAvatar = registerForActivityResult(HandleFileContract()) { result ->
@@ -88,6 +91,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             CharacterEditScreen(
                 title = if (characterId > 0L) "编辑角色" else "添加角色",
                 draft = draft,
+                speechEngines = speechEngines,
                 onDraftChange = { draft = it },
                 onBack = ::finish,
                 onSave = ::save,
@@ -110,6 +114,22 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
             character = withContext(IO) {
                 appDb.bookCharacterDao.getCharacter(characterId)
             } ?: BookCharacter(bookUrl = bookUrl)
+            speechEngines = withContext(IO) {
+                appDb.httpTTSDao.all.mapNotNull { httpTts ->
+                    val speakers = SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson)
+                    val emotions = SpeechVoiceCatalogParser.flattenEmotions(httpTts.emotionsJson)
+                    if (speakers.isEmpty() && emotions.isEmpty()) {
+                        null
+                    } else {
+                        CharacterSpeechEngineUi(
+                            id = httpTts.id,
+                            name = httpTts.name.ifBlank { "HTTP TTS" },
+                            speakers = speakers,
+                            emotions = emotions
+                        )
+                    }
+                }
+            }
             draft = character.toDraft()
         }
     }

@@ -80,7 +80,9 @@ import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.help.readaloud.speech.SpeechEmotion
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechSpeaker
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
@@ -153,6 +155,15 @@ data class CharacterEditDraft(
     val biography: String = "",
     val speechRouteJson: String = ""
 )
+
+data class CharacterSpeechEngineUi(
+    val id: Long,
+    val name: String,
+    val speakers: List<SpeechSpeaker>,
+    val emotions: List<SpeechEmotion>
+) {
+    val engineValue: String get() = id.toString()
+}
 
 data class RelationEditDraft(
     val id: Long = 0L,
@@ -598,6 +609,7 @@ private fun CharacterSection(label: String, value: String) {
 fun CharacterEditScreen(
     title: String,
     draft: CharacterEditDraft,
+    speechEngines: List<CharacterSpeechEngineUi>,
     onDraftChange: (CharacterEditDraft) -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
@@ -659,6 +671,7 @@ fun CharacterEditScreen(
             item {
                 CharacterSpeechRouteEditor(
                     speechRouteJson = draft.speechRouteJson,
+                    speechEngines = speechEngines,
                     onChange = { onDraftChange(draft.copy(speechRouteJson = it)) }
                 )
             }
@@ -669,10 +682,14 @@ fun CharacterEditScreen(
 @Composable
 private fun CharacterSpeechRouteEditor(
     speechRouteJson: String,
+    speechEngines: List<CharacterSpeechEngineUi>,
     onChange: (String) -> Unit
 ) {
     val style = rememberCharacterStyle()
     val route = remember(speechRouteJson) { SpeechRoute.fromJson(speechRouteJson) }
+    val selectedEngine = remember(speechEngines, route.engineValue) {
+        speechEngines.firstOrNull { it.engineValue == route.engineValue } ?: speechEngines.firstOrNull()
+    }
     Surface(color = style.colors.card, shape = RoundedCornerShape(style.radius)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("角色配音", color = style.colors.subText, fontSize = 13.sp)
@@ -690,12 +707,179 @@ private fun CharacterSpeechRouteEditor(
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            if (speechEngines.isEmpty()) {
+                Text(
+                    text = "暂无配置发言人目录的 HTTP TTS，引擎规则里填写发言人 JSON 后可在这里选择。",
+                    color = style.colors.subText,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    speechEngines.forEach { engine ->
+                        val selected = engine.engineValue == selectedEngine?.engineValue
+                        SpeechChoiceChip(
+                            text = engine.name,
+                            selected = selected,
+                            onClick = {
+                                val speaker = engine.speakers.firstOrNull()
+                                val emotion = engine.emotions.firstOrNull()
+                                onChange(
+                                    SpeechRoute(
+                                        engineType = SpeechRoute.ENGINE_HTTP,
+                                        engineValue = engine.engineValue,
+                                        speakerName = speaker?.speakerName.orEmpty(),
+                                        toneID = speaker?.toneID.orEmpty(),
+                                        emotionName = emotion?.emotionName.orEmpty(),
+                                        emotionTag = emotion?.emotionTag.orEmpty(),
+                                        source = SpeechRoute.SOURCE_MANUAL
+                                    ).toJson()
+                                )
+                            }
+                        )
+                    }
+                }
+                selectedEngine?.let { engine ->
+                    Text(
+                        text = "发言人",
+                        color = style.colors.subText,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        engine.speakers.take(12).forEach { speaker ->
+                            val selected = route.engineValue == engine.engineValue && route.toneID == speaker.toneID
+                            SpeechChoiceRow(
+                                title = speaker.speakerName,
+                                subtitle = speaker.groupName.ifBlank { speaker.toneID },
+                                selected = selected,
+                                onClick = {
+                                    onChange(
+                                        route.copy(
+                                            engineType = SpeechRoute.ENGINE_HTTP,
+                                            engineValue = engine.engineValue,
+                                            speakerName = speaker.speakerName,
+                                            toneID = speaker.toneID,
+                                            source = SpeechRoute.SOURCE_MANUAL
+                                        ).toJson()
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    if (engine.emotions.isNotEmpty()) {
+                        Text(
+                            text = "默认情绪",
+                            color = style.colors.subText,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
+                        )
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SpeechChoiceChip(
+                                text = "无",
+                                selected = route.emotionTag.isBlank(),
+                                onClick = { onChange(route.copy(emotionName = "", emotionTag = "").toJson()) }
+                            )
+                            engine.emotions.forEach { emotion ->
+                                SpeechChoiceChip(
+                                    text = emotion.emotionName,
+                                    selected = route.emotionTag == emotion.emotionTag,
+                                    onClick = {
+                                        onChange(
+                                            route.copy(
+                                                emotionName = emotion.emotionName,
+                                                emotionTag = emotion.emotionTag
+                                            ).toJson()
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SmallAction("使用默认", { onChange("") })
+                }
+            }
             CharacterTextField(
                 label = "配音路由 JSON",
                 value = speechRouteJson,
                 onChange = onChange,
                 minLines = 3
             )
+        }
+    }
+}
+
+@Composable
+private fun SpeechChoiceChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val style = rememberCharacterStyle()
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        color = if (selected) style.colors.accent.copy(alpha = 0.16f) else style.colors.page,
+        shape = RoundedCornerShape(style.smallRadius),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) style.colors.accent else style.colors.stroke
+        )
+    ) {
+        Text(
+            text = text,
+            color = if (selected) style.colors.accent else style.colors.text,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun SpeechChoiceRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val style = rememberCharacterStyle()
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = if (selected) style.colors.accent.copy(alpha = 0.12f) else style.colors.page,
+        shape = RoundedCornerShape(style.smallRadius),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) style.colors.accent else style.colors.stroke
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = style.colors.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, color = style.colors.subText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (selected) {
+                Text("当前", color = style.colors.accent, fontSize = 12.sp)
+            }
         }
     }
 }
