@@ -6,11 +6,25 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,8 +39,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -34,11 +50,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +113,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     data class ParagraphUi(
         val index: Int,
         val text: String,
-        val current: Boolean
+        val current: Boolean,
+        val key: String = index.toString(),
+        val sequence: Int = index
+    )
+
+    data class FocusTextUi(
+        val key: String = "",
+        val sequence: Int = 0,
+        val text: String = ""
     )
 
     data class PlayerUiState(
@@ -113,6 +140,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val paragraphIndex: Int = 0,
         val paragraphCount: Int = 0,
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
+        val chapterKey: String = "",
+        val paragraphKey: String = "",
+        val paragraphSequence: Int = 0,
+        val focusText: FocusTextUi = FocusTextUi(),
         val speechRate: Int = AppConfig.ttsSpeechRate.coerceIn(0, 45),
         val followSystemSpeechRate: Boolean = AppConfig.ttsFlowSys,
         val mode: DisplayMode = DisplayMode.Immersive,
@@ -138,7 +169,23 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 state = uiState,
                 onClose = ::closeByUser,
                 onPlayPause = { callBack?.onClickReadAloud() },
-                onModeChange = ::setMode
+                onModeChange = ::setMode,
+                onOpenChapterList = {
+                    closeFromAction()
+                    callBack?.openChapterList()
+                },
+                onShowMenuBar = {
+                    closeFromAction()
+                    callBack?.showMenuBar()
+                },
+                onBackstage = {
+                    closeFromAction()
+                    callBack?.finish()
+                },
+                onOpenSettings = ::openReadAloudSetting,
+                onTimerChange = ::setTimer,
+                onSpeechRateChange = ::setSpeechRate,
+                onFollowSystemSpeechRateChange = ::setFollowSystemSpeechRate
             )
         }
     }
@@ -275,6 +322,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterIndexText = chapter?.chapter?.let {
             "${it.index + 1}/${chapter.chaptersSize.coerceAtLeast(it.index + 1)}"
         }.orEmpty()
+        val chapterSequence = chapter?.chapter?.index ?: ReadBook.durChapterIndex
+        val chapterKey = "${book?.bookUrl.orEmpty()}:$chapterSequence"
         val paragraphs = chapter?.getParagraphs(false).orEmpty()
         val totalLength = chapter?.lastPage
             ?.let { it.chapterPosition + it.charSize }
@@ -285,11 +334,19 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             else -> ReadBook.durChapterPos
         }.coerceIn(0, totalLength)
         val paragraphIndex = findParagraphIndex(paragraphs, chapterStart)
-        val paragraphText = paragraphs.getOrNull(paragraphIndex)
-            ?.text
-            ?.cleanReadAloudText()
-            .orEmpty()
-        val nearby = paragraphs.nearbyParagraphs(paragraphIndex)
+        val paragraph = paragraphs.getOrNull(paragraphIndex)
+        val paragraphText = paragraph?.text?.cleanReadAloudText().orEmpty()
+        val paragraphSequence = chapterSequence * 100_000 + paragraphIndex.coerceAtLeast(0)
+        val paragraphKey = "$chapterKey:${paragraph?.chapterPosition ?: paragraphIndex}"
+        val sentence = paragraph?.text
+            ?.focusSentenceAt(chapterStart - paragraph.chapterPosition)
+            ?: (0 to paragraphText)
+        val focusText = FocusTextUi(
+            key = "$paragraphKey:${sentence.first}:${sentence.second.hashCode()}",
+            sequence = paragraphSequence * 1_000 + sentence.first.coerceAtLeast(0),
+            text = sentence.second.ifBlank { paragraphText.ifBlank { "暂无当前段落" } }
+        )
+        val nearby = paragraphs.nearbyParagraphs(paragraphIndex, chapterKey, chapterSequence)
         val progress = (chapterStart.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f)
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
@@ -308,6 +365,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             paragraphIndex = if (paragraphIndex >= 0) paragraphIndex + 1 else 0,
             paragraphCount = paragraphs.size,
             nearbyParagraphs = nearby,
+            chapterKey = chapterKey,
+            paragraphKey = paragraphKey,
+            paragraphSequence = paragraphSequence,
+            focusText = focusText,
             speechRate = AppConfig.ttsSpeechRate.coerceIn(0, 45),
             followSystemSpeechRate = AppConfig.ttsFlowSys,
             mode = mode,
@@ -323,17 +384,57 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             .coerceIn(0, paragraphs.lastIndex)
     }
 
-    private fun List<TextParagraph>.nearbyParagraphs(currentIndex: Int): List<ParagraphUi> {
+    private fun List<TextParagraph>.nearbyParagraphs(
+        currentIndex: Int,
+        chapterKey: String,
+        chapterSequence: Int
+    ): List<ParagraphUi> {
         if (isEmpty() || currentIndex !in indices) return emptyList()
-        val start = (currentIndex - 2).coerceAtLeast(0)
-        val end = (currentIndex + 2).coerceAtMost(lastIndex)
+        val start = (currentIndex - 4).coerceAtLeast(0)
+        val end = (currentIndex + 4).coerceAtMost(lastIndex)
         return (start..end).map { index ->
+            val paragraph = this[index]
             ParagraphUi(
                 index = index + 1,
-                text = this[index].text.cleanReadAloudText(),
-                current = index == currentIndex
+                text = paragraph.text.cleanReadAloudText(),
+                current = index == currentIndex,
+                key = "$chapterKey:${paragraph.chapterPosition}:${paragraph.realNum}",
+                sequence = chapterSequence * 100_000 + index
             )
         }
+    }
+
+    private fun String.focusSentenceAt(offset: Int): Pair<Int, String> {
+        if (isBlank()) return 0 to ""
+        val cursor = offset.coerceIn(0, lastIndex.coerceAtLeast(0))
+        fun isBoundary(char: Char): Boolean {
+            return char == '。' || char == '！' || char == '？' ||
+                    char == '!' || char == '?' || char == ';' || char == '；' ||
+                    char == '\n'
+        }
+        fun isClosingQuote(char: Char): Boolean {
+            return char == '”' || char == '’' || char == '」' || char == '』' ||
+                    char == ')' || char == '）' || char == ']' || char == '】'
+        }
+        var start = cursor
+        while (start > 0 && !isBoundary(this[start - 1])) {
+            start--
+        }
+        while (start < length && this[start].isWhitespace()) {
+            start++
+        }
+        var end = cursor
+        while (end < length && !isBoundary(this[end])) {
+            end++
+        }
+        if (end < length) {
+            end++
+        }
+        while (end < length && isClosingQuote(this[end])) {
+            end++
+        }
+        val safeStart = start.coerceIn(0, end.coerceAtLeast(0))
+        return safeStart to substring(safeStart, end.coerceIn(safeStart, length)).cleanReadAloudText()
     }
 
     private fun String.cleanReadAloudText(): String {
@@ -348,10 +449,19 @@ private fun ReadAloudPlayerContent(
     state: ReadAloudPlayerPanel.PlayerUiState,
     onClose: () -> Unit,
     onPlayPause: () -> Unit,
-    onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit
+    onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit,
+    onOpenChapterList: () -> Unit,
+    onShowMenuBar: () -> Unit,
+    onBackstage: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onTimerChange: (Int) -> Unit,
+    onSpeechRateChange: (Int) -> Unit,
+    onFollowSystemSpeechRateChange: (Boolean) -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
+    var activeSheet by remember(state.mode) { mutableStateOf(PlayerSheet.None) }
+    val animateTextChanges = !AppConfig.isEInkMode && state.foregroundActive
     Box(modifier = Modifier.fillMaxSize()) {
         CoverAtmosphereBackdrop(state, colors)
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -369,6 +479,7 @@ private fun ReadAloudPlayerContent(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .systemBarsPadding()
                     .padding(start = sidePadding, end = sidePadding, top = topPadding, bottom = bottomPadding),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -376,7 +487,10 @@ private fun ReadAloudPlayerContent(
                     mode = state.mode,
                     colors = colors,
                     onClose = onClose,
-                    onModeChange = onModeChange
+                    onModeChange = {
+                        activeSheet = PlayerSheet.None
+                        onModeChange(it)
+                    }
                 )
                 Spacer(modifier = Modifier.height(if (veryShort) 4.dp else 10.dp))
                 if (landscape) {
@@ -384,6 +498,7 @@ private fun ReadAloudPlayerContent(
                         state = state,
                         colors = colors,
                         short = short,
+                        animateTextChanges = animateTextChanges,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -394,6 +509,7 @@ private fun ReadAloudPlayerContent(
                         colors = colors,
                         short = short,
                         veryShort = veryShort,
+                        animateTextChanges = animateTextChanges,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -401,12 +517,52 @@ private fun ReadAloudPlayerContent(
                 }
                 Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 14.dp))
                 MinimalProgress(state, colors)
-                Spacer(modifier = Modifier.height(if (veryShort) 10.dp else 18.dp))
-                MinimalTransport(state, colors, onPlayPause)
+                Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 12.dp))
+                PlayerControlDock(
+                    state = state,
+                    colors = colors,
+                    activeSheet = activeSheet,
+                    onSheetChange = { sheet ->
+                        activeSheet = if (activeSheet == sheet) PlayerSheet.None else sheet
+                    },
+                    onPlayPause = onPlayPause
+                )
+                AnimatedVisibility(
+                    visible = activeSheet != PlayerSheet.None,
+                    enter = fadeIn(tween(120)) + expandVertically(tween(180)),
+                    exit = shrinkVertically(tween(150)) + fadeOut(tween(90))
+                ) {
+                    PlayerSheetPanel(
+                        sheet = activeSheet,
+                        state = state,
+                        colors = colors,
+                        onOpenChapterList = onOpenChapterList,
+                        onShowMenuBar = onShowMenuBar,
+                        onBackstage = onBackstage,
+                        onOpenSettings = onOpenSettings,
+                        onTimerChange = onTimerChange,
+                        onSpeechRateChange = onSpeechRateChange,
+                        onFollowSystemSpeechRateChange = onFollowSystemSpeechRateChange,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                }
             }
         }
     }
 }
+
+private enum class PlayerSheet {
+    None,
+    Timer,
+    Speed,
+    Tools
+}
+
+private data class LyricsTarget(
+    val key: String,
+    val sequence: Int,
+    val paragraphs: List<ReadAloudPlayerPanel.ParagraphUi>
+)
 
 private data class PlayerColors(
     val background: Color,
@@ -660,40 +816,28 @@ private fun PortraitPlayerBody(
     colors: PlayerColors,
     short: Boolean,
     veryShort: Boolean,
+    animateTextChanges: Boolean,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        if (immersive) {
-            CoverArt(
-                state = state,
-                colors = colors,
-                width = when {
-                    veryShort -> 124.dp
-                    short -> 158.dp
-                    else -> 196.dp
-                }
-            )
-            Spacer(modifier = Modifier.height(if (veryShort) 12.dp else 18.dp))
-        }
-        BookIdentity(
+    if (immersive) {
+        ImmersivePlayerStage(
             state = state,
             colors = colors,
-            centered = true,
-            compact = veryShort
+            short = short,
+            veryShort = veryShort,
+            animateTextChanges = animateTextChanges,
+            modifier = modifier
         )
-        Spacer(modifier = Modifier.height(if (veryShort) 10.dp else 18.dp))
-        LyricParagraphBody(
+    } else {
+        LyricsPlayerStage(
             state = state,
             colors = colors,
             compact = short,
-            maxParagraphs = if (veryShort) 3 else 5,
-            currentMaxLines = if (immersive) 3 else 5,
-            modifier = Modifier.fillMaxWidth()
+            maxParagraphs = if (veryShort) 5 else 7,
+            currentMaxLines = if (veryShort) 4 else 6,
+            animateTextChanges = animateTextChanges,
+            modifier = modifier
         )
     }
 }
@@ -703,6 +847,7 @@ private fun LandscapePlayerBody(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     short: Boolean,
+    animateTextChanges: Boolean,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
@@ -730,16 +875,108 @@ private fun LandscapePlayerBody(
                 compact = short
             )
             Spacer(modifier = Modifier.height(if (short) 12.dp else 18.dp))
-            LyricParagraphBody(
-                state = state,
-                colors = colors,
-                compact = short,
-                maxParagraphs = if (short) 3 else 5,
-                currentMaxLines = if (immersive) 4 else 5,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (immersive) {
+                FocusSentenceBody(
+                    state = state,
+                    colors = colors,
+                    compact = short,
+                    animateTextChanges = animateTextChanges,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                LyricParagraphBody(
+                    state = state,
+                    colors = colors,
+                    compact = short,
+                    maxParagraphs = if (short) 5 else 7,
+                    currentMaxLines = if (short) 4 else 6,
+                    textAlign = TextAlign.Start,
+                    animateTextChanges = animateTextChanges,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ImmersivePlayerStage(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    short: Boolean,
+    veryShort: Boolean,
+    animateTextChanges: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CoverArt(
+            state = state,
+            colors = colors,
+            width = when {
+                veryShort -> 128.dp
+                short -> 164.dp
+                else -> 210.dp
+            }
+        )
+        Spacer(modifier = Modifier.height(if (veryShort) 14.dp else 22.dp))
+        BookIdentity(
+            state = state,
+            colors = colors,
+            centered = true,
+            compact = veryShort
+        )
+        Spacer(modifier = Modifier.height(if (veryShort) 12.dp else 22.dp))
+        FocusSentenceBody(
+            state = state,
+            colors = colors,
+            compact = short,
+            animateTextChanges = animateTextChanges,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (veryShort) 84.dp else 118.dp)
+        )
+    }
+}
+
+@Composable
+private fun LyricsPlayerStage(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    compact: Boolean,
+    maxParagraphs: Int,
+    currentMaxLines: Int,
+    animateTextChanges: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        BookIdentity(
+            state = state,
+            colors = colors,
+            centered = true,
+            compact = compact
+        )
+        Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
+        LyricParagraphBody(
+            state = state,
+            colors = colors,
+            compact = compact,
+            maxParagraphs = maxParagraphs,
+            currentMaxLines = currentMaxLines,
+            animateTextChanges = animateTextChanges,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
     }
 }
 
@@ -838,12 +1075,62 @@ private fun BookIdentity(
 }
 
 @Composable
+private fun FocusSentenceBody(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    compact: Boolean,
+    animateTextChanges: Boolean,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Center
+) {
+    val focus = state.focusText.takeIf { it.text.isNotBlank() }
+        ?: ReadAloudPlayerPanel.FocusTextUi(
+            key = state.paragraphKey,
+            sequence = state.paragraphSequence,
+            text = state.paragraphText.ifBlank { "暂无当前段落" }
+        )
+    AnimatedContent(
+        targetState = focus,
+        transitionSpec = {
+            val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
+            if (animateTextChanges) {
+                ((slideInVertically(tween(320)) { height -> height * direction / 3 } +
+                        fadeIn(tween(220)) +
+                        scaleIn(tween(320), initialScale = 0.98f)) togetherWith
+                        (slideOutVertically(tween(240)) { height -> -height * direction / 4 } +
+                                fadeOut(tween(160)) +
+                                scaleOut(tween(240), targetScale = 1.02f)))
+                    .using(SizeTransform(clip = false))
+            } else {
+                (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
+                    .using(SizeTransform(clip = false))
+            }
+        },
+        modifier = modifier,
+        label = "readAloudFocusText"
+    ) { target ->
+        Text(
+            text = target.text,
+            color = colors.primaryText,
+            fontSize = if (compact) 24.sp else 28.sp,
+            lineHeight = if (compact) 33.sp else 38.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = if (compact) 3 else 4,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
 private fun LyricParagraphBody(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     compact: Boolean,
     maxParagraphs: Int,
     currentMaxLines: Int,
+    animateTextChanges: Boolean,
     modifier: Modifier = Modifier,
     textAlign: TextAlign = TextAlign.Center
 ) {
@@ -852,7 +1139,9 @@ private fun LyricParagraphBody(
             ReadAloudPlayerPanel.ParagraphUi(
                 index = state.paragraphIndex.coerceAtLeast(1),
                 text = state.paragraphText.ifBlank { "暂无当前段落" },
-                current = true
+                current = true,
+                key = state.paragraphKey.ifBlank { state.paragraphIndex.toString() },
+                sequence = state.paragraphSequence
             )
         )
     }
@@ -861,40 +1150,94 @@ private fun LyricParagraphBody(
     val start = (currentPosition - half).coerceAtLeast(0)
     val end = (start + maxParagraphs - 1).coerceAtMost(paragraphs.lastIndex)
     val visible = paragraphs.subList(start, end + 1)
-    Column(
-        modifier = modifier.widthIn(max = 620.dp),
-        horizontalAlignment = when (textAlign) {
-            TextAlign.Start -> Alignment.Start
-            TextAlign.End -> Alignment.End
-            else -> Alignment.CenterHorizontally
+    val target = remember(state.paragraphKey, visible) {
+        LyricsTarget(
+            key = state.paragraphKey,
+            sequence = state.paragraphSequence,
+            paragraphs = visible
+        )
+    }
+    AnimatedContent(
+        targetState = target,
+        transitionSpec = {
+            val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
+            if (animateTextChanges) {
+                ((slideInVertically(tween(300)) { height -> height * direction / 5 } +
+                        fadeIn(tween(220))) togetherWith
+                        (slideOutVertically(tween(240)) { height -> -height * direction / 6 } +
+                                fadeOut(tween(160))))
+                    .using(SizeTransform(clip = false))
+            } else {
+                (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
+                    .using(SizeTransform(clip = false))
+            }
         },
-        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)
+        modifier = modifier.fillMaxHeight(),
+        label = "readAloudLyrics"
     ) {
-        visible.forEach { paragraph ->
-            val current = paragraph.current
-            Text(
-                text = paragraph.text,
-                color = if (current) colors.primaryText else colors.subtleText,
-                fontSize = when {
-                    current && compact -> 18.sp
-                    current -> 21.sp
-                    compact -> 13.sp
-                    else -> 14.sp
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 720.dp),
+                horizontalAlignment = when (textAlign) {
+                    TextAlign.Start -> Alignment.Start
+                    TextAlign.End -> Alignment.End
+                    else -> Alignment.CenterHorizontally
                 },
-                lineHeight = when {
-                    current && compact -> 26.sp
-                    current -> 30.sp
-                    compact -> 19.sp
-                    else -> 21.sp
-                },
-                fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = if (current) currentMaxLines else 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = textAlign,
-                modifier = Modifier.fillMaxWidth()
-            )
+                verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp)
+            ) {
+                it.paragraphs.forEach { paragraph ->
+                    LyricParagraphLine(
+                        paragraph = paragraph,
+                        colors = colors,
+                        compact = compact,
+                        currentMaxLines = currentMaxLines,
+                        textAlign = textAlign,
+                        animate = animateTextChanges
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun LyricParagraphLine(
+    paragraph: ReadAloudPlayerPanel.ParagraphUi,
+    colors: PlayerColors,
+    compact: Boolean,
+    currentMaxLines: Int,
+    textAlign: TextAlign,
+    animate: Boolean
+) {
+    val emphasis by animateFloatAsState(
+        targetValue = if (paragraph.current) 1f else 0f,
+        animationSpec = tween(if (animate) 220 else 1),
+        label = "readAloudLyricEmphasis"
+    )
+    val fontSize = when {
+        compact -> 14f + emphasis * 6f
+        else -> 15f + emphasis * 8f
+    }
+    val lineHeight = when {
+        compact -> 21f + emphasis * 7f
+        else -> 23f + emphasis * 9f
+    }
+    Text(
+        text = paragraph.text,
+        color = colors.primaryText.copy(alpha = 0.36f + emphasis * 0.58f),
+        fontSize = fontSize.sp,
+        lineHeight = lineHeight.sp,
+        fontWeight = if (paragraph.current) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = if (paragraph.current) currentMaxLines else 2,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = textAlign,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -931,6 +1274,360 @@ private fun MinimalProgress(
                 color = colors.subtleText,
                 fontSize = 11.sp,
                 maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerControlDock(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    activeSheet: PlayerSheet,
+    onSheetChange: (PlayerSheet) -> Unit,
+    onPlayPause: () -> Unit
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(76.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ControlPill(
+            icon = R.drawable.ic_time_add_24dp,
+            text = if (state.timerMinute > 0) context.getString(R.string.timer_m, state.timerMinute)
+            else context.getString(R.string.set_timer),
+            selected = activeSheet == PlayerSheet.Timer,
+            colors = colors
+        ) {
+            onSheetChange(PlayerSheet.Timer)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Surface(
+            modifier = Modifier
+                .size(68.dp)
+                .clickable(onClick = onPlayPause),
+            shape = CircleShape,
+            color = Color.White.copy(alpha = 0.92f),
+            shadowElevation = 16.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
+                    contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
+                    tint = Color.Black.copy(alpha = 0.88f),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        ControlPill(
+            icon = R.drawable.ic_speed_control,
+            text = formatSpeechRate(state.speechRate),
+            selected = activeSheet == PlayerSheet.Speed,
+            colors = colors
+        ) {
+            onSheetChange(PlayerSheet.Speed)
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        ControlPill(
+            icon = R.drawable.ic_more,
+            text = context.getString(R.string.more),
+            selected = activeSheet == PlayerSheet.Tools,
+            colors = colors,
+            compact = true
+        ) {
+            onSheetChange(PlayerSheet.Tools)
+        }
+    }
+}
+
+@Composable
+private fun ControlPill(
+    icon: Int,
+    text: String,
+    selected: Boolean,
+    colors: PlayerColors,
+    compact: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .height(42.dp)
+            .width(if (compact) 48.dp else 78.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(999.dp),
+        color = if (selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.13f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = if (selected) 0.28f else 0.12f)),
+        shadowElevation = if (selected) 8.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = if (compact) 12.dp else 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = text,
+                tint = if (selected) colors.accentText else colors.primaryText,
+                modifier = Modifier.size(18.dp)
+            )
+            if (!compact) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = text,
+                    color = if (selected) colors.accentText else colors.primaryText,
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSheetPanel(
+    sheet: PlayerSheet,
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onOpenChapterList: () -> Unit,
+    onShowMenuBar: () -> Unit,
+    onBackstage: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onTimerChange: (Int) -> Unit,
+    onSpeechRateChange: (Int) -> Unit,
+    onFollowSystemSpeechRateChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 640.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.Black.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        shadowElevation = 12.dp
+    ) {
+        when (sheet) {
+            PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
+            PlayerSheet.Speed -> SpeedSheet(state, colors, onSpeechRateChange, onFollowSystemSpeechRateChange)
+            PlayerSheet.Tools -> ToolsSheet(colors, onOpenChapterList, onShowMenuBar, onBackstage, onOpenSettings)
+            PlayerSheet.None -> Unit
+        }
+    }
+}
+
+@Composable
+private fun TimerSheet(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onTimerChange: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val times = listOf(0, 5, 10, 15, 30, 60, 90, 180)
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = context.getString(R.string.set_timer),
+            color = colors.primaryText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        times.chunked(4).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                row.forEach { minute ->
+                    val selected = state.timerMinute == minute || (state.timerMinute <= 0 && minute == 0)
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clickable { onTimerChange(minute) },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (selected) colors.accent.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.12f)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = context.getString(R.string.timer_m, minute),
+                                color = if (selected) colors.accentText else colors.primaryText,
+                                fontSize = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedSheet(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onSpeechRateChange: (Int) -> Unit,
+    onFollowSystemSpeechRateChange: (Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var pendingRate by remember(state.speechRate) { mutableStateOf(state.speechRate.toFloat()) }
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = context.getString(R.string.read_aloud_speed),
+                color = colors.primaryText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = formatSpeechRate(pendingRate.roundToInt()),
+                color = colors.primaryText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Slider(
+            value = pendingRate,
+            onValueChange = { pendingRate = it },
+            onValueChangeFinished = { onSpeechRateChange(pendingRate.roundToInt()) },
+            enabled = !state.followSystemSpeechRate,
+            valueRange = 0f..45f,
+            steps = 44
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                enabled = !state.followSystemSpeechRate,
+                onClick = {
+                    val next = (pendingRate.roundToInt() - 1).coerceIn(0, 45)
+                    pendingRate = next.toFloat()
+                    onSpeechRateChange(next)
+                }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_reduce),
+                    contentDescription = "reduce",
+                    tint = colors.primaryText
+                )
+            }
+            IconButton(
+                enabled = !state.followSystemSpeechRate,
+                onClick = {
+                    val next = (pendingRate.roundToInt() + 1).coerceIn(0, 45)
+                    pendingRate = next.toFloat()
+                    onSpeechRateChange(next)
+                }
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_add),
+                    contentDescription = "add",
+                    tint = colors.primaryText
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = context.getString(R.string.flow_sys),
+                color = colors.secondaryText,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(
+                checked = state.followSystemSpeechRate,
+                onCheckedChange = onFollowSystemSpeechRateChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolsSheet(
+    colors: PlayerColors,
+    onOpenChapterList: () -> Unit,
+    onShowMenuBar: () -> Unit,
+    onBackstage: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val context = LocalContext.current
+    val actions = listOf(
+        Triple(R.drawable.ic_toc, context.getString(R.string.chapter_list), onOpenChapterList),
+        Triple(R.drawable.ic_menu, context.getString(R.string.main_menu), onShowMenuBar),
+        Triple(R.drawable.ic_visibility_off, context.getString(R.string.to_backstage), onBackstage),
+        Triple(R.drawable.ic_settings, context.getString(R.string.setting), onOpenSettings)
+    )
+    Column(
+        modifier = Modifier.padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        actions.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                row.forEach { (icon, text, action) ->
+                    ToolAction(
+                        icon = icon,
+                        text = text,
+                        colors = colors,
+                        modifier = Modifier.weight(1f),
+                        onClick = action
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolAction(
+    icon: Int,
+    text: String,
+    colors: PlayerColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = text,
+                tint = colors.primaryText,
+                modifier = Modifier.size(19.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = text,
+                color = colors.primaryText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
