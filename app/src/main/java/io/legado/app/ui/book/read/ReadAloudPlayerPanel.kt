@@ -463,6 +463,7 @@ private fun ReadAloudPlayerContent(
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
     var activeSheet by remember(state.mode) { mutableStateOf(PlayerSheet.None) }
+    var sheetVisible by remember(state.mode) { mutableStateOf(false) }
     val animateTextChanges = !AppConfig.isEInkMode && state.foregroundActive
     val animatePanelChanges = !AppConfig.isEInkMode && state.foregroundActive
     val sheetEnter = if (animatePanelChanges) {
@@ -512,7 +513,7 @@ private fun ReadAloudPlayerContent(
                     onClose = onClose,
                     onOpenSettings = onOpenSettings,
                     onModeChange = {
-                        activeSheet = PlayerSheet.None
+                        sheetVisible = false
                         onModeChange(it)
                     }
                 )
@@ -545,9 +546,14 @@ private fun ReadAloudPlayerContent(
                 PlayerControlDock(
                     state = state,
                     colors = colors,
-                    activeSheet = activeSheet,
+                    activeSheet = if (sheetVisible) activeSheet else PlayerSheet.None,
                     onSheetChange = { sheet ->
-                        activeSheet = if (activeSheet == sheet) PlayerSheet.None else sheet
+                        if (sheetVisible && activeSheet == sheet) {
+                            sheetVisible = false
+                        } else {
+                            activeSheet = sheet
+                            sheetVisible = true
+                        }
                     },
                     onPlayPause = onPlayPause,
                     onPreviousChapter = onPreviousChapter,
@@ -555,7 +561,7 @@ private fun ReadAloudPlayerContent(
                     onOpenChapterList = onOpenChapterList
                 )
                 AnimatedVisibility(
-                    visible = activeSheet != PlayerSheet.None,
+                    visible = sheetVisible && activeSheet != PlayerSheet.None,
                     enter = sheetEnter,
                     exit = sheetExit
                 ) {
