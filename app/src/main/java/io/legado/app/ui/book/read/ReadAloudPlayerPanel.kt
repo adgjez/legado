@@ -108,6 +108,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
@@ -829,9 +830,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             )
         }
         val httpItems = runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()).map { httpTts ->
+            val speakerCount = SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson).size
+            val emotionCount = SpeechVoiceCatalogParser.flattenEmotions(httpTts.emotionsJson).size
+            val catalogSummary = buildList {
+                if (speakerCount > 0) add("${speakerCount} 个发言人")
+                if (emotionCount > 0) add("${emotionCount} 个情绪")
+            }.joinToString(" · ")
             TtsEngineUi(
                 title = httpTts.name.ifBlank { "HTTP TTS" },
-                subtitle = "HTTP TTS",
+                subtitle = catalogSummary.ifBlank { "HTTP TTS" },
                 value = httpTts.id.toString(),
                 selected = current == httpTts.id.toString(),
                 key = "http:${httpTts.id}"
