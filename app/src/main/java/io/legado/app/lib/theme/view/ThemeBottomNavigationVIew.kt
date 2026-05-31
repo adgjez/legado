@@ -36,6 +36,11 @@ class ThemeBottomNavigationVIew(context: Context, attrs: AttributeSet) :
         itemTextColor = colorStateList
         itemRippleColor = null
         isItemHorizontalTranslationEnabled = false
+        setItemActiveIndicatorEnabled(false)
+        setItemActiveIndicatorColor(ColorStateList.valueOf(Color.TRANSPARENT))
+        setItemActiveIndicatorWidth(0)
+        setItemActiveIndicatorHeight(0)
+        setItemActiveIndicatorMarginHorizontal(0)
         itemBackground = Color.TRANSPARENT.toDrawable()
 
         ViewCompat.setOnApplyWindowInsetsListener(this, null)

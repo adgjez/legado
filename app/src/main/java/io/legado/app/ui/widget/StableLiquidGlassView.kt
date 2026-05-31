@@ -1,8 +1,11 @@
 package io.legado.app.ui.widget
 
 import android.content.Context
+import android.graphics.Outline
 import android.util.AttributeSet
+import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import com.qmdeve.liquidglass.Config
 import com.qmdeve.liquidglass.LiquidGlass
@@ -35,11 +38,17 @@ class StableLiquidGlassView @JvmOverloads constructor(
     private var tintColorBlue = 1f
     private var blurRadius = 0.01f
     private var dispersion = 0.5f
+    private val roundedOutlineProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
+        }
+    }
 
     init {
         clipChildren = false
         clipToPadding = false
         setWillNotDraw(false)
+        applyRoundedOutline()
     }
 
     fun bind(source: ViewGroup?) {
@@ -49,6 +58,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     fun setCornerRadius(value: Float) {
         cornerRadius = value.coerceIn(0f, (height.takeIf { it > 0 } ?: Int.MAX_VALUE).toFloat() / 2f)
+        applyRoundedOutline()
         applyConfig()
     }
 
@@ -110,9 +120,21 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        applyRoundedOutline()
         if (w != oldw || h != oldh) {
             applyConfig()
         }
+    }
+
+    private fun applyRoundedOutline() {
+        if (cornerRadius <= 0f) {
+            outlineProvider = null
+            clipToOutline = false
+            return
+        }
+        outlineProvider = roundedOutlineProvider
+        clipToOutline = true
+        invalidateOutline()
     }
 
     private fun ensureGlass() {
