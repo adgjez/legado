@@ -109,8 +109,9 @@ import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
-import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
@@ -121,6 +122,8 @@ import io.legado.app.lib.theme.composeActionShape
 import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
+import io.legado.app.ui.book.read.config.SpeechVoiceRoutePickerDialog
+import io.legado.app.ui.book.read.config.routeMatchesGroup
 import io.legado.app.ui.book.read.page.entities.ReadAloudCue
 import io.legado.app.ui.book.read.page.entities.ReadAloudTextCleaner
 import io.legado.app.ui.book.read.page.entities.TextParagraph
@@ -129,10 +132,7 @@ import io.legado.app.ui.book.read.page.entities.indexForChapterPosition
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import kotlin.math.roundToInt
@@ -215,7 +215,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val subtitle: String,
         val value: String,
         val selected: Boolean,
-        val key: String
+        val key: String,
+        val group: SpeechVoiceEngineGroup
     )
 
     data class CharacterPreviewUi(
@@ -245,6 +246,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterCount: Int = 0,
         val chapterPreview: List<ChapterPreviewUi> = emptyList(),
         val ttsEngines: List<TtsEngineUi> = emptyList(),
+        val speechRoute: SpeechRoute = SpeechRoute(),
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val textCues: List<TextCueUi> = emptyList(),
@@ -620,6 +622,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun selectTtsEngine(value: String) {
+        val route = SpeechRoute.fromTtsEngineValue(value)
         val wasRunning = BaseReadAloudService.isRun
         val wasPlaying = BaseReadAloudService.isPlay()
         val pageIndex = ReadBook.durPageIndex
@@ -641,7 +644,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             pendingTtsEngineSwitch = null
         }
         ReadAloud.upReadAloudClass()
-        value.toLongOrNull()
+        route.engineValue.toLongOrNull()
             ?.let { appDb.httpTTSDao.get(it) }
             ?.takeIf { !it.loginUrl.isNullOrBlank() && it.getLoginInfo().isNullOrBlank() }
             ?.let { httpTts ->
@@ -762,6 +765,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             cue = cue,
             chapterKey = chapterKey
         )
+        val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
             bookName = bookName,
@@ -782,6 +786,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             chapterPreview = buildChapterPreview(book?.bookUrl, chapterSequence, ReadBook.chapterSize),
             ttsEngines = buildTtsEngineOptions(),
+            speechRoute = speechRoute,
             characterPreview = buildCharacterPreview(book?.bookUrl),
             nearbyParagraphs = nearby,
             textCues = textCues,
@@ -901,15 +906,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun buildTtsEngineOptions(): List<TtsEngineUi> {
-        val current = ReadAloud.ttsEngine
-        val selectedKey = when {
-            current.isNullOrBlank() -> "system:"
-            current.isJsonObject() -> {
-                val value = GSON.fromJsonObject<SelectItem<String>>(current).getOrNull()?.value.orEmpty()
-                "system:$value"
-            }
-            else -> "http:$current"
-        }
+        val currentRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         return SpeechVoiceCatalogRepository
             .allGroups(context, runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()))
             .map { group ->
@@ -917,8 +914,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     title = group.title,
                     subtitle = group.subtitle,
                     value = group.engineValue,
-                    selected = group.key == selectedKey,
-                    key = group.key
+                    selected = routeMatchesGroup(currentRoute, group),
+                    key = group.key,
+                    group = group
             )
         }
     }
@@ -3108,6 +3106,7 @@ private fun EngineSheet(
     onEngineSelect: (String) -> Unit
 ) {
     val actionShape = LocalContext.current.composeActionShape()
+    var pickerGroupKey by remember(state.ttsEngines) { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -3129,10 +3128,23 @@ private fun EngineSheet(
                     engine = engine,
                     colors = colors,
                     shape = actionShape,
-                    onClick = { onEngineSelect(engine.value) }
+                    onClick = { pickerGroupKey = engine.key }
                 )
             }
         }
+    }
+    pickerGroupKey?.let { key ->
+        SpeechVoiceRoutePickerDialog(
+            title = "选择发言人",
+            groups = state.ttsEngines.map { it.group },
+            currentRoute = state.speechRoute,
+            initialGroupKey = key,
+            onDismiss = { pickerGroupKey = null },
+            onRouteSelected = { route ->
+                pickerGroupKey = null
+                onEngineSelect(route.toJson())
+            }
+        )
     }
 }
 

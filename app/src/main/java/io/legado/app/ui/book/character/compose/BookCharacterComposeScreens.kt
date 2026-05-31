@@ -89,6 +89,8 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.ui.book.read.config.SpeechVoiceRoutePickerDialog
+import io.legado.app.ui.book.read.config.speechRouteSummary
 import io.legado.app.utils.ColorUtils
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -691,188 +693,48 @@ private fun CharacterSpeechRouteEditor(
 ) {
     val style = rememberCharacterStyle()
     val route = remember(speechRouteJson) { SpeechRoute.fromJson(speechRouteJson) }
-    val selectedEngine = remember(speechEngines, route.engineValue) {
-        speechEngines.firstOrNull {
-            it.engineType == route.engineType && it.engineValue == route.engineValue
-        } ?: speechEngines.firstOrNull()
-    }
+    val groups = remember(speechEngines) { speechEngines.map { it.group } }
+    var pickerVisible by remember { mutableStateOf(false) }
     Surface(color = style.colors.card, shape = RoundedCornerShape(style.radius)) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("角色配音", color = style.colors.subText, fontSize = 13.sp)
-            val summary = when {
-                !route.isConfigured -> "使用书籍或全局默认朗读引擎"
-                route.speakerName.isNotBlank() -> listOf(route.speakerName, route.emotionName)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" · ")
-                route.engineValue.isNotBlank() -> "已指定朗读引擎"
-                else -> "已配置"
-            }
             Text(
-                text = summary,
+                text = speechRouteSummary(route, groups, defaultText = "使用书籍或全局默认朗读引擎"),
                 color = style.colors.text,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            if (speechEngines.isEmpty()) {
+            if (groups.isEmpty()) {
                 Text(
-                    text = "暂无配置发言人目录的 HTTP TTS，引擎规则里填写发言人 JSON 后可在这里选择。",
+                    text = "暂无可用朗读引擎。",
                     color = style.colors.subText,
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(top = 10.dp)
                 )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                speechEngines.forEach { engine ->
-                        val selected = engine.key == selectedEngine?.key
-                        SpeechChoiceChip(
-                            text = engine.name,
-                            selected = selected,
-                            onClick = {
-                                val speaker = engine.options.firstOrNull()
-                                val emotion = engine.emotions.firstOrNull()
-                                onChange(
-                                    speaker?.toRoute(emotion)?.toJson().orEmpty()
-                                )
-                            }
-                        )
-                    }
-                }
-                selectedEngine?.let { engine ->
-                    Text(
-                        text = "发言人",
-                        color = style.colors.subText,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        engine.options.forEach { speaker ->
-                            val selected = route.engineType == engine.engineType &&
-                                    route.engineValue == engine.engineValue &&
-                                    route.toneID == speaker.toneID &&
-                                    route.speakerName == speaker.speakerName
-                            SpeechChoiceRow(
-                                title = speaker.speakerName,
-                                subtitle = speaker.groupName.ifBlank { speaker.toneID },
-                                selected = selected,
-                                onClick = {
-                                    onChange(
-                                        speaker.toRoute(
-                                            engine.emotions.firstOrNull { it.emotionTag == route.emotionTag }
-                                                ?: engine.emotions.firstOrNull()
-                                        ).toJson()
-                                    )
-                                }
-                            )
-                        }
-                    }
-                    if (engine.emotions.isNotEmpty()) {
-                        Text(
-                            text = "默认情绪",
-                            color = style.colors.subText,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
-                        )
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SpeechChoiceChip(
-                                text = "无",
-                                selected = route.emotionTag.isBlank(),
-                                onClick = { onChange(route.copy(emotionName = "", emotionTag = "").toJson()) }
-                            )
-                            engine.emotions.forEach { emotion ->
-                                SpeechChoiceChip(
-                                    text = emotion.emotionName,
-                                    selected = route.emotionTag == emotion.emotionTag,
-                                    onClick = {
-                                        onChange(
-                                            route.copy(
-                                                emotionName = emotion.emotionName,
-                                                emotionTag = emotion.emotionTag
-                                            ).toJson()
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier.padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    SmallAction("使用默认", { onChange("") })
-                }
+            }
+            Row(
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SmallAction("选择发言人", { pickerVisible = true })
+                SmallAction("使用默认", { onChange("") })
             }
         }
     }
-}
-
-@Composable
-private fun SpeechChoiceChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val style = rememberCharacterStyle()
-    Surface(
-        modifier = Modifier.clickable(onClick = onClick),
-        color = if (selected) style.colors.accent.copy(alpha = 0.16f) else style.colors.page,
-        shape = RoundedCornerShape(style.smallRadius),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (selected) style.colors.accent else style.colors.stroke
-        )
-    ) {
-        Text(
-            text = text,
-            color = if (selected) style.colors.accent else style.colors.text,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-        )
-    }
-}
-
-@Composable
-private fun SpeechChoiceRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val style = rememberCharacterStyle()
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = if (selected) style.colors.accent.copy(alpha = 0.12f) else style.colors.page,
-        shape = RoundedCornerShape(style.smallRadius),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (selected) style.colors.accent else style.colors.stroke
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = style.colors.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, color = style.colors.subText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    if (pickerVisible) {
+        SpeechVoiceRoutePickerDialog(
+            title = "角色配音",
+            groups = groups,
+            currentRoute = route,
+            onDismiss = { pickerVisible = false },
+            onRouteSelected = { selectedRoute ->
+                pickerVisible = false
+                onChange(selectedRoute.toJson())
             }
-            if (selected) {
-                Text("当前", color = style.colors.accent, fontSize = 12.sp)
-            }
-        }
+        )
     }
 }
 

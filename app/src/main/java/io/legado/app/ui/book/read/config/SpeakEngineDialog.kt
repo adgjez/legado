@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.readaloud.speech.SpeechVoiceOption
@@ -59,6 +61,7 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.association.ImportHttpTtsDialog
@@ -95,7 +98,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
     private val callBack: CallBack? get() = parentFragment as? CallBack
     private var ttsEngine by mutableStateOf(ReadAloud.ttsEngine)
     private var httpTtsList by mutableStateOf<List<HttpTTS>>(emptyList())
-    private var selectedGroupKey by mutableStateOf<String?>(null)
+    private var pickerGroupKey by mutableStateOf<String?>(null)
 
     private val importDocResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri -> showDialogFragment(ImportHttpTtsDialog(uri.toString())) }
@@ -133,7 +136,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
                 SpeakEngineScreen(
                     ttsEngine = ttsEngine,
                     httpTtsList = httpTtsList,
-                    selectedGroupKey = selectedGroupKey,
+                    pickerGroupKey = pickerGroupKey,
                     actions = this@SpeakEngineDialog
                 )
             }
@@ -148,20 +151,30 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
                 .conflate()
                 .collect {
                     httpTtsList = it
-                    if (selectedGroupKey == null) {
-                        selectedGroupKey = currentGroupKey(it)
-                    }
                 }
         }
     }
 
-    override fun selectGroup(group: SpeechVoiceEngineGroup) {
-        selectedGroupKey = group.key
-        ttsEngine = group.engineValue
-        val httpTts = group.loginKey.toLongOrNull()?.let { appDb.httpTTSDao.get(it) }
-        if (httpTts != null && !httpTts.loginUrl.isNullOrBlank() && httpTts.getLoginInfo().isNullOrBlank()) {
-            login(group)
-        }
+    override fun openSpeakerPicker(group: SpeechVoiceEngineGroup) {
+        pickerGroupKey = group.key
+    }
+
+    override fun closeSpeakerPicker() {
+        pickerGroupKey = null
+    }
+
+    override fun selectRoute(route: SpeechRoute) {
+        ttsEngine = route.toJson()
+        pickerGroupKey = null
+        route.engineValue.toLongOrNull()
+            ?.let { appDb.httpTTSDao.get(it) }
+            ?.takeIf { !it.loginUrl.isNullOrBlank() && it.getLoginInfo().isNullOrBlank() }
+            ?.let { loginKey ->
+                startActivity<SourceLoginActivity> {
+                    putExtra("type", "httpTts")
+                    putExtra("key", loginKey.id.toString())
+                }
+            }
     }
 
     override fun setForBook() {
@@ -255,17 +268,21 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
     }
 
     override fun exportSelected() {
-        val id = ttsEngine?.toLongOrNull()
+        val id = SpeechRoute.fromTtsEngineValue(ttsEngine).engineValue.toLongOrNull()
         val tts = id?.let { appDb.httpTTSDao.get(it) }
         if (tts == null) {
             toastOnUi(R.string.is_system_tts_no_export)
             return
         }
+        exportHttpTts(tts)
+    }
+
+    override fun exportHttpTts(httpTTS: HttpTTS) {
         exportDirResult.launch {
             mode = HandleFileContract.EXPORT
             fileData = HandleFileContract.FileData(
-                "httpTts_${tts.name}.json",
-                GSON.toJson(tts).toByteArray(),
+                "httpTts_${httpTTS.name}.json",
+                GSON.toJson(httpTTS).toByteArray(),
                 "application/json"
             )
         }
@@ -286,24 +303,15 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
         dismissAllowingStateLoss()
     }
 
-    private fun currentGroupKey(httpTtsList: List<HttpTTS>): String {
-        val current = ttsEngine ?: return "system:"
-        if (current.isJsonObject()) {
-            val value = GSON.fromJsonObject<SelectItem<String>>(current).getOrNull()?.value.orEmpty()
-            return "system:$value"
-        }
-        return "http:$current".takeIf {
-            httpTtsList.any { item -> item.id.toString() == current }
-        } ?: "system:"
-    }
-
     interface CallBack {
         fun upSpeakEngineSummary()
     }
 }
 
 private interface SpeakEngineDialogActions {
-    fun selectGroup(group: SpeechVoiceEngineGroup)
+    fun openSpeakerPicker(group: SpeechVoiceEngineGroup)
+    fun closeSpeakerPicker()
+    fun selectRoute(route: SpeechRoute)
     fun setForBook()
     fun setForGlobal()
     fun addHttpTts()
@@ -315,6 +323,7 @@ private interface SpeakEngineDialogActions {
     fun importOnline()
     fun exportAll()
     fun exportSelected()
+    fun exportHttpTts(httpTTS: HttpTTS)
     fun clearCache()
     fun close()
 }
@@ -323,120 +332,106 @@ private interface SpeakEngineDialogActions {
 private fun SpeakEngineScreen(
     ttsEngine: String?,
     httpTtsList: List<HttpTTS>,
-    selectedGroupKey: String?,
+    pickerGroupKey: String?,
     actions: SpeakEngineDialogActions
 ) {
     val context = LocalContext.current
     val colors = rememberSpeakEngineColors()
     val groups = rememberSpeechGroups(httpTtsList)
-    val selectedKey = selectedGroupKey ?: selectedKeyFromEngine(ttsEngine, httpTtsList)
-    val selectedGroup = groups.firstOrNull { it.key == selectedKey } ?: groups.firstOrNull()
-    val selectedHttpTts = selectedGroup?.let { httpTtsForGroup(it, httpTtsList) }
+    val currentRoute = SpeechRoute.fromTtsEngineValue(ttsEngine)
+    var importDialogVisible by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = colors.page,
         shape = RoundedCornerShape(context.composeActionRadius().coerceAtLeast(18.dp))
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val wide = maxWidth >= 640.dp
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "朗读引擎",
-                        color = colors.text,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = actions::clearCache) { Text("清缓存", color = colors.accent) }
-                    TextButton(onClick = actions::close) { Text("关闭", color = colors.subText) }
-                }
-                EngineManagementActions(
-                    compact = !wide,
-                    colors = colors,
-                    actions = actions,
-                    modifier = Modifier.padding(top = 10.dp)
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "朗读引擎",
+                    color = colors.text,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
-                if (wide) {
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(top = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.weight(0.42f).fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(groups, key = { it.key }) { group ->
-                                val httpTts = httpTtsForGroup(group, httpTtsList)
-                                EngineGroupRow(
-                                    group = group,
-                                    selected = group.key == selectedGroup?.key,
-                                    colors = colors,
-                                    onClick = { actions.selectGroup(group) },
-                                    onLogin = if (!group.loginUrl.isNullOrBlank()) {
-                                        { actions.login(group) }
-                                    } else {
-                                        null
-                                    },
-                                    onEdit = httpTts?.let { { actions.editHttpTts(it.id) } },
-                                    onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
-                                )
-                            }
-                        }
-                        EngineDetailCard(
-                            group = selectedGroup,
-                            httpTts = selectedHttpTts,
-                            colors = colors,
-                            actions = actions,
-                            modifier = Modifier.weight(0.58f).fillMaxSize()
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(top = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(groups, key = { it.key }) { group ->
-                            val httpTts = httpTtsForGroup(group, httpTtsList)
-                            EngineGroupRow(
-                                group = group,
-                                selected = group.key == selectedGroup?.key,
-                                colors = colors,
-                                onClick = { actions.selectGroup(group) },
-                                onLogin = if (!group.loginUrl.isNullOrBlank()) {
-                                    { actions.login(group) }
-                                } else {
-                                    null
-                                },
-                                onEdit = httpTts?.let { { actions.editHttpTts(it.id) } },
-                                onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
-                            )
-                            if (group.key == selectedGroup?.key) {
-                                EngineDetailCard(
-                                    group = selectedGroup,
-                                    httpTts = selectedHttpTts,
-                                    colors = colors,
-                                    actions = actions,
-                                    modifier = Modifier
-                                        .padding(top = 8.dp)
-                                        .fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
-                Row(
-                    modifier = Modifier.padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    BottomEngineAction("设为本书", colors, modifier = Modifier.weight(1f), onClick = actions::setForBook)
-                    BottomEngineAction("设为通用", colors, modifier = Modifier.weight(1f), onClick = actions::setForGlobal)
+                TextButton(onClick = actions::close) { Text("关闭", color = colors.subText) }
+            }
+            Text(
+                text = speechRouteSummary(currentRoute, groups, defaultText = "系统默认"),
+                color = colors.subText,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            EngineTopActions(
+                colors = colors,
+                onAdd = actions::addHttpTts,
+                onImport = { importDialogVisible = true },
+                onExportAll = actions::exportAll,
+                onClearCache = actions::clearCache,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(groups, key = { it.key }) { group ->
+                    val httpTts = httpTtsForGroup(group, httpTtsList)
+                    EngineGroupRow(
+                        group = group,
+                        selected = routeMatchesGroup(currentRoute, group),
+                        colors = colors,
+                        onClick = { actions.openSpeakerPicker(group) },
+                        onLogin = if (!group.loginUrl.isNullOrBlank()) {
+                            { actions.login(group) }
+                        } else {
+                            null
+                        },
+                        onEdit = httpTts?.let { { actions.editHttpTts(it.id) } },
+                        onExport = httpTts?.let { { actions.exportHttpTts(it) } },
+                        onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
+                    )
                 }
             }
+            Row(
+                modifier = Modifier.padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BottomEngineAction("设为本书", colors, modifier = Modifier.weight(1f), onClick = actions::setForBook)
+                BottomEngineAction("设为通用", colors, modifier = Modifier.weight(1f), onClick = actions::setForGlobal)
+            }
+        }
+        pickerGroupKey?.let { key ->
+            SpeechVoiceRoutePickerDialog(
+                title = "选择发言人",
+                groups = groups,
+                currentRoute = currentRoute,
+                initialGroupKey = key,
+                onDismiss = actions::closeSpeakerPicker,
+                onRouteSelected = actions::selectRoute,
+                onLogin = actions::login
+            )
+        }
+        if (importDialogVisible) {
+            ImportChoiceDialog(
+                colors = colors,
+                onDismiss = { importDialogVisible = false },
+                onDefault = {
+                    importDialogVisible = false
+                    actions.importDefault()
+                },
+                onLocal = {
+                    importDialogVisible = false
+                    actions.importLocal()
+                },
+                onOnline = {
+                    importDialogVisible = false
+                    actions.importOnline()
+                }
+            )
         }
     }
 }
@@ -462,6 +457,83 @@ private fun httpTtsForGroup(group: SpeechVoiceEngineGroup, httpTtsList: List<Htt
 }
 
 @Composable
+private fun EngineTopActions(
+    colors: SpeakEngineColors,
+    onAdd: () -> Unit,
+    onImport: () -> Unit,
+    onExportAll: () -> Unit,
+    onClearCache: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SmallEngineAction("新增", onAdd, colors)
+        SmallEngineAction("导入", onImport, colors)
+        SmallEngineAction("导出全部", onExportAll, colors)
+        SmallEngineAction("清缓存", onClearCache, colors)
+    }
+}
+
+@Composable
+private fun ImportChoiceDialog(
+    colors: SpeakEngineColors,
+    onDismiss: () -> Unit,
+    onDefault: () -> Unit,
+    onLocal: () -> Unit,
+    onOnline: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
+            color = colors.page,
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(18.dp)),
+            border = BorderStroke(1.dp, colors.stroke)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "导入朗读规则",
+                        color = colors.text,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onDismiss) { Text("关闭", color = colors.subText) }
+                }
+                ImportChoiceRow("默认规则", "导入内置 HTTP TTS 规则", colors, onDefault)
+                ImportChoiceRow("本地导入", "从本机 txt/json 文件导入", colors, onLocal)
+                ImportChoiceRow("在线导入", "通过 URL 导入朗读规则", colors, onOnline)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportChoiceRow(
+    title: String,
+    subtitle: String,
+    colors: SpeakEngineColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.card,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
+            Text(title, color = colors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = colors.subText, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
+        }
+    }
+}
+
+@Composable
 private fun EngineGroupRow(
     group: SpeechVoiceEngineGroup,
     selected: Boolean,
@@ -469,6 +541,7 @@ private fun EngineGroupRow(
     onClick: () -> Unit,
     onLogin: (() -> Unit)?,
     onEdit: (() -> Unit)?,
+    onExport: (() -> Unit)?,
     onDelete: (() -> Unit)?
 ) {
     Surface(
@@ -501,13 +574,14 @@ private fun EngineGroupRow(
                     }
                 }
             }
-            if (onLogin != null || onEdit != null || onDelete != null) {
+            if (onLogin != null || onEdit != null || onExport != null || onDelete != null) {
                 Row(
                     modifier = Modifier.padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     onLogin?.let { InlineEngineAction("登录", colors.accent, it) }
                     onEdit?.let { InlineEngineAction("编辑", colors.accent, it) }
+                    onExport?.let { InlineEngineAction("导出", colors.accent, it) }
                     onDelete?.let { InlineEngineAction("删除", colors.danger, it) }
                 }
             }
