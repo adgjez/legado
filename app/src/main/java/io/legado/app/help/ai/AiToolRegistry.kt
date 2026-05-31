@@ -48,6 +48,10 @@ object AiToolRegistry {
         "list_ai_gallery_images",
         "set_book_character_avatar_from_gallery",
         "generate_book_character_avatar",
+        "list_speech_catalogs",
+        "assign_character_speech_route",
+        "batch_assign_character_speech_routes",
+        "clear_character_speech_routes",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -84,6 +88,10 @@ object AiToolRegistry {
         "list_ai_gallery_images" to "读取 AI 图片库",
         "set_book_character_avatar_from_gallery" to "设置角色图库头像",
         "generate_book_character_avatar" to "生成角色头像",
+        "list_speech_catalogs" to "读取配音目录",
+        "assign_character_speech_route" to "设置角色配音",
+        "batch_assign_character_speech_routes" to "批量分配角色配音",
+        "clear_character_speech_routes" to "清空角色配音",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -120,6 +128,10 @@ object AiToolRegistry {
         "list_ai_gallery_images" to "AI 图片库",
         "set_book_character_avatar_from_gallery" to "角色资料",
         "generate_book_character_avatar" to "角色资料",
+        "list_speech_catalogs" to "角色配音",
+        "assign_character_speech_route" to "角色配音",
+        "batch_assign_character_speech_routes" to "角色配音",
+        "clear_character_speech_routes" to "角色配音",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"

@@ -6,6 +6,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
+import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -22,6 +25,10 @@ object AiBookCharacterTool {
     private const val TOOL_LIST_GALLERY_IMAGES = "list_ai_gallery_images"
     private const val TOOL_SET_CHARACTER_AVATAR_FROM_GALLERY = "set_book_character_avatar_from_gallery"
     private const val TOOL_GENERATE_CHARACTER_AVATAR = "generate_book_character_avatar"
+    private const val TOOL_LIST_SPEECH_CATALOGS = "list_speech_catalogs"
+    private const val TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE = "assign_character_speech_route"
+    private const val TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES = "batch_assign_character_speech_routes"
+    private const val TOOL_CLEAR_CHARACTER_SPEECH_ROUTES = "clear_character_speech_routes"
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -37,7 +44,17 @@ object AiBookCharacterTool {
             },
             AiResolvedTool(TOOL_GENERATE_CHARACTER_AVATAR, generateCharacterAvatarDefinition()) { args ->
                 generateCharacterAvatar(args)
-            }
+            },
+            AiResolvedTool(TOOL_LIST_SPEECH_CATALOGS, listSpeechCatalogsDefinition()) { args -> listSpeechCatalogs(args) },
+            AiResolvedTool(TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE, assignCharacterSpeechRouteDefinition()) { args ->
+                assignCharacterSpeechRoute(args)
+            },
+            AiResolvedTool(TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES, batchAssignCharacterSpeechRoutesDefinition()) { args ->
+                batchAssignCharacterSpeechRoutes(args)
+            },
+            AiResolvedTool(TOOL_CLEAR_CHARACTER_SPEECH_ROUTES, clearCharacterSpeechRoutesDefinition()) { args ->
+                clearCharacterSpeechRoutes(args)
+            },
         )
     }
 
@@ -63,6 +80,9 @@ object AiBookCharacterTool {
         put("personality", stringProp("角色性格描述。"))
         put("biography", stringProp("角色生平。"))
         put("roleLevel", intProp("角色重要度：0 普通角色，1 重要角色，2 主角。"))
+        put("speechRouteJson", stringProp("可选，角色配音路由 JSON。未明确要求配音时不要传。"))
+        put("autoCreated", booleanProp("可选，是否为 AI 自动创建角色。"))
+        put("source", stringProp("可选，角色来源，例如 ai_read_aloud。"))
     }
 
     private fun deleteCharacterDefinition() = function(
@@ -135,6 +155,49 @@ object AiBookCharacterTool {
         put("providerId", stringProp("可选，指定生图提供商 ID；只有用户明确选择某个生图模型时才传入，否则留空。"))
     }
 
+    private fun listSpeechCatalogsDefinition() = function(
+        TOOL_LIST_SPEECH_CATALOGS,
+        "读取所有 HTTP TTS 的发言人和情绪目录，供角色配音或多角色朗读分配使用。"
+    ) {
+        put("includeEmpty", booleanProp("可选，是否返回没有发言人目录的引擎。默认 false。"))
+    }
+
+    private fun assignCharacterSpeechRouteDefinition() = function(
+        TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE,
+        "给指定角色设置配音。可以传具体发言人，也可以 autoAssign=true 让本地根据可用发言人稳定分配。"
+    ) {
+        bookProps(this)
+        put("characterId", intProp("可选，角色 ID。"))
+        put("name", stringProp("可选，角色名称。"))
+        put("autoAssign", booleanProp("可选，自动分配未配置发言人。"))
+        put("engineValue", stringProp("可选，朗读引擎值。HTTP TTS 使用引擎 ID 字符串，系统 TTS 使用系统引擎配置字符串。"))
+        put("speakerName", stringProp("可选，发言人展示名。"))
+        put("toneID", stringProp("可选，发言人的 toneID。"))
+        put("emotionName", stringProp("可选，默认情绪名。"))
+        put("emotionTag", stringProp("可选，默认情绪标志。"))
+        put("overwrite", booleanProp("可选，是否覆盖已有配音。默认 false。"))
+    }
+
+    private fun batchAssignCharacterSpeechRoutesDefinition() = function(
+        TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES,
+        "批量给角色分配配音。默认只处理未配置配音的角色，可选择只处理 AI 自动创建角色。"
+    ) {
+        bookProps(this)
+        put("autoCreatedOnly", booleanProp("可选，只处理 AI 自动创建角色。"))
+        put("unassignedOnly", booleanProp("可选，只处理未配置配音角色，默认 true。"))
+        put("overwrite", booleanProp("可选，是否覆盖已有配音。默认 false。"))
+        put("limit", intProp("可选，最多处理数量，默认 200。"))
+    }
+
+    private fun clearCharacterSpeechRoutesDefinition() = function(
+        TOOL_CLEAR_CHARACTER_SPEECH_ROUTES,
+        "批量清空角色配音配置。默认只清空 AI 自动创建角色，避免误删用户手动配置。"
+    ) {
+        bookProps(this)
+        put("autoCreatedOnly", booleanProp("可选，只清空 AI 自动创建角色，默认 true。"))
+        put("characterIdsJson", stringProp("可选，角色 ID 数组 JSON。传入时只清空这些角色。"))
+    }
+
     private suspend fun listCharacters(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
         val characters = appDb.bookCharacterDao.characters(book.bookUrl)
@@ -165,6 +228,12 @@ object AiBookCharacterTool {
             appearance = optText(args, "appearance") ?: old?.appearance.orEmpty(),
             personality = optText(args, "personality") ?: old?.personality.orEmpty(),
             biography = optText(args, "biography") ?: old?.biography.orEmpty(),
+            speechRouteJson = optText(args, "speechRouteJson") ?: old?.speechRouteJson.orEmpty(),
+            autoCreated = args?.takeIf { it.has("autoCreated") }?.optBoolean("autoCreated")
+                ?: old?.autoCreated
+                ?: false,
+            source = optText(args, "source") ?: old?.source.orEmpty(),
+            lastDetectedAt = old?.lastDetectedAt ?: 0L,
             roleLevel = (args?.takeIf { it.has("roleLevel") }?.optInt("roleLevel") ?: old?.roleLevel ?: BookCharacter.ROLE_NORMAL)
                 .coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN),
             sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxCharacterOrder(book.bookUrl) ?: -1) + 1),
@@ -180,6 +249,150 @@ object AiBookCharacterTool {
         JSONObject().apply {
             put("ok", true)
             put("character", characterJson(character.copy(id = savedId)))
+        }.toString()
+    }
+
+    private suspend fun listSpeechCatalogs(args: JSONObject?): String = withContext(IO) {
+        val includeEmpty = args?.optBoolean("includeEmpty", false) ?: false
+        val engines = appDb.httpTTSDao.all.mapNotNull { httpTts ->
+            val speakerGroups = SpeechVoiceCatalogParser.parseSpeakerGroups(httpTts.speakersJson)
+            val emotionGroups = SpeechVoiceCatalogParser.parseEmotionGroups(httpTts.emotionsJson)
+            if (!includeEmpty && speakerGroups.isEmpty() && emotionGroups.isEmpty()) {
+                null
+            } else {
+                JSONObject().apply {
+                    put("id", httpTts.id)
+                    put("name", httpTts.name)
+                    put("engineValue", httpTts.id.toString())
+                    put("speakerGroups", JSONArray().apply {
+                        speakerGroups.forEach { group ->
+                            put(JSONObject().apply {
+                                put("groupId", group.groupId)
+                                put("groupName", group.groupName)
+                                put("items", JSONArray().apply {
+                                    group.items.forEach { speaker ->
+                                        put(JSONObject().apply {
+                                            put("speakerName", speaker.speakerName)
+                                            put("toneID", speaker.toneID)
+                                            put("tags", JSONArray(speaker.tags))
+                                        })
+                                    }
+                                })
+                            })
+                        }
+                    })
+                    put("emotionGroups", JSONArray().apply {
+                        emotionGroups.forEach { group ->
+                            put(JSONObject().apply {
+                                put("groupId", group.groupId)
+                                put("groupName", group.groupName)
+                                put("items", JSONArray().apply {
+                                    group.items.forEach { emotion ->
+                                        put(JSONObject().apply {
+                                            put("emotionName", emotion.emotionName)
+                                            put("emotionTag", emotion.emotionTag)
+                                        })
+                                    }
+                                })
+                            })
+                        }
+                    })
+                }
+            }
+        }
+        JSONObject().apply {
+            put("ok", true)
+            put("engines", JSONArray(engines))
+        }.toString()
+    }
+
+    private suspend fun assignCharacterSpeechRoute(args: JSONObject?): String = withContext(IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val character = resolveCharacter(book.bookUrl, args)
+            ?: return@withContext errorJson("未找到角色")
+        val overwrite = args?.optBoolean("overwrite", false) ?: false
+        if (!overwrite && character.speechRouteJson.isNotBlank()) {
+            return@withContext JSONObject().apply {
+                put("ok", true)
+                put("skipped", true)
+                put("reason", "角色已有配音配置")
+                put("character", characterJson(character))
+            }.toString()
+        }
+        val route = if (args?.optBoolean("autoAssign", false) == true) {
+            SpeechVoiceAssigner.assignRoute(character, appDb.httpTTSDao.all)
+        } else {
+            routeFromArgs(args, SpeechRoute.SOURCE_MANUAL)
+        }
+        if (!route.isConfigured) return@withContext errorJson("没有可用发言人或配音参数为空")
+        val updated = character.copy(
+            speechRouteJson = route.toJson(),
+            updatedAt = System.currentTimeMillis()
+        )
+        appDb.bookCharacterDao.updateCharacter(updated)
+        JSONObject().apply {
+            put("ok", true)
+            put("character", characterJson(updated))
+        }.toString()
+    }
+
+    private suspend fun batchAssignCharacterSpeechRoutes(args: JSONObject?): String = withContext(IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val autoCreatedOnly = args?.optBoolean("autoCreatedOnly", false) ?: false
+        val unassignedOnly = args?.optBoolean("unassignedOnly", true) ?: true
+        val overwrite = args?.optBoolean("overwrite", false) ?: false
+        val limit = (args?.optInt("limit", 200) ?: 200).coerceIn(1, 500)
+        val httpTtsList = appDb.httpTTSDao.all
+        val updatedCharacters = mutableListOf<BookCharacter>()
+        appDb.bookCharacterDao.characters(book.bookUrl)
+            .asSequence()
+            .filter { !autoCreatedOnly || it.autoCreated }
+            .filter { overwrite || !unassignedOnly || it.speechRouteJson.isBlank() }
+            .take(limit)
+            .forEach { character ->
+                val route = SpeechVoiceAssigner.assignRoute(character, httpTtsList)
+                if (route.isConfigured) {
+                    val updated = character.copy(
+                        speechRouteJson = route.toJson(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    appDb.bookCharacterDao.updateCharacter(updated)
+                    updatedCharacters += updated
+                }
+            }
+        JSONObject().apply {
+            put("ok", true)
+            put("updated", updatedCharacters.size)
+            put("characters", JSONArray().apply {
+                updatedCharacters.forEach { put(characterJson(it)) }
+            })
+        }.toString()
+    }
+
+    private suspend fun clearCharacterSpeechRoutes(args: JSONObject?): String = withContext(IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val autoCreatedOnly = args?.optBoolean("autoCreatedOnly", true) ?: true
+        val idFilter = parseLongSet(args?.optString("characterIdsJson"))
+        val updatedCharacters = mutableListOf<BookCharacter>()
+        appDb.bookCharacterDao.characters(book.bookUrl)
+            .asSequence()
+            .filter { idFilter.isEmpty() || it.id in idFilter }
+            .filter { !autoCreatedOnly || it.autoCreated }
+            .filter { it.speechRouteJson.isNotBlank() }
+            .forEach { character ->
+                val updated = character.copy(
+                    speechRouteJson = "",
+                    updatedAt = System.currentTimeMillis()
+                )
+                appDb.bookCharacterDao.updateCharacter(updated)
+                updatedCharacters += updated
+            }
+        JSONObject().apply {
+            put("ok", true)
+            put("updated", updatedCharacters.size)
+            put("characters", JSONArray().apply {
+                updatedCharacters.forEach { put(characterJson(it)) }
+            })
         }.toString()
     }
 
@@ -421,7 +634,26 @@ object AiBookCharacterTool {
             put("biography", character.biography)
             put("roleLevel", character.roleLevel)
             put("roleLabel", character.roleLabel())
+            put("speechRouteJson", character.speechRouteJson)
+            put("speechRoute", speechRouteJson(character.speechRouteJson))
+            put("autoCreated", character.autoCreated)
+            put("source", character.source)
+            put("lastDetectedAt", character.lastDetectedAt)
             put("updatedAt", character.updatedAt)
+        }
+    }
+
+    private fun speechRouteJson(json: String): JSONObject {
+        val route = SpeechRoute.fromJson(json)
+        return JSONObject().apply {
+            put("configured", route.isConfigured)
+            put("engineType", route.engineType)
+            put("engineValue", route.engineValue)
+            put("speakerName", route.speakerName)
+            put("toneID", route.toneID)
+            put("emotionName", route.emotionName)
+            put("emotionTag", route.emotionTag)
+            put("source", route.source)
         }
     }
 
@@ -519,6 +751,38 @@ object AiBookCharacterTool {
 
     private fun optText(args: JSONObject?, key: String): String? {
         return args?.takeIf { it.has(key) }?.optString(key)?.trim()
+    }
+
+    private fun routeFromArgs(args: JSONObject?, source: String): SpeechRoute {
+        val engineValue = args?.optString("engineValue").orEmpty()
+        return SpeechRoute(
+            engineType = if (engineValue.toLongOrNull() != null) {
+                SpeechRoute.ENGINE_HTTP
+            } else if (engineValue.isNotBlank()) {
+                SpeechRoute.ENGINE_SYSTEM
+            } else {
+                SpeechRoute.ENGINE_DEFAULT
+            },
+            engineValue = engineValue,
+            speakerName = args?.optString("speakerName").orEmpty(),
+            toneID = args?.optString("toneID").orEmpty()
+                .ifBlank { args?.optString("toneId").orEmpty() },
+            emotionName = args?.optString("emotionName").orEmpty(),
+            emotionTag = args?.optString("emotionTag").orEmpty(),
+            source = source
+        )
+    }
+
+    private fun parseLongSet(json: String?): Set<Long> {
+        if (json.isNullOrBlank()) return emptySet()
+        return runCatching {
+            val array = JSONArray(json)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    array.optLong(index, 0L).takeIf { it > 0L }?.let(::add)
+                }
+            }
+        }.getOrDefault(emptySet())
     }
 
     private fun errorJson(message: String): String {
