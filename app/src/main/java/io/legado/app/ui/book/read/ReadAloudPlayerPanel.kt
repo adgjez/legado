@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.view.ViewCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -83,6 +84,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
@@ -655,21 +657,20 @@ private fun CoverBackdropImage(
     AndroidView(
         modifier = modifier,
         factory = {
-            CoverImageView(it).apply {
+            AppCompatImageView(it).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
+                adjustViewBounds = false
                 this.alpha = alpha
             }
         },
         update = {
             it.alpha = alpha
-            it.load(
+            BookCover.loadBlur(
+                context = it.context,
                 path = state.coverUrl,
-                name = state.bookName,
-                author = state.author,
                 loadOnlyWifi = false,
-                sourceOrigin = state.sourceOrigin,
-                preferThumb = true
-            )
+                sourceOrigin = state.sourceOrigin
+            ).into(it)
         }
     )
 }
