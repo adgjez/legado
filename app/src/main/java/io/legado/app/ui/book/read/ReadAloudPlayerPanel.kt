@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -86,6 +88,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1153,6 +1156,7 @@ private fun ReadAloudCapsule(
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
+        val layoutDirection = LocalLayoutDirection.current
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val capsuleHeight = 54.dp
@@ -1169,29 +1173,49 @@ private fun ReadAloudCapsule(
         val capsuleWidthPx = with(density) { capsuleWidth.toPx() }
         val capsuleHeightPx = with(density) { capsuleHeight.toPx() }
         val sidePx = with(density) { 18.dp.toPx() }
-        val bottomPx = with(density) {
-            (if (state.readMenuVisible) 210.dp else 28.dp).toPx()
-        }
-        val maxX = (widthPx - capsuleWidthPx - sidePx).coerceAtLeast(sidePx)
-        val targetY = (heightPx - capsuleHeightPx - bottomPx).coerceAtLeast(sidePx)
-        var offsetX by remember { mutableStateOf(sidePx) }
-        var offsetY by remember { mutableStateOf(targetY) }
+        val bottomGapPx = with(density) { 28.dp.toPx() }
+        val avoidGapPx = with(density) { 12.dp.toPx() }
+        val safeInsets = WindowInsets.safeDrawing
+        val safeLeft = safeInsets.getLeft(density, layoutDirection).toFloat()
+        val safeRight = safeInsets.getRight(density, layoutDirection).toFloat()
+        val safeTop = safeInsets.getTop(density).toFloat()
+        val safeBottom = safeInsets.getBottom(density).toFloat()
+        val minX = safeLeft + sidePx
+        val maxX = (widthPx - safeRight - capsuleWidthPx - sidePx).coerceAtLeast(minX)
+        val minY = safeTop + sidePx
+        val maxY = (heightPx - safeBottom - capsuleHeightPx - bottomGapPx).coerceAtLeast(minY)
+        var baseOffsetX by remember { mutableStateOf(minX) }
+        var baseOffsetY by remember { mutableStateOf(maxY) }
         var dragging by remember { mutableStateOf(false) }
+        val clampedBaseX = baseOffsetX.coerceIn(minX, maxX)
+        val clampedBaseY = baseOffsetY.coerceIn(minY, maxY)
+        val menuAvoidBounds = state.readMenuAvoidBounds
+        val displayOffsetY = menuAvoidBounds?.let { bounds ->
+            val capsuleLeft = clampedBaseX
+            val capsuleRight = clampedBaseX + capsuleWidthPx
+            val capsuleTop = clampedBaseY
+            val capsuleBottom = clampedBaseY + capsuleHeightPx
+            val horizontallyOverlapped = capsuleRight > bounds.left && capsuleLeft < bounds.right
+            val verticallyOverlapped = capsuleBottom + avoidGapPx > bounds.top && capsuleTop < bounds.bottom
+            if (horizontallyOverlapped && verticallyOverlapped) {
+                (bounds.top - capsuleHeightPx - avoidGapPx).coerceIn(minY, maxY)
+            } else {
+                clampedBaseY
+            }
+        } ?: clampedBaseY
         val animatedX by animateFloatAsState(
-            targetValue = offsetX,
+            targetValue = clampedBaseX,
             animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
             label = "readAloudCapsuleX"
         )
         val animatedY by animateFloatAsState(
-            targetValue = offsetY,
+            targetValue = displayOffsetY,
             animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
             label = "readAloudCapsuleY"
         )
-        LaunchedEffect(widthPx, heightPx, state.readMenuVisible) {
-            offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) sidePx else maxX
-            if (state.readMenuVisible || offsetY > targetY) {
-                offsetY = targetY
-            }
+        LaunchedEffect(widthPx, heightPx, minX, maxX, minY, maxY) {
+            baseOffsetX = if (baseOffsetX + capsuleWidthPx / 2f < widthPx / 2f) minX else maxX
+            baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
         }
         Surface(
             modifier = Modifier
@@ -1202,26 +1226,26 @@ private fun ReadAloudCapsule(
                     val bounds = it.boundsInRoot()
                     onBounds(RectF(bounds.left, bounds.top, bounds.right, bounds.bottom))
                 }
-                .pointerInput(widthPx, heightPx, state.readMenuVisible) {
+                .pointerInput(widthPx, heightPx, minX, maxX, minY, maxY) {
                     detectDragGestures(
                         onDragStart = { dragging = true },
                         onDragEnd = {
                             dragging = false
-                            offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) {
-                                sidePx
+                            baseOffsetX = if (baseOffsetX + capsuleWidthPx / 2f < widthPx / 2f) {
+                                minX
                             } else {
                                 maxX
                             }
-                            offsetY = offsetY.coerceIn(sidePx, targetY)
+                            baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
                         },
                         onDragCancel = {
                             dragging = false
-                            offsetY = offsetY.coerceIn(sidePx, targetY)
+                            baseOffsetY = baseOffsetY.coerceIn(minY, maxY)
                         }
                     ) { change, dragAmount ->
                         change.consume()
-                        offsetX = (offsetX + dragAmount.x).coerceIn(sidePx, maxX)
-                        offsetY = (offsetY + dragAmount.y).coerceIn(sidePx, targetY)
+                        baseOffsetX = (baseOffsetX + dragAmount.x).coerceIn(minX, maxX)
+                        baseOffsetY = (baseOffsetY + dragAmount.y).coerceIn(minY, maxY)
                     }
                 },
             shape = CircleShape,
