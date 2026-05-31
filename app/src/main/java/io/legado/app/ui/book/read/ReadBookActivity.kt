@@ -240,7 +240,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         registerForActivityResult(TocActivityResult()) {
             it?.let {
                 val keepReadAloudPanel = BaseReadAloudService.isRun &&
-                        binding.readAloudPlayerPanel.isVisible
+                        binding.readAloudPlayerPanel.isExpanded()
                 val chapterIndex = it[0] as Int
                 val chapterPos = it[1] as Int
                 if (isEpubCoreMode()) {
@@ -492,7 +492,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.register(this)
         Backup.autoBack(this)
         onBackPressedDispatcher.addCallback(this) {
-            if (binding.readAloudPlayerPanel.isVisible) {
+            if (binding.readAloudPlayerPanel.isExpanded()) {
                 binding.readAloudPlayerPanel.close()
                 return@addCallback
             }
@@ -1525,7 +1525,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 音量键翻页
      */
     private fun volumeKeyPage(direction: PageDirection, longPress: Boolean): Boolean {
-        if (binding.readAloudPlayerPanel.isVisible) {
+        if (binding.readAloudPlayerPanel.isExpanded()) {
             return false
         }
         if (!AppConfig.volumeKeyPage) {
@@ -2831,7 +2831,6 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun showActionMenu() {
         when {
-            BaseReadAloudService.isRun -> showReadAloudDialog()
             isAutoPage -> showDialogFragment<AutoReadDialog>()
             isShowingSearchResult -> binding.searchMenu.runMenuIn()
             else -> binding.readMenu.runMenuIn()
@@ -3634,7 +3633,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 更新状态栏,导航栏
      */
     override fun upSystemUiVisibility() {
-        if (binding.readAloudPlayerPanel.isVisible) {
+        if (binding.readAloudPlayerPanel.isExpanded()) {
             applyReadAloudPlayerSystemBars()
         } else {
             WindowCompat.setDecorFitsSystemWindows(window, true)
@@ -4247,11 +4246,13 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun onMenuShow() {
+        binding.readAloudPlayerPanel.setReadMenuVisible(true)
         if (epubCoreActive) return
         binding.readView.autoPager.pause()
     }
 
     override fun onMenuHide() {
+        binding.readAloudPlayerPanel.setReadMenuVisible(false)
         if (epubCoreActive) return
         binding.readView.autoPager.resume()
     }

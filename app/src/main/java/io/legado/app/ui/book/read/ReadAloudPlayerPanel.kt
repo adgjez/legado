@@ -1,8 +1,10 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
+import android.graphics.RectF
 import android.speech.tts.TextToSpeech
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -32,10 +34,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -44,6 +48,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -51,6 +56,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -59,6 +66,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +79,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -79,11 +91,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.config.AppConfig
@@ -96,16 +110,22 @@ import io.legado.app.lib.theme.composeActionShape
 import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
+import io.legado.app.ui.book.read.page.entities.ReadAloudCue
 import io.legado.app.ui.book.read.page.entities.ReadAloudTextCleaner
 import io.legado.app.ui.book.read.page.entities.TextParagraph
+import io.legado.app.ui.book.read.page.entities.buildReadAloudCues
+import io.legado.app.ui.book.read.page.entities.indexForChapterPosition
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class ReadAloudPlayerPanel @JvmOverloads constructor(
@@ -133,6 +153,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val current: Boolean,
         val key: String = index.toString(),
         val sequence: Int = index
+    )
+
+    data class TextCueUi(
+        val index: Int,
+        val text: String,
+        val current: Boolean,
+        val key: String,
+        val sequence: Int,
+        val chapterPosition: Int
     )
 
     data class FocusTextUi(
@@ -187,6 +216,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val ttsEngines: List<TtsEngineUi> = emptyList(),
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
+        val textCues: List<TextCueUi> = emptyList(),
+        val currentCueIndex: Int = 0,
         val chapterKey: String = "",
         val paragraphKey: String = "",
         val paragraphSequence: Int = 0,
@@ -194,7 +225,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val speechRate: Int = AppConfig.ttsSpeechRate.coerceIn(0, 45),
         val followSystemSpeechRate: Boolean = AppConfig.ttsFlowSys,
         val mode: DisplayMode = DisplayMode.Immersive,
-        val foregroundActive: Boolean = true
+        val foregroundActive: Boolean = true,
+        val expanded: Boolean = true,
+        val readMenuVisible: Boolean = false
     )
 
     private val composeView = ComposeView(context)
@@ -203,6 +236,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var foregroundActive = true
     private var lastChapterStart = 0
     private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
+    private var expanded = true
+    private var readMenuVisible = false
+    private val capsuleBounds = RectF()
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -216,6 +252,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ReadAloudPlayerContent(
                 state = uiState,
                 onClose = ::closeByUser,
+                onExpand = { open(force = true) },
+                onStop = ::stopReadAloud,
                 onPlayPause = { callBack?.onClickReadAloud() },
                 onModeChange = ::setMode,
                 onOpenChapterList = {
@@ -228,6 +266,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onTimerChange = ::setTimer,
                 onEngineSelect = ::selectTtsEngine,
                 onProgressSeek = ::seekToParagraphProgress,
+                onCueSelect = ::seekToChapterPosition,
+                onCapsuleBounds = ::updateCapsuleBounds,
                 onOpenCharacters = { callBack?.openBookCharacters() }
             )
         }
@@ -242,7 +282,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (force) {
             dismissedForCurrentRun = false
         }
-        showPanel()
+        showPanel(expand = true)
     }
 
     fun onAloudState(status: Int) {
@@ -276,6 +316,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = uiState.copy(foregroundActive = active && visibility == VISIBLE)
     }
 
+    fun setReadMenuVisible(visible: Boolean) {
+        readMenuVisible = visible
+        uiState = uiState.copy(readMenuVisible = visible)
+    }
+
+    fun isExpanded(): Boolean = visibility == VISIBLE && expanded
+
     fun close() {
         closeByUser()
     }
@@ -284,15 +331,21 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = buildState(uiState.mode)
     }
 
-    private fun showPanel() {
+    private fun showPanel(expand: Boolean = true) {
         post {
             val wasVisible = visibility == VISIBLE
+            val wasExpanded = expanded
+            expanded = expand
             visibility = VISIBLE
             bringToFront()
             ViewCompat.requestApplyInsets(this)
             ViewCompat.requestApplyInsets(composeView)
-            uiState = buildState(uiState.mode).copy(foregroundActive = foregroundActive)
-            if (!wasVisible) {
+            uiState = buildState(uiState.mode).copy(
+                foregroundActive = foregroundActive,
+                expanded = expanded,
+                readMenuVisible = readMenuVisible
+            )
+            if (!wasVisible || (!wasExpanded && expanded)) {
                 callBack?.onReadAloudPlayerVisibilityChanged(true)
             }
         }
@@ -300,16 +353,28 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun hidePanel() {
         val wasVisible = visibility == VISIBLE
+        expanded = false
         visibility = GONE
-        uiState = buildState(uiState.mode).copy(foregroundActive = false)
+        capsuleBounds.setEmpty()
+        uiState = buildState(uiState.mode).copy(foregroundActive = false, expanded = false)
         if (wasVisible) {
             callBack?.onReadAloudPlayerVisibilityChanged(false)
         }
     }
 
     private fun closeByUser() {
-        dismissedForCurrentRun = BaseReadAloudService.isRun
-        hidePanel()
+        if (BaseReadAloudService.isRun) {
+            dismissedForCurrentRun = true
+            expanded = false
+            uiState = buildState(uiState.mode).copy(
+                foregroundActive = foregroundActive,
+                expanded = false,
+                readMenuVisible = readMenuVisible
+            )
+            callBack?.onReadAloudPlayerVisibilityChanged(false)
+        } else {
+            hidePanel()
+        }
     }
 
     private fun closeFromAction() {
@@ -321,6 +386,21 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         ReadAloud.stop(context)
         dismissedForCurrentRun = false
         hidePanel()
+    }
+
+    private fun updateCapsuleBounds(bounds: RectF) {
+        capsuleBounds.set(bounds)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (visibility == VISIBLE && !expanded) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN &&
+                !capsuleBounds.contains(ev.x, ev.y)
+            ) {
+                return false
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun openReadAloudSetting() {
@@ -376,14 +456,19 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun seekToParagraphProgress(progress: Float) {
         val chapter = ReadBook.curTextChapter ?: return
-        val paragraphs = chapter.getParagraphs(false)
-        if (paragraphs.isEmpty()) return
-        val targetIndex = if (paragraphs.size == 1) {
+        val cues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
+        if (cues.isEmpty()) return
+        val targetIndex = if (cues.size == 1) {
             0
         } else {
-            (progress.coerceIn(0f, 1f) * (paragraphs.size - 1)).roundToInt()
-        }.coerceIn(0, paragraphs.lastIndex)
-        val targetPos = paragraphs[targetIndex].chapterPosition.coerceAtLeast(0)
+            (progress.coerceIn(0f, 1f) * (cues.size - 1)).roundToInt()
+        }.coerceIn(0, cues.lastIndex)
+        seekToChapterPosition(cues[targetIndex].chapterPosition)
+    }
+
+    private fun seekToChapterPosition(chapterPosition: Int) {
+        val chapter = ReadBook.curTextChapter ?: return
+        val targetPos = chapterPosition.coerceAtLeast(0)
         val pageIndex = chapter.getPageIndexByCharIndex(targetPos)
         if (pageIndex < 0) return
         val startPos = (targetPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
@@ -410,6 +495,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterSequence = chapter?.chapter?.index ?: ReadBook.durChapterIndex
         val chapterKey = "${book?.bookUrl.orEmpty()}:$chapterSequence"
         val paragraphs = chapter?.getParagraphs(false).orEmpty()
+        val cues = chapter?.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage)).orEmpty()
         val totalLength = chapter?.lastPage
             ?.let { it.chapterPosition + it.charSize }
             ?.coerceAtLeast(1)
@@ -419,29 +505,32 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             else -> ReadBook.durChapterPos
         }.coerceIn(0, totalLength)
         val paragraphIndex = findParagraphIndex(paragraphs, chapterStart)
+        val cueIndex = cues.indexForChapterPosition(chapterStart)
+        val cue = cues.getOrNull(cueIndex)
         val paragraph = paragraphs.getOrNull(paragraphIndex)
-        val paragraphText = paragraph?.text?.cleanReadAloudText().orEmpty()
-        val paragraphCount = paragraphs.size
+        val paragraphText = cue?.text ?: paragraph?.text?.cleanReadAloudText().orEmpty()
+        val paragraphCount = cues.size
         val paragraphProgress = when {
-            paragraphCount <= 1 || paragraphIndex < 0 -> 0f
-            else -> (paragraphIndex.toFloat() / (paragraphCount - 1).toFloat()).coerceIn(0f, 1f)
+            paragraphCount <= 1 || cueIndex < 0 -> 0f
+            else -> (cueIndex.toFloat() / (paragraphCount - 1).toFloat()).coerceIn(0f, 1f)
         }
-        val paragraphProgressText = if (paragraphCount > 0 && paragraphIndex >= 0) {
-            "${paragraphIndex + 1}/$paragraphCount"
+        val paragraphProgressText = if (paragraphCount > 0 && cueIndex >= 0) {
+            "${cueIndex + 1}/$paragraphCount"
         } else {
             "0/0"
         }
-        val paragraphSequence = chapterSequence * 100_000 + paragraphIndex.coerceAtLeast(0)
-        val paragraphKey = "$chapterKey:${paragraph?.chapterPosition ?: paragraphIndex}"
-        val sentence = paragraph?.text
-            ?.focusSentenceAt(chapterStart - paragraph.chapterPosition)
+        val paragraphSequence = chapterSequence * 100_000 + cueIndex.coerceAtLeast(0)
+        val paragraphKey = "$chapterKey:${cue?.chapterPosition ?: paragraph?.chapterPosition ?: cueIndex}"
+        val sentence = (cue?.text ?: paragraph?.text)
+            ?.focusSentenceAt(chapterStart - (cue?.chapterPosition ?: paragraph?.chapterPosition ?: 0))
             ?: (0 to paragraphText)
         val focusText = FocusTextUi(
             key = "$paragraphKey:${sentence.first}:${sentence.second.hashCode()}",
             sequence = paragraphSequence * 1_000 + sentence.first.coerceAtLeast(0),
             text = sentence.second.ifBlank { paragraphText.ifBlank { "暂无当前段落" } }
         )
-        val nearby = paragraphs.nearbyParagraphs(paragraphIndex, chapterKey, chapterSequence)
+        val nearby = cues.nearbyCueParagraphs(cueIndex, chapterKey, chapterSequence)
+        val textCues = cues.toTextCueUi(cueIndex, chapterKey, chapterSequence)
         val timerMinute = BaseReadAloudService.timeMinute
         return PlayerUiState(
             bookName = bookName,
@@ -456,7 +545,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             progress = paragraphProgress,
             progressText = paragraphProgressText,
             paragraphText = paragraphText,
-            paragraphIndex = if (paragraphIndex >= 0) paragraphIndex + 1 else 0,
+            paragraphIndex = if (cueIndex >= 0) cueIndex + 1 else 0,
             paragraphCount = paragraphCount,
             chapterIndex = chapterSequence.coerceAtLeast(0),
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
@@ -464,6 +553,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ttsEngines = buildTtsEngineOptions(),
             characterPreview = buildCharacterPreview(book?.bookUrl),
             nearbyParagraphs = nearby,
+            textCues = textCues,
+            currentCueIndex = cueIndex.coerceAtLeast(0),
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
             paragraphSequence = paragraphSequence,
@@ -471,7 +562,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             speechRate = AppConfig.ttsSpeechRate.coerceIn(0, 45),
             followSystemSpeechRate = AppConfig.ttsFlowSys,
             mode = mode,
-            foregroundActive = foregroundActive && visibility == VISIBLE
+            foregroundActive = foregroundActive && visibility == VISIBLE,
+            expanded = expanded,
+            readMenuVisible = readMenuVisible
         )
     }
 
@@ -499,6 +592,43 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 current = index == currentIndex,
                 key = "$chapterKey:${paragraph.chapterPosition}:${paragraph.realNum}",
                 sequence = chapterSequence * 100_000 + index
+            )
+        }
+    }
+
+    private fun List<ReadAloudCue>.nearbyCueParagraphs(
+        currentIndex: Int,
+        chapterKey: String,
+        chapterSequence: Int
+    ): List<ParagraphUi> {
+        if (isEmpty() || currentIndex !in indices) return emptyList()
+        val start = (currentIndex - 4).coerceAtLeast(0)
+        val end = (currentIndex + 4).coerceAtMost(lastIndex)
+        return (start..end).map { index ->
+            val cue = this[index]
+            ParagraphUi(
+                index = index + 1,
+                text = cue.text.cleanReadAloudText(),
+                current = index == currentIndex,
+                key = "$chapterKey:${cue.chapterPosition}:${cue.key}",
+                sequence = chapterSequence * 100_000 + index
+            )
+        }
+    }
+
+    private fun List<ReadAloudCue>.toTextCueUi(
+        currentIndex: Int,
+        chapterKey: String,
+        chapterSequence: Int
+    ): List<TextCueUi> {
+        return mapIndexed { index, cue ->
+            TextCueUi(
+                index = index + 1,
+                text = cue.text.cleanReadAloudText(),
+                current = index == currentIndex,
+                key = "$chapterKey:${cue.chapterPosition}:${cue.key}",
+                sequence = chapterSequence * 100_000 + index,
+                chapterPosition = cue.chapterPosition
             )
         }
     }
@@ -642,6 +772,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 private fun ReadAloudPlayerContent(
     state: ReadAloudPlayerPanel.PlayerUiState,
     onClose: () -> Unit,
+    onExpand: () -> Unit,
+    onStop: () -> Unit,
     onPlayPause: () -> Unit,
     onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit,
     onOpenChapterList: () -> Unit,
@@ -652,6 +784,8 @@ private fun ReadAloudPlayerContent(
     onTimerChange: (Int) -> Unit,
     onEngineSelect: (String) -> Unit,
     onProgressSeek: (Float) -> Unit,
+    onCueSelect: (Int) -> Unit,
+    onCapsuleBounds: (RectF) -> Unit,
     onOpenCharacters: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
@@ -681,7 +815,15 @@ private fun ReadAloudPlayerContent(
         shrinkVertically(tween(1), shrinkTowards = Alignment.Top) + fadeOut(tween(1))
     }
     Box(modifier = Modifier.fillMaxSize()) {
-        CoverAtmosphereBackdrop(state, colors)
+        AnimatedVisibility(
+            visible = state.expanded,
+            enter = slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it } +
+                    fadeIn(tween(180)),
+            exit = slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { it } +
+                    fadeOut(tween(140))
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                CoverAtmosphereBackdrop(state, colors)
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val landscape = maxWidth > maxHeight
             val short = maxHeight < 660.dp
@@ -718,6 +860,7 @@ private fun ReadAloudPlayerContent(
                         colors = colors,
                         short = short,
                         animateTextChanges = animateTextChanges,
+                        onCueSelect = onCueSelect,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -729,6 +872,7 @@ private fun ReadAloudPlayerContent(
                         short = short,
                         veryShort = veryShort,
                         animateTextChanges = animateTextChanges,
+                        onCueSelect = onCueSelect,
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
@@ -785,6 +929,18 @@ private fun ReadAloudPlayerContent(
                     )
                 }
             }
+        }
+    }
+        }
+        if (!state.expanded && state.serviceRunning) {
+            ReadAloudCapsule(
+                state = state,
+                colors = colors,
+                onPlayPause = onPlayPause,
+                onExpand = onExpand,
+                onClose = onStop,
+                onBounds = onCapsuleBounds
+            )
         }
     }
 }
@@ -904,6 +1060,138 @@ private fun CoverBackdropImage(
             }
         }
     )
+}
+
+@Composable
+private fun ReadAloudCapsule(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onPlayPause: () -> Unit,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+    onBounds: (RectF) -> Unit
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        val capsuleWidth = 176.dp
+        val capsuleHeight = 58.dp
+        val capsuleWidthPx = with(density) { capsuleWidth.toPx() }
+        val capsuleHeightPx = with(density) { capsuleHeight.toPx() }
+        val sidePx = with(density) { 18.dp.toPx() }
+        val bottomPx = with(density) {
+            (if (state.readMenuVisible) 210.dp else 28.dp).toPx()
+        }
+        val maxX = (widthPx - capsuleWidthPx - sidePx).coerceAtLeast(sidePx)
+        val targetY = (heightPx - capsuleHeightPx - bottomPx).coerceAtLeast(sidePx)
+        var offsetX by remember(state.chapterKey) { mutableStateOf(sidePx) }
+        var offsetY by remember(state.chapterKey) { mutableStateOf(targetY) }
+        LaunchedEffect(widthPx, heightPx, state.readMenuVisible) {
+            offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) sidePx else maxX
+            if (state.readMenuVisible || offsetY > targetY) {
+                offsetY = targetY
+            }
+        }
+        Surface(
+            modifier = Modifier
+                .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                .width(capsuleWidth)
+                .height(capsuleHeight)
+                .onGloballyPositioned {
+                    val bounds = it.boundsInRoot()
+                    onBounds(RectF(bounds.left, bounds.top, bounds.right, bounds.bottom))
+                }
+                .pointerInput(widthPx, heightPx, state.readMenuVisible) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) {
+                                sidePx
+                            } else {
+                                maxX
+                            }
+                            offsetY = offsetY.coerceIn(sidePx, targetY)
+                        }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        offsetX = (offsetX + dragAmount.x).coerceIn(sidePx, maxX)
+                        offsetY = (offsetY + dragAmount.y).coerceIn(sidePx, targetY)
+                    }
+                }
+                .clickable(onClick = onExpand),
+            shape = CircleShape,
+            color = colors.panelStrong,
+            border = BorderStroke(1.dp, colors.panelBorder),
+            shadowElevation = 12.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 8.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(colors.panel)
+                ) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = {
+                            CoverImageView(it).apply {
+                                scaleType = ImageView.ScaleType.CENTER_CROP
+                            }
+                        },
+                        update = {
+                            it.load(
+                                path = state.coverUrl,
+                                name = state.bookName,
+                                author = state.author,
+                                loadOnlyWifi = false,
+                                sourceOrigin = state.sourceOrigin,
+                                preferThumb = true
+                            )
+                        }
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clickable(onClick = onPlayPause),
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.92f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
+                            contentDescription = null,
+                            tint = Color.Black.copy(alpha = 0.86f),
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
+                Surface(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clickable(onClick = onClose),
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "×",
+                            color = colors.primaryText,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1098,6 +1386,7 @@ private fun PortraitPlayerBody(
     short: Boolean,
     veryShort: Boolean,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
@@ -1112,15 +1401,16 @@ private fun PortraitPlayerBody(
         )
     } else {
         LyricsPlayerStage(
-            state = state,
-            colors = colors,
-            compact = short,
-            maxParagraphs = if (veryShort) 5 else 7,
-            currentMaxLines = if (veryShort) 4 else 6,
-            animateTextChanges = animateTextChanges,
-            modifier = modifier
-        )
-    }
+                    state = state,
+                    colors = colors,
+                    compact = short,
+                    maxParagraphs = if (veryShort) 5 else 7,
+                    currentMaxLines = if (veryShort) 4 else 6,
+                    animateTextChanges = animateTextChanges,
+                    onCueSelect = onCueSelect,
+                    modifier = modifier
+                )
+            }
 }
 
 @Composable
@@ -1129,6 +1419,7 @@ private fun LandscapePlayerBody(
     colors: PlayerColors,
     short: Boolean,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
@@ -1166,7 +1457,7 @@ private fun LandscapePlayerBody(
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
-                LyricParagraphBody(
+                LyricCueBody(
                     state = state,
                     colors = colors,
                     compact = short,
@@ -1174,6 +1465,7 @@ private fun LandscapePlayerBody(
                     currentMaxLines = if (short) 4 else 6,
                     textAlign = TextAlign.Start,
                     animateTextChanges = animateTextChanges,
+                    onCueSelect = onCueSelect,
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
@@ -1234,6 +1526,7 @@ private fun LyricsPlayerStage(
     maxParagraphs: Int,
     currentMaxLines: Int,
     animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1247,13 +1540,14 @@ private fun LyricsPlayerStage(
             compact = compact
         )
         Spacer(modifier = Modifier.height(if (compact) 12.dp else 18.dp))
-        LyricParagraphBody(
+        LyricCueBody(
             state = state,
             colors = colors,
             compact = compact,
             maxParagraphs = maxParagraphs,
             currentMaxLines = currentMaxLines,
             animateTextChanges = animateTextChanges,
+            onCueSelect = onCueSelect,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -1383,6 +1677,132 @@ private fun FocusSentenceBody(
             modifier = Modifier.fillMaxWidth()
         )
     }
+}
+
+@Composable
+private fun LyricCueBody(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    compact: Boolean,
+    maxParagraphs: Int,
+    currentMaxLines: Int,
+    animateTextChanges: Boolean,
+    onCueSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Center
+) {
+    val cues = state.textCues.ifEmpty {
+        listOf(
+            ReadAloudPlayerPanel.TextCueUi(
+                index = state.paragraphIndex.coerceAtLeast(1),
+                text = state.paragraphText.ifBlank { "鏆傛棤褰撳墠娈佃惤" },
+                current = true,
+                key = state.paragraphKey.ifBlank { state.paragraphIndex.toString() },
+                sequence = state.paragraphSequence,
+                chapterPosition = ReadBook.durChapterPos
+            )
+        )
+    }
+    val listState = rememberLazyListState()
+    var userSeeking by remember(state.chapterKey) { mutableStateOf(false) }
+    var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
+    val currentIndex = state.currentCueIndex.coerceIn(0, cues.lastIndex)
+    val centerOffset = maxParagraphs / 2
+    LaunchedEffect(state.chapterKey) {
+        programmaticScroll = true
+        listState.scrollToItem((currentIndex - centerOffset).coerceAtLeast(0))
+        programmaticScroll = false
+    }
+    LaunchedEffect(state.chapterKey, currentIndex) {
+        if (!userSeeking && cues.isNotEmpty()) {
+            programmaticScroll = true
+            listState.animateScrollToItem((currentIndex - centerOffset).coerceAtLeast(0))
+            programmaticScroll = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            if (!programmaticScroll) {
+                userSeeking = true
+            }
+        } else if (userSeeking) {
+            delay(120)
+            val layoutInfo = listState.layoutInfo
+            val center = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+            val targetIndex = layoutInfo.visibleItemsInfo
+                .filter { it.index in cues.indices }
+                .minByOrNull { item -> abs(item.offset + item.size / 2 - center) }
+                ?.index
+            val target = targetIndex?.let { cues.getOrNull(it) }
+            userSeeking = false
+            if (target != null && target.index - 1 != currentIndex) {
+                onCueSelect(target.chapterPosition)
+            }
+        }
+    }
+    LazyColumn(
+        state = listState,
+        modifier = modifier
+            .fillMaxHeight()
+            .widthIn(max = 720.dp),
+        contentPadding = PaddingValues(vertical = if (compact) 78.dp else 112.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
+        horizontalAlignment = when (textAlign) {
+            TextAlign.Start -> Alignment.Start
+            TextAlign.End -> Alignment.End
+            else -> Alignment.CenterHorizontally
+        }
+    ) {
+        itemsIndexed(cues, key = { _, cue -> cue.key }) { _, cue ->
+            LyricCueLine(
+                cue = cue,
+                colors = colors,
+                compact = compact,
+                currentMaxLines = currentMaxLines,
+                textAlign = textAlign,
+                animate = animateTextChanges,
+                onClick = { onCueSelect(cue.chapterPosition) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun LyricCueLine(
+    cue: ReadAloudPlayerPanel.TextCueUi,
+    colors: PlayerColors,
+    compact: Boolean,
+    currentMaxLines: Int,
+    textAlign: TextAlign,
+    animate: Boolean,
+    onClick: () -> Unit
+) {
+    val emphasis by animateFloatAsState(
+        targetValue = if (cue.current) 1f else 0f,
+        animationSpec = tween(if (animate) 220 else 1),
+        label = "readAloudCueEmphasis"
+    )
+    val fontSize = when {
+        compact -> 14f + emphasis * 6f
+        else -> 15f + emphasis * 8f
+    }
+    val lineHeight = when {
+        compact -> 21f + emphasis * 7f
+        else -> 23f + emphasis * 9f
+    }
+    Text(
+        text = cue.text,
+        color = colors.primaryText.copy(alpha = 0.36f + emphasis * 0.58f),
+        fontSize = fontSize.sp,
+        lineHeight = lineHeight.sp,
+        fontWeight = if (cue.current) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = if (cue.current) currentMaxLines else 2,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = textAlign,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    )
 }
 
 @Composable
