@@ -207,7 +207,7 @@ data class TextChapter(
 
     private fun TextPage.readAloudText(): String {
         val nativeText = if (isNativeEpubPage()) extractNativeText() else ""
-        return nativeText.ifBlank { text }.cleanReadAloudMarkup()
+        return ReadAloudTextCleaner.cleanVisibleText(nativeText.ifBlank { text })
     }
 
     private fun String.cleanReadAloudMarkup(): String {

@@ -95,6 +95,7 @@ import io.legado.app.lib.theme.composeActionShape
 import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
+import io.legado.app.ui.book.read.page.entities.ReadAloudTextCleaner
 import io.legado.app.ui.book.read.page.entities.TextParagraph
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.image.CoverImageView
@@ -597,8 +598,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun String.cleanReadAloudText(): String {
-        return replace(Regex("\\s+"), " ")
-            .trim()
+        return ReadAloudTextCleaner.cleanInlineText(this)
             .ifBlank { "暂无当前段落" }
     }
 }
