@@ -77,6 +77,8 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
             addJsonPattern()
             addJsPattern()
         }
+        binding.tvSpeakersJson.addJsonPattern()
+        binding.tvEmotionsJson.addJsonPattern()
         viewModel.initData(arguments) {
             initView(httpTTS = it)
         }
@@ -99,6 +101,8 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
         binding.tvLoginCheckJs.setText(httpTTS.loginCheckJs)
         binding.tvHeaders.setText(httpTTS.header)
         binding.tvJsLib.setText(httpTTS.jsLib)
+        binding.tvSpeakersJson.setText(httpTTS.speakersJson)
+        binding.tvEmotionsJson.setText(httpTTS.emotionsJson)
     }
 
 
@@ -183,7 +187,9 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, tr
             loginUi = binding.tvLoginUi.text?.toString(),
             loginCheckJs = binding.tvLoginCheckJs.text?.toString(),
             header = binding.tvHeaders.text?.toString(),
-            jsLib = binding.tvJsLib.text?.toString()
+            jsLib = binding.tvJsLib.text?.toString(),
+            speakersJson = binding.tvSpeakersJson.text?.toString().orEmpty(),
+            emotionsJson = binding.tvEmotionsJson.text?.toString().orEmpty()
         )
     }
 
