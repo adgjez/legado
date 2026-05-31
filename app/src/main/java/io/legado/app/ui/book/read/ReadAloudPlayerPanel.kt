@@ -73,7 +73,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -149,6 +148,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     enum class DisplayMode {
         Immersive,
         Text
+    }
+
+    enum class PanelPhase {
+        Hidden,
+        Collapsed,
+        Opening,
+        Expanded
     }
 
     data class ParagraphUi(
@@ -230,8 +236,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val followSystemSpeechRate: Boolean = AppConfig.ttsFlowSys,
         val mode: DisplayMode = DisplayMode.Immersive,
         val foregroundActive: Boolean = true,
-        val expanded: Boolean = true,
+        val expanded: Boolean = false,
         val opening: Boolean = false,
+        val panelPhase: PanelPhase = PanelPhase.Hidden,
         val readMenuVisible: Boolean = false,
         val readMenuAvoidBounds: RectF? = null,
         val openToken: Int = 0
@@ -243,8 +250,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var foregroundActive = true
     private var lastChapterStart = 0
     private var cachedSystemTtsOptions: List<Pair<String, String>>? = null
-    private var expanded = true
+    private var expanded = false
     private var opening = false
+    private var panelPhase = PanelPhase.Hidden
     private var readMenuVisible = false
     private var readMenuAvoidBounds: RectF? = null
     private var openToken = 0
@@ -352,6 +360,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun isExpanded(): Boolean = visibility == VISIBLE && expanded
 
+    fun isFullPanelActive(): Boolean {
+        return visibility == VISIBLE && (panelPhase == PanelPhase.Opening || panelPhase == PanelPhase.Expanded)
+    }
+
     fun close() {
         closeByUser()
     }
@@ -364,29 +376,33 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         post {
             val wasVisible = visibility == VISIBLE
             val wasExpanded = expanded
-            visibility = VISIBLE
-            bringToFront()
-            ViewCompat.requestApplyInsets(this)
-            ViewCompat.requestApplyInsets(composeView)
             if (expand && animateFromBottom && !AppConfig.isEInkMode) {
                 expanded = false
                 opening = true
+                panelPhase = PanelPhase.Opening
+                openToken++
                 uiState = buildState(uiState.mode).copy(
                     foregroundActive = foregroundActive,
                     expanded = false,
                     opening = true,
+                    panelPhase = PanelPhase.Opening,
                     readMenuVisible = readMenuVisible,
                     readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                     openToken = openToken
                 )
+                visibility = VISIBLE
+                bringToFront()
+                ViewCompat.requestApplyInsets(this)
+                ViewCompat.requestApplyInsets(composeView)
                 postOnAnimation {
                     expanded = true
                     opening = false
-                    openToken++
+                    panelPhase = PanelPhase.Expanded
                     uiState = buildState(uiState.mode).copy(
                         foregroundActive = foregroundActive,
                         expanded = true,
                         opening = false,
+                        panelPhase = PanelPhase.Expanded,
                         readMenuVisible = readMenuVisible,
                         readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                         openToken = openToken
@@ -399,13 +415,19 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             }
             expanded = expand
             opening = false
+            panelPhase = if (expand) PanelPhase.Expanded else PanelPhase.Collapsed
             if (expand) {
                 openToken++
             }
+            visibility = VISIBLE
+            bringToFront()
+            ViewCompat.requestApplyInsets(this)
+            ViewCompat.requestApplyInsets(composeView)
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = expanded,
                 opening = opening,
+                panelPhase = panelPhase,
                 readMenuVisible = readMenuVisible,
                 readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                 openToken = openToken
@@ -420,9 +442,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val wasVisible = visibility == VISIBLE
         expanded = false
         opening = false
+        panelPhase = PanelPhase.Hidden
         visibility = GONE
         capsuleBounds.setEmpty()
-        uiState = buildState(uiState.mode).copy(foregroundActive = false, expanded = false, opening = false)
+        uiState = buildState(uiState.mode).copy(
+            foregroundActive = false,
+            expanded = false,
+            opening = false,
+            panelPhase = PanelPhase.Hidden
+        )
         if (wasVisible) {
             callBack?.onReadAloudPlayerVisibilityChanged(false)
         }
@@ -433,10 +461,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             dismissedForCurrentRun = true
             expanded = false
             opening = false
+            panelPhase = PanelPhase.Collapsed
             uiState = buildState(uiState.mode).copy(
                 foregroundActive = foregroundActive,
                 expanded = false,
                 opening = false,
+                panelPhase = PanelPhase.Collapsed,
                 readMenuVisible = readMenuVisible,
                 readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                 openToken = openToken
@@ -635,6 +665,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             foregroundActive = foregroundActive && visibility == VISIBLE,
             expanded = expanded,
             opening = opening,
+            panelPhase = panelPhase,
             readMenuVisible = readMenuVisible,
             readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
             openToken = openToken
@@ -887,19 +918,9 @@ private fun ReadAloudPlayerContent(
     } else {
         shrinkVertically(tween(1), shrinkTowards = Alignment.Top) + fadeOut(tween(1))
     }
-    var expandedVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(state.expanded, state.openToken) {
-        if (state.expanded) {
-            expandedVisible = false
-            withFrameNanos { }
-            expandedVisible = true
-        } else {
-            expandedVisible = false
-        }
-    }
     Box(modifier = Modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = expandedVisible,
+            visible = state.panelPhase == ReadAloudPlayerPanel.PanelPhase.Expanded,
             enter = slideInVertically(tween(420, easing = FastOutSlowInEasing)) { it } +
                     fadeIn(tween(260, easing = FastOutSlowInEasing)),
             exit = slideOutVertically(tween(300, easing = FastOutSlowInEasing)) { it } +
@@ -1015,7 +1036,7 @@ private fun ReadAloudPlayerContent(
         }
     }
         }
-        if (!state.expanded && !state.opening && state.serviceRunning) {
+        if (state.panelPhase == ReadAloudPlayerPanel.PanelPhase.Collapsed && state.serviceRunning) {
             ReadAloudCapsule(
                 state = state,
                 colors = colors,

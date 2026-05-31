@@ -2844,7 +2844,6 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun showReadAloudDialog() {
         fun openPlayerPanel() {
-            applyReadAloudPlayerSystemBars()
             binding.readAloudPlayerPanel.openFromBottom(force = true)
         }
         fun startOrOpenPlayerPanel() {
@@ -3648,7 +3647,7 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 更新状态栏,导航栏
      */
     override fun upSystemUiVisibility() {
-        if (binding.readAloudPlayerPanel.isExpanded()) {
+        if (binding.readAloudPlayerPanel.isFullPanelActive()) {
             applyReadAloudPlayerSystemBars()
         } else {
             WindowCompat.setDecorFitsSystemWindows(window, true)
@@ -4503,7 +4502,6 @@ class ReadBookActivity : BaseReadBookActivity(),
             readAloudPlayerPanel.onAloudState(it, autoExpand = !shouldOpenPendingPanel)
             if (shouldOpenPendingPanel) {
                 pendingReadAloudPlayerOpen = false
-                applyReadAloudPlayerSystemBars()
                 readAloudPlayerPanel.openFromBottom(force = true)
             } else if (it == Status.STOP) {
                 pendingReadAloudPlayerOpen = false
