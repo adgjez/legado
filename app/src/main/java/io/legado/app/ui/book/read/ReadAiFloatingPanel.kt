@@ -28,7 +28,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.ComposeView
@@ -667,11 +668,15 @@ private fun ReadAiPanelContent(
 ) {
     val context = LocalContext.current
     val style = aiComposeStyle(context)
+    val panelShape = RoundedCornerShape(20.dp)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(12.dp, panelShape, clip = false)
+            .clip(panelShape),
+        shape = panelShape,
         color = style.colors.background,
-        shadowElevation = 12.dp,
+        shadowElevation = 0.dp,
         border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
         Column(
@@ -755,13 +760,20 @@ private fun ReadAiIconButton(
     style: AiComposeStyle,
     onClick: () -> Unit
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(38.dp)) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = stringResource(contentDescriptionRes),
-            tint = style.colors.primaryText,
-            modifier = Modifier.size(20.dp)
-        )
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(38.dp),
+        shape = CircleShape,
+        color = Color.Transparent
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = stringResource(contentDescriptionRes),
+                tint = style.colors.primaryText,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

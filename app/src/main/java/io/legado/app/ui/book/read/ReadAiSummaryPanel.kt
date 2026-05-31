@@ -21,10 +21,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +33,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.ComposeView
@@ -361,11 +364,15 @@ private fun ReadAiSummaryContent(
 ) {
     val context = LocalContext.current
     val style = aiComposeStyle(context)
+    val panelShape = RoundedCornerShape(20.dp)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(12.dp, panelShape, clip = false)
+            .clip(panelShape),
+        shape = panelShape,
         color = style.colors.background,
-        shadowElevation = 12.dp,
+        shadowElevation = 0.dp,
         border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
         Column(modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 12.dp)) {
@@ -425,13 +432,20 @@ private fun SummaryIconButton(
     style: AiComposeStyle,
     onClick: () -> Unit
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(38.dp)) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = style.colors.primaryText,
-            modifier = Modifier.size(20.dp)
-        )
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(38.dp),
+        shape = CircleShape,
+        color = Color.Transparent
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = style.colors.primaryText,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

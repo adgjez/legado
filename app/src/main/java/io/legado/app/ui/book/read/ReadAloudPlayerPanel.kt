@@ -1306,10 +1306,8 @@ private fun ReadAloudCapsule(
                     )
                 }
                 Surface(
-                    modifier = Modifier
-                        .size(playButtonSize)
-                        .clip(CircleShape)
-                        .clickable(onClick = onPlayPause),
+                    onClick = onPlayPause,
+                    modifier = Modifier.size(playButtonSize),
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.92f)
                 ) {
@@ -1323,10 +1321,8 @@ private fun ReadAloudCapsule(
                     }
                 }
                 Surface(
-                    modifier = Modifier
-                        .size(closeButtonSize)
-                        .clip(CircleShape)
-                        .clickable(onClick = onClose),
+                    onClick = onClose,
+                    modifier = Modifier.size(closeButtonSize),
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
@@ -1448,9 +1444,8 @@ private fun HeaderIconButton(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .size(42.dp)
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.size(42.dp),
         shape = CircleShape,
         color = Color.White.copy(alpha = 0.12f),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
@@ -2177,9 +2172,8 @@ private fun PlayerControlDock(
                 onClick = onPreviousChapter
             )
             Surface(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clickable(onClick = onPlayPause),
+                onClick = onPlayPause,
+                modifier = Modifier.size(72.dp),
                 shape = CircleShape,
                 color = Color.White.copy(alpha = 0.92f),
                 shadowElevation = 16.dp
@@ -2260,9 +2254,8 @@ private fun RoundTransportButton(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .size(size)
-            .clickable(onClick = onClick),
+        onClick = onClick,
+        modifier = Modifier.size(size),
         shape = CircleShape,
         color = colors.panel,
         border = BorderStroke(1.dp, colors.panelBorder)
