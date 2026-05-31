@@ -253,7 +253,7 @@ object AiBookCharacterTool {
     }
 
     private suspend fun listSpeechCatalogs(args: JSONObject?): String = withContext(IO) {
-        val includeEmpty = args?.optBoolean("includeEmpty", false) ?: false
+        val includeEmpty = args?.optBoolean("includeEmpty", true) ?: true
         val engines = appDb.httpTTSDao.all.mapNotNull { httpTts ->
             val speakerGroups = SpeechVoiceCatalogParser.parseSpeakerGroups(httpTts.speakersJson)
             val emotionGroups = SpeechVoiceCatalogParser.parseEmotionGroups(httpTts.emotionsJson)
@@ -263,9 +263,24 @@ object AiBookCharacterTool {
                 JSONObject().apply {
                     put("id", httpTts.id)
                     put("name", httpTts.name)
+                    put("engineType", SpeechRoute.ENGINE_HTTP)
                     put("engineValue", httpTts.id.toString())
                     put("speakerGroups", JSONArray().apply {
-                        speakerGroups.forEach { group ->
+                        val groups = speakerGroups.ifEmpty {
+                            listOf(
+                                io.legado.app.help.readaloud.speech.SpeechCatalogGroup(
+                                    groupId = "default",
+                                    groupName = "默认",
+                                    items = listOf(
+                                        io.legado.app.help.readaloud.speech.SpeechSpeaker(
+                                            speakerName = httpTts.name.ifBlank { "HTTP TTS" },
+                                            toneID = ""
+                                        )
+                                    )
+                                )
+                            )
+                        }
+                        groups.forEach { group ->
                             put(JSONObject().apply {
                                 put("groupId", group.groupId)
                                 put("groupName", group.groupName)
@@ -302,7 +317,25 @@ object AiBookCharacterTool {
         }
         JSONObject().apply {
             put("ok", true)
-            put("engines", JSONArray(engines))
+            put("engines", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("id", "system_default")
+                    put("name", "系统默认")
+                    put("engineType", SpeechRoute.ENGINE_SYSTEM)
+                    put("engineValue", "")
+                    put("speakerGroups", JSONArray().put(JSONObject().apply {
+                        put("groupId", "default")
+                        put("groupName", "默认")
+                        put("items", JSONArray().put(JSONObject().apply {
+                            put("speakerName", "系统默认")
+                            put("toneID", "")
+                            put("tags", JSONArray())
+                        }))
+                    }))
+                    put("emotionGroups", JSONArray())
+                })
+                engines.forEach { put(it) }
+            })
         }.toString()
     }
 

@@ -206,21 +206,10 @@ object SpeechVoiceAssigner {
         character: BookCharacter,
         httpTtsList: List<HttpTTS>
     ): SpeechRoute {
-        val candidates = httpTtsList.flatMap { httpTts ->
-            SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson).map { speaker ->
-                httpTts to speaker
-            }
-        }
+        val candidates = SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList)
         if (candidates.isEmpty()) return SpeechRoute()
         val stableKey = "${character.bookUrl}|${character.id}|${character.name}"
         val index = Math.floorMod(stableKey.hashCode(), candidates.size)
-        val (httpTts, speaker) = candidates[index]
-        return SpeechRoute(
-            engineType = SpeechRoute.ENGINE_HTTP,
-            engineValue = httpTts.id.toString(),
-            speakerName = speaker.speakerName,
-            toneID = speaker.toneID,
-            source = SpeechRoute.SOURCE_AUTO
-        )
+        return candidates[index].copy(source = SpeechRoute.SOURCE_AUTO)
     }
 }
