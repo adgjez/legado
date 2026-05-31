@@ -1094,8 +1094,8 @@ private fun ReadAloudCapsule(
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val capsuleWidth = 176.dp
-        val capsuleHeight = 58.dp
+        val capsuleWidth = 188.dp
+        val capsuleHeight = 60.dp
         val capsuleWidthPx = with(density) { capsuleWidth.toPx() }
         val capsuleHeightPx = with(density) { capsuleHeight.toPx() }
         val sidePx = with(density) { 18.dp.toPx() }
@@ -1104,8 +1104,19 @@ private fun ReadAloudCapsule(
         }
         val maxX = (widthPx - capsuleWidthPx - sidePx).coerceAtLeast(sidePx)
         val targetY = (heightPx - capsuleHeightPx - bottomPx).coerceAtLeast(sidePx)
-        var offsetX by remember(state.chapterKey) { mutableStateOf(sidePx) }
-        var offsetY by remember(state.chapterKey) { mutableStateOf(targetY) }
+        var offsetX by remember { mutableStateOf(sidePx) }
+        var offsetY by remember { mutableStateOf(targetY) }
+        var dragging by remember { mutableStateOf(false) }
+        val animatedX by animateFloatAsState(
+            targetValue = offsetX,
+            animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
+            label = "readAloudCapsuleX"
+        )
+        val animatedY by animateFloatAsState(
+            targetValue = offsetY,
+            animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
+            label = "readAloudCapsuleY"
+        )
         LaunchedEffect(widthPx, heightPx, state.readMenuVisible) {
             offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) sidePx else maxX
             if (state.readMenuVisible || offsetY > targetY) {
@@ -1114,7 +1125,7 @@ private fun ReadAloudCapsule(
         }
         Surface(
             modifier = Modifier
-                .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                .offset { IntOffset(animatedX.roundToInt(), animatedY.roundToInt()) }
                 .width(capsuleWidth)
                 .height(capsuleHeight)
                 .onGloballyPositioned {
@@ -1123,12 +1134,18 @@ private fun ReadAloudCapsule(
                 }
                 .pointerInput(widthPx, heightPx, state.readMenuVisible) {
                     detectDragGestures(
+                        onDragStart = { dragging = true },
                         onDragEnd = {
+                            dragging = false
                             offsetX = if (offsetX + capsuleWidthPx / 2f < widthPx / 2f) {
                                 sidePx
                             } else {
                                 maxX
                             }
+                            offsetY = offsetY.coerceIn(sidePx, targetY)
+                        },
+                        onDragCancel = {
+                            dragging = false
                             offsetY = offsetY.coerceIn(sidePx, targetY)
                         }
                     ) { change, dragAmount ->
@@ -1136,25 +1153,24 @@ private fun ReadAloudCapsule(
                         offsetX = (offsetX + dragAmount.x).coerceIn(sidePx, maxX)
                         offsetY = (offsetY + dragAmount.y).coerceIn(sidePx, targetY)
                     }
-                }
-                .clickable(onClick = onExpand),
+                },
             shape = CircleShape,
             color = colors.panelStrong,
             border = BorderStroke(1.dp, colors.panelBorder),
             shadowElevation = 12.dp
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 8.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 8.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .align(Alignment.CenterStart)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(colors.panel)
+                        .clickable(onClick = onExpand)
                 ) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
@@ -1177,7 +1193,9 @@ private fun ReadAloudCapsule(
                 }
                 Surface(
                     modifier = Modifier
-                        .size(38.dp)
+                        .align(Alignment.Center)
+                        .size(40.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onPlayPause),
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.92f)
@@ -1193,7 +1211,9 @@ private fun ReadAloudCapsule(
                 }
                 Surface(
                     modifier = Modifier
-                        .size(34.dp)
+                        .align(Alignment.CenterEnd)
+                        .size(36.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onClose),
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.12f),
@@ -1202,9 +1222,15 @@ private fun ReadAloudCapsule(
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = "×",
-                            color = colors.primaryText,
+                            color = Color.Transparent,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_x),
+                            contentDescription = null,
+                            tint = colors.primaryText,
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
