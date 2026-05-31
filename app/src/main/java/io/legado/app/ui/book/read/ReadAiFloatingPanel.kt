@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.ComposeView
@@ -56,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.help.ai.AiChatService
@@ -117,6 +120,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var downRawY = 0f
     private var startX = 0f
     private var startY = 0f
+    private var imeBottomInset = 0
 
     private var messages by mutableStateOf<List<ReadAiMessage>>(emptyList())
     private var historySessions by mutableStateOf<List<ReadAiSession>>(emptyList())
@@ -151,10 +155,18 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 onClose = ::close,
                 onStop = ::stopAnswer,
                 onSend = ::submitQuestion,
+                onInputFocused = ::ensureAboveIme,
                 onOpenSession = ::openHistorySession,
                 onDeleteSession = ::deleteSession,
                 onClearHistory = ::confirmClearHistory
             )
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
+            updateImeBottomInset(insets)
+            if (visibility == VISIBLE) {
+                ensureInsideParent()
+            }
+            insets
         }
     }
 
@@ -500,7 +512,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 val targetX = startX + event.rawX - downRawX
                 val targetY = startY + event.rawY - downRawY
                 x = targetX.coerceIn(0f, max(0, parentView.width - width).toFloat())
-                y = targetY.coerceIn(0f, max(0, parentView.height - height).toFloat())
+                y = targetY.coerceIn(0f, maxPanelY(parentView))
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -516,7 +528,40 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val parentView = parent as? ViewGroup ?: return
         if (width <= 0 || height <= 0 || parentView.width <= 0 || parentView.height <= 0) return
         x = min(max(0f, x), max(0, parentView.width - width).toFloat())
-        y = min(max(0f, y), max(0, parentView.height - height).toFloat())
+        y = min(max(0f, y), maxPanelY(parentView))
+    }
+
+    private fun ensureAboveIme() {
+        refreshImeBottomInset()
+        ensureInsideParent()
+        post {
+            refreshImeBottomInset()
+            ensureInsideParent()
+        }
+        postDelayed({
+            refreshImeBottomInset()
+            ensureInsideParent()
+        }, 260L)
+    }
+
+    private fun maxPanelY(parentView: ViewGroup): Float {
+        val margin = if (imeBottomInset > 0) 8.dpToPx() else 0
+        return max(0, parentView.height - height - imeBottomInset - margin).toFloat()
+    }
+
+    private fun refreshImeBottomInset() {
+        val insets = ViewCompat.getRootWindowInsets(this) ?: ViewCompat.getRootWindowInsets(rootView)
+        if (insets != null) {
+            updateImeBottomInset(insets)
+        }
+    }
+
+    private fun updateImeBottomInset(insets: WindowInsetsCompat) {
+        imeBottomInset = if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
+            insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+        } else {
+            0
+        }
     }
 
     private fun placeNearAnchor(anchor: Anchor) {
@@ -662,6 +707,7 @@ private fun ReadAiPanelContent(
     onClose: () -> Unit,
     onStop: () -> Unit,
     onSend: (String) -> Boolean,
+    onInputFocused: () -> Unit,
     onOpenSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
     onClearHistory: () -> Unit
@@ -747,6 +793,7 @@ private fun ReadAiPanelContent(
                 style = style,
                 onStop = onStop,
                 onSend = onSend,
+                onInputFocused = onInputFocused,
                 modifier = Modifier.padding(top = 10.dp)
             )
         }
@@ -1019,6 +1066,7 @@ private fun ReadAiComposer(
     style: AiComposeStyle,
     onStop: () -> Unit,
     onSend: (String) -> Boolean,
+    onInputFocused: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var text by remember { mutableStateOf("") }
@@ -1069,7 +1117,13 @@ private fun ReadAiComposer(
                         fontSize = 15.sp,
                         lineHeight = 21.sp
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged {
+                            if (it.isFocused) {
+                                onInputFocused()
+                            }
+                        }
                 )
             }
             Surface(
