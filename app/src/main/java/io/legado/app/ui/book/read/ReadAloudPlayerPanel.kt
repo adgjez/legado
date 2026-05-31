@@ -63,7 +63,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -1008,29 +1007,10 @@ private fun CoverArt(
     width: Dp,
     modifier: Modifier = Modifier
 ) {
-    val visualActive = state.foregroundActive &&
-        state.playing &&
-        state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
-    val coverScale = if (visualActive) {
-        val transition = rememberInfiniteTransition(label = "readAloudCover")
-        val scale by transition.animateFloat(
-            initialValue = 0.992f,
-            targetValue = 1.012f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 3800),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "coverScale"
-        )
-        scale
-    } else {
-        1f
-    }
     Box(
         modifier = modifier
             .width(width)
             .aspectRatio(0.75f)
-            .scale(coverScale)
             .shadow(
                 elevation = 22.dp,
                 shape = RoundedCornerShape(15.dp),
