@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -336,68 +338,93 @@ private fun SpeakEngineScreen(
         color = colors.page,
         shape = RoundedCornerShape(context.composeActionRadius().coerceAtLeast(18.dp))
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "朗读引擎",
-                    color = colors.text,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val wide = maxWidth >= 640.dp
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "朗读引擎",
+                        color = colors.text,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = actions::clearCache) { Text("清缓存", color = colors.accent) }
+                    TextButton(onClick = actions::close) { Text("关闭", color = colors.subText) }
+                }
+                EngineManagementActions(
+                    compact = !wide,
+                    colors = colors,
+                    actions = actions,
+                    modifier = Modifier.padding(top = 10.dp)
                 )
-                TextButton(onClick = actions::clearCache) { Text("清缓存", color = colors.accent) }
-                TextButton(onClick = actions::close) { Text("关闭", color = colors.subText) }
-            }
-            Row(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SmallEngineAction("新增", actions::addHttpTts, colors)
-                SmallEngineAction("默认规则", actions::importDefault, colors)
-                SmallEngineAction("本地导入", actions::importLocal, colors)
-                SmallEngineAction("在线导入", actions::importOnline, colors)
-                SmallEngineAction("导出全部", actions::exportAll, colors)
-                SmallEngineAction("导出当前", actions::exportSelected, colors)
-            }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                LazyColumn(
-                    modifier = Modifier.weight(0.42f).fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(groups, key = { it.key }) { group ->
-                        EngineGroupRow(
-                            group = group,
-                            selected = group.key == selectedGroup?.key,
+                if (wide) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(top = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.weight(0.42f).fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(groups, key = { it.key }) { group ->
+                                EngineGroupRow(
+                                    group = group,
+                                    selected = group.key == selectedGroup?.key,
+                                    colors = colors,
+                                    onClick = { actions.selectGroup(group) },
+                                    onEdit = group.loginKey.toLongOrNull()?.let { { actions.editHttpTts(it) } },
+                                    onDelete = httpTtsList.firstOrNull { it.id.toString() == group.loginKey }
+                                        ?.let { httpTts -> { actions.deleteHttpTts(httpTts) } }
+                                )
+                            }
+                        }
+                        EngineDetailCard(
+                            group = selectedGroup,
                             colors = colors,
-                            onClick = { actions.selectGroup(group) },
-                            onEdit = group.loginKey.toLongOrNull()?.let { { actions.editHttpTts(it) } },
-                            onDelete = httpTtsList.firstOrNull { it.id.toString() == group.loginKey }
-                                ?.let { httpTts -> { actions.deleteHttpTts(httpTts) } }
+                            actions = actions,
+                            modifier = Modifier.weight(0.58f).fillMaxSize()
                         )
                     }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(groups, key = { it.key }) { group ->
+                            EngineGroupRow(
+                                group = group,
+                                selected = group.key == selectedGroup?.key,
+                                colors = colors,
+                                onClick = { actions.selectGroup(group) },
+                                onEdit = null,
+                                onDelete = null
+                            )
+                            if (group.key == selectedGroup?.key) {
+                                EngineDetailCard(
+                                    group = selectedGroup,
+                                    colors = colors,
+                                    actions = actions,
+                                    modifier = Modifier
+                                        .padding(top = 8.dp)
+                                        .fillMaxWidth()
+                                        .heightIn(min = 260.dp, max = 460.dp)
+                                )
+                            }
+                        }
+                    }
                 }
-                Surface(
-                    modifier = Modifier.weight(0.58f).fillMaxSize(),
-                    color = colors.card,
-                    shape = RoundedCornerShape(context.composeActionRadius().coerceAtLeast(16.dp)),
-                    border = BorderStroke(1.dp, colors.stroke)
+                Row(
+                    modifier = Modifier.padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    EngineDetail(group = selectedGroup, colors = colors, actions = actions)
+                    BottomEngineAction("设为本书", colors, modifier = Modifier.weight(1f), onClick = actions::setForBook)
+                    BottomEngineAction("设为通用", colors, modifier = Modifier.weight(1f), onClick = actions::setForGlobal)
                 }
-            }
-            Row(
-                modifier = Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                BottomEngineAction("设为本书", colors, modifier = Modifier.weight(1f), onClick = actions::setForBook)
-                BottomEngineAction("设为通用", colors, modifier = Modifier.weight(1f), onClick = actions::setForGlobal)
             }
         }
     }
@@ -443,6 +470,85 @@ private fun EngineGroupRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EngineManagementActions(
+    compact: Boolean,
+    colors: SpeakEngineColors,
+    actions: SpeakEngineDialogActions,
+    modifier: Modifier = Modifier
+) {
+    if (!compact) {
+        Row(
+            modifier = modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SmallEngineAction("新增", actions::addHttpTts, colors)
+            SmallEngineAction("默认规则", actions::importDefault, colors)
+            SmallEngineAction("本地导入", actions::importLocal, colors)
+            SmallEngineAction("在线导入", actions::importOnline, colors)
+            SmallEngineAction("导出全部", actions::exportAll, colors)
+            SmallEngineAction("导出当前", actions::exportSelected, colors)
+        }
+        return
+    }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = colors.card,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("管理", color = colors.subText, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactEngineAction("新增", colors, Modifier.weight(1f), actions::addHttpTts)
+                CompactEngineAction("默认", colors, Modifier.weight(1f), actions::importDefault)
+                CompactEngineAction("在线", colors, Modifier.weight(1f), actions::importOnline)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactEngineAction("本地", colors, Modifier.weight(1f), actions::importLocal)
+                CompactEngineAction("导出全部", colors, Modifier.weight(1f), actions::exportAll)
+                CompactEngineAction("导出当前", colors, Modifier.weight(1f), actions::exportSelected)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactEngineAction(
+    text: String,
+    colors: SpeakEngineColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.height(34.dp).clickable(onClick = onClick),
+        color = colors.page,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(text, color = colors.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun EngineDetailCard(
+    group: SpeechVoiceEngineGroup?,
+    colors: SpeakEngineColors,
+    actions: SpeakEngineDialogActions,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        color = colors.card,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        EngineDetail(group = group, colors = colors, actions = actions)
     }
 }
 
