@@ -605,13 +605,6 @@ private fun CoverAtmosphereBackdrop(
             alpha = 0.30f,
             modifier = Modifier.fillMaxSize()
         )
-        CoverBackdropImage(
-            state = state,
-            alpha = 0.20f,
-            modifier = Modifier
-                .fillMaxSize()
-                .scale(1.22f)
-        )
         FluidBackdropLayer(state, colors)
         Box(
             modifier = Modifier
