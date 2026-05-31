@@ -36,6 +36,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.ai.AiReadAloudRoleService
+import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
@@ -288,6 +289,9 @@ abstract class BaseReadAloudService : BaseService(),
             val roleContentList = contentList
             if (AppConfig.aiReadAloudRoleEnabled) {
                 AiReadAloudRoleService.ensureCache(ReadBook.book, textChapter, roleContentList)
+                launch(IO) {
+                    prewarmNextChapterRoleCache()
+                }
             }
             if (contentList.isNotEmpty()) {
                 val startChapterPosition = textChapter.getReadLength(pageIndex) + startPos
@@ -307,6 +311,20 @@ abstract class BaseReadAloudService : BaseService(),
         }.onError {
             AppLog.put("启动朗读出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    private suspend fun prewarmNextChapterRoleCache() {
+        if (!AppConfig.aiReadAloudRoleEnabled) return
+        val nextChapter = ReadBook.nextTextChapter ?: return
+        if (!nextChapter.isCompleted) return
+        val cues = nextChapter.buildReadAloudCues(readAloudByPage)
+        if (cues.isEmpty()) return
+        AiReadAloudRoleService.ensureCache(
+            book = ReadBook.book,
+            textChapter = nextChapter,
+            paragraphs = cues.map { it.text },
+            stage = AiReadAloudRoleState.STAGE_NEXT
+        )
     }
 
     @SuppressLint("WakelockTimeout")

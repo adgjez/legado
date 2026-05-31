@@ -64,6 +64,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
 import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.BookHelp
@@ -4518,6 +4519,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) {
             readAloudPlayerPanel.onTimerChanged(it)
+        }
+        observeEvent<AiReadAloudRoleState>(EventBus.AI_READ_ALOUD_ROLE_STATE) {
+            readAloudPlayerPanel.onAiRoleState(it)
         }
         observeEventSticky<Int>(EventBus.TTS_PROGRESS) { chapterStart ->
             readAloudPlayerPanel.onTtsProgress(chapterStart)

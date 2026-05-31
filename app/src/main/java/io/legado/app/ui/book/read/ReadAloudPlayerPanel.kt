@@ -107,6 +107,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.ai.AiReadAloudRoleService
+import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.lib.dialogs.SelectItem
@@ -115,6 +116,7 @@ import io.legado.app.model.BookCover
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composeActionShape
 import io.legado.app.lib.theme.composePanelShape
 import io.legado.app.ui.book.read.config.ReadAloudConfigDialog
@@ -261,7 +263,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val panelPhase: PanelPhase = PanelPhase.Hidden,
         val readMenuVisible: Boolean = false,
         val readMenuAvoidBounds: RectF? = null,
-        val openToken: Int = 0
+        val openToken: Int = 0,
+        val roleStatusText: String = "",
+        val roleStatusRunning: Boolean = false,
+        val roleStatusError: Boolean = false,
+        val roleStatusVisible: Boolean = false
     )
 
     private val composeView = ComposeView(context)
@@ -269,6 +275,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var dismissedForCurrentRun = false
     private var foregroundActive = true
     private var lastChapterStart = 0
+    private var roleStatusText = ""
+    private var roleStatusRunning = false
+    private var roleStatusError = false
+    private var roleStatusUntil = 0L
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -372,6 +382,50 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     fun onTtsProgress(chapterStart: Int) {
         lastChapterStart = chapterStart.coerceAtLeast(0)
         refresh()
+    }
+
+    fun onAiRoleState(state: AiReadAloudRoleState) {
+        val currentBookUrl = ReadBook.book?.bookUrl ?: return
+        if (state.bookUrl != currentBookUrl) return
+        roleStatusText = buildRoleStatusText(state)
+        roleStatusRunning = state.running
+        roleStatusError = state.status == AiReadAloudRoleState.STATUS_FAILED
+        roleStatusUntil = if (state.running) {
+            Long.MAX_VALUE
+        } else {
+            System.currentTimeMillis() + 4200L
+        }
+        refresh()
+        if (!state.running) {
+            postDelayed({
+                if (roleStatusUntil <= System.currentTimeMillis()) {
+                    roleStatusText = ""
+                    roleStatusRunning = false
+                    roleStatusError = false
+                    refresh()
+                }
+            }, 4300L)
+        }
+    }
+
+    private fun buildRoleStatusText(state: AiReadAloudRoleState): String {
+        val prefix = if (state.stage == AiReadAloudRoleState.STAGE_NEXT) "下一章节" else "当前章节"
+        val detail = when {
+            state.error.isNotBlank() && state.status == AiReadAloudRoleState.STATUS_FAILED -> state.error
+            state.createdCharacterCount > 0 -> "新增 ${state.createdCharacterCount} 个角色"
+            state.segmentCount > 0 -> "${state.segmentCount} 个片段"
+            else -> ""
+        }
+        val message = state.message.ifBlank {
+            when (state.status) {
+                AiReadAloudRoleState.STATUS_RUNNING -> "${prefix}分配角色中"
+                AiReadAloudRoleState.STATUS_SUCCESS -> "${prefix}角色分配完成"
+                AiReadAloudRoleState.STATUS_FALLBACK -> "已使用默认分角色"
+                AiReadAloudRoleState.STATUS_FAILED -> "${prefix}角色分配失败"
+                else -> "${prefix}角色已分配"
+            }
+        }
+        return listOf(message, detail).filter { it.isNotBlank() }.joinToString(" · ")
     }
 
     fun onTimerChanged(minute: Int) {
@@ -746,7 +800,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             panelPhase = panelPhase,
             readMenuVisible = readMenuVisible,
             readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
-            openToken = openToken
+            openToken = openToken,
+            roleStatusText = roleStatusText,
+            roleStatusRunning = roleStatusRunning,
+            roleStatusError = roleStatusError,
+            roleStatusVisible = roleStatusText.isNotBlank() &&
+                    (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
         )
     }
 
@@ -1099,6 +1158,7 @@ private fun ReadAloudPlayerContent(
                         onModeChange(it)
                     }
                 )
+                RoleAssignmentStatus(state = state, colors = colors)
                 Spacer(modifier = Modifier.height(if (veryShort) 4.dp else 10.dp))
                 if (landscape) {
                     LandscapePlayerBody(
@@ -1630,6 +1690,67 @@ private fun MinimalHeader(
             colors = colors,
             onClick = onOpenSettings
         )
+    }
+}
+
+@Composable
+private fun RoleAssignmentStatus(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors
+) {
+    AnimatedVisibility(
+        visible = state.roleStatusVisible,
+        enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                expandVertically(tween(180, easing = FastOutSlowInEasing)),
+        exit = shrinkVertically(tween(160, easing = FastOutSlowInEasing)) +
+                fadeOut(tween(140, easing = FastOutSlowInEasing))
+    ) {
+        Surface(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .widthIn(max = 520.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+            color = if (state.roleStatusError) {
+                Color(0xFF6D2630).copy(alpha = 0.86f)
+            } else {
+                colors.panelStrong.copy(alpha = 0.78f)
+            },
+            border = BorderStroke(
+                1.dp,
+                if (state.roleStatusError) Color(0xFFFF8A9A).copy(alpha = 0.42f) else colors.panelBorder.copy(alpha = 0.55f)
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (state.roleStatusRunning) {
+                    val transition = rememberInfiniteTransition(label = "roleAssignPulse")
+                    val alpha by transition.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "roleAssignPulseAlpha"
+                    )
+                    Canvas(modifier = Modifier.size(8.dp)) {
+                        drawCircle(colors.accent.copy(alpha = alpha))
+                    }
+                }
+                Text(
+                    text = state.roleStatusText,
+                    color = colors.primaryText,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
 
