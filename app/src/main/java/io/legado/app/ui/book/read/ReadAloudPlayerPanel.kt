@@ -63,6 +63,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -269,7 +270,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleStatusText: String = "",
         val roleStatusRunning: Boolean = false,
         val roleStatusError: Boolean = false,
-        val roleStatusVisible: Boolean = false
+        val roleStatusVisible: Boolean = false,
+        val roleState: AiReadAloudRoleState? = null
     )
 
     private val composeView = ComposeView(context)
@@ -281,6 +283,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var roleStatusRunning = false
     private var roleStatusError = false
     private var roleStatusUntil = 0L
+    private var roleState: AiReadAloudRoleState? = null
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -322,7 +325,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 capsulePosition = capsulePosition,
                 onCapsulePositionChange = ::updateCapsulePosition,
                 onCapsuleBounds = ::updateCapsuleBounds,
-                onOpenCharacters = { callBack?.openBookCharacters() }
+                onOpenCharacters = { callBack?.openBookCharacters() },
+                onDismissRoleStatus = ::dismissRoleStatus
             )
         }
     }
@@ -389,6 +393,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     fun onAiRoleState(state: AiReadAloudRoleState) {
         val currentBookUrl = ReadBook.book?.bookUrl ?: return
         if (state.bookUrl != currentBookUrl) return
+        roleState = state
         roleStatusText = buildRoleStatusText(state)
         roleStatusRunning = state.running
         roleStatusError = state.status == AiReadAloudRoleState.STATUS_FAILED
@@ -404,10 +409,20 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     roleStatusText = ""
                     roleStatusRunning = false
                     roleStatusError = false
+                    roleState = null
                     refresh()
                 }
             }, 4300L)
         }
+    }
+
+    private fun dismissRoleStatus() {
+        if (roleStatusRunning) return
+        roleStatusText = ""
+        roleStatusError = false
+        roleStatusUntil = 0L
+        roleState = null
+        refresh()
     }
 
     private fun buildRoleStatusText(state: AiReadAloudRoleState): String {
@@ -601,7 +616,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (visibility == VISIBLE && !expanded) {
+        if (visibility == VISIBLE && !expanded && !uiState.roleStatusVisible) {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN &&
                 !capsuleBounds.contains(ev.x, ev.y)
             ) {
@@ -810,7 +825,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleStatusRunning = roleStatusRunning,
             roleStatusError = roleStatusError,
             roleStatusVisible = roleStatusText.isNotBlank() &&
-                    (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
+                    (roleStatusRunning || roleStatusUntil > System.currentTimeMillis()),
+            roleState = roleState
         )
     }
 
@@ -1089,7 +1105,8 @@ private fun ReadAloudPlayerContent(
     capsulePosition: CapsulePositionState,
     onCapsulePositionChange: (Float, Float) -> Unit,
     onCapsuleBounds: (RectF) -> Unit,
-    onOpenCharacters: () -> Unit
+    onOpenCharacters: () -> Unit,
+    onDismissRoleStatus: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
@@ -1248,6 +1265,11 @@ private fun ReadAloudPlayerContent(
                 onBounds = onCapsuleBounds
             )
         }
+        RoleAssignmentProgressDialog(
+            state = state,
+            colors = colors,
+            onDismiss = onDismissRoleStatus
+        )
     }
 }
 
@@ -1746,6 +1768,139 @@ private fun RoleAssignmentStatus(
                     lineHeight = 17.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleAssignmentProgressDialog(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onDismiss: () -> Unit
+) {
+    val roleState = state.roleState ?: return
+    AnimatedVisibility(
+        visible = state.roleStatusVisible,
+        enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                scaleIn(tween(180, easing = FastOutSlowInEasing), initialScale = 0.96f),
+        exit = scaleOut(tween(150, easing = FastOutSlowInEasing), targetScale = 0.98f) +
+                fadeOut(tween(140, easing = FastOutSlowInEasing)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = if (state.roleStatusRunning) 0.18f else 0.10f))
+                .systemBarsPadding()
+                .padding(22.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val shape = LocalContext.current.composePanelShape()
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 480.dp),
+                shape = shape,
+                color = colors.panelStrong.copy(alpha = 0.96f),
+                border = BorderStroke(1.dp, colors.panelBorder),
+                shadowElevation = 14.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (state.roleStatusRunning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.accent
+                            )
+                        } else {
+                            Canvas(modifier = Modifier.size(20.dp)) {
+                                drawCircle(
+                                    if (state.roleStatusError) Color(0xFFFF6B7A) else colors.accent
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.padding(start = 10.dp).weight(1f)) {
+                            Text(
+                                text = "多角色分配",
+                                color = colors.primaryText,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = roleState.chapterTitle.ifBlank { state.chapterTitle },
+                                color = colors.subtleText,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        if (!state.roleStatusRunning) {
+                            Surface(
+                                onClick = onDismiss,
+                                shape = CircleShape,
+                                color = Color.Transparent,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close_x),
+                                        contentDescription = "关闭",
+                                        tint = colors.primaryText,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        text = state.roleStatusText,
+                        color = colors.primaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(top = 14.dp)
+                    )
+                    RoleAssignmentMetricRows(roleState, colors)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleAssignmentMetricRows(
+    state: AiReadAloudRoleState,
+    colors: PlayerColors
+) {
+    val rows = buildList {
+        add("段落" to state.paragraphCount.toString())
+        if (state.segmentCount > 0) add("片段" to state.segmentCount.toString())
+        if (state.createdCharacterCount > 0) add("新增角色" to state.createdCharacterCount.toString())
+        if (state.stage == AiReadAloudRoleState.STAGE_NEXT) add("阶段" to "预处理下一章")
+        if (state.error.isNotBlank()) add("错误" to state.error)
+    }
+    Column(
+        modifier = Modifier.padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        rows.forEach { (label, value) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = label,
+                    color = colors.subtleText,
+                    fontSize = 12.sp,
+                    modifier = Modifier.width(62.dp)
+                )
+                Text(
+                    text = value,
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = if (label == "错误") 3 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }

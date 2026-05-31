@@ -688,34 +688,49 @@ object AiReadAloudRoleService {
             val roleType = item.optString("roleType").trim()
                 .takeIf { it in setOf("narrator", "character", "thought", "other") }
                 ?: "other"
+            val characterName = item.optString("characterName").trim().take(80)
+            val confidence = if (item.has("confidence")) {
+                item.optDouble("confidence", 0.0)
+            } else if (characterName.isNotBlank() && roleType in setOf("character", "thought")) {
+                0.76
+            } else {
+                0.5
+            }
             result += Segment(
                 paragraphIndex = paragraphIndex,
                 start = start,
                 end = end,
                 roleType = roleType,
-                characterName = item.optString("characterName").trim().take(80),
+                characterName = characterName,
                 characterId = item.optLong("characterId", 0L).coerceAtLeast(0L),
                 emotionName = item.optString("emotionName").trim().take(40),
                 emotionTag = item.optString("emotionTag").trim().take(40),
-                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+                confidence = confidence.coerceIn(0.0, 1.0)
             )
         }
         return result
     }
 
     private fun parseCandidates(args: JSONObject?): List<CharacterCandidate> {
-        val array = args?.optJSONArray("newCharacters") ?: return emptyList()
+        val array = args?.optJSONArray("newCharacters")
+            ?: args?.optJSONArray("newCharacterCandidates")
+            ?: args?.optJSONArray("characterCandidates")
+            ?: args?.optJSONArray("characters")
+            ?: return emptyList()
         val result = mutableListOf<CharacterCandidate>()
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
-            val name = item.optString("name").trim().take(80)
+            val name = item.optString("name")
+                .ifBlank { item.optString("characterName") }
+                .trim()
+                .take(80)
             if (name.isBlank()) continue
             result += CharacterCandidate(
                 name = name,
                 identity = item.optString("identity").trim().take(200),
                 roleLevel = item.optInt("roleLevel", BookCharacter.ROLE_NORMAL)
                     .coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN),
-                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0),
+                confidence = item.optDouble("confidence", 0.72).coerceIn(0.0, 1.0),
                 evidence = item.optString("evidence").trim().take(200)
             )
         }
