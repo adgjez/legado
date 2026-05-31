@@ -174,14 +174,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     closeFromAction()
                     callBack?.openChapterList()
                 },
-                onShowMenuBar = {
-                    closeFromAction()
-                    callBack?.showMenuBar()
-                },
-                onBackstage = {
-                    closeFromAction()
-                    callBack?.finish()
-                },
+                onPreviousChapter = { ReadBook.moveToPrevChapter(upContent = true, toLast = false) },
+                onNextChapter = { ReadBook.moveToNextChapter(true) },
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
                 onSpeechRateChange = ::setSpeechRate,
@@ -451,8 +445,8 @@ private fun ReadAloudPlayerContent(
     onPlayPause: () -> Unit,
     onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit,
     onOpenChapterList: () -> Unit,
-    onShowMenuBar: () -> Unit,
-    onBackstage: () -> Unit,
+    onPreviousChapter: () -> Unit,
+    onNextChapter: () -> Unit,
     onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
     onSpeechRateChange: (Int) -> Unit,
@@ -487,6 +481,7 @@ private fun ReadAloudPlayerContent(
                     mode = state.mode,
                     colors = colors,
                     onClose = onClose,
+                    onOpenSettings = onOpenSettings,
                     onModeChange = {
                         activeSheet = PlayerSheet.None
                         onModeChange(it)
@@ -525,7 +520,10 @@ private fun ReadAloudPlayerContent(
                     onSheetChange = { sheet ->
                         activeSheet = if (activeSheet == sheet) PlayerSheet.None else sheet
                     },
-                    onPlayPause = onPlayPause
+                    onPlayPause = onPlayPause,
+                    onPreviousChapter = onPreviousChapter,
+                    onNextChapter = onNextChapter,
+                    onOpenChapterList = onOpenChapterList
                 )
                 AnimatedVisibility(
                     visible = activeSheet != PlayerSheet.None,
@@ -536,10 +534,6 @@ private fun ReadAloudPlayerContent(
                         sheet = activeSheet,
                         state = state,
                         colors = colors,
-                        onOpenChapterList = onOpenChapterList,
-                        onShowMenuBar = onShowMenuBar,
-                        onBackstage = onBackstage,
-                        onOpenSettings = onOpenSettings,
                         onTimerChange = onTimerChange,
                         onSpeechRateChange = onSpeechRateChange,
                         onFollowSystemSpeechRateChange = onFollowSystemSpeechRateChange,
@@ -554,8 +548,7 @@ private fun ReadAloudPlayerContent(
 private enum class PlayerSheet {
     None,
     Timer,
-    Speed,
-    Tools
+    Speed
 }
 
 private data class LyricsTarget(
@@ -729,24 +722,56 @@ private fun MinimalHeader(
     mode: ReadAloudPlayerPanel.DisplayMode,
     colors: PlayerColors,
     onClose: () -> Unit,
+    onOpenSettings: () -> Unit,
     onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp),
+            .height(46.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_expand_more),
-                contentDescription = "收起",
-                tint = colors.primaryText,
-                modifier = Modifier.size(24.dp)
-            )
-        }
+        HeaderIconButton(
+            icon = R.drawable.ic_expand_more,
+            contentDescription = "收起",
+            colors = colors,
+            onClick = onClose
+        )
         Spacer(modifier = Modifier.weight(1f))
         ModeSwitch(mode, colors, onModeChange)
+        Spacer(modifier = Modifier.weight(1f))
+        HeaderIconButton(
+            icon = R.drawable.ic_settings,
+            contentDescription = "设置",
+            colors = colors,
+            onClick = onOpenSettings
+        )
+    }
+}
+
+@Composable
+private fun HeaderIconButton(
+    icon: Int,
+    contentDescription: String,
+    colors: PlayerColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .size(42.dp)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = Color.White.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = contentDescription,
+                tint = colors.primaryText,
+                modifier = Modifier.size(21.dp)
+            )
+        }
     }
 }
 
@@ -1285,78 +1310,137 @@ private fun PlayerControlDock(
     colors: PlayerColors,
     activeSheet: PlayerSheet,
     onSheetChange: (PlayerSheet) -> Unit,
-    onPlayPause: () -> Unit
+    onPlayPause: () -> Unit,
+    onPreviousChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+    onOpenChapterList: () -> Unit
 ) {
     val context = LocalContext.current
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+            .height(126.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        ControlPill(
-            icon = R.drawable.ic_time_add_24dp,
-            text = if (state.timerMinute > 0) context.getString(R.string.timer_m, state.timerMinute)
-            else context.getString(R.string.set_timer),
-            selected = activeSheet == PlayerSheet.Timer,
-            colors = colors
-        ) {
-            onSheetChange(PlayerSheet.Timer)
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Surface(
+        Row(
             modifier = Modifier
-                .size(68.dp)
-                .clickable(onClick = onPlayPause),
-            shape = CircleShape,
-            color = Color.White.copy(alpha = 0.92f),
-            shadowElevation = 16.dp
+                .fillMaxWidth()
+                .widthIn(max = 300.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
-                    contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
-                    tint = Color.Black.copy(alpha = 0.88f),
-                    modifier = Modifier.size(32.dp)
-                )
+            RoundTransportButton(
+                icon = R.drawable.ic_skip_previous,
+                contentDescription = "上一章",
+                colors = colors,
+                size = 50.dp,
+                iconSize = 25.dp,
+                onClick = onPreviousChapter
+            )
+            Surface(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clickable(onClick = onPlayPause),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.92f),
+                shadowElevation = 16.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
+                        contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
+                        tint = Color.Black.copy(alpha = 0.88f),
+                        modifier = Modifier.size(34.dp)
+                    )
+                }
             }
+            RoundTransportButton(
+                icon = R.drawable.ic_skip_next,
+                contentDescription = "下一章",
+                colors = colors,
+                size = 50.dp,
+                iconSize = 25.dp,
+                onClick = onNextChapter
+            )
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        ControlPill(
-            icon = R.drawable.ic_speed_control,
-            text = formatSpeechRate(state.speechRate),
-            selected = activeSheet == PlayerSheet.Speed,
-            colors = colors
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            onSheetChange(PlayerSheet.Speed)
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        ControlPill(
-            icon = R.drawable.ic_more,
-            text = context.getString(R.string.more),
-            selected = activeSheet == PlayerSheet.Tools,
-            colors = colors,
-            compact = true
-        ) {
-            onSheetChange(PlayerSheet.Tools)
+            FeaturePill(
+                icon = R.drawable.ic_toc,
+                text = context.getString(R.string.chapter_list),
+                selected = false,
+                colors = colors,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenChapterList
+            )
+            FeaturePill(
+                icon = R.drawable.ic_time_add_24dp,
+                text = if (state.timerMinute > 0) context.getString(R.string.timer_m, state.timerMinute)
+                else context.getString(R.string.set_timer),
+                selected = activeSheet == PlayerSheet.Timer,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            ) {
+                onSheetChange(PlayerSheet.Timer)
+            }
+            FeaturePill(
+                icon = R.drawable.ic_speed_control,
+                text = formatSpeechRate(state.speechRate),
+                selected = activeSheet == PlayerSheet.Speed,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            ) {
+                onSheetChange(PlayerSheet.Speed)
+            }
         }
     }
 }
 
 @Composable
-private fun ControlPill(
+private fun RoundTransportButton(
     icon: Int,
-    text: String,
-    selected: Boolean,
+    contentDescription: String,
     colors: PlayerColors,
-    compact: Boolean = false,
+    size: Dp,
+    iconSize: Dp,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
-            .height(42.dp)
-            .width(if (compact) 48.dp else 78.dp)
+            .size(size)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = Color.White.copy(alpha = 0.13f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = contentDescription,
+                tint = colors.primaryText,
+                modifier = Modifier.size(iconSize)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeaturePill(
+    icon: Int,
+    text: String,
+    selected: Boolean,
+    colors: PlayerColors,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxHeight()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(999.dp),
         color = if (selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.13f),
@@ -1364,7 +1448,7 @@ private fun ControlPill(
         shadowElevation = if (selected) 8.dp else 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = if (compact) 12.dp else 13.dp),
+            modifier = Modifier.padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -1372,19 +1456,17 @@ private fun ControlPill(
                 painter = painterResource(icon),
                 contentDescription = text,
                 tint = if (selected) colors.accentText else colors.primaryText,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(17.dp)
             )
-            if (!compact) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = text,
-                    color = if (selected) colors.accentText else colors.primaryText,
-                    fontSize = 12.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Spacer(modifier = Modifier.width(5.dp))
+            Text(
+                text = text,
+                color = if (selected) colors.accentText else colors.primaryText,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1394,10 +1476,6 @@ private fun PlayerSheetPanel(
     sheet: PlayerSheet,
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
-    onOpenChapterList: () -> Unit,
-    onShowMenuBar: () -> Unit,
-    onBackstage: () -> Unit,
-    onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
     onSpeechRateChange: (Int) -> Unit,
     onFollowSystemSpeechRateChange: (Boolean) -> Unit,
@@ -1415,7 +1493,6 @@ private fun PlayerSheetPanel(
         when (sheet) {
             PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
             PlayerSheet.Speed -> SpeedSheet(state, colors, onSpeechRateChange, onFollowSystemSpeechRateChange)
-            PlayerSheet.Tools -> ToolsSheet(colors, onOpenChapterList, onShowMenuBar, onBackstage, onOpenSettings)
             PlayerSheet.None -> Unit
         }
     }
@@ -1551,108 +1628,6 @@ private fun SpeedSheet(
             Switch(
                 checked = state.followSystemSpeechRate,
                 onCheckedChange = onFollowSystemSpeechRateChange
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToolsSheet(
-    colors: PlayerColors,
-    onOpenChapterList: () -> Unit,
-    onShowMenuBar: () -> Unit,
-    onBackstage: () -> Unit,
-    onOpenSettings: () -> Unit
-) {
-    val context = LocalContext.current
-    val actions = listOf(
-        Triple(R.drawable.ic_toc, context.getString(R.string.chapter_list), onOpenChapterList),
-        Triple(R.drawable.ic_menu, context.getString(R.string.main_menu), onShowMenuBar),
-        Triple(R.drawable.ic_visibility_off, context.getString(R.string.to_backstage), onBackstage),
-        Triple(R.drawable.ic_settings, context.getString(R.string.setting), onOpenSettings)
-    )
-    Column(
-        modifier = Modifier.padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        actions.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                row.forEach { (icon, text, action) ->
-                    ToolAction(
-                        icon = icon,
-                        text = text,
-                        colors = colors,
-                        modifier = Modifier.weight(1f),
-                        onClick = action
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToolAction(
-    icon: Int,
-    text: String,
-    colors: PlayerColors,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier
-            .height(48.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = Color.White.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = text,
-                tint = colors.primaryText,
-                modifier = Modifier.size(19.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = text,
-                color = colors.primaryText,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun MinimalTransport(
-    state: ReadAloudPlayerPanel.PlayerUiState,
-    colors: PlayerColors,
-    onPlayPause: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .size(72.dp)
-            .clickable(onClick = onPlayPause),
-        shape = CircleShape,
-        color = Color.White.copy(alpha = 0.92f),
-        shadowElevation = 16.dp
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
-                contentDescription = if (state.playing) "暂停" else "播放",
-                tint = Color.Black.copy(alpha = 0.88f),
-                modifier = Modifier.size(34.dp)
             )
         }
     }
