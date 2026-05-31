@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.database.ContentObserver
+import android.graphics.RectF
 import android.graphics.PorterDuff
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -765,6 +766,20 @@ class ReadMenu @JvmOverloads constructor(
                 menuOutListener.onAnimationEnd(menuBottomOut)
             }
         }
+    }
+
+    fun bottomMenuBoundsIn(target: View): RectF? = binding.run {
+        if (!isVisible || !bottomMenu.isVisible) return null
+        if (bottomMenu.width <= 0 || bottomMenu.height <= 0 || target.width <= 0 || target.height <= 0) {
+            return null
+        }
+        val menuLocation = IntArray(2)
+        val targetLocation = IntArray(2)
+        bottomMenu.getLocationInWindow(menuLocation)
+        target.getLocationInWindow(targetLocation)
+        val left = (menuLocation[0] - targetLocation[0]).toFloat()
+        val top = (menuLocation[1] - targetLocation[1]).toFloat()
+        return RectF(left, top, left + bottomMenu.width, top + bottomMenu.height)
     }
 
     private fun brightnessAuto(): Boolean {

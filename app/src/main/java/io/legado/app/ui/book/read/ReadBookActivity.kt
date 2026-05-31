@@ -4262,14 +4262,21 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onMenuShow() {
         binding.readAloudPlayerPanel.setReadMenuVisible(true)
+        binding.readMenu.post { syncReadMenuAvoidBounds() }
+        binding.readMenu.doOnLayout { syncReadMenuAvoidBounds() }
         if (epubCoreActive) return
         binding.readView.autoPager.pause()
     }
 
     override fun onMenuHide() {
-        binding.readAloudPlayerPanel.setReadMenuVisible(false)
+        binding.readAloudPlayerPanel.setReadMenuAvoidBounds(null)
         if (epubCoreActive) return
         binding.readView.autoPager.resume()
+    }
+
+    private fun syncReadMenuAvoidBounds() {
+        val bounds = binding.readMenu.bottomMenuBoundsIn(binding.readAloudPlayerPanel)
+        binding.readAloudPlayerPanel.setReadMenuAvoidBounds(bounds)
     }
 
     override fun epubCorePageCount(): Int {

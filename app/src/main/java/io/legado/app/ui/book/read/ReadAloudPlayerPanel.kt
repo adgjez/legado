@@ -230,6 +230,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val expanded: Boolean = true,
         val opening: Boolean = false,
         val readMenuVisible: Boolean = false,
+        val readMenuAvoidBounds: RectF? = null,
         val openToken: Int = 0
     )
 
@@ -242,6 +243,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var expanded = true
     private var opening = false
     private var readMenuVisible = false
+    private var readMenuAvoidBounds: RectF? = null
     private var openToken = 0
     private val capsuleBounds = RectF()
 
@@ -327,7 +329,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun setReadMenuVisible(visible: Boolean) {
         readMenuVisible = visible
-        uiState = uiState.copy(readMenuVisible = visible)
+        if (!visible) {
+            readMenuAvoidBounds = null
+        }
+        uiState = uiState.copy(
+            readMenuVisible = visible,
+            readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF)
+        )
+    }
+
+    fun setReadMenuAvoidBounds(bounds: RectF?) {
+        readMenuVisible = bounds != null
+        readMenuAvoidBounds = bounds?.let(::RectF)
+        uiState = uiState.copy(
+            readMenuVisible = readMenuVisible,
+            readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF)
+        )
     }
 
     fun isExpanded(): Boolean = visibility == VISIBLE && expanded
@@ -356,6 +373,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     expanded = false,
                     opening = true,
                     readMenuVisible = readMenuVisible,
+                    readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                     openToken = openToken
                 )
                 postOnAnimation {
@@ -367,6 +385,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                         expanded = true,
                         opening = false,
                         readMenuVisible = readMenuVisible,
+                        readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                         openToken = openToken
                     )
                     if (!wasVisible || !wasExpanded) {
@@ -385,6 +404,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 expanded = expanded,
                 opening = opening,
                 readMenuVisible = readMenuVisible,
+                readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                 openToken = openToken
             )
             if (!wasVisible || (!wasExpanded && expanded)) {
@@ -415,6 +435,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 expanded = false,
                 opening = false,
                 readMenuVisible = readMenuVisible,
+                readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
                 openToken = openToken
             )
             callBack?.onReadAloudPlayerVisibilityChanged(false)
@@ -612,6 +633,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             expanded = expanded,
             opening = opening,
             readMenuVisible = readMenuVisible,
+            readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
             openToken = openToken
         )
     }
