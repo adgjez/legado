@@ -14,8 +14,6 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -23,7 +21,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -145,6 +142,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val paragraphText: String = "",
         val paragraphIndex: Int = 0,
         val paragraphCount: Int = 0,
+        val chapterIndex: Int = 0,
+        val chapterCount: Int = 0,
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val chapterKey: String = "",
         val paragraphKey: String = "",
@@ -182,6 +181,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 },
                 onPreviousChapter = { ReadBook.moveToPrevChapter(upContent = true, toLast = false) },
                 onNextChapter = { ReadBook.moveToNextChapter(true) },
+                onChapterSelect = { ReadBook.openChapter(it, upContent = true) },
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
                 onSpeechRateChange = ::setSpeechRate,
@@ -366,6 +366,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             paragraphText = paragraphText,
             paragraphIndex = if (paragraphIndex >= 0) paragraphIndex + 1 else 0,
             paragraphCount = paragraphs.size,
+            chapterIndex = chapterSequence.coerceAtLeast(0),
+            chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             nearbyParagraphs = nearby,
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
@@ -455,6 +457,7 @@ private fun ReadAloudPlayerContent(
     onOpenChapterList: () -> Unit,
     onPreviousChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    onChapterSelect: (Int) -> Unit,
     onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
     onSpeechRateChange: (Int) -> Unit,
@@ -569,6 +572,10 @@ private fun ReadAloudPlayerContent(
                         sheet = activeSheet,
                         state = state,
                         colors = colors,
+                        onOpenChapterList = onOpenChapterList,
+                        onPreviousChapter = onPreviousChapter,
+                        onNextChapter = onNextChapter,
+                        onChapterSelect = onChapterSelect,
                         onTimerChange = onTimerChange,
                         onSpeechRateChange = onSpeechRateChange,
                         onFollowSystemSpeechRateChange = onFollowSystemSpeechRateChange,
@@ -582,6 +589,7 @@ private fun ReadAloudPlayerContent(
 
 private enum class PlayerSheet {
     None,
+    Chapter,
     Timer,
     Speed
 }
@@ -1131,12 +1139,8 @@ private fun FocusSentenceBody(
         transitionSpec = {
             val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
             if (animateTextChanges) {
-                ((slideInVertically(tween(320)) { height -> height * direction / 3 } +
-                        fadeIn(tween(220)) +
-                        scaleIn(tween(320), initialScale = 0.98f)) togetherWith
-                        (slideOutVertically(tween(240)) { height -> -height * direction / 4 } +
-                                fadeOut(tween(160)) +
-                                scaleOut(tween(240), targetScale = 1.02f)))
+                (slideInVertically(tween(260)) { height -> height * direction / 4 } togetherWith
+                        slideOutVertically(tween(220)) { height -> -height * direction / 5 })
                     .using(SizeTransform(clip = false))
             } else {
                 (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
@@ -1199,10 +1203,8 @@ private fun LyricParagraphBody(
         transitionSpec = {
             val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
             if (animateTextChanges) {
-                ((slideInVertically(tween(300)) { height -> height * direction / 5 } +
-                        fadeIn(tween(220))) togetherWith
-                        (slideOutVertically(tween(240)) { height -> -height * direction / 6 } +
-                                fadeOut(tween(160))))
+                (slideInVertically(tween(240)) { height -> height * direction / 6 } togetherWith
+                        slideOutVertically(tween(220)) { height -> -height * direction / 7 })
                     .using(SizeTransform(clip = false))
             } else {
                 (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
@@ -1233,8 +1235,7 @@ private fun LyricParagraphBody(
                         colors = colors,
                         compact = compact,
                         currentMaxLines = currentMaxLines,
-                        textAlign = textAlign,
-                        animate = animateTextChanges
+                        textAlign = textAlign
                     )
                 }
             }
@@ -1248,14 +1249,9 @@ private fun LyricParagraphLine(
     colors: PlayerColors,
     compact: Boolean,
     currentMaxLines: Int,
-    textAlign: TextAlign,
-    animate: Boolean
+    textAlign: TextAlign
 ) {
-    val emphasis by animateFloatAsState(
-        targetValue = if (paragraph.current) 1f else 0f,
-        animationSpec = tween(if (animate) 220 else 1),
-        label = "readAloudLyricEmphasis"
-    )
+    val emphasis = if (paragraph.current) 1f else 0f
     val fontSize = when {
         compact -> 14f + emphasis * 6f
         else -> 15f + emphasis * 8f
@@ -1386,11 +1382,12 @@ private fun PlayerControlDock(
             FeaturePill(
                 icon = R.drawable.ic_toc,
                 text = context.getString(R.string.chapter_list),
-                selected = false,
+                selected = activeSheet == PlayerSheet.Chapter,
                 colors = colors,
-                modifier = Modifier.weight(1f),
-                onClick = onOpenChapterList
-            )
+                modifier = Modifier.weight(1f)
+            ) {
+                onSheetChange(PlayerSheet.Chapter)
+            }
             FeaturePill(
                 icon = R.drawable.ic_time_add_24dp,
                 text = if (state.timerMinute > 0) context.getString(R.string.timer_m, state.timerMinute)
@@ -1490,6 +1487,10 @@ private fun PlayerSheetPanel(
     sheet: PlayerSheet,
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
+    onOpenChapterList: () -> Unit,
+    onPreviousChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+    onChapterSelect: (Int) -> Unit,
     onTimerChange: (Int) -> Unit,
     onSpeechRateChange: (Int) -> Unit,
     onFollowSystemSpeechRateChange: (Boolean) -> Unit,
@@ -1506,9 +1507,136 @@ private fun PlayerSheetPanel(
         shadowElevation = 12.dp
     ) {
         when (sheet) {
+            PlayerSheet.Chapter -> ChapterSheet(
+                state = state,
+                colors = colors,
+                onOpenChapterList = onOpenChapterList,
+                onPreviousChapter = onPreviousChapter,
+                onNextChapter = onNextChapter,
+                onChapterSelect = onChapterSelect
+            )
             PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
             PlayerSheet.Speed -> SpeedSheet(state, colors, onSpeechRateChange, onFollowSystemSpeechRateChange)
             PlayerSheet.None -> Unit
+        }
+    }
+}
+
+@Composable
+private fun ChapterSheet(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    onOpenChapterList: () -> Unit,
+    onPreviousChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+    onChapterSelect: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val actionShape = context.composeActionShape()
+    val chapterCount = state.chapterCount.coerceAtLeast(1)
+    var pendingChapter by remember(state.chapterIndex, chapterCount) {
+        mutableStateOf(state.chapterIndex.coerceIn(0, chapterCount - 1).toFloat())
+    }
+    val pendingIndex = pendingChapter.roundToInt().coerceIn(0, chapterCount - 1)
+    Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = context.getString(R.string.chapter_list),
+                    color = colors.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = state.chapterTitle.ifBlank { state.chapterIndexText },
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            Text(
+                text = "${pendingIndex + 1}/$chapterCount",
+                color = colors.primaryText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (chapterCount > 1) {
+            Slider(
+                value = pendingChapter,
+                onValueChange = { pendingChapter = it },
+                onValueChangeFinished = {
+                    if (pendingIndex != state.chapterIndex) {
+                        onChapterSelect(pendingIndex)
+                    }
+                },
+                valueRange = 0f..(chapterCount - 1).toFloat()
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SheetActionButton(
+                text = context.getString(R.string.previous_chapter),
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f),
+                onClick = onPreviousChapter
+            )
+            SheetActionButton(
+                text = context.getString(R.string.next_chapter),
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f),
+                onClick = onNextChapter
+            )
+            SheetActionButton(
+                text = context.getString(R.string.chapter_list),
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenChapterList
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetActionButton(
+    text: String,
+    colors: PlayerColors,
+    shape: Shape,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(onClick = onClick),
+        shape = shape,
+        color = Color.White.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                color = colors.primaryText,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
