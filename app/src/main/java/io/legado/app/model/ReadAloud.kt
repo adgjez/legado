@@ -9,11 +9,11 @@ import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.TTSReadAloudService
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.StringUtils
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startForegroundServiceCompat
 import io.legado.app.utils.toastOnUi
@@ -22,22 +22,26 @@ import splitties.init.appCtx
 object ReadAloud {
     private var aloudClass: Class<*> = getReadAloudClass()
     val ttsEngine get() = ReadBook.book?.getTtsEngine() ?: AppConfig.ttsEngine
+    val speechRoute get() = SpeechRoute.fromTtsEngineValue(ttsEngine)
     var httpTTS: HttpTTS? = null
 
     private fun getReadAloudClass(): Class<*> {
         val ttsEngine = ttsEngine
+        val route = SpeechRoute.fromTtsEngineValue(ttsEngine)
         if (AppConfig.aiReadAloudRoleEnabled) {
-            httpTTS = ttsEngine
-                ?.takeIf { StringUtils.isNumeric(it) }
-                ?.let { appDb.httpTTSDao.get(it.toLong()) }
+            httpTTS = route
+                .takeIf { it.engineType == SpeechRoute.ENGINE_HTTP }
+                ?.engineValue
+                ?.toLongOrNull()
+                ?.let { appDb.httpTTSDao.get(it) }
                 ?: appDb.httpTTSDao.all.firstOrNull()
             return HttpReadAloudService::class.java
         }
-        if (ttsEngine.isNullOrBlank()) {
+        if (ttsEngine.isNullOrBlank() || route.engineType == SpeechRoute.ENGINE_SYSTEM) {
             return TTSReadAloudService::class.java
         }
-        if (StringUtils.isNumeric(ttsEngine)) {
-            httpTTS = appDb.httpTTSDao.get(ttsEngine.toLong())
+        if (route.engineType == SpeechRoute.ENGINE_HTTP) {
+            httpTTS = route.engineValue.toLongOrNull()?.let { appDb.httpTTSDao.get(it) }
             if (httpTTS != null) {
                 return HttpReadAloudService::class.java
             }

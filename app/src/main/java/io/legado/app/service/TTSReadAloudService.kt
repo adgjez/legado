@@ -11,16 +11,14 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
-import io.legado.app.utils.GSON
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import org.json.JSONObject
 
 /**
  * 本地朗读
@@ -50,7 +48,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
     @Synchronized
     private fun initTts() {
         ttsInitFinish = false
-        val engine = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine).getOrNull()?.value
+        val engine = resolveSystemTtsEngine(ReadAloud.speechRoute.engineValue)
         LogUtils.d(TAG, "initTts engine:$engine")
         textToSpeech = if (engine.isNullOrBlank()) {
             TextToSpeech(this, this)
@@ -58,6 +56,14 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
             TextToSpeech(this, this, engine)
         }
         upSpeechRate()
+    }
+
+    private fun resolveSystemTtsEngine(engineValue: String): String? {
+        val value = engineValue.trim()
+        if (value.isBlank()) return null
+        return runCatching {
+            JSONObject(value).optString("value").takeIf { it.isNotBlank() }
+        }.getOrNull() ?: value
     }
 
     @Synchronized

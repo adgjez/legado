@@ -460,7 +460,8 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun speechRouteForIndex(index: Int): SpeechRoute? {
-        if (!AppConfig.aiReadAloudRoleEnabled) return null
+        val defaultRoute = ReadAloud.speechRoute.takeIf { it.isConfigured }
+        if (!AppConfig.aiReadAloudRoleEnabled) return defaultRoute
         speechRoutes.getOrNull(index)?.let { return it }
         val book = ReadBook.book ?: return null
         val chapter = textChapter ?: return null
@@ -469,7 +470,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             chapterIndex = chapter.chapter.index,
             cueIndex = index,
             cueText = contentList.getOrNull(index)
-        )
+        ) ?: defaultRoute
     }
 
     private fun httpTtsForRoute(defaultHttpTts: HttpTTS?, route: SpeechRoute?): HttpTTS? {
@@ -479,6 +480,8 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun defaultSystemRoute(): SpeechRoute {
+        val route = ReadAloud.speechRoute
+        if (route.engineType == SpeechRoute.ENGINE_SYSTEM && route.isConfigured) return route
         return SpeechRoute(
             engineType = SpeechRoute.ENGINE_SYSTEM,
             engineValue = ReadAloud.ttsEngine.orEmpty(),

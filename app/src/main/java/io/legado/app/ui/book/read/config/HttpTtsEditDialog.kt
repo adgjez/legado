@@ -54,6 +54,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isJsonArray
+import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
@@ -152,15 +153,16 @@ class HttpTtsEditDialog() : BaseDialogFragment(0) {
             toastOnUi("名称不能为空")
             return false
         }
-        fun validJsonArray(value: String): Boolean {
-            return value.isBlank() || value.trim().isJsonArray()
+        fun validJsonCatalog(value: String): Boolean {
+            val text = value.trim()
+            return text.isBlank() || text.isJsonArray() || text.isJsonObject()
         }
-        if (!validJsonArray(httpTTS.speakersJson)) {
-            toastOnUi("发言人列表 JSON 必须是数组")
+        if (!validJsonCatalog(httpTTS.speakersJson)) {
+            toastOnUi("发言人列表 JSON 必须是数组或对象")
             return false
         }
-        if (!validJsonArray(httpTTS.emotionsJson)) {
-            toastOnUi("情绪列表 JSON 必须是数组")
+        if (!validJsonCatalog(httpTTS.emotionsJson)) {
+            toastOnUi("情绪列表 JSON 必须是数组或对象")
             return false
         }
         return true

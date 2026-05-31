@@ -87,6 +87,51 @@ data class SpeechRoute(
                 )
             }.getOrDefault(SpeechRoute())
         }
+
+        fun fromTtsEngineValue(value: String?): SpeechRoute {
+            val raw = value?.trim().orEmpty()
+            if (raw.isBlank()) {
+                return SpeechRoute(
+                    engineType = ENGINE_SYSTEM,
+                    engineValue = "",
+                    speakerName = "系统默认",
+                    source = SOURCE_MANUAL
+                )
+            }
+            if (raw.toLongOrNull() != null) {
+                return SpeechRoute(
+                    engineType = ENGINE_HTTP,
+                    engineValue = raw,
+                    source = SOURCE_MANUAL
+                )
+            }
+            return runCatching {
+                val obj = JSONObject(raw)
+                if (
+                    obj.has("engineType") ||
+                    obj.has("speakerName") ||
+                    obj.has("toneID") ||
+                    obj.has("toneId") ||
+                    obj.has("emotionTag")
+                ) {
+                    fromJson(raw)
+                } else {
+                    SpeechRoute(
+                        engineType = ENGINE_SYSTEM,
+                        engineValue = raw,
+                        speakerName = obj.optString("title").ifBlank { "系统默认" },
+                        source = SOURCE_MANUAL
+                    )
+                }
+            }.getOrDefault(
+                SpeechRoute(
+                    engineType = ENGINE_SYSTEM,
+                    engineValue = raw,
+                    speakerName = "系统默认",
+                    source = SOURCE_MANUAL
+                )
+            )
+        }
     }
 }
 

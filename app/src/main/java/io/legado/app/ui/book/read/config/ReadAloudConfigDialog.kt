@@ -22,7 +22,7 @@ import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.SeekBarPreference
@@ -34,10 +34,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.widget.number.NumberPickerDialog
-import io.legado.app.utils.GSON
-import io.legado.app.utils.StringUtils
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
@@ -198,14 +195,21 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         private val speakEngineSummary: String
             get() {
-                val ttsEngine = ReadAloud.ttsEngine
-                    ?: return getString(R.string.system_tts)
-                if (StringUtils.isNumeric(ttsEngine)) {
-                    return appDb.httpTTSDao.getName(ttsEngine.toLong())
-                        ?: getString(R.string.system_tts)
+                val route = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
+                val engineName = when (route.engineType) {
+                    SpeechRoute.ENGINE_HTTP -> route.engineValue.toLongOrNull()
+                        ?.let { appDb.httpTTSDao.getName(it) }
+                        ?: "HTTP TTS"
+                    SpeechRoute.ENGINE_SYSTEM -> route.speakerName.ifBlank { getString(R.string.system_tts) }
+                    else -> getString(R.string.system_tts)
                 }
-                return GSON.fromJsonObject<SelectItem<String>>(ttsEngine).getOrNull()?.title
-                    ?: getString(R.string.system_tts)
+                return buildList {
+                    add(engineName)
+                    route.speakerName
+                        .takeIf { it.isNotBlank() && it != engineName }
+                        ?.let(::add)
+                    route.emotionName.takeIf { it.isNotBlank() }?.let(::add)
+                }.joinToString(" · ")
             }
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
