@@ -38,6 +38,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
     private var tintColorBlue = 1f
     private var blurRadius = 0.01f
     private var dispersion = 0.5f
+    private var pixelSafePill = false
     private val roundedOutlineProvider = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             outline.setRoundRect(0, 0, view.width, view.height, cornerRadius)
@@ -100,6 +101,13 @@ class StableLiquidGlassView @JvmOverloads constructor(
     fun setBlurRadius(value: Float) {
         blurRadius = value.coerceIn(0.01f, 50f)
         applyConfig()
+    }
+
+    fun setPixelSafePillEnabled(enabled: Boolean) {
+        if (pixelSafePill == enabled) return
+        pixelSafePill = enabled
+        applyConfig()
+        invalidate()
     }
 
     fun setDraggableEnabled(@Suppress("UNUSED_PARAMETER") enabled: Boolean) = Unit
@@ -200,13 +208,14 @@ class StableLiquidGlassView @JvmOverloads constructor(
     private fun overrides(): Config.Overrides {
         val width = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val height = height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        val shaderCornerRadius = effectiveShaderCornerRadius(width, height)
         return Config.Overrides()
             .noFilter()
             .contrast(0f)
             .whitePoint(0f)
             .chromaMultiplier(1f)
             .blurRadius(blurRadius)
-            .cornerRadius(cornerRadius)
+            .cornerRadius(shaderCornerRadius)
             .refractionHeight(refractionHeight)
             .refractionOffset(-refractionOffset)
             .tintAlpha(tintAlpha)
@@ -215,5 +224,15 @@ class StableLiquidGlassView @JvmOverloads constructor(
             .tintColorBlue(tintColorBlue)
             .dispersion(dispersion)
             .size(width, height)
+    }
+
+    private fun effectiveShaderCornerRadius(width: Int, height: Int): Float {
+        val maxRadius = height / 2f
+        val baseRadius = cornerRadius.coerceIn(0f, maxRadius)
+        if (!pixelSafePill || width <= height * 2 || baseRadius < maxRadius - 0.25f) {
+            return baseRadius
+        }
+        val guardPx = 1f.coerceAtMost(maxRadius)
+        return (maxRadius - guardPx).coerceAtLeast(0f)
     }
 }

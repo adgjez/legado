@@ -1420,7 +1420,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 dispersion = dispersion,
                 tintAlpha = tintAlpha,
                 elasticEnabled = true,
-                touchEffectEnabled = true
+                touchEffectEnabled = true,
+                pixelSafePill = true
             )
             if (!standardMode) {
                 setupLiquidGlassView(
@@ -1432,7 +1433,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     dispersion = (dispersion + 0.04f).coerceAtMost(1f),
                     tintAlpha = tintAlpha,
                     elasticEnabled = true,
-                    touchEffectEnabled = true
+                    touchEffectEnabled = true,
+                    pixelSafePill = false
                 )
             }
             setupLiquidGlassView(
@@ -1444,7 +1446,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 dispersion = (dispersion + 0.08f).coerceAtMost(1f),
                 tintAlpha = (tintAlpha + 0.05f).coerceAtMost(0.28f),
                 elasticEnabled = true,
-                touchEffectEnabled = true
+                touchEffectEnabled = true,
+                pixelSafePill = false
             )
         }
     }
@@ -1728,6 +1731,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         tintAlpha: Float,
         elasticEnabled: Boolean,
         touchEffectEnabled: Boolean,
+        pixelSafePill: Boolean = false,
     ) {
         liquidGlassView.bind(binding.contentContainer)
         liquidGlassView.setCornerRadius(cornerRadius)
@@ -1742,6 +1746,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         liquidGlassView.setDraggableEnabled(false)
         liquidGlassView.setElasticEnabled(elasticEnabled)
         liquidGlassView.setTouchEffectEnabled(touchEffectEnabled)
+        liquidGlassView.setPixelSafePillEnabled(pixelSafePill)
         liquidGlassView.isClickable = false
         liquidGlassView.isFocusable = false
         liquidGlassView.invalidate()
