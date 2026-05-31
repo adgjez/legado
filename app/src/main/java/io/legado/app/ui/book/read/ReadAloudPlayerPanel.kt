@@ -1155,8 +1155,17 @@ private fun ReadAloudCapsule(
         val density = LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val capsuleWidth = 188.dp
-        val capsuleHeight = 60.dp
+        val capsuleHeight = 54.dp
+        val capsuleHorizontalPadding = 8.dp
+        val capsuleButtonGap = 8.dp
+        val coverButtonSize = 42.dp
+        val playButtonSize = 38.dp
+        val closeButtonSize = 34.dp
+        val capsuleWidth = capsuleHorizontalPadding * 2 +
+                capsuleButtonGap * 2 +
+                coverButtonSize +
+                playButtonSize +
+                closeButtonSize
         val capsuleWidthPx = with(density) { capsuleWidth.toPx() }
         val capsuleHeightPx = with(density) { capsuleHeight.toPx() }
         val sidePx = with(density) { 18.dp.toPx() }
@@ -1220,15 +1229,16 @@ private fun ReadAloudCapsule(
             border = BorderStroke(1.dp, colors.panelBorder),
             shadowElevation = 12.dp
         ) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = capsuleHorizontalPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(capsuleButtonGap)
             ) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(44.dp)
+                        .size(coverButtonSize)
                         .clip(CircleShape)
                         .background(colors.panel)
                         .clickable(onClick = onExpand)
@@ -1254,8 +1264,7 @@ private fun ReadAloudCapsule(
                 }
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(40.dp)
+                        .size(playButtonSize)
                         .clip(CircleShape)
                         .clickable(onClick = onPlayPause),
                     shape = CircleShape,
@@ -1272,8 +1281,7 @@ private fun ReadAloudCapsule(
                 }
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(36.dp)
+                        .size(closeButtonSize)
                         .clip(CircleShape)
                         .clickable(onClick = onClose),
                     shape = CircleShape,
@@ -1281,12 +1289,6 @@ private fun ReadAloudCapsule(
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "×",
-                            color = Color.Transparent,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
                         Icon(
                             painter = painterResource(R.drawable.ic_close_x),
                             contentDescription = null,
