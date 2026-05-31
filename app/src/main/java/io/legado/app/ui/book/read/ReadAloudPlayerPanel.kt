@@ -682,12 +682,20 @@ private fun CoverBackdropImage(
         },
         update = {
             it.alpha = alpha
-            BookCover.loadBlur(
-                context = it.context,
-                path = state.coverUrl,
-                loadOnlyWifi = false,
-                sourceOrigin = state.sourceOrigin
-            ).into(it)
+            val loadKey = listOf(
+                state.coverUrl.orEmpty(),
+                state.sourceOrigin.orEmpty(),
+                AppConfig.useDefaultCover.toString()
+            ).joinToString("|")
+            if (it.tag != loadKey) {
+                it.tag = loadKey
+                BookCover.loadBlur(
+                    context = it.context,
+                    path = state.coverUrl,
+                    loadOnlyWifi = false,
+                    sourceOrigin = state.sourceOrigin
+                ).into(it)
+            }
         }
     )
 }
