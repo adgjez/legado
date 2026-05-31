@@ -19,6 +19,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -458,6 +459,27 @@ private fun ReadAloudPlayerContent(
     val colors = rememberPlayerColors(palette)
     var activeSheet by remember(state.mode) { mutableStateOf(PlayerSheet.None) }
     val animateTextChanges = !AppConfig.isEInkMode && state.foregroundActive
+    val animatePanelChanges = !AppConfig.isEInkMode && state.foregroundActive
+    val sheetEnter = if (animatePanelChanges) {
+        fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                slideInVertically(tween(240, easing = FastOutSlowInEasing)) { height -> height / 6 } +
+                expandVertically(
+                    animationSpec = tween(260, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top
+                )
+    } else {
+        fadeIn(tween(1)) + expandVertically(tween(1), expandFrom = Alignment.Top)
+    }
+    val sheetExit = if (animatePanelChanges) {
+        shrinkVertically(
+            animationSpec = tween(240, easing = FastOutSlowInEasing),
+            shrinkTowards = Alignment.Top
+        ) +
+                slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { height -> height / 8 } +
+                fadeOut(tween(170, easing = FastOutSlowInEasing))
+    } else {
+        shrinkVertically(tween(1), shrinkTowards = Alignment.Top) + fadeOut(tween(1))
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         CoverAtmosphereBackdrop(state, colors)
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -529,8 +551,8 @@ private fun ReadAloudPlayerContent(
                 )
                 AnimatedVisibility(
                     visible = activeSheet != PlayerSheet.None,
-                    enter = fadeIn(tween(120)) + expandVertically(tween(180)),
-                    exit = shrinkVertically(tween(150)) + fadeOut(tween(90))
+                    enter = sheetEnter,
+                    exit = sheetExit
                 ) {
                     PlayerSheetPanel(
                         sheet = activeSheet,
