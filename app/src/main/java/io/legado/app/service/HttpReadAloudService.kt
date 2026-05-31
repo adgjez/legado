@@ -28,12 +28,15 @@ import com.script.ScriptException
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
@@ -152,14 +155,16 @@ class HttpReadAloudService : BaseReadAloudService(),
                     if (paragraphStartPos > 0 && index == nowSpeak) {
                         text = text.substring(paragraphStartPos)
                     }
-                    val fileName = md5SpeakFileName(text)
+                    val route = speechRouteForIndex(index)
+                    val routeHttpTts = httpTtsForRoute(httpTts, route)
+                    val fileName = md5SpeakFileName(text, route = route)
                     val speakText = text.replace(AppPattern.notReadAloudRegex, "")
                     if (speakText.isEmpty()) {
                         AppLog.put("阅读段落内容为空，使用无声音频代替。\n朗读文本：$text")
                         createSilentSound(fileName)
                     } else if (!hasSpeakFile(fileName)) {
                         runCatching {
-                            val inputStream = getSpeakStream(httpTts, speakText)
+                            val inputStream = getSpeakStream(routeHttpTts, speakText, route)
                             if (inputStream != null) {
                                 createSpeakFile(fileName, inputStream)
                             } else {
@@ -236,8 +241,10 @@ class HttpReadAloudService : BaseReadAloudService(),
                     if (speakText.isEmpty()) {
                         AppLog.put("阅读段落内容为空，使用无声音频代替。\n朗读文本：$speakText")
                     }
-                    val fileName = md5SpeakFileName(text)
-                    val dataSourceFactory = createDataSourceFactory(httpTts, speakText)
+                    val route = speechRouteForIndex(index)
+                    val routeHttpTts = httpTtsForRoute(httpTts, route)
+                    val fileName = md5SpeakFileName(text, route = route)
+                    val dataSourceFactory = createDataSourceFactory(routeHttpTts, speakText, route)
                     val downloader = createDownloader(dataSourceFactory, fileName)
                     downloaderChannel.send(downloader)
                     val mediaSource = createMediaSource(dataSourceFactory, fileName)
@@ -274,7 +281,8 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private fun createDataSourceFactory(
         httpTts: HttpTTS,
-        speakText: String
+        speakText: String,
+        route: SpeechRoute? = null
     ): CacheDataSource.Factory {
         val upstreamFactory = DataSource.Factory {
             InputStreamDataSource {
@@ -283,7 +291,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 } else {
                     kotlin.runCatching {
                         runBlocking(lifecycleScope.coroutineContext[Job]!!) {
-                            getSpeakStream(httpTts, speakText)
+                            getSpeakStream(httpTts, speakText, route)
                         }
                     }.onFailure {
                         when (it) {
@@ -319,7 +327,8 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private suspend fun getSpeakStream(
         httpTts: HttpTTS,
-        speakText: String
+        speakText: String,
+        route: SpeechRoute? = null
     ): InputStream? {
         while (true) {
             try {
@@ -327,6 +336,11 @@ class HttpReadAloudService : BaseReadAloudService(),
                     httpTts.url,
                     speakText = speakText,
                     speakSpeed = speechRate,
+                    currentToneID = route?.toneID,
+                    currentSpeakerName = route?.speakerName,
+                    currentEmotionName = route?.emotionName,
+                    currentEmotionTag = route?.emotionTag,
+                    currentSpeechRouteJson = route?.toJson(),
                     source = httpTts,
                     readTimeout = 300 * 1000L,
                     coroutineContext = currentCoroutineContext()
@@ -415,9 +429,30 @@ class HttpReadAloudService : BaseReadAloudService(),
         return null
     }
 
-    private fun md5SpeakFileName(content: String, textChapter: TextChapter? = this.textChapter): String {
+    private fun speechRouteForIndex(index: Int): SpeechRoute? {
+        if (!AppConfig.aiReadAloudRoleEnabled) return null
+        val book = ReadBook.book ?: return null
+        val chapter = textChapter ?: return null
+        return AiReadAloudRoleService.routeForCue(
+            bookUrl = book.bookUrl,
+            chapterIndex = chapter.chapter.index,
+            cueIndex = index
+        )
+    }
+
+    private fun httpTtsForRoute(defaultHttpTts: HttpTTS, route: SpeechRoute?): HttpTTS {
+        val id = route?.engineValue?.toLongOrNull() ?: return defaultHttpTts
+        return appDb.httpTTSDao.get(id) ?: defaultHttpTts
+    }
+
+    private fun md5SpeakFileName(
+        content: String,
+        textChapter: TextChapter? = this.textChapter,
+        route: SpeechRoute? = null
+    ): String {
+        val routeKey = route?.takeIf { it.isConfigured }?.toJson().orEmpty()
         return MD5Utils.md5Encode16(textChapter.readAloudTitle()) + "_" +
-                MD5Utils.md5Encode16("${ReadAloud.httpTTS?.url}-|-$speechRate-|-$content")
+                MD5Utils.md5Encode16("${ReadAloud.httpTTS?.url}-|-$routeKey-|-$speechRate-|-$content")
     }
 
     private fun TextChapter?.readAloudTitle(): String {

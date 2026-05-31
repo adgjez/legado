@@ -12,6 +12,22 @@ interface AiReadAloudRoleCacheDao {
     @Query("SELECT * FROM ai_read_aloud_role_caches WHERE cacheKey = :cacheKey LIMIT 1")
     fun get(cacheKey: String): AiReadAloudRoleCache?
 
+    @Query(
+        """
+        SELECT * FROM ai_read_aloud_role_caches
+        WHERE bookUrl = :bookUrl
+          AND chapterIndex = :chapterIndex
+          AND status = :status
+        ORDER BY updatedAt DESC
+        LIMIT 1
+        """
+    )
+    fun latestByChapter(
+        bookUrl: String,
+        chapterIndex: Int,
+        status: String = AiReadAloudRoleCache.STATUS_SUCCESS
+    ): AiReadAloudRoleCache?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(cache: AiReadAloudRoleCache)
 

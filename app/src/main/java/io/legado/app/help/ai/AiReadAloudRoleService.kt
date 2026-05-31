@@ -6,6 +6,7 @@ import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -163,6 +164,43 @@ object AiReadAloudRoleService {
             AppLog.put("AI分角色标注失败\n${throwable.localizedMessage ?: throwable.javaClass.simpleName}", throwable)
         } finally {
             runningCacheKeys.remove(cacheKey)
+        }
+    }
+
+    fun routeForCue(
+        bookUrl: String?,
+        chapterIndex: Int,
+        cueIndex: Int
+    ): SpeechRoute? {
+        if (bookUrl.isNullOrBlank() || cueIndex < 0) return null
+        val cache = appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
+            ?: return null
+        val segments = runCatching { JSONArray(cache.segmentsJson) }.getOrNull() ?: return null
+        val best = (0 until segments.length())
+            .asSequence()
+            .mapNotNull { segments.optJSONObject(it) }
+            .filter { it.optInt("paragraphIndex", -1) == cueIndex }
+            .filter { it.optString("roleType") == "character" || it.optString("roleType") == "thought" }
+            .maxWithOrNull(compareBy<JSONObject> {
+                it.optDouble("confidence", 0.0)
+            }.thenBy {
+                it.optInt("end", 0) - it.optInt("start", 0)
+            }) ?: return null
+        val characterId = best.optLong("characterId", 0L)
+        val characterName = best.optString("characterName").trim()
+        val character = when {
+            characterId > 0L -> appDb.bookCharacterDao.getCharacter(characterId)
+            characterName.isNotBlank() -> appDb.bookCharacterDao.getCharacter(bookUrl, characterName)
+            else -> null
+        } ?: return null
+        val route = SpeechRoute.fromJson(character.speechRouteJson)
+        if (!route.isConfigured) return null
+        val emotionName = best.optString("emotionName").trim()
+        val emotionTag = best.optString("emotionTag").trim()
+        return if (emotionName.isNotBlank() || emotionTag.isNotBlank()) {
+            route.copy(emotionName = emotionName, emotionTag = emotionTag)
+        } else {
+            route
         }
     }
 
