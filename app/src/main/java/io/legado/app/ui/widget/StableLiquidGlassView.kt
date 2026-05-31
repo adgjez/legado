@@ -209,6 +209,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
         val width = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val height = height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
         val shaderCornerRadius = effectiveShaderCornerRadius(width, height)
+        val shaderRefractionHeight = effectiveRefractionHeight(width, height)
         return Config.Overrides()
             .noFilter()
             .contrast(0f)
@@ -216,7 +217,7 @@ class StableLiquidGlassView @JvmOverloads constructor(
             .chromaMultiplier(1f)
             .blurRadius(blurRadius)
             .cornerRadius(shaderCornerRadius)
-            .refractionHeight(refractionHeight)
+            .refractionHeight(shaderRefractionHeight)
             .refractionOffset(-refractionOffset)
             .tintAlpha(tintAlpha)
             .tintColorRed(tintColorRed)
@@ -228,11 +229,14 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     private fun effectiveShaderCornerRadius(width: Int, height: Int): Float {
         val maxRadius = height / 2f
-        val baseRadius = cornerRadius.coerceIn(0f, maxRadius)
-        if (!pixelSafePill || width <= height * 2 || baseRadius < maxRadius - 0.25f) {
-            return baseRadius
+        return cornerRadius.coerceIn(0f, maxRadius)
+    }
+
+    private fun effectiveRefractionHeight(width: Int, height: Int): Float {
+        if (!pixelSafePill || width <= height * 2) {
+            return refractionHeight
         }
-        val guardPx = 1f.coerceAtMost(maxRadius)
-        return (maxRadius - guardPx).coerceAtLeast(0f)
+        val maxSafeHeight = height * 0.42f
+        return refractionHeight.coerceAtMost(maxSafeHeight.coerceAtLeast(1f))
     }
 }
