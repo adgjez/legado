@@ -14,6 +14,8 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -21,6 +23,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -1139,8 +1142,12 @@ private fun FocusSentenceBody(
         transitionSpec = {
             val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
             if (animateTextChanges) {
-                (slideInVertically(tween(260)) { height -> height * direction / 4 } togetherWith
-                        slideOutVertically(tween(220)) { height -> -height * direction / 5 })
+                ((slideInVertically(tween(320)) { height -> height * direction / 3 } +
+                        fadeIn(tween(220)) +
+                        scaleIn(tween(320), initialScale = 0.98f)) togetherWith
+                        (slideOutVertically(tween(240)) { height -> -height * direction / 4 } +
+                                fadeOut(tween(160)) +
+                                scaleOut(tween(240), targetScale = 1.02f)))
                     .using(SizeTransform(clip = false))
             } else {
                 (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
@@ -1203,8 +1210,10 @@ private fun LyricParagraphBody(
         transitionSpec = {
             val direction = if (targetState.sequence >= initialState.sequence) 1 else -1
             if (animateTextChanges) {
-                (slideInVertically(tween(240)) { height -> height * direction / 6 } togetherWith
-                        slideOutVertically(tween(220)) { height -> -height * direction / 7 })
+                ((slideInVertically(tween(300)) { height -> height * direction / 5 } +
+                        fadeIn(tween(220))) togetherWith
+                        (slideOutVertically(tween(240)) { height -> -height * direction / 6 } +
+                                fadeOut(tween(160))))
                     .using(SizeTransform(clip = false))
             } else {
                 (fadeIn(tween(1)) togetherWith fadeOut(tween(1)))
@@ -1235,7 +1244,8 @@ private fun LyricParagraphBody(
                         colors = colors,
                         compact = compact,
                         currentMaxLines = currentMaxLines,
-                        textAlign = textAlign
+                        textAlign = textAlign,
+                        animate = animateTextChanges
                     )
                 }
             }
@@ -1249,9 +1259,14 @@ private fun LyricParagraphLine(
     colors: PlayerColors,
     compact: Boolean,
     currentMaxLines: Int,
-    textAlign: TextAlign
+    textAlign: TextAlign,
+    animate: Boolean
 ) {
-    val emphasis = if (paragraph.current) 1f else 0f
+    val emphasis by animateFloatAsState(
+        targetValue = if (paragraph.current) 1f else 0f,
+        animationSpec = tween(if (animate) 220 else 1),
+        label = "readAloudLyricEmphasis"
+    )
     val fontSize = when {
         compact -> 14f + emphasis * 6f
         else -> 15f + emphasis * 8f
