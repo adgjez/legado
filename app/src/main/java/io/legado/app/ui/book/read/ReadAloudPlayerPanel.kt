@@ -770,6 +770,8 @@ private data class LyricsTarget(
 private data class PlayerColors(
     val background: Color,
     val panel: Color,
+    val panelStrong: Color,
+    val panelBorder: Color,
     val primaryText: Color,
     val secondaryText: Color,
     val subtleText: Color,
@@ -783,9 +785,13 @@ private data class PlayerColors(
 @Composable
 private fun rememberPlayerColors(palette: ReaderSheetStyle.Palette): PlayerColors {
     val accent = Color(palette.accentColor)
+    val panel = Color(ColorUtils.blendColors(palette.panel, android.graphics.Color.BLACK, 0.56f))
+    val panelStrong = Color(ColorUtils.blendColors(palette.panelStrong, android.graphics.Color.BLACK, 0.66f))
     return PlayerColors(
         background = Color(ColorUtils.blendColors(palette.surface, android.graphics.Color.BLACK, 0.72f)),
-        panel = Color.White.copy(alpha = 0.12f),
+        panel = panel,
+        panelStrong = panelStrong,
+        panelBorder = Color(ColorUtils.blendColors(palette.stroke, android.graphics.Color.WHITE, 0.24f)),
         primaryText = Color.White.copy(alpha = 0.94f),
         secondaryText = Color.White.copy(alpha = 0.68f),
         subtleText = Color.White.copy(alpha = 0.42f),
@@ -1622,8 +1628,8 @@ private fun RoundTransportButton(
             .size(size)
             .clickable(onClick = onClick),
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.13f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+        color = colors.panel,
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -1652,8 +1658,8 @@ private fun FeaturePill(
             .fillMaxHeight()
             .clickable(onClick = onClick),
         shape = actionShape,
-        color = if (selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.13f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (selected) 0.28f else 0.12f)),
+        color = if (selected) colors.accent else colors.panel,
+        border = BorderStroke(1.dp, if (selected) colors.accent else colors.panelBorder),
         shadowElevation = if (selected) 8.dp else 0.dp
     ) {
         Row(
@@ -1700,8 +1706,8 @@ private fun PlayerSheetPanel(
             .fillMaxWidth()
             .widthIn(max = 640.dp),
         shape = panelShape,
-        color = Color.Black.copy(alpha = 0.28f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        color = colors.panelStrong,
+        border = BorderStroke(1.dp, colors.panelBorder),
         shadowElevation = 12.dp
     ) {
         AnimatedContent(
@@ -1842,11 +1848,11 @@ private fun ChapterPreviewRow(
             .clickable(enabled = !chapter.volume, onClick = onClick),
         shape = shape,
         color = when {
-            chapter.current -> colors.accent.copy(alpha = 0.86f)
-            chapter.volume -> Color.White.copy(alpha = 0.08f)
-            else -> Color.White.copy(alpha = 0.12f)
+            chapter.current -> colors.accent
+            chapter.volume -> colors.panel
+            else -> colors.panel
         },
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (chapter.current) 0.28f else 0.10f))
+        border = BorderStroke(1.dp, if (chapter.current) colors.accent else colors.panelBorder)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -1887,8 +1893,8 @@ private fun SheetActionButton(
             .fillMaxHeight()
             .clickable(onClick = onClick),
         shape = shape,
-        color = Color.White.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+        color = colors.panel,
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -1935,7 +1941,7 @@ private fun TimerSheet(
                             .height(38.dp)
                             .clickable { onTimerChange(minute) },
                         shape = actionShape,
-                        color = if (selected) colors.accent.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.12f)
+                        color = if (selected) colors.accent else colors.panel
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -2001,8 +2007,8 @@ private fun EngineRow(
             .height(42.dp)
             .clickable(onClick = onClick),
         shape = shape,
-        color = if (engine.selected) colors.accent.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = if (engine.selected) 0.28f else 0.10f))
+        color = if (engine.selected) colors.accent else colors.panel,
+        border = BorderStroke(1.dp, if (engine.selected) colors.accent else colors.panelBorder)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -2118,8 +2124,8 @@ private fun CharacterPreviewRow(
             .fillMaxWidth()
             .height(44.dp),
         shape = shape,
-        color = Color.White.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
+        color = colors.panel,
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
