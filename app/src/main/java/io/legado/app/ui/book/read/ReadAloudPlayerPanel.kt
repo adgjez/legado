@@ -83,6 +83,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         fun openChapterList()
         fun onClickReadAloud()
         fun finish()
+        fun onReadAloudPlayerVisibilityChanged(visible: Boolean)
     }
 
     enum class DisplayMode {
@@ -195,15 +196,23 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun showPanel() {
         post {
+            val wasVisible = visibility == VISIBLE
             visibility = VISIBLE
             bringToFront()
             uiState = buildState(uiState.mode).copy(foregroundActive = foregroundActive)
+            if (!wasVisible) {
+                callBack?.onReadAloudPlayerVisibilityChanged(true)
+            }
         }
     }
 
     private fun hidePanel() {
+        val wasVisible = visibility == VISIBLE
         visibility = GONE
         uiState = buildState(uiState.mode).copy(foregroundActive = false)
+        if (wasVisible) {
+            callBack?.onReadAloudPlayerVisibilityChanged(false)
+        }
     }
 
     private fun closeByUser() {

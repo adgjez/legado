@@ -7,6 +7,8 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.util.TypedValue
@@ -18,6 +20,8 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -29,6 +33,7 @@ import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.get
 import androidx.core.view.isVisible
 import androidx.core.view.doOnLayout
@@ -180,6 +185,7 @@ import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
@@ -2821,7 +2827,17 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示朗读菜单
      */
     override fun showReadAloudDialog() {
-        binding.readAloudPlayerPanel.open(force = true)
+        if (binding.readMenu.isVisible) {
+            binding.readMenu.runMenuOut {
+                binding.readAloudPlayerPanel.open(force = true)
+            }
+        } else {
+            binding.readAloudPlayerPanel.open(force = true)
+        }
+    }
+
+    override fun onReadAloudPlayerVisibilityChanged(visible: Boolean) {
+        upSystemUiVisibility()
     }
 
     /**
@@ -3599,8 +3615,52 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 更新状态栏,导航栏
      */
     override fun upSystemUiVisibility() {
-        upSystemUiVisibility(isInMultiWindow, !menuLayoutIsVisible, bottomDialog > 0)
-        upNavigationBarColor()
+        if (binding.readAloudPlayerPanel.isVisible) {
+            applyReadAloudPlayerSystemBars()
+        } else {
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            upSystemUiVisibility(isInMultiWindow, !menuLayoutIsVisible, bottomDialog > 0)
+            upNavigationBarColor()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyReadAloudPlayerSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        binding.navigationBar.visibility = View.GONE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.run {
+                if (ReadBookConfig.hideNavigationBar) {
+                    hide(WindowInsets.Type.navigationBars())
+                } else {
+                    show(WindowInsets.Type.navigationBars())
+                }
+                if (ReadBookConfig.hideStatusBar) {
+                    hide(WindowInsets.Type.statusBars())
+                } else {
+                    show(WindowInsets.Type.statusBars())
+                }
+                setSystemBarsAppearance(
+                    0,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                )
+            }
+        }
+        var flag = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        if (ReadBookConfig.hideNavigationBar) {
+            flag = flag or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+        }
+        if (ReadBookConfig.hideStatusBar) {
+            flag = flag or View.SYSTEM_UI_FLAG_FULLSCREEN
+        }
+        window.decorView.systemUiVisibility = flag
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        setLightStatusBar(false)
     }
 
     override fun onNightThemeChanged() = binding.run {
