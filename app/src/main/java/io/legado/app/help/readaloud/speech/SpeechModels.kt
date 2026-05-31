@@ -137,7 +137,9 @@ object SpeechVoiceCatalogParser {
         itemParser: (JSONObject, String, String) -> T
     ): List<SpeechCatalogGroup<T>> {
         if (json.isNullOrBlank()) return emptyList()
-        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        val array = runCatching { JSONArray(json) }.getOrNull()
+            ?: runCatching { JSONArray().put(JSONObject(json)) }.getOrNull()
+            ?: return emptyList()
         val groups = mutableListOf<SpeechCatalogGroup<T>>()
         val flatItems = mutableListOf<T>()
         for (index in 0 until array.length()) {

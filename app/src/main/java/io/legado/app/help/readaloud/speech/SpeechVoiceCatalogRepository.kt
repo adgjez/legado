@@ -39,7 +39,8 @@ data class SpeechVoiceEngineGroup(
     val options: List<SpeechVoiceOption>,
     val emotions: List<SpeechEmotion> = emptyList(),
     val loginKey: String = "",
-    val loginUrl: String? = null
+    val loginUrl: String? = null,
+    val warning: String = ""
 )
 
 object SpeechVoiceCatalogRepository {
@@ -59,6 +60,11 @@ object SpeechVoiceCatalogRepository {
         return httpTtsList.map { httpTts ->
             val emotions = SpeechVoiceCatalogParser.flattenEmotions(httpTts.emotionsJson)
             val speakerGroups = SpeechVoiceCatalogParser.parseSpeakerGroups(httpTts.speakersJson)
+            val speakerWarning = if (httpTts.speakersJson.isNotBlank() && speakerGroups.isEmpty()) {
+                "发言人 JSON 无效"
+            } else {
+                ""
+            }
             val options = if (speakerGroups.isEmpty()) {
                 listOf(
                     SpeechVoiceOption(
@@ -91,6 +97,7 @@ object SpeechVoiceCatalogRepository {
                 val explicitCount = options.count { it.explicitSpeaker }
                 if (explicitCount > 0) add("${explicitCount} 个发言人")
                 if (emotions.isNotEmpty()) add("${emotions.size} 个情绪")
+                if (speakerWarning.isNotBlank()) add(speakerWarning)
             }.joinToString(" · ").ifBlank { "普通 HTTP TTS" }
             SpeechVoiceEngineGroup(
                 key = "http:${httpTts.id}",
@@ -101,7 +108,8 @@ object SpeechVoiceCatalogRepository {
                 options = options,
                 emotions = emotions,
                 loginKey = httpTts.id.toString(),
-                loginUrl = httpTts.loginUrl
+                loginUrl = httpTts.loginUrl,
+                warning = speakerWarning
             )
         }
     }
