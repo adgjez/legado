@@ -260,6 +260,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var openToken = 0
     private val capsuleBounds = RectF()
     private var capsulePosition by mutableStateOf(CapsulePositionState())
+    private var switchingTtsEngine = false
+    private var pendingTtsEngineSwitch: PendingTtsEngineSwitch? = null
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -315,14 +317,35 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     fun onAloudState(status: Int, autoExpand: Boolean = true) {
         when (status) {
             io.legado.app.constant.Status.PLAY -> {
+                switchingTtsEngine = false
                 refresh()
                 if (autoExpand && !dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
                     showPanel(animateFromBottom = true)
                 }
             }
 
-            io.legado.app.constant.Status.PAUSE -> refresh()
+            io.legado.app.constant.Status.PAUSE -> {
+                switchingTtsEngine = false
+                refresh()
+            }
             io.legado.app.constant.Status.STOP -> {
+                if (switchingTtsEngine) {
+                    val pendingSwitch = pendingTtsEngineSwitch
+                    if (pendingSwitch?.wasPlaying == true) {
+                        pendingTtsEngineSwitch = null
+                        ReadAloud.play(
+                            context = context,
+                            play = true,
+                            pageIndex = pendingSwitch.pageIndex,
+                            startPos = pendingSwitch.startPos
+                        )
+                    } else {
+                        switchingTtsEngine = false
+                        pendingTtsEngineSwitch = null
+                    }
+                    refresh()
+                    return
+                }
                 dismissedForCurrentRun = false
                 hidePanel()
             }
@@ -526,8 +549,26 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun selectTtsEngine(value: String) {
+        val wasRunning = BaseReadAloudService.isRun
+        val wasPlaying = BaseReadAloudService.isPlay()
+        val pageIndex = ReadBook.durPageIndex
+        val startPos = ReadBook.curTextChapter
+            ?.getReadLength(pageIndex)
+            ?.let { (ReadBook.durChapterPos - it).coerceAtLeast(0) }
+            ?: 0
         ReadBook.book?.setTtsEngine(null)
         AppConfig.ttsEngine = value
+        if (wasRunning) {
+            switchingTtsEngine = true
+            pendingTtsEngineSwitch = PendingTtsEngineSwitch(
+                wasPlaying = wasPlaying,
+                pageIndex = pageIndex,
+                startPos = startPos
+            )
+        } else {
+            switchingTtsEngine = false
+            pendingTtsEngineSwitch = null
+        }
         ReadAloud.upReadAloudClass()
         value.toLongOrNull()
             ?.let { appDb.httpTTSDao.get(it) }
@@ -1097,6 +1138,12 @@ private data class PlayerColors(
 private data class CapsulePositionState(
     val x: Float? = null,
     val y: Float? = null
+)
+
+private data class PendingTtsEngineSwitch(
+    val wasPlaying: Boolean,
+    val pageIndex: Int,
+    val startPos: Int
 )
 
 @Composable
