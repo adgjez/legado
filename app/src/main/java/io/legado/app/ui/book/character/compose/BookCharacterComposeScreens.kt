@@ -80,6 +80,7 @@ import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.lib.theme.accentColor
@@ -149,7 +150,8 @@ data class CharacterEditDraft(
     val attributes: String = "",
     val appearance: String = "",
     val personality: String = "",
-    val biography: String = ""
+    val biography: String = "",
+    val speechRouteJson: String = ""
 )
 
 data class RelationEditDraft(
@@ -172,7 +174,8 @@ fun BookCharacter.toDraft(): CharacterEditDraft = CharacterEditDraft(
     attributes = attributes,
     appearance = appearance,
     personality = personality,
-    biography = biography
+    biography = biography,
+    speechRouteJson = speechRouteJson
 )
 
 fun BookCharacter.summaryText(): String = listOf(identity, skills, attributes)
@@ -653,6 +656,46 @@ fun CharacterEditScreen(
             item { CharacterTextField("角色形象描述", draft.appearance, { onDraftChange(draft.copy(appearance = it)) }) }
             item { CharacterTextField("角色性格描述", draft.personality, { onDraftChange(draft.copy(personality = it)) }) }
             item { CharacterTextField("角色生平", draft.biography, { onDraftChange(draft.copy(biography = it)) }, minLines = 5) }
+            item {
+                CharacterSpeechRouteEditor(
+                    speechRouteJson = draft.speechRouteJson,
+                    onChange = { onDraftChange(draft.copy(speechRouteJson = it)) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CharacterSpeechRouteEditor(
+    speechRouteJson: String,
+    onChange: (String) -> Unit
+) {
+    val style = rememberCharacterStyle()
+    val route = remember(speechRouteJson) { SpeechRoute.fromJson(speechRouteJson) }
+    Surface(color = style.colors.card, shape = RoundedCornerShape(style.radius)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("角色配音", color = style.colors.subText, fontSize = 13.sp)
+            val summary = when {
+                !route.isConfigured -> "使用书籍或全局默认朗读引擎"
+                route.speakerName.isNotBlank() -> listOf(route.speakerName, route.emotionName)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                route.engineValue.isNotBlank() -> "已指定朗读引擎"
+                else -> "已配置"
+            }
+            Text(
+                text = summary,
+                color = style.colors.text,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            CharacterTextField(
+                label = "配音路由 JSON",
+                value = speechRouteJson,
+                onChange = onChange,
+                minLines = 3
+            )
         }
     }
 }

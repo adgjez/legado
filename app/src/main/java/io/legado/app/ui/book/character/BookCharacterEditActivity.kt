@@ -146,6 +146,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     appearance = draft.appearance.trim(),
                     personality = draft.personality.trim(),
                     biography = draft.biography.trim(),
+                    speechRouteJson = draft.speechRouteJson.trim(),
                     sortOrder = character.sortOrder.takeIf { it > 0 }
                         ?: ((appDb.bookCharacterDao.maxCharacterOrder(bookUrl) ?: -1) + 1),
                     createdAt = character.createdAt.takeIf { it > 0 } ?: now,
