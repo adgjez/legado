@@ -78,6 +78,7 @@ object PreferKey {
     const val aiReadAloudRoleContextParagraphs = "aiReadAloudRoleContextParagraphs"
     const val aiReadAloudRolePrompt = "aiReadAloudRolePrompt"
     const val aiReadAloudRoleMode = "aiReadAloudRoleMode"
+    const val aiReadAloudAutoCreateCharacters = "aiReadAloudAutoCreateCharacters"
     const val aiContextCompressionEnabled = "aiContextCompressionEnabled"
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"

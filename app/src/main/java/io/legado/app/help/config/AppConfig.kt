@@ -872,6 +872,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 ?: AI_READ_ALOUD_ROLE_MODE_CHUNK
         )
 
+    var aiReadAloudAutoCreateCharacters: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, value)
+
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)

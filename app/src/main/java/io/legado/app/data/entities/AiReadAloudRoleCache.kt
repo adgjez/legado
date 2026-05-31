@@ -29,10 +29,29 @@ data class AiReadAloudRoleCache(
     val mode: String = "",
     @ColumnInfo(defaultValue = "0")
     val paragraphCount: Int = 0,
+    @ColumnInfo(defaultValue = "success")
+    val status: String = STATUS_SUCCESS,
+    @ColumnInfo(defaultValue = "0")
+    val retryCount: Int = 0,
+    @ColumnInfo(defaultValue = "")
+    val lastError: String = "",
+    @ColumnInfo(defaultValue = "")
+    val createdCharacterIdsJson: String = "",
+    @ColumnInfo(defaultValue = "")
+    val characterHash: String = "",
+    @ColumnInfo(defaultValue = "")
+    val voiceHash: String = "",
     @ColumnInfo(defaultValue = "")
     val segmentsJson: String = "",
     @ColumnInfo(defaultValue = "0")
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "0")
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+    companion object {
+        const val STATUS_PENDING = "pending"
+        const val STATUS_RUNNING = "running"
+        const val STATUS_SUCCESS = "success"
+        const val STATUS_FAILED = "failed"
+    }
+}

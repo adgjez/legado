@@ -1,0 +1,226 @@
+package io.legado.app.help.readaloud.speech
+
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.HttpTTS
+import org.json.JSONArray
+import org.json.JSONObject
+
+data class SpeechSpeaker(
+    val speakerName: String = "",
+    val toneID: String = "",
+    val groupId: String = "",
+    val groupName: String = "",
+    val tags: List<String> = emptyList()
+) {
+    val valid: Boolean
+        get() = speakerName.isNotBlank() && toneID.isNotBlank()
+}
+
+data class SpeechEmotion(
+    val emotionName: String = "",
+    val emotionTag: String = "",
+    val groupId: String = "",
+    val groupName: String = ""
+) {
+    val valid: Boolean
+        get() = emotionName.isNotBlank() && emotionTag.isNotBlank()
+}
+
+data class SpeechCatalogGroup<T>(
+    val groupId: String = "",
+    val groupName: String = "",
+    val items: List<T> = emptyList()
+)
+
+data class SpeechRoute(
+    val engineType: String = ENGINE_DEFAULT,
+    val engineValue: String = "",
+    val speakerName: String = "",
+    val toneID: String = "",
+    val emotionName: String = "",
+    val emotionTag: String = "",
+    val source: String = ""
+) {
+    val isConfigured: Boolean
+        get() = engineValue.isNotBlank() || toneID.isNotBlank() || speakerName.isNotBlank()
+
+    fun withEmotion(emotion: SpeechEmotion?): SpeechRoute {
+        return if (emotion?.valid == true) {
+            copy(emotionName = emotion.emotionName, emotionTag = emotion.emotionTag)
+        } else {
+            this
+        }
+    }
+
+    fun toJson(): String {
+        if (!isConfigured && emotionName.isBlank() && emotionTag.isBlank()) return ""
+        return JSONObject().apply {
+            put("engineType", engineType)
+            put("engineValue", engineValue)
+            put("speakerName", speakerName)
+            put("toneID", toneID)
+            put("emotionName", emotionName)
+            put("emotionTag", emotionTag)
+            put("source", source)
+        }.toString()
+    }
+
+    companion object {
+        const val ENGINE_DEFAULT = "default"
+        const val ENGINE_SYSTEM = "system"
+        const val ENGINE_HTTP = "http"
+        const val SOURCE_AUTO = "auto"
+        const val SOURCE_MANUAL = "manual"
+
+        fun fromJson(json: String?): SpeechRoute {
+            if (json.isNullOrBlank()) return SpeechRoute()
+            return runCatching {
+                val obj = JSONObject(json)
+                SpeechRoute(
+                    engineType = obj.optString("engineType", ENGINE_DEFAULT),
+                    engineValue = obj.optString("engineValue"),
+                    speakerName = obj.optString("speakerName"),
+                    toneID = obj.optString("toneID").ifBlank { obj.optString("toneId") },
+                    emotionName = obj.optString("emotionName"),
+                    emotionTag = obj.optString("emotionTag"),
+                    source = obj.optString("source")
+                )
+            }.getOrDefault(SpeechRoute())
+        }
+    }
+}
+
+data class SpeechSegment(
+    val paragraphIndex: Int,
+    val start: Int,
+    val end: Int,
+    val roleType: String,
+    val characterId: Long = 0L,
+    val characterName: String = "",
+    val emotionName: String = "",
+    val emotionTag: String = "",
+    val confidence: Double = 0.0
+)
+
+data class SpeechCharacterCandidate(
+    val name: String,
+    val identity: String = "",
+    val roleLevel: Int = BookCharacter.ROLE_NORMAL,
+    val confidence: Double = 0.0,
+    val evidence: String = ""
+)
+
+object SpeechVoiceCatalogParser {
+
+    fun parseSpeakerGroups(json: String?): List<SpeechCatalogGroup<SpeechSpeaker>> {
+        return parseGroups(json, ::speakerFromJson).map { group ->
+            group.copy(items = group.items.filter { it.valid })
+        }.filter { it.items.isNotEmpty() }
+    }
+
+    fun parseEmotionGroups(json: String?): List<SpeechCatalogGroup<SpeechEmotion>> {
+        return parseGroups(json, ::emotionFromJson).map { group ->
+            group.copy(items = group.items.filter { it.valid })
+        }.filter { it.items.isNotEmpty() }
+    }
+
+    fun flattenSpeakers(json: String?): List<SpeechSpeaker> {
+        return parseSpeakerGroups(json).flatMap { it.items }
+    }
+
+    fun flattenEmotions(json: String?): List<SpeechEmotion> {
+        return parseEmotionGroups(json).flatMap { it.items }
+    }
+
+    private fun <T> parseGroups(
+        json: String?,
+        itemParser: (JSONObject, String, String) -> T
+    ): List<SpeechCatalogGroup<T>> {
+        if (json.isNullOrBlank()) return emptyList()
+        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        val groups = mutableListOf<SpeechCatalogGroup<T>>()
+        val flatItems = mutableListOf<T>()
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index) ?: continue
+            val items = obj.optJSONArray("items")
+            if (items == null) {
+                flatItems += itemParser(obj, "", "")
+            } else {
+                val groupId = obj.optString("groupId").ifBlank { obj.optString("id") }
+                val groupName = obj.optString("groupName").ifBlank { obj.optString("name") }
+                val parsedItems = mutableListOf<T>()
+                for (itemIndex in 0 until items.length()) {
+                    val item = items.optJSONObject(itemIndex) ?: continue
+                    parsedItems += itemParser(item, groupId, groupName)
+                }
+                groups += SpeechCatalogGroup(groupId, groupName, parsedItems)
+            }
+        }
+        if (flatItems.isNotEmpty()) {
+            groups.add(0, SpeechCatalogGroup(groupName = "默认", items = flatItems))
+        }
+        return groups
+    }
+
+    private fun speakerFromJson(
+        obj: JSONObject,
+        groupId: String,
+        groupName: String
+    ): SpeechSpeaker {
+        return SpeechSpeaker(
+            speakerName = obj.optString("speakerName").ifBlank { obj.optString("name") },
+            toneID = obj.optString("toneID")
+                .ifBlank { obj.optString("toneId") }
+                .ifBlank { obj.optString("tone_id") },
+            groupId = groupId,
+            groupName = groupName,
+            tags = obj.optJSONArray("tags")?.let { tags ->
+                buildList {
+                    for (index in 0 until tags.length()) {
+                        tags.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }.orEmpty()
+        )
+    }
+
+    private fun emotionFromJson(
+        obj: JSONObject,
+        groupId: String,
+        groupName: String
+    ): SpeechEmotion {
+        return SpeechEmotion(
+            emotionName = obj.optString("emotionName").ifBlank { obj.optString("name") },
+            emotionTag = obj.optString("emotionTag")
+                .ifBlank { obj.optString("tag") }
+                .ifBlank { obj.optString("value") },
+            groupId = groupId,
+            groupName = groupName
+        )
+    }
+}
+
+object SpeechVoiceAssigner {
+
+    fun assignRoute(
+        character: BookCharacter,
+        httpTtsList: List<HttpTTS>
+    ): SpeechRoute {
+        val candidates = httpTtsList.flatMap { httpTts ->
+            SpeechVoiceCatalogParser.flattenSpeakers(httpTts.speakersJson).map { speaker ->
+                httpTts to speaker
+            }
+        }
+        if (candidates.isEmpty()) return SpeechRoute()
+        val stableKey = "${character.bookUrl}|${character.id}|${character.name}"
+        val index = Math.floorMod(stableKey.hashCode(), candidates.size)
+        val (httpTts, speaker) = candidates[index]
+        return SpeechRoute(
+            engineType = SpeechRoute.ENGINE_HTTP,
+            engineValue = httpTts.id.toString(),
+            speakerName = speaker.speakerName,
+            toneID = speaker.toneID,
+            source = SpeechRoute.SOURCE_AUTO
+        )
+    }
+}

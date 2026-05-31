@@ -22,7 +22,25 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
+            migration_99_100,
         )
+    }
+
+    private val migration_99_100 = object : Migration(99, 100) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `httpTTS` ADD COLUMN `speakersJson` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `httpTTS` ADD COLUMN `emotionsJson` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `speechRouteJson` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `autoCreated` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `source` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `lastDetectedAt` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `status` TEXT NOT NULL DEFAULT 'success'")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `retryCount` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `lastError` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `createdCharacterIdsJson` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `characterHash` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `ai_read_aloud_role_caches` ADD COLUMN `voiceHash` TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     private val migration_98_99 = object : Migration(98, 99) {
