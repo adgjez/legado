@@ -97,10 +97,65 @@ object AiReadAloudRoleService {
         val cacheKey = MD5Utils.md5Encode(
             "read-aloud-role|${currentBook.bookUrl}|${currentChapter.chapter.index}|${currentChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash|${modelConfig.id}"
         )
+        val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
+        fun postPreview(
+            status: String,
+            message: String,
+            source: String,
+            segments: List<AiReadAloudRolePreviewSegment>,
+            createdCharacterCount: Int = 0,
+            newCharacterCandidateCount: Int = 0,
+            error: String = ""
+        ) {
+            val snapshot = synchronized(previewBuffer) {
+                if (source == AiReadAloudRoleState.SOURCE_RESOLVED ||
+                    source == AiReadAloudRoleState.SOURCE_CACHE ||
+                    source == AiReadAloudRoleState.SOURCE_FALLBACK
+                ) {
+                    previewBuffer.clear()
+                }
+                if (segments.isNotEmpty()) {
+                    val byKey = (previewBuffer + segments).associateBy { it.key }
+                    previewBuffer.clear()
+                    previewBuffer += byKey.values.sortedWith(
+                        compareBy<AiReadAloudRolePreviewSegment> { it.paragraphIndex }
+                            .thenBy { it.start }
+                            .thenBy { it.end }
+                    )
+                }
+                previewBuffer.toList()
+            }
+            postState(
+                currentBook,
+                currentChapter,
+                stage,
+                status,
+                message,
+                cleanParagraphs.size,
+                snapshot.size,
+                createdCharacterCount,
+                newCharacterCandidateCount,
+                source,
+                snapshot,
+                error
+            )
+        }
         val oldCache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS && oldCache.segmentsJson.isNotBlank()) {
-            val count = segmentCount(oldCache.segmentsJson)
-            postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_SKIPPED, "当前章节角色已分配", cleanParagraphs.size, count)
+            val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
+            val preview = buildPreviewSegments(
+                currentBook.bookUrl,
+                cachedSegments,
+                cleanParagraphs,
+                AiReadAloudRoleState.SOURCE_CACHE
+            )
+            val count = cachedSegments.size
+            postPreview(
+                AiReadAloudRoleState.STATUS_SKIPPED,
+                "当前章节角色已分配",
+                AiReadAloudRoleState.SOURCE_CACHE,
+                preview
+            )
             return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, count, message = "当前章节角色已分配")
         }
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_RUNNING &&
@@ -110,8 +165,20 @@ object AiReadAloudRoleService {
             return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中")
         }
         if ((oldCache?.retryCount ?: 0) >= 3 && oldCache?.segmentsJson?.isNotBlank() == true) {
-            val count = segmentCount(oldCache.segmentsJson)
-            postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_FALLBACK, "已使用默认分角色", cleanParagraphs.size, count)
+            val fallbackSegments = segmentsFromJson(oldCache.segmentsJson)
+            val preview = buildPreviewSegments(
+                currentBook.bookUrl,
+                fallbackSegments,
+                cleanParagraphs,
+                AiReadAloudRoleState.SOURCE_FALLBACK
+            )
+            val count = fallbackSegments.size
+            postPreview(
+                AiReadAloudRoleState.STATUS_FALLBACK,
+                "已使用默认分角色",
+                AiReadAloudRoleState.SOURCE_FALLBACK,
+                preview
+            )
             return EnsureResult(AiReadAloudRoleState.STATUS_FALLBACK, count, message = "已使用默认分角色")
         }
         if ((oldCache?.retryCount ?: 0) >= 3) {
@@ -150,7 +217,18 @@ object AiReadAloudRoleService {
                     paragraphs = cleanParagraphs,
                     targetIndices = cleanParagraphs.indices.toList(),
                     contextTitle = "全文工具模式",
-                    prompt = prompt
+                    prompt = prompt,
+                    totalParagraphCount = cleanParagraphs.size,
+                    stage = stage,
+                    onPreview = { preview, candidateCount ->
+                        postPreview(
+                            AiReadAloudRoleState.STATUS_RUNNING,
+                            "已收到 ${preview.size} 个分配片段",
+                            AiReadAloudRoleState.SOURCE_AI,
+                            preview,
+                            newCharacterCandidateCount = candidateCount
+                        )
+                    }
                 )
             } else {
                 requestChunkedSegments(
@@ -158,7 +236,17 @@ object AiReadAloudRoleService {
                     textChapter = currentChapter,
                     paragraphs = cleanParagraphs,
                     contextParagraphs = contextParagraphs,
-                    prompt = prompt
+                    prompt = prompt,
+                    stage = stage,
+                    onPreview = { preview, candidateCount ->
+                        postPreview(
+                            AiReadAloudRoleState.STATUS_RUNNING,
+                            "已收到 ${preview.size} 个分配片段",
+                            AiReadAloudRoleState.SOURCE_AI,
+                            preview,
+                            newCharacterCandidateCount = candidateCount
+                        )
+                    }
                 )
             }
             val aiSegments = result.segments
@@ -191,7 +279,18 @@ object AiReadAloudRoleService {
                         updatedAt = successAt
                     )
                 )
-                postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_FALLBACK, "已使用默认分角色", cleanParagraphs.size, fallback.size, error = error)
+                postPreview(
+                    AiReadAloudRoleState.STATUS_FALLBACK,
+                    "已使用默认分角色",
+                    AiReadAloudRoleState.SOURCE_FALLBACK,
+                    buildPreviewSegments(
+                        currentBook.bookUrl,
+                        fallback,
+                        cleanParagraphs,
+                        AiReadAloudRoleState.SOURCE_FALLBACK
+                    ),
+                    error = error
+                )
                 return EnsureResult(AiReadAloudRoleState.STATUS_FALLBACK, fallback.size, message = "已使用默认分角色", error = error)
             }
             val resolved = persistDetectedCharacters(currentBook.bookUrl, aiSegments, result.candidates)
@@ -215,15 +314,18 @@ object AiReadAloudRoleService {
                     updatedAt = successAt
                 )
             )
-            postState(
-                currentBook,
-                currentChapter,
-                stage,
+            postPreview(
                 AiReadAloudRoleState.STATUS_SUCCESS,
                 stageMessage(stage, "角色分配完成"),
-                cleanParagraphs.size,
-                resolved.first.size,
-                resolved.second.size
+                AiReadAloudRoleState.SOURCE_RESOLVED,
+                buildPreviewSegments(
+                    currentBook.bookUrl,
+                    resolved.first,
+                    cleanParagraphs,
+                    AiReadAloudRoleState.SOURCE_RESOLVED
+                ),
+                createdCharacterCount = resolved.second.size,
+                newCharacterCandidateCount = result.candidates.size
             )
             return EnsureResult(
                 status = AiReadAloudRoleState.STATUS_SUCCESS,
@@ -260,7 +362,18 @@ object AiReadAloudRoleService {
             )
             val status = if (fallback.isNotEmpty()) AiReadAloudRoleState.STATUS_FALLBACK else AiReadAloudRoleState.STATUS_FAILED
             val message = if (fallback.isNotEmpty()) "AI分角色失败，已使用默认分角色" else "AI分角色失败"
-            postState(currentBook, currentChapter, stage, status, message, cleanParagraphs.size, fallback.size, error = error)
+            postPreview(
+                status,
+                message,
+                AiReadAloudRoleState.SOURCE_FALLBACK,
+                buildPreviewSegments(
+                    currentBook.bookUrl,
+                    fallback,
+                    cleanParagraphs,
+                    AiReadAloudRoleState.SOURCE_FALLBACK
+                ),
+                error = error
+            )
             AppLog.put("AI分角色标注失败\n$error", throwable)
             return EnsureResult(status, fallback.size, message = message, error = error)
         } finally {
@@ -312,28 +425,7 @@ object AiReadAloudRoleService {
         if (bookUrl.isNullOrBlank() || cueIndex < 0) return emptyList()
         val cache = appDb.aiReadAloudRoleCacheDao.latestUsableByChapter(bookUrl, chapterIndex)
             ?: return cueText?.let { buildDefaultSegments(listOf(it), paragraphOffset = cueIndex) }.orEmpty()
-        val segments = runCatching { JSONArray(cache.segmentsJson) }.getOrNull() ?: return emptyList()
-        val result = mutableListOf<Segment>()
-        for (index in 0 until segments.length()) {
-            val item = segments.optJSONObject(index) ?: continue
-            if (item.optInt("paragraphIndex", -1) != cueIndex) continue
-            val start = item.optInt("start", -1)
-            val end = item.optInt("end", -1)
-            if (start < 0 || end <= start) continue
-            result += Segment(
-                paragraphIndex = cueIndex,
-                start = start,
-                end = end,
-                roleType = item.optString("roleType").trim()
-                    .takeIf { it in setOf("narrator", "character", "thought", "other") }
-                    ?: "other",
-                characterName = item.optString("characterName").trim().take(80),
-                characterId = item.optLong("characterId", 0L).coerceAtLeast(0L),
-                emotionName = item.optString("emotionName").trim().take(40),
-                emotionTag = item.optString("emotionTag").trim().take(40),
-                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
-            )
-        }
+        val result = segmentsFromJson(cache.segmentsJson).filter { it.paragraphIndex == cueIndex }
         return result
             .ifEmpty { cueText?.let { buildDefaultSegments(listOf(it), paragraphOffset = cueIndex) }.orEmpty() }
             .sortedWith(compareBy<Segment> { it.start }.thenBy { it.end })
@@ -471,6 +563,9 @@ object AiReadAloudRoleService {
         paragraphCount: Int,
         segmentCount: Int = 0,
         createdCharacterCount: Int = 0,
+        newCharacterCandidateCount: Int = 0,
+        previewSource: String = AiReadAloudRoleState.SOURCE_NONE,
+        previewSegments: List<AiReadAloudRolePreviewSegment> = emptyList(),
         error: String = ""
     ) {
         postEvent(
@@ -485,6 +580,9 @@ object AiReadAloudRoleService {
                 paragraphCount = paragraphCount,
                 segmentCount = segmentCount,
                 createdCharacterCount = createdCharacterCount,
+                newCharacterCandidateCount = newCharacterCandidateCount,
+                previewSource = previewSource,
+                previewSegments = previewSegments,
                 error = error
             )
         )
@@ -499,12 +597,98 @@ object AiReadAloudRoleService {
         return runCatching { JSONArray(json).length() }.getOrDefault(0)
     }
 
+    private fun segmentsFromJson(json: String): List<Segment> {
+        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        val result = mutableListOf<Segment>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val start = item.optInt("start", -1)
+            val end = item.optInt("end", -1)
+            if (start < 0 || end <= start) continue
+            result += Segment(
+                paragraphIndex = item.optInt("paragraphIndex", -1),
+                start = start,
+                end = end,
+                roleType = item.optString("roleType").trim()
+                    .takeIf { it in setOf("narrator", "character", "thought", "other") }
+                    ?: "other",
+                characterName = item.optString("characterName").trim().take(80),
+                characterId = item.optLong("characterId", 0L).coerceAtLeast(0L),
+                emotionName = item.optString("emotionName").trim().take(40),
+                emotionTag = item.optString("emotionTag").trim().take(40),
+                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+            )
+        }
+        return result.filter { it.paragraphIndex >= 0 }
+    }
+
+    private fun buildPreviewSegments(
+        bookUrl: String,
+        segments: List<Segment>,
+        paragraphs: List<String>,
+        source: String,
+        paragraphOffset: Int = 0
+    ): List<AiReadAloudRolePreviewSegment> {
+        if (segments.isEmpty()) return emptyList()
+        val characters = appDb.bookCharacterDao.characters(bookUrl)
+        val byId = characters.associateBy { it.id }
+        val byName = characters.associateBy { it.name }
+        return segments
+            .sortedWith(compareBy<Segment> { it.paragraphIndex }.thenBy { it.start }.thenBy { it.end })
+            .mapNotNull { segment ->
+                val paragraph = paragraphs.getOrNull(segment.paragraphIndex - paragraphOffset)
+                    ?: return@mapNotNull null
+                val start = segment.start.coerceIn(0, paragraph.length)
+                val end = segment.end.coerceIn(start, paragraph.length)
+                if (start >= end) return@mapNotNull null
+                val character = when {
+                    segment.characterId > 0L -> byId[segment.characterId]
+                    segment.characterName.isNotBlank() -> byName[segment.characterName]
+                    else -> null
+                }
+                val route = character
+                    ?.speechRouteJson
+                    ?.let(SpeechRoute::fromJson)
+                    ?.let { route ->
+                        if (segment.emotionName.isNotBlank() || segment.emotionTag.isNotBlank()) {
+                            route.copy(
+                                emotionName = segment.emotionName.ifBlank { route.emotionName },
+                                emotionTag = segment.emotionTag.ifBlank { route.emotionTag }
+                            )
+                        } else {
+                            route
+                        }
+                    }
+                AiReadAloudRolePreviewSegment(
+                    paragraphIndex = segment.paragraphIndex,
+                    start = start,
+                    end = end,
+                    text = paragraph.substring(start, end),
+                    roleType = segment.roleType,
+                    characterName = character?.name
+                        ?: segment.characterName.ifBlank {
+                            if (segment.roleType == "narrator") "旁白" else ""
+                        },
+                    characterId = character?.id ?: segment.characterId,
+                    matchedCharacter = character != null,
+                    emotionName = segment.emotionName.ifBlank { route?.emotionName.orEmpty() },
+                    emotionTag = segment.emotionTag.ifBlank { route?.emotionTag.orEmpty() },
+                    speakerName = route?.speakerName.orEmpty(),
+                    toneID = route?.toneID.orEmpty(),
+                    confidence = segment.confidence,
+                    source = source
+                )
+            }
+    }
+
     private suspend fun requestChunkedSegments(
         book: Book,
         textChapter: TextChapter,
         paragraphs: List<String>,
         contextParagraphs: Int,
-        prompt: String
+        prompt: String,
+        stage: String,
+        onPreview: (List<AiReadAloudRolePreviewSegment>, Int) -> Unit
     ): RequestResult = coroutineScope {
         val semaphore = Semaphore(AppConfig.aiReadAloudRoleThreadCount)
         val results = paragraphs.indices
@@ -521,7 +705,10 @@ object AiReadAloudRoleService {
                             targetIndices = targetIndices,
                             contextTitle = "分线程上下文模式，当前任务只记录目标段落 ${targetIndices.first() + 1}-${targetIndices.last() + 1}",
                             prompt = prompt,
-                            paragraphOffset = start
+                            paragraphOffset = start,
+                            totalParagraphCount = paragraphs.size,
+                            stage = stage,
+                            onPreview = onPreview
                         )
                     }
                 }
@@ -545,7 +732,10 @@ object AiReadAloudRoleService {
         targetIndices: List<Int>,
         contextTitle: String,
         prompt: String,
-        paragraphOffset: Int = 0
+        paragraphOffset: Int = 0,
+        totalParagraphCount: Int,
+        stage: String,
+        onPreview: (List<AiReadAloudRolePreviewSegment>, Int) -> Unit
     ): RequestResult {
         val collectedSegments = mutableListOf<Segment>()
         val collectedCandidates = mutableListOf<CharacterCandidate>()
@@ -555,6 +745,16 @@ object AiReadAloudRoleService {
             val candidates = parseCandidates(args)
             collectedSegments += segments
             collectedCandidates += candidates
+            onPreview(
+                buildPreviewSegments(
+                    book.bookUrl,
+                    segments,
+                    paragraphs,
+                    AiReadAloudRoleState.SOURCE_AI,
+                    paragraphOffset
+                ),
+                collectedCandidates.distinctBy { it.name }.size
+            )
             JSONObject().apply {
                 put("ok", true)
                 put("recorded", segments.size)

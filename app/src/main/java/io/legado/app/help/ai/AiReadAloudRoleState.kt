@@ -1,5 +1,25 @@
 package io.legado.app.help.ai
 
+data class AiReadAloudRolePreviewSegment(
+    val paragraphIndex: Int = 0,
+    val start: Int = 0,
+    val end: Int = 0,
+    val text: String = "",
+    val roleType: String = "",
+    val characterName: String = "",
+    val characterId: Long = 0L,
+    val matchedCharacter: Boolean = false,
+    val emotionName: String = "",
+    val emotionTag: String = "",
+    val speakerName: String = "",
+    val toneID: String = "",
+    val confidence: Double = 0.0,
+    val source: String = ""
+) {
+    val key: String
+        get() = "$paragraphIndex:$start:$end:$roleType:$characterId:$characterName:$source"
+}
+
 data class AiReadAloudRoleState(
     val bookUrl: String = "",
     val chapterIndex: Int = 0,
@@ -10,6 +30,9 @@ data class AiReadAloudRoleState(
     val paragraphCount: Int = 0,
     val segmentCount: Int = 0,
     val createdCharacterCount: Int = 0,
+    val newCharacterCandidateCount: Int = 0,
+    val previewSource: String = SOURCE_NONE,
+    val previewSegments: List<AiReadAloudRolePreviewSegment> = emptyList(),
     val error: String = ""
 ) {
     val running: Boolean
@@ -25,5 +48,11 @@ data class AiReadAloudRoleState(
         const val STATUS_FALLBACK = "fallback"
         const val STATUS_FAILED = "failed"
         const val STATUS_SKIPPED = "skipped"
+
+        const val SOURCE_NONE = "none"
+        const val SOURCE_AI = "ai"
+        const val SOURCE_CACHE = "cache"
+        const val SOURCE_FALLBACK = "fallback"
+        const val SOURCE_RESOLVED = "resolved"
     }
 }

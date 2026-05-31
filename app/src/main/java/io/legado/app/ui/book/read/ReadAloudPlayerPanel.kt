@@ -36,6 +36,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -61,6 +62,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -108,6 +110,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.ai.AiReadAloudRoleService
+import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.speech.SpeechRoute
@@ -271,6 +274,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleStatusRunning: Boolean = false,
         val roleStatusError: Boolean = false,
         val roleStatusVisible: Boolean = false,
+        val roleDetailVisible: Boolean = false,
         val roleState: AiReadAloudRoleState? = null
     )
 
@@ -284,6 +288,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var roleStatusError = false
     private var roleStatusUntil = 0L
     private var roleState: AiReadAloudRoleState? = null
+    private var roleDetailCollapsed = false
+    private var roleDetailClosed = false
+    private var roleDetailKey = ""
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -326,6 +333,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onCapsulePositionChange = ::updateCapsulePosition,
                 onCapsuleBounds = ::updateCapsuleBounds,
                 onOpenCharacters = { callBack?.openBookCharacters() },
+                onHideRoleDetail = ::hideRoleDetail,
+                onOpenRoleDetail = ::openRoleDetail,
                 onDismissRoleStatus = ::dismissRoleStatus
             )
         }
@@ -393,27 +402,29 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     fun onAiRoleState(state: AiReadAloudRoleState) {
         val currentBookUrl = ReadBook.book?.bookUrl ?: return
         if (state.bookUrl != currentBookUrl) return
+        val nextKey = "${state.bookUrl}:${state.chapterIndex}:${state.stage}"
+        if (nextKey != roleDetailKey || state.running && roleDetailClosed) {
+            roleDetailKey = nextKey
+            roleDetailCollapsed = false
+            roleDetailClosed = false
+        }
         roleState = state
         roleStatusText = buildRoleStatusText(state)
         roleStatusRunning = state.running
         roleStatusError = state.status == AiReadAloudRoleState.STATUS_FAILED
-        roleStatusUntil = if (state.running) {
-            Long.MAX_VALUE
-        } else {
-            System.currentTimeMillis() + 4200L
-        }
+        roleStatusUntil = Long.MAX_VALUE
         refresh()
-        if (!state.running) {
-            postDelayed({
-                if (roleStatusUntil <= System.currentTimeMillis()) {
-                    roleStatusText = ""
-                    roleStatusRunning = false
-                    roleStatusError = false
-                    roleState = null
-                    refresh()
-                }
-            }, 4300L)
-        }
+    }
+
+    private fun hideRoleDetail() {
+        roleDetailCollapsed = true
+        refresh()
+    }
+
+    private fun openRoleDetail() {
+        roleDetailCollapsed = false
+        roleDetailClosed = false
+        refresh()
     }
 
     private fun dismissRoleStatus() {
@@ -422,6 +433,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         roleStatusError = false
         roleStatusUntil = 0L
         roleState = null
+        roleDetailCollapsed = false
+        roleDetailClosed = true
         refresh()
     }
 
@@ -616,7 +629,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (visibility == VISIBLE && !expanded && !uiState.roleStatusVisible) {
+        if (visibility == VISIBLE && !expanded && !uiState.roleStatusVisible && !uiState.roleDetailVisible) {
             if (ev.actionMasked == MotionEvent.ACTION_DOWN &&
                 !capsuleBounds.contains(ev.x, ev.y)
             ) {
@@ -782,6 +795,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
+        val roleEventVisible = roleStatusText.isNotBlank() &&
+                !roleDetailClosed &&
+                (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
         return PlayerUiState(
             bookName = bookName,
             author = author,
@@ -824,8 +840,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleStatusText = roleStatusText,
             roleStatusRunning = roleStatusRunning,
             roleStatusError = roleStatusError,
-            roleStatusVisible = roleStatusText.isNotBlank() &&
-                    (roleStatusRunning || roleStatusUntil > System.currentTimeMillis()),
+            roleStatusVisible = roleEventVisible && roleDetailCollapsed,
+            roleDetailVisible = roleEventVisible && !roleDetailCollapsed,
             roleState = roleState
         )
     }
@@ -1106,6 +1122,8 @@ private fun ReadAloudPlayerContent(
     onCapsulePositionChange: (Float, Float) -> Unit,
     onCapsuleBounds: (RectF) -> Unit,
     onOpenCharacters: () -> Unit,
+    onHideRoleDetail: () -> Unit,
+    onOpenRoleDetail: () -> Unit,
     onDismissRoleStatus: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
@@ -1173,7 +1191,7 @@ private fun ReadAloudPlayerContent(
                         onModeChange(it)
                     }
                 )
-                RoleAssignmentStatus(state = state, colors = colors)
+                RoleAssignmentStatus(state = state, colors = colors, onOpen = onOpenRoleDetail)
                 Spacer(modifier = Modifier.height(if (veryShort) 4.dp else 10.dp))
                 if (landscape) {
                     LandscapePlayerBody(
@@ -1268,6 +1286,7 @@ private fun ReadAloudPlayerContent(
         RoleAssignmentProgressDialog(
             state = state,
             colors = colors,
+            onHide = onHideRoleDetail,
             onDismiss = onDismissRoleStatus
         )
     }
@@ -1716,7 +1735,8 @@ private fun MinimalHeader(
 @Composable
 private fun RoleAssignmentStatus(
     state: ReadAloudPlayerPanel.PlayerUiState,
-    colors: PlayerColors
+    colors: PlayerColors,
+    onOpen: () -> Unit
 ) {
     AnimatedVisibility(
         visible = state.roleStatusVisible,
@@ -1729,7 +1749,8 @@ private fun RoleAssignmentStatus(
             modifier = Modifier
                 .padding(top = 8.dp)
                 .widthIn(max = 520.dp)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .clickable(onClick = onOpen),
             shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
             color = if (state.roleStatusError) {
                 Color(0xFF6D2630).copy(alpha = 0.86f)
@@ -1778,11 +1799,12 @@ private fun RoleAssignmentStatus(
 private fun RoleAssignmentProgressDialog(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
+    onHide: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val roleState = state.roleState ?: return
     AnimatedVisibility(
-        visible = state.roleStatusVisible,
+        visible = state.roleDetailVisible,
         enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
                 scaleIn(tween(180, easing = FastOutSlowInEasing), initialScale = 0.96f),
         exit = scaleOut(tween(150, easing = FastOutSlowInEasing), targetScale = 0.98f) +
@@ -1801,7 +1823,7 @@ private fun RoleAssignmentProgressDialog(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 480.dp),
+                    .widthIn(max = 620.dp),
                 shape = shape,
                 color = colors.panelStrong.copy(alpha = 0.96f),
                 border = BorderStroke(1.dp, colors.panelBorder),
@@ -1809,22 +1831,9 @@ private fun RoleAssignmentProgressDialog(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (state.roleStatusRunning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = colors.accent
-                            )
-                        } else {
-                            Canvas(modifier = Modifier.size(20.dp)) {
-                                drawCircle(
-                                    if (state.roleStatusError) Color(0xFFFF6B7A) else colors.accent
-                                )
-                            }
-                        }
                         Column(modifier = Modifier.padding(start = 10.dp).weight(1f)) {
                             Text(
-                                text = "多角色分配",
+                                text = "多角色分配明细",
                                 color = colors.primaryText,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -1838,32 +1847,16 @@ private fun RoleAssignmentProgressDialog(
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
-                        if (!state.roleStatusRunning) {
-                            Surface(
-                                onClick = onDismiss,
-                                shape = CircleShape,
-                                color = Color.Transparent,
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_close_x),
-                                        contentDescription = "关闭",
-                                        tint = colors.primaryText,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
+                        RoleDialogAction("隐藏", colors, onHide)
+                        if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
                     }
-                    Text(
-                        text = state.roleStatusText,
-                        color = colors.primaryText,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(top = 14.dp)
+                    RoleAssignmentSummary(state, roleState, colors)
+                    RolePreviewList(
+                        state = state,
+                        roleState = roleState,
+                        colors = colors,
+                        modifier = Modifier.padding(top = 12.dp)
                     )
-                    RoleAssignmentMetricRows(roleState, colors)
                 }
             }
         }
@@ -1871,40 +1864,312 @@ private fun RoleAssignmentProgressDialog(
 }
 
 @Composable
-private fun RoleAssignmentMetricRows(
-    state: AiReadAloudRoleState,
+private fun RoleDialogAction(
+    text: String,
+    colors: PlayerColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        color = colors.panel.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, colors.panelBorder)
+    ) {
+        Text(
+            text = text,
+            color = colors.primaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun RoleAssignmentSummary(
+    playerState: ReadAloudPlayerPanel.PlayerUiState,
+    roleState: AiReadAloudRoleState,
     colors: PlayerColors
 ) {
-    val rows = buildList {
-        add("段落" to state.paragraphCount.toString())
-        if (state.segmentCount > 0) add("片段" to state.segmentCount.toString())
-        if (state.createdCharacterCount > 0) add("新增角色" to state.createdCharacterCount.toString())
-        if (state.stage == AiReadAloudRoleState.STAGE_NEXT) add("阶段" to "预处理下一章")
-        if (state.error.isNotBlank()) add("错误" to state.error)
+    val preview = roleState.previewSegments
+    val unmatchedCount = preview.count {
+        it.roleType in setOf("character", "thought") && !it.matchedCharacter
     }
-    Column(
-        modifier = Modifier.padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        rows.forEach { (label, value) ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        RoleSummaryChip(roleStatusLabel(roleState), colors)
+        RoleSummaryChip(roleSourceLabel(roleState.previewSource), colors)
+        RoleSummaryChip("${preview.size} 片段", colors)
+        if (roleState.createdCharacterCount > 0) {
+            RoleSummaryChip("新增 ${roleState.createdCharacterCount} 角色", colors)
+        }
+        if (unmatchedCount > 0) {
+            RoleSummaryChip("$unmatchedCount 未匹配", colors, danger = true)
+        }
+    }
+    Text(
+        text = playerState.roleStatusText,
+        color = colors.secondaryText,
+        fontSize = 12.sp,
+        lineHeight = 18.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = 10.dp)
+    )
+    if (roleState.error.isNotBlank()) {
+        Text(
+            text = roleState.error,
+            color = Color(0xFFFF8A9A),
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun RoleSummaryChip(
+    text: String,
+    colors: PlayerColors,
+    danger: Boolean = false
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = if (danger) Color(0xFFFF6B7A).copy(alpha = 0.14f) else colors.panel.copy(alpha = 0.64f),
+        border = BorderStroke(
+            1.dp,
+            if (danger) Color(0xFFFF8A9A).copy(alpha = 0.38f) else colors.panelBorder
+        )
+    ) {
+        Text(
+            text = text,
+            color = if (danger) Color(0xFFFFB3BB) else colors.secondaryText,
+            fontSize = 11.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+        )
+    }
+}
+
+@Composable
+private fun RolePreviewList(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    roleState: AiReadAloudRoleState,
+    colors: PlayerColors,
+    modifier: Modifier = Modifier
+) {
+    val preview = roleState.previewSegments
+    if (preview.isEmpty()) {
+        Surface(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+            color = colors.panel.copy(alpha = 0.55f),
+            border = BorderStroke(1.dp, colors.panelBorder)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (state.roleStatusRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = colors.accent
+                    )
+                }
                 Text(
-                    text = label,
-                    color = colors.subtleText,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(62.dp)
-                )
-                Text(
-                    text = value,
+                    text = when {
+                        state.roleStatusRunning -> "等待 AI 返回具体片段分配"
+                        roleState.error.isNotBlank() -> "没有可展示的分配片段"
+                        else -> "暂无分配明细"
+                    },
                     color = colors.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = if (label == "错误") 3 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
                 )
             }
         }
+        return
     }
+    val groups = remember(preview) {
+        preview.groupBy { it.paragraphIndex }
+            .toSortedMap()
+            .map { it.key to it.value.sortedWith(compareBy<AiReadAloudRolePreviewSegment> { segment -> segment.start }.thenBy { segment -> segment.end }) }
+    }
+    LazyColumn(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 220.dp, max = 430.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(groups, key = { it.first }) { (paragraphIndex, segments) ->
+            RolePreviewParagraphGroup(
+                paragraphIndex = paragraphIndex,
+                segments = segments,
+                current = paragraphIndex == state.currentCueIndex,
+                colors = colors
+            )
+        }
+    }
+}
+
+@Composable
+private fun RolePreviewParagraphGroup(
+    paragraphIndex: Int,
+    segments: List<AiReadAloudRolePreviewSegment>,
+    current: Boolean,
+    colors: PlayerColors
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
+        color = if (current) colors.accent.copy(alpha = 0.12f) else colors.panel.copy(alpha = 0.52f),
+        border = BorderStroke(1.dp, if (current) colors.accent.copy(alpha = 0.55f) else colors.panelBorder)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "段落 ${paragraphIndex + 1}",
+                    color = if (current) colors.accent else colors.subtleText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                if (current) {
+                    Text("当前朗读", color = colors.accent, fontSize = 11.sp)
+                }
+            }
+            segments.forEach { segment ->
+                RolePreviewSegmentRow(segment, colors)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RolePreviewSegmentRow(
+    segment: AiReadAloudRolePreviewSegment,
+    colors: PlayerColors
+) {
+    val danger = segment.roleType in setOf("character", "thought") && !segment.matchedCharacter
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        color = colors.panelStrong.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, if (danger) Color(0xFFFF8A9A).copy(alpha = 0.34f) else colors.panelBorder.copy(alpha = 0.7f))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                RoleTypeChip(segment.roleType, colors, danger)
+                Text(
+                    text = roleSpeakerLine(segment),
+                    color = if (danger) Color(0xFFFFB3BB) else colors.secondaryText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "${(segment.confidence * 100).roundToInt()}%",
+                    color = colors.subtleText,
+                    fontSize = 11.sp
+                )
+            }
+            Text(
+                text = segment.text.ifBlank { "空片段" },
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 7.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RoleTypeChip(
+    roleType: String,
+    colors: PlayerColors,
+    danger: Boolean
+) {
+    val color = when {
+        danger -> Color(0xFFFF8A9A)
+        roleType == "narrator" -> colors.subtleText
+        roleType == "thought" -> Color(0xFFBFA7FF)
+        roleType == "character" -> colors.accent
+        else -> colors.secondaryText
+    }
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.30f))
+    ) {
+        Text(
+            text = roleTypeLabel(roleType),
+            color = color,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+    }
+}
+
+private fun roleTypeLabel(roleType: String): String {
+    return when (roleType) {
+        "narrator" -> "旁白"
+        "character" -> "角色"
+        "thought" -> "心理"
+        else -> "其他"
+    }
+}
+
+private fun roleStatusLabel(state: AiReadAloudRoleState): String {
+    return when (state.status) {
+        AiReadAloudRoleState.STATUS_RUNNING -> "分配中"
+        AiReadAloudRoleState.STATUS_SUCCESS -> "已完成"
+        AiReadAloudRoleState.STATUS_FALLBACK -> "Fallback"
+        AiReadAloudRoleState.STATUS_FAILED -> "失败"
+        AiReadAloudRoleState.STATUS_SKIPPED -> "已缓存"
+        else -> "待处理"
+    }
+}
+
+private fun roleSourceLabel(source: String): String {
+    return when (source) {
+        AiReadAloudRoleState.SOURCE_AI -> "AI 原始结果"
+        AiReadAloudRoleState.SOURCE_RESOLVED -> "已匹配角色"
+        AiReadAloudRoleState.SOURCE_CACHE -> "缓存"
+        AiReadAloudRoleState.SOURCE_FALLBACK -> "默认切分"
+        else -> "等待结果"
+    }
+}
+
+private fun roleSpeakerLine(segment: AiReadAloudRolePreviewSegment): String {
+    val roleName = when {
+        segment.roleType == "narrator" -> "旁白"
+        segment.characterName.isBlank() -> "未识别角色"
+        segment.matchedCharacter -> segment.characterName
+        else -> "${segment.characterName}（未匹配）"
+    }
+    val voice = segment.speakerName.ifBlank {
+        if (segment.roleType == "narrator") "使用默认朗读" else "未绑定发言人"
+    }
+    val emotion = segment.emotionName.takeIf { it.isNotBlank() }
+    return buildList {
+        add(roleName)
+        add(voice)
+        emotion?.let(::add)
+    }.joinToString(" · ")
 }
 
 @Composable
