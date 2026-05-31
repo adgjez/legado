@@ -952,7 +952,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         }.getOrDefault(emptyList())
         val byId = characters.associateBy { it.id }
         val byName = characters.associateBy { it.name }
-        val segments = AiReadAloudRoleService.segmentsForCue(bookUrl, chapterIndex, cueIndex)
+        val segments = AiReadAloudRoleService.segmentsForCue(bookUrl, chapterIndex, cueIndex, text)
             .filter { it.start < text.length }
             .map { it.copy(start = it.start.coerceIn(0, text.length), end = it.end.coerceIn(0, text.length)) }
             .filter { it.start < it.end }
