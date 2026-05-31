@@ -1417,7 +1417,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun openReadAiSummary() {
-        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+        val modelConfig = AppConfig.aiSummaryModelConfig
+        if (AppConfig.aiProviderForModel(modelConfig)?.baseUrl.isNullOrBlank()) {
             toastOnUi(R.string.ai_missing_config)
             return
         }
@@ -1449,7 +1450,8 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun openReadAiPanel(prompt: String) {
-        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+        val modelConfig = AppConfig.aiAskModelConfig
+        if (AppConfig.aiProviderForModel(modelConfig)?.baseUrl.isNullOrBlank()) {
             toastOnUi(R.string.ai_missing_config)
             return
         }

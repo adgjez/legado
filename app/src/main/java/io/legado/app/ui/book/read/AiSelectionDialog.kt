@@ -48,7 +48,8 @@ class AiSelectionDialog() : BaseDialogFragment(R.layout.dialog_dict) {
             dismissAllowingStateLoss()
             return
         }
-        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) {
+        val modelConfig = AppConfig.aiAskModelConfig
+        if (AppConfig.aiProviderForModel(modelConfig)?.baseUrl.isNullOrBlank()) {
             toastOnUi(R.string.ai_missing_config)
             dismissAllowingStateLoss()
             return
@@ -80,7 +81,8 @@ class AiSelectionDialog() : BaseDialogFragment(R.layout.dialog_dict) {
                                     binding.tvDict.text = partial
                                 }
                             }
-                        }
+                        },
+                        modelConfigOverride = modelConfig
                     )
                 }
             }.getOrElse { it.localizedMessage ?: it.toString() }

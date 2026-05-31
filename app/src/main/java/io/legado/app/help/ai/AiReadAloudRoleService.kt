@@ -38,7 +38,8 @@ object AiReadAloudRoleService {
         paragraphs: List<String>
     ) {
         if (!AppConfig.aiReadAloudRoleEnabled) return
-        if (AppConfig.aiCurrentProvider?.baseUrl.isNullOrBlank() || AppConfig.aiCurrentModelConfig == null) return
+        val modelConfig = AppConfig.aiReadAloudRoleModelConfig ?: return
+        if (AppConfig.aiProviderForModel(modelConfig)?.baseUrl.isNullOrBlank()) return
         val currentBook = book ?: return
         val currentChapter = textChapter ?: return
         val cleanParagraphs = paragraphs.map { it.trimEnd() }.filter { it.isNotBlank() }
@@ -49,7 +50,7 @@ object AiReadAloudRoleService {
         val promptHash = MD5Utils.md5Encode(prompt)
         val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role|${currentBook.bookUrl}|${currentChapter.chapter.index}|${currentChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash"
+            "read-aloud-role|${currentBook.bookUrl}|${currentChapter.chapter.index}|${currentChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash|${modelConfig.id}"
         )
         if (appDb.aiReadAloudRoleCacheDao.get(cacheKey) != null) return
         if (!runningCacheKeys.add(cacheKey)) return
@@ -157,7 +158,8 @@ object AiReadAloudRoleService {
             onPartial = {},
             includeStructuredBlocks = false,
             useAllTools = false,
-            extraTools = listOf(tool)
+            extraTools = listOf(tool),
+            modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig
         )
         if (collected.isEmpty()) {
             collected += parseFallbackSegments(response, targetSet, paragraphOffset, paragraphs)

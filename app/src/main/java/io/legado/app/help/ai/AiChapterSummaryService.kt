@@ -61,7 +61,7 @@ object AiChapterSummaryService {
             combineSummaries(input, chunkSummaries, onPartial, onStatus)
         }.trim()
         val now = System.currentTimeMillis()
-        val model = AppConfig.aiCurrentModelConfig
+        val model = AppConfig.aiSummaryModelConfig
         val modelLabel = model?.let { currentModelLabel() }.orEmpty()
         val summary = BookAiChapterSummary(
             cacheKey = input.cacheKey,
@@ -102,7 +102,8 @@ object AiChapterSummaryService {
             onPartial = onPartial,
             onStatus = onStatus,
             includeStructuredBlocks = false,
-            toolOverride = AiToolRegistry.resolveNativeTools(SUMMARY_TOOL_NAMES)
+            toolOverride = AiToolRegistry.resolveNativeTools(SUMMARY_TOOL_NAMES),
+            modelConfigOverride = AppConfig.aiSummaryModelConfig
         )
     }
 
@@ -138,7 +139,8 @@ object AiChapterSummaryService {
             onPartial = onPartial,
             onStatus = onStatus,
             includeStructuredBlocks = false,
-            useAllTools = false
+            useAllTools = false,
+            modelConfigOverride = AppConfig.aiSummaryModelConfig
         )
     }
 
@@ -201,7 +203,7 @@ object AiChapterSummaryService {
     }
 
     private fun currentModelLabel(): String {
-        val model = AppConfig.aiCurrentModelConfig ?: return ""
+        val model = AppConfig.aiSummaryModelConfig ?: return ""
         val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
             ?.name
             ?.takeIf { it.isNotBlank() }

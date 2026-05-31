@@ -256,13 +256,13 @@ class ReadAiSummaryPanel @JvmOverloads constructor(
                     ?: model.modelId
             }
         ) { _, _, index ->
-            AppConfig.aiCurrentModelId = models[index].id
+            AppConfig.aiSummaryModelId = models[index].id
             uiState = uiState.copy(modelLabel = currentModelLabel())
         }
     }
 
     private fun currentModelLabel(): String {
-        val model = AppConfig.aiCurrentModelConfig ?: return ""
+        val model = AppConfig.aiSummaryModelConfig ?: return ""
         val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
             ?.name
             ?.takeIf { it.isNotBlank() }

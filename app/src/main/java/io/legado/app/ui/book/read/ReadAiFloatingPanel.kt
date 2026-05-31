@@ -265,7 +265,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                                 }
                             }
                         },
-                        includeStructuredBlocks = false
+                        includeStructuredBlocks = false,
+                        modelConfigOverride = AppConfig.aiAskModelConfig
                     )
                 }
             }
@@ -540,7 +541,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun currentModelLabel(): String {
-        val model = AppConfig.aiCurrentModelConfig ?: return ""
+        val model = AppConfig.aiAskModelConfig ?: return ""
         val providerName = AppConfig.aiProviderList.firstOrNull { it.id == model.providerId }
             ?.name
             ?.takeIf { it.isNotBlank() }
@@ -566,7 +567,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                     ?: model.modelId
             }
         ) { _, _, index ->
-            AppConfig.aiCurrentModelId = models[index].id
+            AppConfig.aiAskModelId = models[index].id
             modelLabel = currentModelLabel()
         }
     }
