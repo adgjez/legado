@@ -70,6 +70,7 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleModelId,
             PreferKey.aiReadAloudAutoCreateCharacters,
             PreferKey.aiReadAloudRoleMode,
+            PreferKey.aiReadAloudRolePreprocess,
             PreferKey.aiReadAloudRoleThreadCount,
             PreferKey.aiReadAloudRoleContextParagraphs,
             PreferKey.aiReadAloudRolePrompt
@@ -382,6 +383,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
                 it.isEnabled = enabled
                 upPreferenceSummary(it, AppConfig.aiReadAloudRoleMode)
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRolePreprocess)?.let {
+                it.isEnabled = enabled
+                it.summary = "内置规则先稳定切成 unitId，AI 只确认不确定单元；播放端会补齐未覆盖文本"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleThreadCount)?.let {
                 it.isEnabled = enabled
