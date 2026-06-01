@@ -36,7 +36,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -1324,6 +1326,17 @@ private fun ReadAloudPlayerContent(
                     onPreviousChapter = onPreviousChapter,
                     onNextChapter = onNextChapter,
                     onOpenChapterList = onOpenChapterList
+                )
+            }
+            if (sheetVisible && activeSheet != PlayerSheet.None) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(activeSheet) {
+                            detectTapGestures {
+                                sheetVisible = false
+                            }
+                        }
                 )
             }
             Box(
@@ -3401,6 +3414,7 @@ private fun PlayerSheetPanel(
     modifier: Modifier = Modifier
 ) {
     val panelShape = LocalContext.current.composePanelShape()
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -3410,32 +3424,40 @@ private fun PlayerSheetPanel(
         border = BorderStroke(1.dp, colors.panelBorder),
         shadowElevation = 12.dp
     ) {
-        AnimatedContent(
-            targetState = sheet,
-            transitionSpec = {
-                (fadeIn(tween(160, easing = FastOutSlowInEasing)) +
-                        slideInVertically(tween(180, easing = FastOutSlowInEasing)) { it / 10 })
-                    .togetherWith(
-                        fadeOut(tween(120, easing = FastOutSlowInEasing)) +
-                                slideOutVertically(tween(140, easing = FastOutSlowInEasing)) { -it / 12 }
+        Box(
+            modifier = Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {}
+            )
+        ) {
+            AnimatedContent(
+                targetState = sheet,
+                transitionSpec = {
+                    (fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(180, easing = FastOutSlowInEasing)) { it / 10 })
+                        .togetherWith(
+                            fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                                    slideOutVertically(tween(140, easing = FastOutSlowInEasing)) { -it / 12 }
+                        )
+                        .using(SizeTransform(clip = false))
+                },
+                label = "readAloudSheetContent"
+            ) { targetSheet ->
+                when (targetSheet) {
+                    PlayerSheet.Chapter -> ChapterSheet(
+                        state = state,
+                        colors = colors,
+                        onOpenChapterList = onOpenChapterList,
+                        onPreviousChapter = onPreviousChapter,
+                        onNextChapter = onNextChapter,
+                        onChapterSelect = onChapterSelect
                     )
-                    .using(SizeTransform(clip = false))
-            },
-            label = "readAloudSheetContent"
-        ) { targetSheet ->
-            when (targetSheet) {
-                PlayerSheet.Chapter -> ChapterSheet(
-                    state = state,
-                    colors = colors,
-                    onOpenChapterList = onOpenChapterList,
-                    onPreviousChapter = onPreviousChapter,
-                    onNextChapter = onNextChapter,
-                    onChapterSelect = onChapterSelect
-                )
-                PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
-                PlayerSheet.Engine -> EngineSheet(state, colors, onEngineSelect)
-                PlayerSheet.Characters -> CharactersSheet(state, colors, onOpenCharacters)
-                PlayerSheet.None -> Unit
+                    PlayerSheet.Timer -> TimerSheet(state, colors, onTimerChange)
+                    PlayerSheet.Engine -> EngineSheet(state, colors, onEngineSelect)
+                    PlayerSheet.Characters -> CharactersSheet(state, colors, onOpenCharacters)
+                    PlayerSheet.None -> Unit
+                }
             }
         }
     }
