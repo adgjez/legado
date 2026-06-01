@@ -19,7 +19,9 @@ data class ReadAloudRoleUnit(
     val emotionTag: String = "",
     val confidence: Double = 0.0,
     val needsAi: Boolean = false,
-    val reason: String = ""
+    val reason: String = "",
+    val cueBefore: String = "",
+    val cueAfter: String = ""
 ) {
     val firstParagraphIndex: Int
         get() = ranges.firstOrNull()?.paragraphIndex ?: -1
@@ -39,7 +41,7 @@ data class ReadAloudRolePreprocessResult(
 
 object ReadAloudRolePreprocessor {
 
-    const val VERSION = "builtin-quote-colon-v2"
+    const val VERSION = "builtin-split-only-v3"
 
     private val quotePairs = mapOf(
         '“' to '”',
@@ -50,15 +52,7 @@ object ReadAloudRolePreprocessor {
         '『' to '』'
     )
     private val sentencePunctuation = setOf('。', '！', '？', '…', '!', '?')
-    private val speechCueRegex = Regex(
-        "([\\p{IsHan}A-Za-z0-9_·]{1,24})\\s*(?:说道|说|道|问道|问|答道|答|笑道|冷声道|沉声道|低声道|怒道|喝道|喊道|叫道|开口道|喃喃道|心道|暗道|想道|心想)\\s*[，,、：:]?\\s*$"
-    )
-    private val speechCueAfterRegex = Regex(
-        "^\\s*[，,、。.!！?？…]*\\s*([\\p{IsHan}A-Za-z0-9_·]{1,24})\\s*(?:说道|说|道|问道|问|答道|答|笑道|冷声道|沉声道|低声道|怒道|喝道|喊道|叫道|开口道|喃喃道|心道|暗道|想道|心想)"
-    )
     private val thoughtCueRegex = Regex("(?:心道|暗道|想道|心想)\\s*[，,、：:]?\\s*$")
-    private val colonSpeakerRegex = Regex("([\\p{IsHan}A-Za-z0-9_·]{1,24})\\s*[：:]\\s*$")
-    private val invalidSpeakerSuffixes = listOf("说道", "说", "问道", "问", "答道", "答", "心道", "想道", "心想")
 
     fun process(
         paragraphs: List<String>,
@@ -142,19 +136,18 @@ object ReadAloudRolePreprocessor {
         if (raw.isBlank()) return
         val colonIndex = raw.indexOfFirst { it == '：' || it == ':' }
         if (colonIndex in 1..24) {
-            val speaker = raw.substring(0, colonIndex).trim()
+            val prefix = raw.substring(0, colonIndex).trim()
             val speechStart = start + colonIndex + 1
-            if (speechStart < end && isLikelySpeakerName(speaker)) {
+            if (speechStart < end && prefix.isNotBlank() && isSimpleCuePrefix(prefix)) {
                 units += unit(
                     kind = "dialogue",
                     roleType = "character",
-                    characterName = speaker,
+                    characterName = "",
                     ranges = listOf(ReadAloudRoleRange(paragraphIndex, start, end)),
                     text = raw,
-                    speakerHint = speaker,
-                    confidence = 0.78,
-                    needsAi = false,
-                    reason = "speaker_colon"
+                    confidence = 0.46,
+                    needsAi = true,
+                    reason = "colon_dialogue"
                 )
                 return
             }
@@ -183,20 +176,12 @@ object ReadAloudRolePreprocessor {
         }
         val prefix = contextBefore(paragraphs, paragraphOffset, ranges.first())
         val suffix = contextAfter(paragraphs, paragraphOffset, ranges.last())
-        val speakerBefore = inferSpeakerBefore(prefix)
-        val speakerAfter = inferSpeakerAfter(suffix)
-        val colonSpeaker = inferColonSpeaker(prefix)
-        val speaker = listOf(speakerBefore, colonSpeaker, speakerAfter).firstOrNull { it.isNotBlank() }.orEmpty()
         val inner = text
             .trim()
             .trim(openChar, closeChar, '“', '”', '‘', '’', '"', '\'', '「', '」', '『', '』')
             .trim()
-        val hasSpeechCue = speaker.isNotBlank() ||
-            speechCueRegex.containsMatchIn(prefix.takeLast(80)) ||
-            speechCueAfterRegex.containsMatchIn(suffix.take(80))
         val isCrossParagraph = ranges.map { it.paragraphIndex }.distinct().size > 1
-        val looksLikeDialogue = hasSpeechCue ||
-            isCrossParagraph ||
+        val looksLikeDialogue = isCrossParagraph ||
             inner.length >= 6 ||
             inner.any { it in sentencePunctuation }
         val thought = thoughtCueRegex.containsMatchIn(prefix.takeLast(40)) ||
@@ -214,7 +199,9 @@ object ReadAloudRolePreprocessor {
                 text = text,
                 confidence = 0.72,
                 needsAi = false,
-                reason = "quoted_$kind"
+                reason = "quoted_$kind",
+                cueBefore = prefix,
+                cueAfter = suffix
             )
         }
 
@@ -222,13 +209,14 @@ object ReadAloudRolePreprocessor {
         return unit(
             kind = if (thought) "thought" else "dialogue",
             roleType = roleType,
-            characterName = speaker,
+            characterName = "",
             ranges = ranges,
             text = text,
-            speakerHint = speaker,
-            confidence = if (speaker.isBlank()) 0.46 else 0.78,
-            needsAi = speaker.isBlank(),
-            reason = if (speaker.isBlank()) "quoted_dialogue_unknown_speaker" else "quoted_dialogue_with_speaker"
+            confidence = 0.46,
+            needsAi = true,
+            reason = "quoted_dialogue",
+            cueBefore = prefix,
+            cueAfter = suffix
         )
     }
 
@@ -244,7 +232,9 @@ object ReadAloudRolePreprocessor {
         emotionTag: String = "",
         confidence: Double = 0.0,
         needsAi: Boolean = false,
-        reason: String = ""
+        reason: String = "",
+        cueBefore: String = "",
+        cueAfter: String = ""
     ): ReadAloudRoleUnit {
         val first = ranges.first()
         val last = ranges.last()
@@ -263,7 +253,9 @@ object ReadAloudRolePreprocessor {
             emotionTag = emotionTag,
             confidence = confidence.coerceIn(0.0, 1.0),
             needsAi = needsAi,
-            reason = reason
+            reason = reason,
+            cueBefore = cueBefore.take(160),
+            cueAfter = cueAfter.take(160)
         )
     }
 
@@ -296,34 +288,11 @@ object ReadAloudRolePreprocessor {
         return (current + "\n" + next).take(100)
     }
 
-    private fun inferSpeakerBefore(prefix: String): String {
-        val match = speechCueRegex.find(prefix.takeLast(80)) ?: return ""
-        val name = match.groupValues.getOrNull(1).orEmpty().trim()
-        return name.takeIf(::isLikelySpeakerName).orEmpty()
-    }
-
-    private fun inferSpeakerAfter(suffix: String): String {
-        val match = speechCueAfterRegex.find(suffix.take(80)) ?: return ""
-        val name = match.groupValues.getOrNull(1).orEmpty().trim()
-        return name.takeIf(::isLikelySpeakerName).orEmpty()
-    }
-
-    private fun inferColonSpeaker(prefix: String): String {
-        val match = colonSpeakerRegex.find(prefix.takeLast(40)) ?: return ""
-        val name = match.groupValues.getOrNull(1).orEmpty().trim()
-        return name.takeIf(::isLikelySpeakerName).orEmpty()
-    }
-
-    private fun isLikelySpeakerName(value: String): Boolean {
-        val name = value.trim().trim('“', '”', '‘', '’', '"', '\'', '，', ',', '。', '：', ':')
-        if (name.length !in 2..24) return false
-        if (name.any { it.isWhitespace() }) return false
-        if (name.any { it in "，。！？；,.!?;、（）()《》<>[]【】" }) return false
-        if (invalidSpeakerSuffixes.any { name.endsWith(it) }) return false
-        if (name in setOf("旁白", "作者", "读者", "我", "你", "他", "她", "它", "我们", "你们", "他们", "她们", "它们", "众人", "有人")) {
-            return false
-        }
-        return name.none { it.isDigit() } || name.any { it.code > 127 }
+    private fun isSimpleCuePrefix(value: String): Boolean {
+        val text = value.trim().trim('“', '”', '‘', '’', '"', '\'', '，', ',', '。', '：', ':')
+        if (text.length !in 1..24) return false
+        if (text.any { it == '\n' || it == '\r' || it == '\t' }) return false
+        return text.none { it in "！？；!?;（）()《》<>[]【】" }
     }
 
     private data class OpenQuote(
