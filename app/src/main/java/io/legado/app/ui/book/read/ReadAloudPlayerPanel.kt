@@ -404,7 +404,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun onAiRoleState(state: AiReadAloudRoleState) {
         val currentBookUrl = ReadBook.book?.bookUrl ?: return
+        val currentChapterIndex = ReadBook.curTextChapter?.chapter?.index ?: return
         if (state.bookUrl != currentBookUrl) return
+        if (state.stage != AiReadAloudRoleState.STAGE_CURRENT ||
+            state.chapterIndex != currentChapterIndex
+        ) {
+            return
+        }
         val nextKey = "${state.bookUrl}:${state.chapterIndex}:${state.stage}"
         if (nextKey != roleDetailKey || state.running && roleDetailClosed) {
             roleDetailKey = nextKey
@@ -731,11 +737,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private fun seekToParagraphProgress(progress: Float) {
         val chapter = ReadBook.curTextChapter ?: return
         val baseCues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
+        val roleCacheKey = AiReadAloudRoleService.cacheKeyFor(ReadBook.book, chapter, baseCues.map { it.text })
         val cues = ReadAloudSpeechPlanner.build(
             bookUrl = ReadBook.book?.bookUrl,
             chapter = chapter,
             baseCues = baseCues,
-            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+            roleCacheKey = roleCacheKey
         ).cues
         if (cues.isEmpty()) return
         val targetIndex = if (cues.size == 1) {
@@ -776,12 +784,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterKey = "${book?.bookUrl.orEmpty()}:$chapterSequence"
         val paragraphs = chapter?.getParagraphs(false).orEmpty()
         val baseCues = chapter?.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage)).orEmpty()
+        val roleCacheKey = chapter?.let {
+            AiReadAloudRoleService.cacheKeyFor(book, it, baseCues.map { cue -> cue.text })
+        }
         val speechPlan = chapter?.let {
             ReadAloudSpeechPlanner.build(
                 bookUrl = book?.bookUrl,
                 chapter = it,
                 baseCues = baseCues,
-                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+                roleCacheKey = roleCacheKey
             )
         }
         val cues = speechPlan?.cues ?: baseCues

@@ -35,7 +35,8 @@ object ReadAloudSpeechPlanner {
         bookUrl: String?,
         chapter: TextChapter,
         baseCues: List<ReadAloudCue>,
-        multiRoleEnabled: Boolean
+        multiRoleEnabled: Boolean,
+        roleCacheKey: String? = null
     ): ReadAloudSpeechPlan {
         if (baseCues.isEmpty()) {
             return ReadAloudSpeechPlan(emptyList(), emptyList(), emptyList())
@@ -71,19 +72,15 @@ object ReadAloudSpeechPlanner {
         val plannedItems = arrayListOf<ReadAloudSpeechPlanItem>()
         baseCues.forEachIndexed { cueIndex, cue ->
             val beforeSize = plannedItems.size
-            val segments = AiReadAloudRoleService
-                .assignedSegmentsForCue(bookUrl, chapter.chapter.index, cueIndex)
-                .filter { it.start < cue.text.length }
-                .map { segment ->
-                    segment.copy(
-                        start = segment.start.coerceIn(0, cue.text.length),
-                        end = segment.end.coerceIn(0, cue.text.length)
-                    )
-                }
-                .filter { it.start < it.end }
+            val segments = completeCueSegments(
+                cueIndex = cueIndex,
+                cueText = cue.text,
+                rawSegments = AiReadAloudRoleService
+                    .assignedSegmentsForCue(bookUrl, chapter.chapter.index, cueIndex, roleCacheKey)
+            )
             segments.forEach { segment ->
-                val text = cue.text.substring(segment.start, segment.end).trim()
-                if (text.isBlank() || text.isScenePunctuationOnly()) return@forEach
+                val text = cue.text.substring(segment.start, segment.end)
+                if (text.isEmpty()) return@forEach
                 val chapterPosition = cue.chapterPosition + segment.start
                 val pageIndex = chapter.getPageIndexByCharIndex(chapterPosition)
                     .takeIf { it >= 0 }
@@ -166,14 +163,73 @@ object ReadAloudSpeechPlanner {
         return Math.floorMod(seed.hashCode(), 2) == 0
     }
 
-    private fun String.isScenePunctuationOnly(): Boolean {
-        return trim().all { it in scenePunctuationChars }
+    private fun completeCueSegments(
+        cueIndex: Int,
+        cueText: String,
+        rawSegments: List<AiReadAloudRoleService.Segment>
+    ): List<AiReadAloudRoleService.Segment> {
+        if (cueText.isEmpty()) return emptyList()
+        val normalized = rawSegments
+            .mapNotNull { segment ->
+                val start = segment.start.coerceIn(0, cueText.length)
+                val end = segment.end.coerceIn(start, cueText.length)
+                if (start >= end) null else segment.copy(start = start, end = end)
+            }
+            .sortedWith(compareBy<AiReadAloudRoleService.Segment> { it.start }.thenBy { it.end })
+        val result = mutableListOf<AiReadAloudRoleService.Segment>()
+        var cursor = 0
+        normalized.forEach { segment ->
+            if (segment.end <= cursor) return@forEach
+            if (segment.start > cursor) {
+                result += narratorSegment(cueIndex, cursor, segment.start)
+            }
+            val start = segment.start.coerceAtLeast(cursor)
+            if (start < segment.end) {
+                result += segment.copy(start = start)
+                cursor = segment.end
+            }
+        }
+        if (cursor < cueText.length) {
+            result += narratorSegment(cueIndex, cursor, cueText.length)
+        }
+        return mergeAdjacentSegments(result)
     }
 
-    private val scenePunctuationChars = setOf(
-        '“', '”', '‘', '’', '"', '\'', '「', '」', '『', '』',
-        '，', ',', '。', '.', '！', '!', '？', '?', '；', ';',
-        '：', ':', '、', '…', '—', '-', '（', '）', '(', ')',
-        '【', '】', '[', ']', '《', '》'
-    )
+    private fun narratorSegment(
+        cueIndex: Int,
+        start: Int,
+        end: Int
+    ): AiReadAloudRoleService.Segment {
+        return AiReadAloudRoleService.Segment(
+            paragraphIndex = cueIndex,
+            start = start,
+            end = end,
+            roleType = "narrator",
+            characterName = "旁白",
+            confidence = 0.5
+        )
+    }
+
+    private fun mergeAdjacentSegments(
+        segments: List<AiReadAloudRoleService.Segment>
+    ): List<AiReadAloudRoleService.Segment> {
+        if (segments.size <= 1) return segments
+        val result = mutableListOf<AiReadAloudRoleService.Segment>()
+        segments.forEach { segment ->
+            val last = result.lastOrNull()
+            if (last != null &&
+                last.end == segment.start &&
+                last.roleType == segment.roleType &&
+                last.characterId == segment.characterId &&
+                last.characterName == segment.characterName &&
+                last.emotionName == segment.emotionName &&
+                last.emotionTag == segment.emotionTag
+            ) {
+                result[result.lastIndex] = last.copy(end = segment.end)
+            } else {
+                result += segment
+            }
+        }
+        return result
+    }
 }

@@ -75,15 +75,60 @@ object AiReadAloudRoleService {
         val confidence: Double
     )
 
+    private data class RoleCacheKey(
+        val cacheKey: String,
+        val mode: String,
+        val prompt: String,
+        val contentHash: String,
+        val contextParagraphs: Int
+    )
+
     data class EnsureResult(
         val status: String,
         val segmentCount: Int = 0,
         val createdCharacterCount: Int = 0,
         val message: String = "",
-        val error: String = ""
+        val error: String = "",
+        val cacheKey: String = ""
     ) {
         val usable: Boolean
             get() = segmentCount > 0
+    }
+
+    fun cacheKeyFor(
+        book: Book?,
+        textChapter: TextChapter?,
+        paragraphs: List<String>
+    ): String? {
+        val currentBook = book ?: return null
+        val currentChapter = textChapter ?: return null
+        val cleanParagraphs = paragraphs.map { it.trimEnd() }.filter { it.isNotBlank() }
+        if (cleanParagraphs.isEmpty()) return null
+        return buildRoleCacheKey(currentBook, currentChapter, cleanParagraphs)?.cacheKey
+    }
+
+    private fun buildRoleCacheKey(
+        book: Book,
+        textChapter: TextChapter,
+        cleanParagraphs: List<String>
+    ): RoleCacheKey? {
+        val modelConfig = AppConfig.aiReadAloudRoleModelConfig ?: return null
+        val prompt = AppConfig.aiReadAloudRolePrompt.trim()
+        val baseMode = AppConfig.aiReadAloudRoleMode
+        val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}"
+        val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
+        val promptHash = MD5Utils.md5Encode(prompt)
+        val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
+        val cacheKey = MD5Utils.md5Encode(
+            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash|${modelConfig.id}"
+        )
+        return RoleCacheKey(
+            cacheKey = cacheKey,
+            mode = mode,
+            prompt = prompt,
+            contentHash = contentHash,
+            contextParagraphs = contextParagraphs
+        )
     }
 
     suspend fun ensurePlayableCache(
@@ -102,7 +147,7 @@ object AiReadAloudRoleService {
                 return result.copy(status = AiReadAloudRoleState.STATUS_SUCCESS)
             }
             if (result.status == AiReadAloudRoleState.STATUS_RUNNING) {
-                val waited = waitForRunningCache(book, textChapter, paragraphs)
+                val waited = waitForRunningCache(result.cacheKey)
                 lastResult = waited ?: result
                 if (waited != null && waited.segmentCount > 0) {
                     return waited.copy(status = AiReadAloudRoleState.STATUS_SUCCESS)
@@ -140,15 +185,13 @@ object AiReadAloudRoleService {
         if (cleanParagraphs.isEmpty()) {
             return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, message = "当前章节无可朗读段落")
         }
-        val mode = AppConfig.aiReadAloudRoleMode
-        val prompt = AppConfig.aiReadAloudRolePrompt.trim()
-        val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
-        val promptHash = MD5Utils.md5Encode(prompt)
-        val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
-        val preprocessVersion = ReadAloudRolePreprocessor.VERSION
-        val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role|${currentBook.bookUrl}|${currentChapter.chapter.index}|${currentChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash|${modelConfig.id}|$preprocessVersion"
-        )
+        val roleKey = buildRoleCacheKey(currentBook, currentChapter, cleanParagraphs)
+            ?: return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, message = "未配置多角色模型")
+        val mode = roleKey.mode
+        val prompt = roleKey.prompt
+        val contentHash = roleKey.contentHash
+        val contextParagraphs = roleKey.contextParagraphs
+        val cacheKey = roleKey.cacheKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
         fun postPreview(
             status: String,
@@ -208,14 +251,19 @@ object AiReadAloudRoleService {
                 AiReadAloudRoleState.SOURCE_CACHE,
                 preview
             )
-            return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, count, message = "当前章节角色已分配")
+            return EnsureResult(
+                AiReadAloudRoleState.STATUS_SKIPPED,
+                count,
+                message = "当前章节角色已分配",
+                cacheKey = cacheKey
+            )
         }
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_RUNNING) {
             if (cacheKey in runningCacheKeys &&
                 System.currentTimeMillis() - oldCache.updatedAt < 5 * 60 * 1000L
             ) {
                 postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_RUNNING, stageMessage(stage, "分配角色中"), cleanParagraphs.size)
-                return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中")
+                return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中", cacheKey = cacheKey)
             }
             val error = "上次多角色分配中断，请重新分配当前章节"
             appDb.aiReadAloudRoleCacheDao.upsert(
@@ -227,7 +275,7 @@ object AiReadAloudRoleService {
                 )
             )
             postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_FAILED, error, cleanParagraphs.size, error = error)
-            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error)
+            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
         }
         if ((oldCache?.retryCount ?: 0) >= 3 && oldCache?.segmentsJson?.isNotBlank() == true) {
             val fallbackSegments = segmentsFromJson(oldCache.segmentsJson)
@@ -247,16 +295,17 @@ object AiReadAloudRoleService {
             )
             return EnsureResult(
                 AiReadAloudRoleState.STATUS_FAILED,
-                error = oldCache.lastError.ifBlank { "AI分角色连续失败" }
+                error = oldCache.lastError.ifBlank { "AI分角色连续失败" },
+                cacheKey = cacheKey
             )
         }
         if ((oldCache?.retryCount ?: 0) >= 3) {
             val error = oldCache?.lastError?.ifBlank { "AI分角色连续失败" } ?: "AI分角色连续失败"
             postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_FAILED, error, cleanParagraphs.size, error = error)
-            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error)
+            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
         }
         if (!runningCacheKeys.add(cacheKey)) {
-            return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中")
+            return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中", cacheKey = cacheKey)
         }
         val now = System.currentTimeMillis()
         postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_RUNNING, stageMessage(stage, "分配角色中"), cleanParagraphs.size)
@@ -279,7 +328,7 @@ object AiReadAloudRoleService {
             )
         )
         try {
-            val result = if (mode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL) {
+            val result = if (mode.substringBefore("|") == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL) {
                 requestSegments(
                     book = currentBook,
                     textChapter = currentChapter,
@@ -364,7 +413,7 @@ object AiReadAloudRoleService {
                     ),
                     error = error
                 )
-                return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error)
+                return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
             }
             val resolved = persistDetectedCharacters(currentBook.bookUrl, aiSegments, result.candidates)
             appDb.aiReadAloudRoleCacheDao.upsert(
@@ -404,7 +453,8 @@ object AiReadAloudRoleService {
                 status = AiReadAloudRoleState.STATUS_SUCCESS,
                 segmentCount = resolved.first.size,
                 createdCharacterCount = resolved.second.size,
-                message = "角色分配完成"
+                message = "角色分配完成",
+                cacheKey = cacheKey
             )
         } catch (throwable: Throwable) {
             val failedAt = System.currentTimeMillis()
@@ -446,49 +496,49 @@ object AiReadAloudRoleService {
                 error = error
             )
             AppLog.put("AI分角色标注失败\n$error", throwable)
-            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error)
+            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
         } finally {
             runningCacheKeys.remove(cacheKey)
         }
     }
 
-    private suspend fun waitForRunningCache(
-        book: Book?,
-        textChapter: TextChapter?,
-        paragraphs: List<String>
-    ): EnsureResult? {
-        val bookUrl = book?.bookUrl ?: return null
-        val chapterIndex = textChapter?.chapter?.index ?: return null
+    private suspend fun waitForRunningCache(cacheKey: String): EnsureResult? {
+        if (cacheKey.isBlank()) return null
         val deadline = System.currentTimeMillis() + RUNNING_WAIT_TIMEOUT_MILLIS
         while (System.currentTimeMillis() < deadline) {
-            val cache = appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
-            if (cache?.segmentsJson?.isNotBlank() == true) {
-                return EnsureResult(
-                    status = AiReadAloudRoleState.STATUS_SUCCESS,
-                    segmentCount = segmentCount(cache.segmentsJson),
-                    message = "角色分配完成"
-                )
-            }
-            val latest = appDb.aiReadAloudRoleCacheDao.latestUsableByChapter(bookUrl, chapterIndex)
-            if (latest?.status == AiReadAloudRoleCache.STATUS_FAILED) {
-                return EnsureResult(
-                    status = AiReadAloudRoleState.STATUS_FAILED,
-                    error = latest.lastError.ifBlank { "多角色分配失败" }
-                )
+            val cache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
+            when {
+                cache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
+                        cache.segmentsJson.isNotBlank() -> {
+                    return EnsureResult(
+                        status = AiReadAloudRoleState.STATUS_SUCCESS,
+                        segmentCount = segmentCount(cache.segmentsJson),
+                        message = "角色分配完成",
+                        cacheKey = cacheKey
+                    )
+                }
+                cache?.status == AiReadAloudRoleCache.STATUS_FAILED -> {
+                    return EnsureResult(
+                        status = AiReadAloudRoleState.STATUS_FAILED,
+                        error = cache.lastError.ifBlank { "多角色分配失败" },
+                        cacheKey = cacheKey
+                    )
+                }
             }
             delay(RUNNING_WAIT_STEP_MILLIS)
         }
-        return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = "等待多角色分配超时")
+        return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = "等待多角色分配超时", cacheKey = cacheKey)
     }
 
     fun routeForCue(
         bookUrl: String?,
         chapterIndex: Int,
         cueIndex: Int,
-        cueText: String? = null
+        cueText: String? = null,
+        cacheKey: String? = null
     ): SpeechRoute? {
         if (bookUrl.isNullOrBlank() || cueIndex < 0) return null
-        val best = assignedSegmentsForCue(bookUrl, chapterIndex, cueIndex)
+        val best = assignedSegmentsForCue(bookUrl, chapterIndex, cueIndex, cacheKey)
             .filter { it.roleType == "character" || it.roleType == "thought" }
             .maxWithOrNull(compareBy<Segment> { it.confidence }.thenBy { it.end - it.start })
             ?: return null
@@ -520,20 +570,27 @@ object AiReadAloudRoleService {
         bookUrl: String?,
         chapterIndex: Int,
         cueIndex: Int,
-        cueText: String? = null
+        cueText: String? = null,
+        cacheKey: String? = null
     ): List<Segment> {
-        return assignedSegmentsForCue(bookUrl, chapterIndex, cueIndex)
+        return assignedSegmentsForCue(bookUrl, chapterIndex, cueIndex, cacheKey)
             .ifEmpty { cueText?.let { buildDefaultSegments(listOf(it), paragraphOffset = cueIndex) }.orEmpty() }
     }
 
     fun assignedSegmentsForCue(
         bookUrl: String?,
         chapterIndex: Int,
-        cueIndex: Int
+        cueIndex: Int,
+        cacheKey: String? = null
     ): List<Segment> {
         if (bookUrl.isNullOrBlank() || cueIndex < 0) return emptyList()
-        val cache = appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
-            ?: return emptyList()
+        val cache = if (!cacheKey.isNullOrBlank()) {
+            appDb.aiReadAloudRoleCacheDao.get(cacheKey)
+                ?.takeIf { it.status == AiReadAloudRoleCache.STATUS_SUCCESS }
+        } else {
+            appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
+                ?.takeIf { it.mode.contains(ReadAloudRolePreprocessor.VERSION) }
+        } ?: return emptyList()
         val result = segmentsFromJson(cache.segmentsJson).filter { it.paragraphIndex == cueIndex }
         return result
             .sortedWith(compareBy<Segment> { it.start }.thenBy { it.end })

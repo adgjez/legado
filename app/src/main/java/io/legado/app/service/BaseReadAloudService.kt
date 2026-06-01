@@ -286,11 +286,13 @@ abstract class BaseReadAloudService : BaseService(),
             if (!textChapter.isCompleted) {
                 return@execute
             }
+            val bookUrl = ReadBook.book?.bookUrl
             readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
             val baseCues = textChapter.buildReadAloudCues(readAloudByPage)
             readAloudCues = baseCues
             contentList = baseCues.map { it.text }
             val roleContentList = contentList
+            var roleCacheKey: String? = null
             if (AppConfig.aiReadAloudRoleEnabled) {
                 val roleResult = AiReadAloudRoleService.ensurePlayableCache(
                     ReadBook.book,
@@ -303,6 +305,10 @@ abstract class BaseReadAloudService : BaseService(),
                     }
                     return@execute
                 }
+                roleCacheKey = roleResult.cacheKey
+                if (!isStillCurrentChapter(bookUrl, textChapter)) {
+                    return@execute
+                }
                 launch(IO) {
                     prewarmNextChapterRoleCache()
                 }
@@ -311,8 +317,12 @@ abstract class BaseReadAloudService : BaseService(),
                 bookUrl = ReadBook.book?.bookUrl,
                 chapter = textChapter,
                 baseCues = baseCues,
-                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+                roleCacheKey = roleCacheKey
             )
+            if (!isStillCurrentChapter(bookUrl, textChapter)) {
+                return@execute
+            }
             readAloudCues = speechPlan.cues
             speechRoutes = speechPlan.routes
             contentList = readAloudCues.map { it.text }
@@ -336,6 +346,13 @@ abstract class BaseReadAloudService : BaseService(),
         }.onError {
             AppLog.put("启动朗读出错\n${it.localizedMessage}", it, true)
         }
+    }
+
+    private fun isStillCurrentChapter(bookUrl: String?, chapter: TextChapter): Boolean {
+        val current = ReadBook.curTextChapter ?: return false
+        return current.chapter.index == chapter.chapter.index &&
+                current.chapter.url == chapter.chapter.url &&
+                ReadBook.book?.bookUrl == bookUrl
     }
 
     private fun markReadAloudStartBlocked() {
