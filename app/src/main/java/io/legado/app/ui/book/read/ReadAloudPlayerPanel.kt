@@ -2814,13 +2814,20 @@ private fun ScenePlayerStage(
             0,
             state.sceneSegments.lastIndex.coerceAtLeast(0)
         )
+        var userBrowsing by remember(state.chapterKey) { mutableStateOf(false) }
+        var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
         var lastSceneTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
+        LaunchedEffect(state.chapterKey) {
+            userBrowsing = false
+            lastSceneTarget = null
+        }
         LaunchedEffect(state.chapterKey, currentIndex) {
-            if (state.sceneSegments.isNotEmpty()) {
+            if (state.sceneSegments.isNotEmpty() && !userBrowsing) {
                 val firstTarget = lastSceneTarget == null
                 val targetDistance = lastSceneTarget
                     ?.let { kotlin.math.abs(it - currentIndex) }
                     ?: 0
+                programmaticScroll = true
                 if (firstTarget) {
                     listState.scrollToItem(currentIndex)
                 } else if (lastSceneTarget != currentIndex && !listState.isScrollInProgress) {
@@ -2830,7 +2837,13 @@ private fun ScenePlayerStage(
                         listState.animateScrollToItem(currentIndex)
                     }
                 }
+                programmaticScroll = false
                 lastSceneTarget = currentIndex
+            }
+        }
+        LaunchedEffect(listState.isScrollInProgress) {
+            if (listState.isScrollInProgress && !programmaticScroll) {
+                userBrowsing = true
             }
         }
         LazyColumn(
@@ -2848,7 +2861,10 @@ private fun ScenePlayerStage(
                     current = segment.index == currentIndex,
                     colors = colors,
                     compact = compact,
-                    onClick = { onCueSelect(segment.chapterPosition) }
+                    onClick = {
+                        userBrowsing = false
+                        onCueSelect(segment.chapterPosition)
+                    }
                 )
             }
         }
@@ -3040,10 +3056,14 @@ private fun SceneAvatar(
             }
         },
         update = { imageView ->
-            ImageLoader.load(context, segment.avatar.ifBlank { null })
-                .placeholder(R.drawable.ic_bottom_person)
-                .error(R.drawable.ic_bottom_person)
-                .into(imageView)
+            val loadKey = segment.avatar.ifBlank { "__read_aloud_default_avatar__" }
+            if (imageView.tag != loadKey) {
+                imageView.tag = loadKey
+                ImageLoader.load(context, segment.avatar.ifBlank { null })
+                    .placeholder(R.drawable.ic_bottom_person)
+                    .error(R.drawable.ic_bottom_person)
+                    .into(imageView)
+            }
         }
     )
 }
