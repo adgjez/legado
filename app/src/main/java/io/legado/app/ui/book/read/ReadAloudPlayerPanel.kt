@@ -1949,52 +1949,32 @@ private fun RoleAssignmentStatus(
         exit = shrinkVertically(tween(160, easing = FastOutSlowInEasing)) +
                 fadeOut(tween(140, easing = FastOutSlowInEasing))
     ) {
-        Surface(
+        Row(
             modifier = Modifier
                 .padding(top = 8.dp)
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .clickable(onClick = onOpen),
-            shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
-            color = if (state.roleStatusError) {
-                Color(0xFF6D2630).copy(alpha = 0.86f)
-            } else {
-                colors.panelStrong.copy(alpha = 0.78f)
-            },
-            border = BorderStroke(
-                1.dp,
-                if (state.roleStatusError) Color(0xFFFF8A9A).copy(alpha = 0.42f) else colors.panelBorder.copy(alpha = 0.55f)
-            )
+                .clickable(onClick = onOpen)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (state.roleStatusRunning) {
-                    val transition = rememberInfiniteTransition(label = "roleAssignPulse")
-                    val alpha by transition.animateFloat(
-                        initialValue = 0.35f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(900, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ),
-                        label = "roleAssignPulseAlpha"
-                    )
-                    Canvas(modifier = Modifier.size(8.dp)) {
-                        drawCircle(colors.accent.copy(alpha = alpha))
-                    }
-                }
-                Text(
-                    text = state.roleStatusText,
-                    color = colors.primaryText,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+            if (state.roleStatusRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = colors.accent,
+                    trackColor = Color.Transparent
                 )
             }
+            Text(
+                text = state.roleStatusText,
+                color = if (state.roleStatusError) Color(0xFFFF8A9A) else colors.primaryText,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -2171,22 +2151,13 @@ private fun RoleSummaryChip(
     colors: PlayerColors,
     danger: Boolean = false
 ) {
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = if (danger) Color(0xFFFF6B7A).copy(alpha = 0.14f) else colors.panel.copy(alpha = 0.64f),
-        border = BorderStroke(
-            1.dp,
-            if (danger) Color(0xFFFF8A9A).copy(alpha = 0.38f) else colors.panelBorder
-        )
-    ) {
-        Text(
-            text = text,
-            color = if (danger) Color(0xFFFFB3BB) else colors.secondaryText,
-            fontSize = 11.sp,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-        )
-    }
+    Text(
+        text = text,
+        color = if (danger) Color(0xFFFF8A9A) else colors.secondaryText,
+        fontSize = 11.sp,
+        maxLines = 1,
+        modifier = Modifier.padding(horizontal = 2.dp, vertical = 5.dp)
+    )
 }
 
 @Composable
@@ -2630,45 +2601,38 @@ private fun RoleAssigningBody(
     colors: PlayerColors,
     modifier: Modifier = Modifier
 ) {
-    val actionShape = LocalContext.current.composeActionShape()
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Surface(
-            shape = actionShape,
-            color = colors.panelStrong,
-            border = BorderStroke(1.dp, colors.panelBorder),
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = 520.dp)
+                .padding(horizontal = 22.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(28.dp),
-                    strokeWidth = 2.5.dp,
-                    color = colors.accent,
-                    trackColor = colors.panelBorder.copy(alpha = 0.45f)
-                )
-                Text(
-                    text = state.roleBlockingText.ifBlank { "当前章节角色分配中" },
-                    color = colors.primaryText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "分配完成后再显示本章内容",
-                    color = colors.secondaryText,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.5.dp,
+                color = colors.accent,
+                trackColor = Color.Transparent
+            )
+            Text(
+                text = state.roleBlockingText.ifBlank { "当前章节角色分配中" },
+                color = colors.primaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "分配完成后再显示本章内容",
+                color = colors.secondaryText,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
