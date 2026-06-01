@@ -35,6 +35,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
+import io.legado.app.help.ai.AiReadAloudBgmService
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
@@ -332,6 +333,15 @@ abstract class BaseReadAloudService : BaseService(),
             readAloudCues = speechPlan.cues
             speechRoutes = speechPlan.routes
             contentList = readAloudCues.map { it.text }
+            if (AppConfig.aiReadAloudBgmEnabled) {
+                launch(IO) {
+                    AiReadAloudBgmService.ensureChapterAssignments(
+                        ReadBook.book,
+                        textChapter,
+                        speechPlan.cues
+                    )
+                }
+            }
             if (contentList.isNotEmpty()) {
                 val startChapterPosition = textChapter.getReadLength(pageIndex) + startPos
                 nowSpeak = if (toLast) {

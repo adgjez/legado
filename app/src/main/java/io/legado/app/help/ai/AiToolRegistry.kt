@@ -11,12 +11,16 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 2
+    private const val TOOL_SETTINGS_VERSION = 3
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
         "batch_assign_character_speech_routes",
         "clear_character_speech_routes"
+    )
+    private val version3AddedDefaultTools = setOf(
+        "list_read_aloud_bgm_catalog",
+        "assign_read_aloud_bgm_ranges"
     )
 
     val readSafeToolNames = setOf(
@@ -36,6 +40,8 @@ object AiToolRegistry {
         "list_speech_catalogs",
         "assign_character_speech_route",
         "batch_assign_character_speech_routes",
+        "list_read_aloud_bgm_catalog",
+        "assign_read_aloud_bgm_ranges",
         "get_app_settings"
     )
 
@@ -80,6 +86,8 @@ object AiToolRegistry {
         "assign_character_speech_route",
         "batch_assign_character_speech_routes",
         "clear_character_speech_routes",
+        "list_read_aloud_bgm_catalog",
+        "assign_read_aloud_bgm_ranges",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -120,6 +128,8 @@ object AiToolRegistry {
         "assign_character_speech_route" to "设置角色配音",
         "batch_assign_character_speech_routes" to "批量分配角色配音",
         "clear_character_speech_routes" to "清空角色配音",
+        "list_read_aloud_bgm_catalog" to "读取朗读配乐曲库",
+        "assign_read_aloud_bgm_ranges" to "分配朗读配乐范围",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -160,6 +170,8 @@ object AiToolRegistry {
         "assign_character_speech_route" to "角色配音",
         "batch_assign_character_speech_routes" to "角色配音",
         "clear_character_speech_routes" to "角色配音",
+        "list_read_aloud_bgm_catalog" to "智能配乐",
+        "assign_read_aloud_bgm_ranges" to "智能配乐",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -196,6 +208,7 @@ object AiToolRegistry {
         tools += AiSettingsTool.resolvedTools()
         tools += AiImageTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
+        tools += AiReadAloudBgmTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 
@@ -220,7 +233,11 @@ object AiToolRegistry {
     fun effectiveEnabledToolNames(): Set<String> {
         val stored = AppConfig.aiEnabledToolNames
         if (AppConfig.aiEnabledToolNamesVersion < TOOL_SETTINGS_VERSION) {
-            val migrated = (stored.ifEmpty { defaultEnabledTools } + version2AddedDefaultTools)
+            val additions = buildSet {
+                if (AppConfig.aiEnabledToolNamesVersion < 2) addAll(version2AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 3) addAll(version3AddedDefaultTools)
+            }
+            val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }
                 .toSet()
             AppConfig.aiEnabledToolNames = migrated
