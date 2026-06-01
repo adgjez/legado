@@ -110,6 +110,7 @@ import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
@@ -282,6 +283,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleStatusError: Boolean = false,
         val roleStatusVisible: Boolean = false,
         val roleDetailVisible: Boolean = false,
+        val roleBlockingCurrentContent: Boolean = false,
+        val roleBlockingText: String = "",
         val roleState: AiReadAloudRoleState? = null
     )
 
@@ -429,7 +432,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val nextKey = "${state.bookUrl}:${state.chapterIndex}:${state.stage}"
         if (nextKey != roleDetailKey || state.running && roleDetailClosed) {
             roleDetailKey = nextKey
-            roleDetailCollapsed = false
+            roleDetailCollapsed = state.running
             roleDetailClosed = false
         }
         roleState = state
@@ -802,6 +805,20 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleCacheKey = chapter?.let {
             AiReadAloudRoleService.cacheKeyFor(book, it, baseCues.map { cue -> cue.text })
         }
+        val roleCache = roleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
+        val roleCacheReady = roleCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
+                roleCache.segmentsJson.isNotBlank()
+        val currentRoleState = roleState?.takeIf {
+            it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
+                    it.bookUrl == book?.bookUrl &&
+                    it.chapterIndex == chapterSequence
+        }
+        val currentRoleRunning = currentRoleState?.running == true ||
+                roleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING
+        val roleBlockingCurrentContent = AppConfig.aiReadAloudRoleEnabled &&
+                roleCacheKey != null &&
+                currentRoleRunning &&
+                !roleCacheReady
         val speechPlan = chapter?.let {
             ReadAloudSpeechPlanner.build(
                 bookUrl = book?.bookUrl,
@@ -910,6 +927,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleStatusError = roleStatusError,
             roleStatusVisible = roleEventVisible && roleDetailCollapsed,
             roleDetailVisible = roleEventVisible && !roleDetailCollapsed,
+            roleBlockingCurrentContent = roleBlockingCurrentContent,
+            roleBlockingText = currentRoleState?.message
+                ?.ifBlank { roleStatusText }
+                ?.ifBlank { "当前章节角色分配中" }
+                ?: "当前章节角色分配中",
             roleState = roleState
         )
     }
@@ -2397,6 +2419,10 @@ private fun PortraitPlayerBody(
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (state.roleBlockingCurrentContent) {
+        RoleAssigningBody(state = state, colors = colors, modifier = modifier)
+        return
+    }
     when (state.mode) {
         ReadAloudPlayerPanel.DisplayMode.Immersive -> ImmersivePlayerStage(
             state = state,
@@ -2437,6 +2463,10 @@ private fun LandscapePlayerBody(
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (state.roleBlockingCurrentContent) {
+        RoleAssigningBody(state = state, colors = colors, modifier = modifier)
+        return
+    }
     val immersive = state.mode == ReadAloudPlayerPanel.DisplayMode.Immersive
     Row(
         modifier = modifier,
@@ -2494,6 +2524,55 @@ private fun LandscapePlayerBody(
                     modifier = Modifier
                         .fillMaxWidth()
                         .fillMaxHeight()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleAssigningBody(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    colors: PlayerColors,
+    modifier: Modifier = Modifier
+) {
+    val actionShape = LocalContext.current.composeActionShape()
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            shape = actionShape,
+            color = colors.panelStrong,
+            border = BorderStroke(1.dp, colors.panelBorder),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 520.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 2.5.dp,
+                    color = colors.accent,
+                    trackColor = colors.panelBorder.copy(alpha = 0.45f)
+                )
+                Text(
+                    text = state.roleBlockingText.ifBlank { "当前章节角色分配中" },
+                    color = colors.primaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "分配完成后再显示本章内容",
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
                 )
             }
         }
