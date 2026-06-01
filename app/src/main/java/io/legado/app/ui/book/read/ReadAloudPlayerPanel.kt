@@ -2204,8 +2204,6 @@ private fun roleStatusLabel(state: AiReadAloudRoleState): String {
 private fun roleSourceLabel(source: String): String {
     return when (source) {
         AiReadAloudRoleState.SOURCE_AI -> "AI 原始结果"
-        AiReadAloudRoleState.SOURCE_RULE -> "本地预处理"
-        AiReadAloudRoleState.SOURCE_AI_CONFIRM -> "AI 确认"
         AiReadAloudRoleState.SOURCE_RESOLVED -> "已匹配角色"
         AiReadAloudRoleState.SOURCE_CACHE -> "缓存"
         AiReadAloudRoleState.SOURCE_FALLBACK -> "默认切分"
