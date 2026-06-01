@@ -105,7 +105,7 @@
         <io.legado.app.lib.prefs.Preference
             android:key="aiReadAloudRoleThreadCount"
             android:summary="2"
-            android:title="线程数"
+            android:title="并发请求数"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

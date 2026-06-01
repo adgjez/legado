@@ -248,10 +248,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
                 PreferKey.aiReadAloudRoleModelId -> showAiRoleModelDialog()
                 PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(
-                    title = "AI分角色线程数",
+                    title = "并发请求数",
                     value = AppConfig.aiReadAloudRoleThreadCount,
                     min = 1,
-                    max = 8
+                    max = 4
                 ) {
                     AppConfig.aiReadAloudRoleThreadCount = it
                     updateAiRolePreferences()
@@ -403,7 +403,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             findPreference<Preference>(PreferKey.aiReadAloudRoleThreadCount)?.let {
                 it.isEnabled = enabled
                 it.isVisible = !fullMode
-                it.summary = AppConfig.aiReadAloudRoleThreadCount.toString()
+                it.summary = "${AppConfig.aiReadAloudRoleThreadCount} 个并发请求，越高越快但不省 Token"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleContextParagraphs)?.let {
                 it.isEnabled = enabled
