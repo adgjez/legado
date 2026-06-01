@@ -2841,16 +2841,14 @@ private fun SceneSegmentRow(
                     segment = segment,
                     colors = colors,
                     compact = compact,
-                    onClick = onClick,
-                    modifier = Modifier.weight(1f, fill = false)
+                    onClick = onClick
                 )
             } else {
                 SceneBubble(
                     segment = segment,
                     colors = colors,
                     compact = compact,
-                    onClick = onClick,
-                    modifier = Modifier.weight(1f, fill = false)
+                    onClick = onClick
                 )
                 SceneBubbleArrow(leftSide = false, colors = colors)
                 SceneAvatar(segment, colors, compact)
@@ -2913,7 +2911,6 @@ private fun SceneBubble(
         ) {
             val emotion = segment.emotionName.takeIf { it.isNotBlank() }
             Row(
-                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (!segment.leftSide) {
@@ -2937,7 +2934,7 @@ private fun SceneBubble(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = if (segment.leftSide) TextAlign.Start else TextAlign.End,
-                    modifier = if (emotion != null) Modifier.weight(1f) else Modifier.fillMaxWidth()
+                    modifier = Modifier.widthIn(max = if (compact) 230.dp else 280.dp)
                 )
                 if (segment.leftSide) {
                     emotion?.let {
