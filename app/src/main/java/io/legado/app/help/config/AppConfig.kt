@@ -872,10 +872,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleMergeGapParagraphs, 1).coerceIn(0, 10)
         set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleMergeGapParagraphs, value.coerceIn(0, 10))
 
-    var aiReadAloudRoleBatchParagraphCount: Int
-        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleBatchParagraphCount, 12).coerceIn(4, 40)
-        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleBatchParagraphCount, value.coerceIn(4, 40))
-
     var aiReadAloudRolePrompt: String
         get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePrompt)
             .orEmpty()

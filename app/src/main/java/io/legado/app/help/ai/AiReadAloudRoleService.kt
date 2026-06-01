@@ -118,7 +118,8 @@ object AiReadAloudRoleService {
         val mode: String,
         val prompt: String,
         val contentHash: String,
-        val batchParagraphCount: Int
+        val contextParagraphs: Int,
+        val mergeGapParagraphs: Int
     )
 
     private data class UnitAssignmentBatch(
@@ -167,9 +168,10 @@ object AiReadAloudRoleService {
         val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}"
         val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
         val promptHash = MD5Utils.md5Encode(prompt)
-        val batchParagraphCount = AppConfig.aiReadAloudRoleBatchParagraphCount
+        val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
+        val mergeGapParagraphs = AppConfig.aiReadAloudRoleMergeGapParagraphs
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|batch=$batchParagraphCount|$promptHash|${modelConfig.id}"
+            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|${modelConfig.id}"
         )
         val promptCacheKey = MD5Utils.md5Encode(
             "read-aloud-role-prompt|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|${ReadAloudRolePreprocessor.VERSION}|${modelConfig.id}"
@@ -180,7 +182,8 @@ object AiReadAloudRoleService {
             mode = mode,
             prompt = prompt,
             contentHash = contentHash,
-            batchParagraphCount = batchParagraphCount
+            contextParagraphs = contextParagraphs,
+            mergeGapParagraphs = mergeGapParagraphs
         )
     }
 
@@ -243,7 +246,8 @@ object AiReadAloudRoleService {
         val mode = roleKey.mode
         val prompt = roleKey.prompt
         val contentHash = roleKey.contentHash
-        val batchParagraphCount = roleKey.batchParagraphCount
+        val contextParagraphs = roleKey.contextParagraphs
+        val mergeGapParagraphs = roleKey.mergeGapParagraphs
         val cacheKey = roleKey.cacheKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
         val usageTracker = RoleUsageTracker()
@@ -389,7 +393,8 @@ object AiReadAloudRoleService {
                 textChapter = currentChapter,
                 paragraphs = cleanParagraphs,
                 preprocess = preprocess,
-                batchParagraphCount = batchParagraphCount,
+                contextParagraphs = contextParagraphs,
+                mergeGapParagraphs = mergeGapParagraphs,
                 prompt = prompt,
                 promptCacheKey = roleKey.promptCacheKey,
                 usageTracker = usageTracker,
@@ -467,8 +472,7 @@ object AiReadAloudRoleService {
                     retryCount = oldCache?.retryCount ?: 0,
                     segmentsJson = resolved.first.toCacheJson(
                         preprocessVersion = ReadAloudRolePreprocessor.VERSION,
-                        contentHash = contentHash,
-                        batchParagraphCount = batchParagraphCount
+                        contentHash = contentHash
                     ),
                     createdCharacterIdsJson = JSONArray(resolved.second).toString(),
                     characterHash = characterHash(currentBook.bookUrl),
@@ -911,7 +915,8 @@ object AiReadAloudRoleService {
         textChapter: TextChapter,
         paragraphs: List<String>,
         preprocess: io.legado.app.help.readaloud.role.ReadAloudRolePreprocessResult,
-        batchParagraphCount: Int,
+        contextParagraphs: Int,
+        mergeGapParagraphs: Int,
         prompt: String,
         promptCacheKey: String,
         usageTracker: RoleUsageTracker,
@@ -939,15 +944,12 @@ object AiReadAloudRoleService {
 
         val resolutionMap = linkedMapOf<String, UnitResolution>()
         val candidates = mutableListOf<CharacterCandidate>()
-        val effectiveBatchSize = if (fullChapterMode) {
-            paragraphs.size.coerceAtLeast(1)
-        } else {
-            batchParagraphCount.coerceIn(4, 40)
-        }
         val firstPassBatches = buildUnitAssignmentBatches(
             uncertainUnits,
             paragraphs.size,
-            effectiveBatchSize
+            fullChapterMode,
+            contextParagraphs,
+            mergeGapParagraphs
         )
         requestUnitAssignmentBatches(
             book = book,
@@ -955,6 +957,7 @@ object AiReadAloudRoleService {
             paragraphs = paragraphs,
             allUnits = preprocess.units,
             batches = firstPassBatches,
+            fullChapterMode = fullChapterMode,
             prompt = prompt,
             promptCacheKey = promptCacheKey,
             attempt = 0,
@@ -973,7 +976,9 @@ object AiReadAloudRoleService {
             val retryBatches = buildUnitAssignmentBatches(
                 unresolved,
                 paragraphs.size,
-                effectiveBatchSize
+                fullChapterMode,
+                contextParagraphs,
+                mergeGapParagraphs
             )
             requestUnitAssignmentBatches(
                 book = book,
@@ -981,6 +986,7 @@ object AiReadAloudRoleService {
                 paragraphs = paragraphs,
                 allUnits = preprocess.units,
                 batches = retryBatches,
+                fullChapterMode = fullChapterMode,
                 prompt = prompt,
                 promptCacheKey = promptCacheKey,
                 attempt = retryIndex + 1,
@@ -1011,6 +1017,7 @@ object AiReadAloudRoleService {
         paragraphs: List<String>,
         allUnits: List<ReadAloudRoleUnit>,
         batches: List<UnitAssignmentBatch>,
+        fullChapterMode: Boolean,
         prompt: String,
         promptCacheKey: String,
         attempt: Int,
@@ -1022,7 +1029,7 @@ object AiReadAloudRoleService {
     ) = coroutineScope {
         if (batches.isEmpty()) return@coroutineScope
         val semaphore = Semaphore(
-            if (AppConfig.aiReadAloudRoleMode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL) 1
+            if (fullChapterMode) 1
             else AppConfig.aiReadAloudRoleThreadCount
         )
         batches.map { batch ->
@@ -1034,6 +1041,7 @@ object AiReadAloudRoleService {
                         paragraphs = paragraphs,
                         allUnits = allUnits,
                         batch = batch,
+                        fullChapterMode = fullChapterMode,
                         prompt = prompt,
                         promptCacheKey = promptCacheKey,
                         attempt = attempt,
@@ -1070,6 +1078,7 @@ object AiReadAloudRoleService {
         paragraphs: List<String>,
         allUnits: List<ReadAloudRoleUnit>,
         batch: UnitAssignmentBatch,
+        fullChapterMode: Boolean,
         prompt: String,
         promptCacheKey: String,
         attempt: Int,
@@ -1101,6 +1110,7 @@ object AiReadAloudRoleService {
                         paragraphs = paragraphs,
                         allUnits = allUnits,
                         batch = batch,
+                        fullChapterMode = fullChapterMode,
                         prompt = prompt,
                         attempt = attempt,
                         knownResolutions = knownResolutions
@@ -1131,27 +1141,66 @@ object AiReadAloudRoleService {
     private fun buildUnitAssignmentBatches(
         units: List<ReadAloudRoleUnit>,
         paragraphCount: Int,
-        batchParagraphCount: Int
+        fullChapterMode: Boolean,
+        contextParagraphs: Int,
+        mergeGapParagraphs: Int
     ): List<UnitAssignmentBatch> {
         if (units.isEmpty() || paragraphCount <= 0) return emptyList()
-        val safeBatchSize = batchParagraphCount.coerceIn(1, paragraphCount.coerceAtLeast(1))
-        return units
-            .groupBy { unit ->
-                unit.firstParagraphIndex.coerceIn(0, paragraphCount - 1) / safeBatchSize
-            }
-            .toSortedMap()
-            .map { (batchIndex, batchUnits) ->
-                val start = (batchIndex * safeBatchSize).coerceAtMost(paragraphCount - 1)
-                val endExclusive = (start + safeBatchSize).coerceAtMost(paragraphCount)
-                val targetParagraphs = (start until endExclusive).toList()
+        val sortedUnits = units.sortedWith(
+            compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart }
+        )
+        if (fullChapterMode) {
+            return listOf(
                 UnitAssignmentBatch(
-                    index = batchIndex,
-                    targetParagraphs = targetParagraphs,
-                    units = batchUnits.sortedWith(
-                        compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart }
-                    )
+                    index = 0,
+                    targetParagraphs = (0 until paragraphCount).toList(),
+                    units = sortedUnits
                 )
+            )
+        }
+        val safeContext = contextParagraphs.coerceIn(0, 20)
+        val safeMergeGap = mergeGapParagraphs.coerceIn(0, 10)
+        val clusters = mutableListOf<MutableList<ReadAloudRoleUnit>>()
+        var current = mutableListOf<ReadAloudRoleUnit>()
+        var currentLastParagraph = -1
+        sortedUnits.forEach { unit ->
+            val firstParagraph = unit.ranges.minOfOrNull { it.paragraphIndex } ?: unit.firstParagraphIndex
+            val lastParagraph = unit.ranges.maxOfOrNull { it.paragraphIndex } ?: firstParagraph
+            if (current.isEmpty()) {
+                current += unit
+                currentLastParagraph = lastParagraph
+                return@forEach
             }
+            val separatedParagraphs = (firstParagraph - currentLastParagraph - 1).coerceAtLeast(0)
+            if (separatedParagraphs <= safeMergeGap) {
+                current += unit
+                currentLastParagraph = maxOf(currentLastParagraph, lastParagraph)
+            } else {
+                clusters += current
+                current = mutableListOf(unit)
+                currentLastParagraph = lastParagraph
+            }
+        }
+        if (current.isNotEmpty()) {
+            clusters += current
+        }
+        return clusters.mapIndexed { index, batchUnits ->
+            val firstParagraph = batchUnits.minOf { unit ->
+                unit.ranges.minOfOrNull { it.paragraphIndex } ?: unit.firstParagraphIndex
+            }.coerceIn(0, paragraphCount - 1)
+            val lastParagraph = batchUnits.maxOf { unit ->
+                unit.ranges.maxOfOrNull { it.paragraphIndex } ?: unit.firstParagraphIndex
+            }.coerceIn(firstParagraph, paragraphCount - 1)
+            val contextStart = (firstParagraph - safeContext).coerceAtLeast(0)
+            val contextEnd = (lastParagraph + safeContext).coerceAtMost(paragraphCount - 1)
+            UnitAssignmentBatch(
+                index = index,
+                targetParagraphs = (contextStart..contextEnd).toList(),
+                units = batchUnits.sortedWith(
+                    compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart }
+                )
+            )
+        }
     }
 
     private fun unresolvedUnits(
@@ -1214,6 +1263,7 @@ object AiReadAloudRoleService {
         paragraphs: List<String>,
         allUnits: List<ReadAloudRoleUnit>,
         batch: UnitAssignmentBatch,
+        fullChapterMode: Boolean,
         prompt: String,
         attempt: Int,
         knownResolutions: List<UnitResolution>
@@ -1227,12 +1277,32 @@ object AiReadAloudRoleService {
                 "- id=${it.id} name=${it.name}：${detail.ifBlank { "无补充信息" }}"
             }
             .ifBlank { "暂无角色卡" }
-        val chapterText = paragraphs.mapIndexed { index, text ->
-            "P${index + 1}: $text"
-        }.joinToString("\n")
-        val unitSummary = allUnits.joinToString("\n") { unit ->
-            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | reason=${unit.reason} | confidence=${"%.2f".format(unit.confidence)} | cueBefore=${unit.cueBefore.compactForPrompt(90)} | cueAfter=${unit.cueAfter.compactForPrompt(90)} | text=${unit.text.compactForPrompt(260)}"
+        val targetParagraphSet = batch.units
+            .flatMap { unit -> unit.ranges.map { it.paragraphIndex } }
+            .toSet()
+        val contextParagraphSet = batch.targetParagraphs.toSet()
+        val contextText = if (fullChapterMode) {
+            paragraphs.mapIndexed { index, text ->
+                "P${index + 1}: $text"
+            }.joinToString("\n")
+        } else {
+            batch.targetParagraphs.joinToString("\n") { index ->
+                val mark = if (index in targetParagraphSet) "[TARGET]" else "[CONTEXT]"
+                "$mark P${index + 1}: ${paragraphs.getOrNull(index).orEmpty()}"
+            }
         }
+        val relatedUnits = if (fullChapterMode) {
+            batch.units
+        } else {
+            allUnits
+                .asSequence()
+                .filter { it.needsAi && it.touches(contextParagraphSet) }
+                .sortedWith(compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart })
+                .toList()
+        }
+        val unitSummary = relatedUnits.joinToString("\n") { unit ->
+            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | reason=${unit.reason} | confidence=${"%.2f".format(unit.confidence)} | cueBefore=${unit.cueBefore.compactForPrompt(90)} | cueAfter=${unit.cueAfter.compactForPrompt(90)} | text=${unit.text.compactForPrompt(260)}"
+        }.ifBlank { "无" }
         val targetUnits = batch.units.joinToString("\n") { unit ->
             "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | text=${unit.text.compactForPrompt(420)}"
         }
@@ -1272,10 +1342,10 @@ object AiReadAloudRoleService {
             用户附加提示：
             ${prompt.ifBlank { "无" }}
 
-            整章原文（用于上下文缓存和归因，不可改写）：
-            $chapterText
+            ${if (fullChapterMode) "整章原文（用于上下文缓存和归因，不可改写）" else "局部上下文（只发送当前请求附近段落，[TARGET] 是目标 unit 所在段落）"}：
+            $contextText
 
-            全部 unit 列表：
+            ${if (fullChapterMode) "本轮需要AI确认的 unit 列表" else "局部上下文里需要AI确认的 unit 列表"}：
             $unitSummary
 
             已确认结果：
@@ -2117,14 +2187,12 @@ object AiReadAloudRoleService {
 
     private fun List<Segment>.toCacheJson(
         preprocessVersion: String,
-        contentHash: String,
-        batchParagraphCount: Int
+        contentHash: String
     ): String {
         return JSONObject().apply {
-            put("schemaVersion", 3)
+            put("schemaVersion", 4)
             put("preprocessVersion", preprocessVersion)
             put("contentHash", contentHash)
-            put("batchParagraphCount", batchParagraphCount)
             put("segments", toJsonArray())
         }.toString()
     }

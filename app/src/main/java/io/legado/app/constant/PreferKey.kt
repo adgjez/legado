@@ -76,7 +76,6 @@ object PreferKey {
     const val aiReadAloudRoleEnabled = "aiReadAloudRoleEnabled"
     const val aiReadAloudRoleThreadCount = "aiReadAloudRoleThreadCount"
     const val aiReadAloudRoleContextParagraphs = "aiReadAloudRoleContextParagraphs"
-    const val aiReadAloudRoleBatchParagraphCount = "aiReadAloudRoleBatchParagraphCount"
     const val aiReadAloudRoleMergeGapParagraphs = "aiReadAloudRoleMergeGapParagraphs"
     const val aiReadAloudRolePrompt = "aiReadAloudRolePrompt"
     const val aiReadAloudRoleMode = "aiReadAloudRoleMode"

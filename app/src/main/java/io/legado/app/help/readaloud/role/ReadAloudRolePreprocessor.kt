@@ -41,7 +41,7 @@ data class ReadAloudRolePreprocessResult(
 
 object ReadAloudRolePreprocessor {
 
-    const val VERSION = "builtin-split-only-v3"
+    const val VERSION = "builtin-dialogue-cluster-v4"
 
     private val quotePairs = mapOf(
         '“' to '”',
