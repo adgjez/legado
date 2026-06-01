@@ -844,13 +844,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val AI_READ_ALOUD_ROLE_MODE_CHUNK = "chunk_context"
     val DEFAULT_AI_READ_ALOUD_ROLE_PROMPT = """
         请按“适合朗读配音”的标准做多角色分配：
-        1. 台词、心理活动、旁白要拆开；一句话里同时存在旁白和台词时必须拆成多个片段。
-        2. 引号内、冒号后的直接发言优先标为 character；引号外动作、语气、环境描述标为 narrator。
-        3. “某某说/问/笑道/冷声道”等提示语要尽量反推出说话人，但提示语本身通常仍属于旁白。
-        4. 优先使用已有角色卡里的角色名；不要把“我、你、他、她、众人、旁白、男人、女人”等泛称直接当作新角色。
-        5. 确认出现稳定新角色或稳定路人称谓时，可以记录新角色候选；证据不足时 characterName 留空。
-        6. 不确定说话人时 roleType 仍可标 character，但 characterName 留空，不要为了省事整段标旁白。
-        7. 情绪明确时填写情绪；不明确时留空，避免过度脑补。
+        1. 客户端已经切好 unitId，不要返回 start/end，不要改写或丢弃原文。
+        2. 台词、心理活动、旁白按 unit 归因；引号和句末符号属于同一句台词时跟随台词角色。
+        3. 说话人必须有文本证据；无法确认时 status=unknown，characterName 留空，不要猜。
+        4. 优先使用已有角色卡里的准确角色名；角色卡会注入到上下文。
+        5. 只有角色列表不存在且文本明确出现稳定新角色/稳定路人称谓时，才记录 newCharacters，并给出 evidence。
+        6. 不要把代词、称呼对象、动作、语气、情绪、副词、短语当成新角色。
+        7. 情绪明确时填写 emotionName/emotionTag；不明确留空，避免过度脑补。
     """.trimIndent()
 
     var aiReadAloudRoleEnabled: Boolean

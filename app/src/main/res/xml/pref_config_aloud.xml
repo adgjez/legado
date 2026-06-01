@@ -92,7 +92,7 @@
             android:entries="@array/ai_read_aloud_role_mode_title"
             android:entryValues="@array/ai_read_aloud_role_mode_value"
             android:key="aiReadAloudRoleMode"
-            android:title="上下文模式"
+            android:title="处理模式"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
