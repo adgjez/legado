@@ -192,6 +192,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     )
 
     data class SceneSegmentUi(
+        val index: Int,
         val key: String,
         val text: String,
         val roleType: String,
@@ -314,6 +315,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var switchingTtsEngine = false
     private var pendingTtsEngineSwitch: PendingTtsEngineSwitch? = null
     private var chapterModelCache: PlayerChapterModel? = null
+    private var ttsEngineOptionsCacheKey = ""
+    private var ttsEngineOptionsCache: List<TtsEngineUi> = emptyList()
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -718,6 +721,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ?: 0
         ReadBook.book?.setTtsEngine(null)
         AppConfig.ttsEngine = value
+        invalidateTtsEngineOptions()
         if (wasRunning) {
             switchingTtsEngine = true
             pendingTtsEngineSwitch = PendingTtsEngineSwitch(
@@ -764,7 +768,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun setMode(mode: DisplayMode) {
-        uiState = buildState(mode)
+        if (uiState.mode != mode) {
+            uiState = uiState.copy(mode = mode)
+        }
     }
 
     private fun seekToParagraphProgress(progress: Float) {
@@ -802,9 +808,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val readAloudByPage = context.getPrefBoolean(PreferKey.readAloudByPage)
         val paragraphs = chapter.getParagraphs(false)
         val baseCues = chapter.buildReadAloudCues(readAloudByPage)
-        val exactRoleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, baseCues.map { cue -> cue.text })
+        val cueTexts = baseCues.map { cue -> cue.text }
+        val exactRoleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, cueTexts)
         val exactRoleCache = exactRoleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
-        val roleCache = AiReadAloudRoleService.cacheForPlayback(book, chapter, baseCues.map { cue -> cue.text })
+        val roleCache = AiReadAloudRoleService.cacheForPlayback(book, chapter, cueTexts)
             ?: exactRoleCache
         val roleCacheKey = roleCache?.cacheKey ?: exactRoleCacheKey
         val roleCacheReady = roleCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
@@ -845,6 +852,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleCache?.segmentsJson?.hashCode()?.toString().orEmpty()
         ).joinToString("|")
         chapterModelCache?.takeIf { it.key == modelKey }?.let { return it }
+        val chapterKey = "${book.bookUrl}:$chapterSequence"
         val speechPlan = ReadAloudSpeechPlanner.build(
             bookUrl = book.bookUrl,
             chapter = chapter,
@@ -865,13 +873,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapterTitle = chapter.chapter.title.ifBlank { "当前章节" },
             chapterIndexText = "${chapterSequence + 1}/${chapter.chaptersSize.coerceAtLeast(chapterSequence + 1)}",
             chapterSequence = chapterSequence,
-            chapterKey = "${book.bookUrl}:$chapterSequence",
+            chapterKey = chapterKey,
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             totalLength = totalLength,
             paragraphs = paragraphs,
             baseCues = baseCues,
             cues = speechPlan.cues,
+            cuePositions = speechPlan.cues.map { it.chapterPosition }.toIntArray(),
             speechItems = speechPlan.items,
+            textCues = speechPlan.cues.toTextCueUi(chapterKey, chapterSequence),
+            sceneSegments = speechPlan.items.toSceneSegmentUi(chapterKey),
             roleCacheKey = roleCacheKey,
             roleCacheReady = roleCacheReady,
             roleCacheRunning = roleCacheRunning,
@@ -893,8 +904,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             lastChapterStart > 0 -> lastChapterStart
             else -> ReadBook.durChapterPos
         }.coerceIn(0, totalLength)
-        val paragraphIndex = findParagraphIndex(paragraphs, chapterStart)
-        val cueIndex = cues.indexForChapterPosition(chapterStart)
+        val paragraphIndex = paragraphs.indexForChapterPosition(chapterStart)
+        val cueIndex = model?.indexForChapterPosition(chapterStart)
+            ?: cues.indexForChapterPosition(chapterStart)
         val cue = cues.getOrNull(cueIndex)
         val paragraph = paragraphs.getOrNull(paragraphIndex)
         val paragraphText = cue?.text ?: paragraph?.text?.cleanReadAloudText().orEmpty()
@@ -918,11 +930,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             sequence = paragraphSequence * 1_000 + sentence.first.coerceAtLeast(0),
             text = sentence.second.ifBlank { paragraphText.ifBlank { "暂无当前段落" } }
         )
-        val nearby = cues.nearbyCueParagraphs(cueIndex, chapterKey, chapterSequence)
-        val textCues = cues.toTextCueUi(cueIndex, chapterKey, chapterSequence)
-        val sceneSegments = model?.speechItems
-            ?.toSceneSegmentUi(currentIndex = cueIndex, chapterKey = chapterKey)
-            .orEmpty()
+        val nearby = emptyList<ParagraphUi>()
+        val textCues = model?.textCues.orEmpty()
+        val sceneSegments = model?.sceneSegments.orEmpty()
         val currentRoleState = roleState?.takeIf {
             it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
                     it.bookUrl == ReadBook.book?.bookUrl &&
@@ -996,12 +1006,36 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
     }
 
-    private fun findParagraphIndex(paragraphs: List<TextParagraph>, chapterStart: Int): Int {
-        if (paragraphs.isEmpty()) return -1
-        val exact = paragraphs.indexOfFirst { chapterStart in it.chapterIndices }
-        if (exact >= 0) return exact
-        return paragraphs.indexOfLast { it.chapterPosition <= chapterStart }
-            .coerceIn(0, paragraphs.lastIndex)
+    private fun PlayerChapterModel.indexForChapterPosition(chapterPosition: Int): Int {
+        if (cuePositions.isEmpty()) return -1
+        var low = 0
+        var high = cuePositions.lastIndex
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            val value = cuePositions[mid]
+            when {
+                value < chapterPosition -> low = mid + 1
+                value > chapterPosition -> high = mid - 1
+                else -> return mid
+            }
+        }
+        return (low - 1).coerceIn(0, cuePositions.lastIndex)
+    }
+
+    private fun List<TextParagraph>.indexForChapterPosition(chapterPosition: Int): Int {
+        if (isEmpty()) return -1
+        var low = 0
+        var high = lastIndex
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            val paragraph = this[mid]
+            when {
+                chapterPosition < paragraph.chapterPosition -> high = mid - 1
+                chapterPosition > paragraph.chapterIndices.last -> low = mid + 1
+                else -> return mid
+            }
+        }
+        return (low - 1).coerceIn(0, lastIndex)
     }
 
     private fun List<TextParagraph>.nearbyParagraphs(
@@ -1045,7 +1079,6 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun List<ReadAloudCue>.toTextCueUi(
-        currentIndex: Int,
         chapterKey: String,
         chapterSequence: Int
     ): List<TextCueUi> {
@@ -1053,7 +1086,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             TextCueUi(
                 index = index + 1,
                 text = cue.text.cleanReadAloudText(),
-                current = index == currentIndex,
+                current = false,
                 key = "$chapterKey:${cue.chapterPosition}:${cue.key}",
                 sequence = chapterSequence * 100_000 + index,
                 chapterPosition = cue.chapterPosition
@@ -1088,6 +1121,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun buildTtsEngineOptions(): List<TtsEngineUi> {
+        val cacheKey = ReadAloud.ttsEngine.orEmpty()
+        if (ttsEngineOptionsCacheKey == cacheKey && ttsEngineOptionsCache.isNotEmpty()) {
+            return ttsEngineOptionsCache
+        }
         val currentRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         return SpeechVoiceCatalogRepository
             .allGroups(context, runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()))
@@ -1100,7 +1137,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     key = group.key,
                     group = group
             )
+        }.also {
+            ttsEngineOptionsCacheKey = cacheKey
+            ttsEngineOptionsCache = it
         }
+    }
+
+    private fun invalidateTtsEngineOptions() {
+        ttsEngineOptionsCacheKey = ""
+        ttsEngineOptionsCache = emptyList()
     }
 
     private fun buildCharacterPreview(bookUrl: String?): List<CharacterPreviewUi> {
@@ -1119,11 +1164,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun List<ReadAloudSpeechPlanItem>.toSceneSegmentUi(
-        currentIndex: Int,
         chapterKey: String
     ): List<SceneSegmentUi> {
         return map { item ->
             SceneSegmentUi(
+                index = item.index,
                 key = "$chapterKey:scene:${item.index}:${item.sourceCueIndex}:${item.sourceStart}:${item.sourceEnd}",
                 text = item.cue.text.cleanReadAloudText(),
                 roleType = item.roleType,
@@ -1133,7 +1178,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 emotionName = item.emotionName,
                 leftSide = item.leftSide,
                 narrator = item.narrator,
-                current = item.index == currentIndex,
+                current = false,
                 chapterPosition = item.cue.chapterPosition
             )
         }
@@ -1160,6 +1205,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (segments.isEmpty()) {
             return listOf(
                 SceneSegmentUi(
+                    index = cueIndex,
                     key = "$chapterKey:scene:$cueIndex:narrator",
                     text = text,
                     roleType = "narrator",
@@ -1180,6 +1226,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             val part = text.substring(start, end).cleanReadAloudText()
             if (part.isBlank()) return
             result += SceneSegmentUi(
+                index = result.size,
                 key = "$chapterKey:scene:$cueIndex:narrator:$start:$end",
                 text = part,
                 roleType = "narrator",
@@ -1206,6 +1253,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 ?: if (segment.roleType == "thought") "心理" else "角色"
             val id = character?.id ?: segment.characterId
             result += SceneSegmentUi(
+                index = result.size,
                 key = "$chapterKey:scene:$cueIndex:${segment.start}:${segment.end}:${name.hashCode()}",
                 text = part,
                 roleType = segment.roleType,
@@ -1531,7 +1579,10 @@ private data class PlayerChapterModel(
     val paragraphs: List<TextParagraph>,
     val baseCues: List<ReadAloudCue>,
     val cues: List<ReadAloudCue>,
+    val cuePositions: IntArray,
     val speechItems: List<ReadAloudSpeechPlanItem>,
+    val textCues: List<ReadAloudPlayerPanel.TextCueUi>,
+    val sceneSegments: List<ReadAloudPlayerPanel.SceneSegmentUi>,
     val roleCacheKey: String?,
     val roleCacheReady: Boolean,
     val roleCacheRunning: Boolean,
@@ -2759,7 +2810,10 @@ private fun ScenePlayerStage(
         )
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
         val listState = rememberLazyListState()
-        val currentIndex = state.sceneSegments.indexOfFirst { it.current }.coerceAtLeast(0)
+        val currentIndex = state.currentCueIndex.coerceIn(
+            0,
+            state.sceneSegments.lastIndex.coerceAtLeast(0)
+        )
         var lastSceneTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
         LaunchedEffect(state.chapterKey, currentIndex) {
             if (state.sceneSegments.isNotEmpty()) {
@@ -2791,6 +2845,7 @@ private fun ScenePlayerStage(
             items(state.sceneSegments, key = { it.key }) { segment ->
                 SceneSegmentRow(
                     segment = segment,
+                    current = segment.index == currentIndex,
                     colors = colors,
                     compact = compact,
                     onClick = { onCueSelect(segment.chapterPosition) }
@@ -2803,6 +2858,7 @@ private fun ScenePlayerStage(
 @Composable
 private fun SceneSegmentRow(
     segment: ReadAloudPlayerPanel.SceneSegmentUi,
+    current: Boolean,
     colors: PlayerColors,
     compact: Boolean,
     onClick: () -> Unit
@@ -2814,7 +2870,7 @@ private fun SceneSegmentRow(
         ) {
             Text(
                 text = segment.text,
-                color = if (segment.current) colors.secondaryText else colors.subtleText,
+                color = if (current) colors.secondaryText else colors.subtleText,
                 fontSize = if (compact) 12.sp else 13.sp,
                 lineHeight = if (compact) 18.sp else 20.sp,
                 textAlign = TextAlign.Center,
@@ -2839,6 +2895,7 @@ private fun SceneSegmentRow(
                 SceneBubbleArrow(leftSide = true, colors = colors)
                 SceneBubble(
                     segment = segment,
+                    current = current,
                     colors = colors,
                     compact = compact,
                     onClick = onClick
@@ -2846,6 +2903,7 @@ private fun SceneSegmentRow(
             } else {
                 SceneBubble(
                     segment = segment,
+                    current = current,
                     colors = colors,
                     compact = compact,
                     onClick = onClick
@@ -2887,6 +2945,7 @@ private fun SceneBubbleArrow(
 @Composable
 private fun SceneBubble(
     segment: ReadAloudPlayerPanel.SceneSegmentUi,
+    current: Boolean,
     colors: PlayerColors,
     compact: Boolean,
     onClick: () -> Unit,
@@ -2902,7 +2961,7 @@ private fun SceneBubble(
         color = bubbleColor,
         border = BorderStroke(
             1.dp,
-            if (segment.current) colors.accent.copy(alpha = 0.62f) else colors.panelBorder.copy(alpha = 0.45f)
+            if (current) colors.accent.copy(alpha = 0.62f) else colors.panelBorder.copy(alpha = 0.45f)
         )
     ) {
         Column(
@@ -3202,6 +3261,7 @@ private fun LyricCueBody(
             itemsIndexed(cues, key = { _, cue -> cue.key }) { _, cue ->
                 LyricCueLine(
                     cue = cue,
+                    current = cue.index - 1 == currentIndex,
                     colors = colors,
                     compact = compact,
                     currentMaxLines = currentMaxLines,
@@ -3220,6 +3280,7 @@ private fun LyricCueBody(
 @Composable
 private fun LyricCueLine(
     cue: ReadAloudPlayerPanel.TextCueUi,
+    current: Boolean,
     colors: PlayerColors,
     compact: Boolean,
     currentMaxLines: Int,
@@ -3228,7 +3289,7 @@ private fun LyricCueLine(
     onClick: () -> Unit
 ) {
     val emphasis by animateFloatAsState(
-        targetValue = if (cue.current) 1f else 0f,
+        targetValue = if (current) 1f else 0f,
         animationSpec = tween(if (animate) 220 else 1),
         label = "readAloudCueEmphasis"
     )
@@ -3245,8 +3306,8 @@ private fun LyricCueLine(
         color = colors.primaryText.copy(alpha = 0.36f + emphasis * 0.58f),
         fontSize = fontSize.sp,
         lineHeight = lineHeight.sp,
-        fontWeight = if (cue.current) FontWeight.SemiBold else FontWeight.Normal,
-        maxLines = if (cue.current) currentMaxLines else 2,
+        fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = if (current) currentMaxLines else 2,
         overflow = TextOverflow.Ellipsis,
         textAlign = textAlign,
         modifier = Modifier
