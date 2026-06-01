@@ -386,7 +386,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     playbackPhase = ReadAloudPlaybackState.PHASE_PREPARING
                     playbackMessage = ""
                 }
-                refresh()
+                syncPlaybackUiState()
                 if (autoExpand && !dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
                     showPanel(animateFromBottom = true)
                 }
@@ -396,7 +396,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 switchingTtsEngine = false
                 playbackPhase = ReadAloudPlaybackState.PHASE_PAUSED
                 playbackMessage = ""
-                refresh()
+                syncPlaybackUiState()
             }
             io.legado.app.constant.Status.STOP -> {
                 if (switchingTtsEngine) {
@@ -434,7 +434,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
         playbackPhase = state.phase
         playbackMessage = state.message
-        refresh()
+        syncPlaybackUiState()
     }
 
     fun onAiRoleState(state: AiReadAloudRoleState) {
@@ -525,7 +525,20 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun setForegroundActive(active: Boolean) {
         foregroundActive = active
-        refresh()
+        syncPlaybackUiState()
+    }
+
+    private fun syncPlaybackUiState() {
+        val servicePlaying = BaseReadAloudService.isPlay()
+        uiState = uiState.copy(
+            playing = servicePlaying,
+            playbackPhase = playbackPhase,
+            playbackBusy = servicePlaying &&
+                    (playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
+                            playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING),
+            serviceRunning = BaseReadAloudService.isRun,
+            foregroundActive = foregroundActive && visibility == VISIBLE
+        )
     }
 
     fun setReadMenuVisible(visible: Boolean) {
@@ -1848,14 +1861,24 @@ private fun ReadAloudCapsule(
                             }
                         },
                         update = {
-                            it.load(
-                                path = state.coverUrl,
-                                name = state.bookName,
-                                author = state.author,
-                                loadOnlyWifi = false,
-                                sourceOrigin = state.sourceOrigin,
-                                preferThumb = true
-                            )
+                            val loadKey = listOf(
+                                state.coverUrl.orEmpty(),
+                                state.bookName,
+                                state.author,
+                                state.sourceOrigin.orEmpty(),
+                                "thumb"
+                            ).joinToString("|")
+                            if (it.tag != loadKey) {
+                                it.tag = loadKey
+                                it.load(
+                                    path = state.coverUrl,
+                                    name = state.bookName,
+                                    author = state.author,
+                                    loadOnlyWifi = false,
+                                    sourceOrigin = state.sourceOrigin,
+                                    preferThumb = true
+                                )
+                            }
                         }
                     )
                 }
@@ -3095,14 +3118,24 @@ private fun CoverArt(
                 }
             },
             update = {
-                it.load(
-                    path = state.coverUrl,
-                    name = state.bookName,
-                    author = state.author,
-                    loadOnlyWifi = false,
-                    sourceOrigin = state.sourceOrigin,
-                    preferThumb = false
-                )
+                val loadKey = listOf(
+                    state.coverUrl.orEmpty(),
+                    state.bookName,
+                    state.author,
+                    state.sourceOrigin.orEmpty(),
+                    "full"
+                ).joinToString("|")
+                if (it.tag != loadKey) {
+                    it.tag = loadKey
+                    it.load(
+                        path = state.coverUrl,
+                        name = state.bookName,
+                        author = state.author,
+                        loadOnlyWifi = false,
+                        sourceOrigin = state.sourceOrigin,
+                        preferThumb = false
+                    )
+                }
             }
         )
     }
