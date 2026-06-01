@@ -517,6 +517,7 @@ object AiReadAloudRoleService {
                 return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
             }
             val resolved = persistDetectedCharacters(currentBook.bookUrl, aiSegments, result.candidates)
+            val finalUsage = usageTracker.snapshot()
             appDb.aiReadAloudRoleCacheDao.upsert(
                 AiReadAloudRoleCache(
                     cacheKey = cacheKey,
@@ -531,7 +532,8 @@ object AiReadAloudRoleService {
                     retryCount = oldCache?.retryCount ?: 0,
                     segmentsJson = resolved.first.toCacheJson(
                         preprocessVersion = ReadAloudRolePreprocessor.VERSION,
-                        contentHash = contentHash
+                        contentHash = contentHash,
+                        usageSnapshot = finalUsage
                     ),
                     createdCharacterIdsJson = JSONArray(resolved.second).toString(),
                     characterHash = characterHash(currentBook.bookUrl),
@@ -2271,12 +2273,21 @@ object AiReadAloudRoleService {
 
     private fun List<Segment>.toCacheJson(
         preprocessVersion: String,
-        contentHash: String
+        contentHash: String,
+        usageSnapshot: RoleUsageSnapshot = RoleUsageSnapshot()
     ): String {
         return JSONObject().apply {
             put("schemaVersion", 4)
             put("preprocessVersion", preprocessVersion)
             put("contentHash", contentHash)
+            put("usage", JSONObject().apply {
+                put("elapsedMillis", usageSnapshot.elapsedMillis)
+                put("requestCount", usageSnapshot.requestCount)
+                put("inputTokens", usageSnapshot.usage.inputTokens)
+                put("cachedInputTokens", usageSnapshot.usage.cachedInputTokens)
+                put("outputTokens", usageSnapshot.usage.outputTokens)
+                put("totalTokens", usageSnapshot.usage.totalTokens)
+            })
             put("segments", toJsonArray())
         }.toString()
     }
