@@ -2660,16 +2660,11 @@ private fun SceneBubble(
 ) {
     val bubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
     val textColor = if (segment.leftSide) colors.primaryText else colors.accentText
+    val actionShape = LocalContext.current.composeActionShape()
     Surface(
-        modifier = Modifier
-            .fillMaxWidth(0.72f)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(
-            topStart = 18.dp,
-            topEnd = 18.dp,
-            bottomStart = if (segment.leftSide) 4.dp else 18.dp,
-            bottomEnd = if (segment.leftSide) 18.dp else 4.dp
-        ),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(0.72f),
+        shape = actionShape,
         color = bubbleColor,
         border = BorderStroke(
             1.dp,
