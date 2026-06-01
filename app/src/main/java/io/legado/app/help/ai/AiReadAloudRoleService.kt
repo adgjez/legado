@@ -31,11 +31,15 @@ object AiReadAloudRoleService {
     private const val TOOL_CONFIRM_UNITS = "confirm_read_aloud_role_units"
     private const val TARGET_GROUP_SIZE = 12
     private const val PLAYBACK_ASSIGNMENT_ATTEMPTS = 3
+    private const val UNKNOWN_RETRY_ATTEMPTS = 2
     private const val RUNNING_WAIT_STEP_MILLIS = 600L
     private const val RUNNING_WAIT_TIMEOUT_MILLIS = 120_000L
     private val runningCacheKeys = ConcurrentHashMap.newKeySet<String>()
     private val speechVerbRegex = Regex(
         "([\\p{IsHan}A-Za-z0-9_·]{1,24})\\s*(?:说道|说|道|问道|问|答道|答|笑道|冷声道|沉声道|低声道|怒道|喝道|喊道|叫道|开口道|喃喃道)\\s*[，,、：:]?\\s*$"
+    )
+    private val invalidCharacterNameKeywordRegex = Regex(
+        "(?:说道|问道|答道|笑道|冷声道|沉声道|低声道|怒道|喝道|喊道|叫道|开口道|喃喃道|警告|提醒|告诉|炫耀|得意|有些|突然|已经|正在)"
     )
 
     data class Segment(
@@ -72,15 +76,29 @@ object AiReadAloudRoleService {
         val characterId: Long,
         val emotionName: String,
         val emotionTag: String,
-        val confidence: Double
+        val confidence: Double,
+        val status: String = "assigned",
+        val evidence: String = ""
     )
 
     private data class RoleCacheKey(
         val cacheKey: String,
+        val promptCacheKey: String,
         val mode: String,
         val prompt: String,
         val contentHash: String,
-        val contextParagraphs: Int
+        val batchParagraphCount: Int
+    )
+
+    private data class UnitAssignmentBatch(
+        val index: Int,
+        val targetParagraphs: List<Int>,
+        val units: List<ReadAloudRoleUnit>
+    )
+
+    private data class UnitAssignmentResult(
+        val resolutions: List<UnitResolution> = emptyList(),
+        val candidates: List<CharacterCandidate> = emptyList()
     )
 
     data class EnsureResult(
@@ -118,16 +136,20 @@ object AiReadAloudRoleService {
         val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}"
         val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
         val promptHash = MD5Utils.md5Encode(prompt)
-        val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
+        val batchParagraphCount = AppConfig.aiReadAloudRoleBatchParagraphCount
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|$contextParagraphs|$promptHash|${modelConfig.id}"
+            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|batch=$batchParagraphCount|$promptHash|${modelConfig.id}"
+        )
+        val promptCacheKey = MD5Utils.md5Encode(
+            "read-aloud-role-prompt|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|${ReadAloudRolePreprocessor.VERSION}|${modelConfig.id}"
         )
         return RoleCacheKey(
             cacheKey = cacheKey,
+            promptCacheKey = "read_aloud_role_$promptCacheKey",
             mode = mode,
             prompt = prompt,
             contentHash = contentHash,
-            contextParagraphs = contextParagraphs
+            batchParagraphCount = batchParagraphCount
         )
     }
 
@@ -190,7 +212,7 @@ object AiReadAloudRoleService {
         val mode = roleKey.mode
         val prompt = roleKey.prompt
         val contentHash = roleKey.contentHash
-        val contextParagraphs = roleKey.contextParagraphs
+        val batchParagraphCount = roleKey.batchParagraphCount
         val cacheKey = roleKey.cacheKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
         fun postPreview(
@@ -328,45 +350,26 @@ object AiReadAloudRoleService {
             )
         )
         try {
-            val result = if (mode.substringBefore("|") == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL) {
-                requestSegments(
-                    book = currentBook,
-                    textChapter = currentChapter,
-                    paragraphs = cleanParagraphs,
-                    targetIndices = cleanParagraphs.indices.toList(),
-                    contextTitle = "全文工具模式",
-                    prompt = prompt,
-                    totalParagraphCount = cleanParagraphs.size,
-                    stage = stage,
-                    onPreview = { preview, candidateCount, source ->
-                        postPreview(
-                            AiReadAloudRoleState.STATUS_RUNNING,
-                            if (source == AiReadAloudRoleState.SOURCE_RULE) "本地预处理 ${preview.size} 个片段" else "已确认 ${preview.size} 个分配片段",
-                            source,
-                            preview,
-                            newCharacterCandidateCount = candidateCount
-                        )
-                    }
-                )
-            } else {
-                requestChunkedSegments(
-                    book = currentBook,
-                    textChapter = currentChapter,
-                    paragraphs = cleanParagraphs,
-                    contextParagraphs = contextParagraphs,
-                    prompt = prompt,
-                    stage = stage,
-                    onPreview = { preview, candidateCount, source ->
-                        postPreview(
-                            AiReadAloudRoleState.STATUS_RUNNING,
-                            if (source == AiReadAloudRoleState.SOURCE_RULE) "本地预处理 ${preview.size} 个片段" else "已确认 ${preview.size} 个分配片段",
-                            source,
-                            preview,
-                            newCharacterCandidateCount = candidateCount
-                        )
-                    }
-                )
-            }
+            val preprocess = ReadAloudRolePreprocessor.process(cleanParagraphs)
+            val result = requestBatchedUnitAssignments(
+                book = currentBook,
+                textChapter = currentChapter,
+                paragraphs = cleanParagraphs,
+                preprocess = preprocess,
+                batchParagraphCount = batchParagraphCount,
+                prompt = prompt,
+                promptCacheKey = roleKey.promptCacheKey,
+                fullChapterMode = mode.substringBefore("|") == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL,
+                onPreview = { preview, candidateCount, source ->
+                    postPreview(
+                        AiReadAloudRoleState.STATUS_RUNNING,
+                        if (source == AiReadAloudRoleState.SOURCE_RULE) "本地预处理 ${preview.size} 个片段" else "已确认 ${preview.size} 个分配片段",
+                        source,
+                        preview,
+                        newCharacterCandidateCount = candidateCount
+                    )
+                }
+            )
             val aiSegments = result.segments
                 .distinctBy { "${it.paragraphIndex}:${it.start}:${it.end}:${it.roleType}:${it.characterName}" }
                 .sortedWith(compareBy<Segment> { it.paragraphIndex }.thenBy { it.start }.thenBy { it.end })
@@ -428,7 +431,11 @@ object AiReadAloudRoleService {
                     paragraphCount = cleanParagraphs.size,
                     status = AiReadAloudRoleCache.STATUS_SUCCESS,
                     retryCount = oldCache?.retryCount ?: 0,
-                    segmentsJson = resolved.first.toJsonArray().toString(),
+                    segmentsJson = resolved.first.toCacheJson(
+                        preprocessVersion = ReadAloudRolePreprocessor.VERSION,
+                        contentHash = contentHash,
+                        batchParagraphCount = batchParagraphCount
+                    ),
                     createdCharacterIdsJson = JSONArray(resolved.second).toString(),
                     characterHash = characterHash(currentBook.bookUrl),
                     voiceHash = voiceHash(currentBook.bookUrl),
@@ -757,11 +764,24 @@ object AiReadAloudRoleService {
     }
 
     private fun segmentCount(json: String): Int {
-        return runCatching { JSONArray(json).length() }.getOrDefault(0)
+        val text = json.trim()
+        if (text.isBlank()) return 0
+        if (text.startsWith("{")) {
+            return runCatching {
+                JSONObject(text).optJSONArray("segments")?.length() ?: 0
+            }.getOrDefault(0)
+        }
+        return runCatching { JSONArray(text).length() }.getOrDefault(0)
     }
 
     private fun segmentsFromJson(json: String): List<Segment> {
-        val array = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        val text = json.trim()
+        if (text.isBlank()) return emptyList()
+        val array = if (text.startsWith("{")) {
+            runCatching { JSONObject(text).optJSONArray("segments") }.getOrNull()
+        } else {
+            runCatching { JSONArray(text) }.getOrNull()
+        } ?: return emptyList()
         val result = mutableListOf<Segment>()
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
@@ -842,6 +862,384 @@ object AiReadAloudRoleService {
                     source = source
                 )
             }
+    }
+
+    private suspend fun requestBatchedUnitAssignments(
+        book: Book,
+        textChapter: TextChapter,
+        paragraphs: List<String>,
+        preprocess: io.legado.app.help.readaloud.role.ReadAloudRolePreprocessResult,
+        batchParagraphCount: Int,
+        prompt: String,
+        promptCacheKey: String,
+        fullChapterMode: Boolean,
+        onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
+    ): RequestResult = coroutineScope {
+        val allTargetParagraphs = paragraphs.indices.toSet()
+        val localSegments = segmentsFromUnits(preprocess.units, allTargetParagraphs)
+        if (localSegments.isNotEmpty()) {
+            onPreview(
+                buildPreviewSegments(
+                    book.bookUrl,
+                    localSegments,
+                    paragraphs,
+                    AiReadAloudRoleState.SOURCE_RULE
+                ),
+                0,
+                AiReadAloudRoleState.SOURCE_RULE
+            )
+        }
+        val uncertainUnits = preprocess.units.filter { it.needsAi }
+        if (uncertainUnits.isEmpty()) {
+            return@coroutineScope RequestResult(localSegments, aiRequired = false, aiSatisfied = true)
+        }
+
+        val resolutionMap = linkedMapOf<String, UnitResolution>()
+        val candidates = mutableListOf<CharacterCandidate>()
+        val effectiveBatchSize = if (fullChapterMode) {
+            paragraphs.size.coerceAtLeast(1)
+        } else {
+            batchParagraphCount.coerceIn(4, 40)
+        }
+        val firstPassBatches = buildUnitAssignmentBatches(
+            uncertainUnits,
+            paragraphs.size,
+            effectiveBatchSize
+        )
+        requestUnitAssignmentBatches(
+            book = book,
+            textChapter = textChapter,
+            paragraphs = paragraphs,
+            allUnits = preprocess.units,
+            batches = firstPassBatches,
+            prompt = prompt,
+            promptCacheKey = promptCacheKey,
+            attempt = 0,
+            knownResolutions = emptyList(),
+            candidates = candidates,
+            resolutionMap = resolutionMap,
+            onPreview = onPreview
+        )
+
+        repeat(UNKNOWN_RETRY_ATTEMPTS) { retryIndex ->
+            val unresolved = unresolvedUnits(uncertainUnits, resolutionMap)
+            if (unresolved.isEmpty()) {
+                return@repeat
+            }
+            val retryBatches = buildUnitAssignmentBatches(
+                unresolved,
+                paragraphs.size,
+                effectiveBatchSize
+            )
+            requestUnitAssignmentBatches(
+                book = book,
+                textChapter = textChapter,
+                paragraphs = paragraphs,
+                allUnits = preprocess.units,
+                batches = retryBatches,
+                prompt = prompt,
+                promptCacheKey = promptCacheKey,
+                attempt = retryIndex + 1,
+                knownResolutions = resolutionMap.values.toList(),
+                candidates = candidates,
+                resolutionMap = resolutionMap,
+                onPreview = onPreview
+            )
+        }
+
+        unresolvedUnits(uncertainUnits, resolutionMap)
+            .map(::unknownFinalResolution)
+            .forEach { resolutionMap[it.unitId] = it }
+        val resolvedUnits = applyUnitResolutions(preprocess.units, resolutionMap.values.toList())
+        val resolvedSegments = segmentsFromUnits(resolvedUnits, allTargetParagraphs)
+        RequestResult(
+            segments = resolvedSegments,
+            candidates = candidates.distinctBy { it.name },
+            aiRequired = true,
+            aiSatisfied = true
+        )
+    }
+
+    private suspend fun requestUnitAssignmentBatches(
+        book: Book,
+        textChapter: TextChapter,
+        paragraphs: List<String>,
+        allUnits: List<ReadAloudRoleUnit>,
+        batches: List<UnitAssignmentBatch>,
+        prompt: String,
+        promptCacheKey: String,
+        attempt: Int,
+        knownResolutions: List<UnitResolution>,
+        candidates: MutableList<CharacterCandidate>,
+        resolutionMap: MutableMap<String, UnitResolution>,
+        onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
+    ) = coroutineScope {
+        if (batches.isEmpty()) return@coroutineScope
+        val semaphore = Semaphore(
+            if (AppConfig.aiReadAloudRoleMode == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL) 1
+            else AppConfig.aiReadAloudRoleThreadCount
+        )
+        batches.map { batch ->
+            async {
+                semaphore.withPermit {
+                    requestUnitAssignmentBatch(
+                        book = book,
+                        textChapter = textChapter,
+                        paragraphs = paragraphs,
+                        allUnits = allUnits,
+                        batch = batch,
+                        prompt = prompt,
+                        promptCacheKey = promptCacheKey,
+                        attempt = attempt,
+                        knownResolutions = knownResolutions
+                    )
+                }
+            }
+        }.awaitAll().forEach { result ->
+            result.resolutions.forEach { resolution ->
+                resolutionMap[resolution.unitId] = resolution
+            }
+            candidates += result.candidates
+            val previewSegments = segmentsFromUnits(
+                applyUnitResolutions(allUnits, resolutionMap.values.toList()),
+                paragraphs.indices.toSet()
+            )
+            onPreview(
+                buildPreviewSegments(
+                    book.bookUrl,
+                    previewSegments,
+                    paragraphs,
+                    AiReadAloudRoleState.SOURCE_AI_CONFIRM
+                ),
+                candidates.distinctBy { it.name }.size,
+                AiReadAloudRoleState.SOURCE_AI_CONFIRM
+            )
+        }
+    }
+
+    private suspend fun requestUnitAssignmentBatch(
+        book: Book,
+        textChapter: TextChapter,
+        paragraphs: List<String>,
+        allUnits: List<ReadAloudRoleUnit>,
+        batch: UnitAssignmentBatch,
+        prompt: String,
+        promptCacheKey: String,
+        attempt: Int,
+        knownResolutions: List<UnitResolution>
+    ): UnitAssignmentResult {
+        val requestedUnitIds = batch.units.map { it.id }.toSet()
+        val collectedCandidates = mutableListOf<CharacterCandidate>()
+        val collectedResolutions = mutableListOf<UnitResolution>()
+        val tool = AiResolvedTool(TOOL_CONFIRM_UNITS, confirmUnitsDefinition()) { args ->
+            val resolutions = parseUnitResolutions(args, requestedUnitIds)
+            val candidates = parseCandidates(args)
+            collectedResolutions += resolutions
+            collectedCandidates += candidates
+            JSONObject().apply {
+                put("ok", true)
+                put("recorded", resolutions.size)
+                put("newCharacters", candidates.size)
+            }.toString()
+        }
+        val response = AiChatService.chatStream(
+            messages = listOf(
+                AiChatMessage(
+                    role = AiChatMessage.Role.USER,
+                    content = buildBatchUnitPrompt(
+                        book = book,
+                        textChapter = textChapter,
+                        paragraphs = paragraphs,
+                        allUnits = allUnits,
+                        batch = batch,
+                        prompt = prompt,
+                        attempt = attempt,
+                        knownResolutions = knownResolutions
+                    )
+                )
+            ),
+            onPartial = {},
+            includeStructuredBlocks = false,
+            useAllTools = false,
+            extraTools = listOf(tool),
+            modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
+            promptCacheKeyOverride = promptCacheKey
+        )
+        if (collectedResolutions.isEmpty()) {
+            val fallback = parseUnitFallbackResult(response, requestedUnitIds)
+            collectedResolutions += fallback.first
+            collectedCandidates += fallback.second
+        }
+        return UnitAssignmentResult(
+            resolutions = collectedResolutions
+                .map { normalizeUnitResolution(it) }
+                .distinctBy { it.unitId },
+            candidates = collectedCandidates.distinctBy { it.name }
+        )
+    }
+
+    private fun buildUnitAssignmentBatches(
+        units: List<ReadAloudRoleUnit>,
+        paragraphCount: Int,
+        batchParagraphCount: Int
+    ): List<UnitAssignmentBatch> {
+        if (units.isEmpty() || paragraphCount <= 0) return emptyList()
+        val safeBatchSize = batchParagraphCount.coerceIn(1, paragraphCount.coerceAtLeast(1))
+        return units
+            .groupBy { unit ->
+                unit.firstParagraphIndex.coerceIn(0, paragraphCount - 1) / safeBatchSize
+            }
+            .toSortedMap()
+            .map { (batchIndex, batchUnits) ->
+                val start = (batchIndex * safeBatchSize).coerceAtMost(paragraphCount - 1)
+                val endExclusive = (start + safeBatchSize).coerceAtMost(paragraphCount)
+                val targetParagraphs = (start until endExclusive).toList()
+                UnitAssignmentBatch(
+                    index = batchIndex,
+                    targetParagraphs = targetParagraphs,
+                    units = batchUnits.sortedWith(
+                        compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart }
+                    )
+                )
+            }
+    }
+
+    private fun unresolvedUnits(
+        units: List<ReadAloudRoleUnit>,
+        resolutions: Map<String, UnitResolution>
+    ): List<ReadAloudRoleUnit> {
+        return units.filter { unit ->
+            val resolution = resolutions[unit.id] ?: return@filter true
+            isUnresolvedResolution(resolution)
+        }
+    }
+
+    private fun isUnresolvedResolution(resolution: UnitResolution): Boolean {
+        if (resolution.status == "unknown-final") return false
+        if (resolution.status == "unknown") return true
+        if (resolution.roleType !in setOf("character", "thought")) return false
+        if (resolution.characterName.isBlank()) return true
+        return resolution.confidence < 0.62
+    }
+
+    private fun unknownFinalResolution(unit: ReadAloudRoleUnit): UnitResolution {
+        return UnitResolution(
+            unitId = unit.id,
+            roleType = unit.roleType.takeIf { it in setOf("character", "thought") } ?: "character",
+            characterName = "",
+            characterId = 0L,
+            emotionName = unit.emotionName,
+            emotionTag = unit.emotionTag,
+            confidence = unit.confidence.coerceAtLeast(0.45),
+            status = "unknown-final",
+            evidence = "retry_exhausted"
+        )
+    }
+
+    private fun normalizeUnitResolution(resolution: UnitResolution): UnitResolution {
+        val status = resolution.status.trim().lowercase().ifBlank { "assigned" }
+            .takeIf { it in setOf("assigned", "unknown", "unknown-final") }
+            ?: "assigned"
+        val roleType = resolution.roleType.takeIf { it in setOf("narrator", "character", "thought", "other") }
+            ?: "other"
+        val rawName = resolution.characterName.trim()
+        val characterName = when {
+            status.startsWith("unknown") -> ""
+            rawName in setOf("unknown", "未知", "不确定", "未识别", "旁白") && roleType != "narrator" -> ""
+            roleType == "narrator" -> "旁白"
+            else -> rawName
+        }
+        return resolution.copy(
+            roleType = roleType,
+            characterName = characterName.take(80),
+            status = status,
+            confidence = resolution.confidence.coerceIn(0.0, 1.0),
+            evidence = resolution.evidence.take(200)
+        )
+    }
+
+    private fun buildBatchUnitPrompt(
+        book: Book,
+        textChapter: TextChapter,
+        paragraphs: List<String>,
+        allUnits: List<ReadAloudRoleUnit>,
+        batch: UnitAssignmentBatch,
+        prompt: String,
+        attempt: Int,
+        knownResolutions: List<UnitResolution>
+    ): String {
+        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+            .sortedWith(compareBy<BookCharacter> { it.name }.thenBy { it.id })
+            .joinToString("\n") {
+                val detail = listOf(it.identity, it.skills, it.attributes)
+                    .filter { value -> value.isNotBlank() }
+                    .joinToString("；")
+                "- id=${it.id} name=${it.name}：${detail.ifBlank { "无补充信息" }}"
+            }
+            .ifBlank { "暂无角色卡" }
+        val chapterText = paragraphs.mapIndexed { index, text ->
+            "P${index + 1}: $text"
+        }.joinToString("\n")
+        val unitSummary = allUnits.joinToString("\n") { unit ->
+            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | reason=${unit.reason} | confidence=${"%.2f".format(unit.confidence)} | cueBefore=${unit.cueBefore.compactForPrompt(90)} | cueAfter=${unit.cueAfter.compactForPrompt(90)} | text=${unit.text.compactForPrompt(260)}"
+        }
+        val targetUnits = batch.units.joinToString("\n") { unit ->
+            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | text=${unit.text.compactForPrompt(420)}"
+        }
+        val resolvedSummary = knownResolutions
+            .sortedBy { it.unitId }
+            .joinToString("\n") { resolution ->
+                "- ${resolution.unitId} => ${resolution.roleType}/${resolution.characterName.ifBlank { "unknown" }} confidence=${"%.2f".format(resolution.confidence)} status=${resolution.status}"
+            }
+            .ifBlank { "暂无" }
+        val retryInstruction = when (attempt) {
+            0 -> "第一轮：请只处理当前批次 targetUnitIds。不能确定说话人时返回 status=unknown，characterName 为空。"
+            1 -> "第二轮：这些 unit 第一轮仍不确定。请结合整章上下文、前后提示语和已确认结果重新判断；仍不确定就返回 unknown，不要猜。"
+            else -> "第三轮：最后确认这些 unit。只有证据明确才填写角色名；否则返回 unknown。"
+        }
+        return """
+            你是小说朗读多角色归因器。客户端已经把正文切成稳定 unit；规则只负责切分，不负责判断说话人。你只需要给目标 unitId 归因，绝对不要返回 start/end，也不要改写原文。
+
+            固定要求：
+            1. 必须调用工具 $TOOL_CONFIRM_UNITS，参数只包含 units 和 newCharacters。
+            2. units 里只允许出现本轮 targetUnitIds；unitId 必须逐个覆盖，不能新造。
+            3. roleType 只能是 narrator、character、thought、other。
+            4. 不能确定说话人时：roleType 可保持 character/thought，但 status=unknown，characterName 留空；不要把 unknown 改成旁白。
+            5. 引号、句末标点、省略号属于同一句台词时，归属跟随台词 unit；不要把符号单独当旁白。
+            6. ““卧龙”军师”这种强调、称号、外号、书名引用不是直接发言时，应归为 narrator 或保持原本 narrator。
+            7. characterName 优先使用已有角色卡的准确 name。非已有角色必须同时写入 newCharacters，且 evidence 必须是当前章节里的明确证据。
+            8. 严禁把代词、称呼对象、动作、语气、情绪、短语、副词当成新角色，例如：他、她、你、我、众人、有人、高小姐这个被警告对象、有些炫耀。
+            9. 只有“角色列表里没有、并且文本明确把它当稳定人物/路人称谓”时才允许 newCharacters；否则 characterName 留空。
+            10. 情绪明确时填写 emotionName 和 emotionTag；不明确留空。
+
+            书籍：${book.name}
+            作者：${book.author}
+            章节：${textChapter.chapter.title}
+
+            已有角色卡（稳定排序，必须优先使用）：
+            $characters
+
+            用户附加提示：
+            ${prompt.ifBlank { "无" }}
+
+            整章原文（用于上下文缓存和归因，不可改写）：
+            $chapterText
+
+            全部 unit 列表：
+            $unitSummary
+
+            已确认结果：
+            $resolvedSummary
+
+            本轮任务：
+            $retryInstruction
+            batchIndex=${batch.index}
+            targetParagraphs=${batch.targetParagraphs.joinToString { "P${it + 1}" }}
+            targetUnitIds=${batch.units.joinToString { it.id }}
+
+            本轮目标 unit：
+            $targetUnits
+        """.trimIndent()
     }
 
     private suspend fun requestChunkedSegments(
@@ -1124,7 +1522,9 @@ object AiReadAloudRoleService {
                 characterId = item.optLong("characterId", 0L).coerceAtLeast(0L),
                 emotionName = item.optString("emotionName").trim().take(40),
                 emotionTag = item.optString("emotionTag").trim().take(40),
-                confidence = item.optDouble("confidence", 0.72).coerceIn(0.0, 1.0)
+                confidence = item.optDouble("confidence", 0.72).coerceIn(0.0, 1.0),
+                status = item.optString("status", "assigned").trim(),
+                evidence = item.optString("evidence").trim().take(200)
             )
         }
         return result.distinctBy { it.unitId }
@@ -1142,6 +1542,7 @@ object AiReadAloudRoleService {
             val characterName = when {
                 roleType == "narrator" -> "旁白"
                 resolution.characterName.isNotBlank() -> resolution.characterName
+                roleType == "character" || roleType == "thought" -> ""
                 else -> unit.characterName
             }
             unit.copy(
@@ -1441,25 +1842,9 @@ object AiReadAloudRoleService {
         val byName = existing.associateBy { it.name }.toMutableMap()
         val createdIds = mutableListOf<Long>()
         val candidateMap = candidates
-            .filter { it.confidence >= 0.65 && isCreatableCharacterName(it.name) }
+            .filter { it.confidence >= 0.75 && it.evidence.isNotBlank() && isCreatableCharacterName(it.name) }
             .associateBy { it.name }
             .toMutableMap()
-        segments.asSequence()
-            .filter { it.roleType == "character" || it.roleType == "thought" }
-            .filter { it.characterName.isNotBlank() && it.confidence >= 0.72 }
-            .filter { isCreatableCharacterName(it.characterName) }
-            .forEach { segment ->
-                candidateMap.putIfAbsent(
-                    segment.characterName,
-                    CharacterCandidate(
-                        name = segment.characterName,
-                        identity = "",
-                        roleLevel = BookCharacter.ROLE_NORMAL,
-                        confidence = segment.confidence,
-                        evidence = ""
-                    )
-                )
-            }
         candidateMap.values
             .sortedByDescending { it.confidence }
             .take(20)
@@ -1500,6 +1885,23 @@ object AiReadAloudRoleService {
                     }
                 }
             }
+        segments.asSequence()
+            .filter { it.roleType == "character" || it.roleType == "thought" }
+            .mapNotNull { byName[it.characterName] }
+            .filter { it.speechRouteJson.isBlank() }
+            .distinctBy { it.id }
+            .forEach { old ->
+                val route = SpeechVoiceAssigner.assignRoute(old, httpTtsList)
+                if (route.isConfigured) {
+                    val updated = old.copy(
+                        speechRouteJson = route.toJson(),
+                        lastDetectedAt = now,
+                        updatedAt = now
+                    )
+                    appDb.bookCharacterDao.updateCharacter(updated)
+                    byName[updated.name] = updated
+                }
+            }
         return resolveSegmentCharacters(segments, byName.values.toList()) to createdIds
     }
 
@@ -1511,6 +1913,8 @@ object AiReadAloudRoleService {
         return segments.map { segment ->
             if (segment.characterId > 0 || segment.characterName.isBlank()) {
                 segment
+            } else if (!isCreatableCharacterName(segment.characterName) && segment.characterName != "旁白") {
+                segment.copy(characterName = "", characterId = 0L)
             } else {
                 segment.copy(characterId = byName[segment.characterName]?.id ?: 0L)
             }
@@ -1521,6 +1925,8 @@ object AiReadAloudRoleService {
         val value = name.trim()
         if (value.length !in 2..40) return false
         if (value.any { it == '\n' || it == '\r' || it == '\t' }) return false
+        if (value.any { it in "，。！？；,.!?;、（）()《》<>[]【】\"“”‘’：" }) return false
+        if (invalidCharacterNameKeywordRegex.containsMatchIn(value)) return false
         return value !in setOf("旁白", "作者", "读者", "我", "你", "他", "她", "它", "我们", "你们", "他们", "她们", "众人", "有人")
     }
 
@@ -1560,8 +1966,10 @@ object AiReadAloudRoleService {
                                     put("emotionName", stringProp("Optional emotion name, blank if unknown."))
                                     put("emotionTag", stringProp("Optional emotion tag, e.g. [高兴]."))
                                     put("confidence", numberProp("Confidence from 0 to 1."))
+                                    put("status", stringProp("assigned or unknown. Use unknown when speaker cannot be proven."))
+                                    put("evidence", stringProp("Short evidence for the assignment, blank when unknown."))
                                 })
-                                put("required", JSONArray().put("unitId").put("roleType"))
+                                put("required", JSONArray().put("unitId").put("roleType").put("status"))
                                 put("additionalProperties", false)
                             })
                         })
@@ -1655,6 +2063,20 @@ object AiReadAloudRoleService {
                 })
             }
         }
+    }
+
+    private fun List<Segment>.toCacheJson(
+        preprocessVersion: String,
+        contentHash: String,
+        batchParagraphCount: Int
+    ): String {
+        return JSONObject().apply {
+            put("schemaVersion", 3)
+            put("preprocessVersion", preprocessVersion)
+            put("contentHash", contentHash)
+            put("batchParagraphCount", batchParagraphCount)
+            put("segments", toJsonArray())
+        }.toString()
     }
 
     private fun stringProp(description: String) = JSONObject().apply {
