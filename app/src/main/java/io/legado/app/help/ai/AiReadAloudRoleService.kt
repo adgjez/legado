@@ -69,6 +69,37 @@ object AiReadAloudRoleService {
         val aiSatisfied: Boolean = true
     )
 
+    private class RoleUsageTracker {
+        private val startAt = System.currentTimeMillis()
+        private var requestCounter = 0
+        private var usage = AiUsageStats()
+
+        @Synchronized
+        fun onRequest() {
+            requestCounter += 1
+        }
+
+        @Synchronized
+        fun onUsage(stats: AiUsageStats) {
+            usage += stats
+        }
+
+        @Synchronized
+        fun snapshot(): RoleUsageSnapshot {
+            return RoleUsageSnapshot(
+                elapsedMillis = System.currentTimeMillis() - startAt,
+                requestCount = requestCounter,
+                usage = usage
+            )
+        }
+    }
+
+    private data class RoleUsageSnapshot(
+        val elapsedMillis: Long = 0L,
+        val requestCount: Int = 0,
+        val usage: AiUsageStats = AiUsageStats()
+    )
+
     private data class UnitResolution(
         val unitId: String,
         val roleType: String,
@@ -215,6 +246,7 @@ object AiReadAloudRoleService {
         val batchParagraphCount = roleKey.batchParagraphCount
         val cacheKey = roleKey.cacheKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
+        val usageTracker = RoleUsageTracker()
         fun postPreview(
             status: String,
             message: String,
@@ -254,7 +286,8 @@ object AiReadAloudRoleService {
                 newCharacterCandidateCount,
                 source,
                 snapshot,
-                error
+                error,
+                usageTracker.snapshot()
             )
         }
         val oldCache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
@@ -359,6 +392,7 @@ object AiReadAloudRoleService {
                 batchParagraphCount = batchParagraphCount,
                 prompt = prompt,
                 promptCacheKey = roleKey.promptCacheKey,
+                usageTracker = usageTracker,
                 fullChapterMode = mode.substringBefore("|") == AppConfig.AI_READ_ALOUD_ROLE_MODE_FULL,
                 onPreview = { preview, candidateCount, source ->
                     postPreview(
@@ -736,8 +770,10 @@ object AiReadAloudRoleService {
         newCharacterCandidateCount: Int = 0,
         previewSource: String = AiReadAloudRoleState.SOURCE_NONE,
         previewSegments: List<AiReadAloudRolePreviewSegment> = emptyList(),
-        error: String = ""
+        error: String = "",
+        usageSnapshot: RoleUsageSnapshot = RoleUsageSnapshot()
     ) {
+        val usage = usageSnapshot.usage
         postEvent(
             EventBus.AI_READ_ALOUD_ROLE_STATE,
             AiReadAloudRoleState(
@@ -753,6 +789,12 @@ object AiReadAloudRoleService {
                 newCharacterCandidateCount = newCharacterCandidateCount,
                 previewSource = previewSource,
                 previewSegments = previewSegments,
+                elapsedMillis = usageSnapshot.elapsedMillis,
+                requestCount = usageSnapshot.requestCount,
+                inputTokens = usage.inputTokens,
+                outputTokens = usage.outputTokens,
+                totalTokens = usage.totalTokens,
+                cachedInputTokens = usage.cachedInputTokens,
                 error = error
             )
         )
@@ -872,6 +914,7 @@ object AiReadAloudRoleService {
         batchParagraphCount: Int,
         prompt: String,
         promptCacheKey: String,
+        usageTracker: RoleUsageTracker,
         fullChapterMode: Boolean,
         onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
     ): RequestResult = coroutineScope {
@@ -918,6 +961,7 @@ object AiReadAloudRoleService {
             knownResolutions = emptyList(),
             candidates = candidates,
             resolutionMap = resolutionMap,
+            usageTracker = usageTracker,
             onPreview = onPreview
         )
 
@@ -943,6 +987,7 @@ object AiReadAloudRoleService {
                 knownResolutions = resolutionMap.values.toList(),
                 candidates = candidates,
                 resolutionMap = resolutionMap,
+                usageTracker = usageTracker,
                 onPreview = onPreview
             )
         }
@@ -972,6 +1017,7 @@ object AiReadAloudRoleService {
         knownResolutions: List<UnitResolution>,
         candidates: MutableList<CharacterCandidate>,
         resolutionMap: MutableMap<String, UnitResolution>,
+        usageTracker: RoleUsageTracker,
         onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
     ) = coroutineScope {
         if (batches.isEmpty()) return@coroutineScope
@@ -991,7 +1037,8 @@ object AiReadAloudRoleService {
                         prompt = prompt,
                         promptCacheKey = promptCacheKey,
                         attempt = attempt,
-                        knownResolutions = knownResolutions
+                        knownResolutions = knownResolutions,
+                        usageTracker = usageTracker
                     )
                 }
             }
@@ -1026,7 +1073,8 @@ object AiReadAloudRoleService {
         prompt: String,
         promptCacheKey: String,
         attempt: Int,
-        knownResolutions: List<UnitResolution>
+        knownResolutions: List<UnitResolution>,
+        usageTracker: RoleUsageTracker
     ): UnitAssignmentResult {
         val requestedUnitIds = batch.units.map { it.id }.toSet()
         val collectedCandidates = mutableListOf<CharacterCandidate>()
@@ -1042,6 +1090,7 @@ object AiReadAloudRoleService {
                 put("newCharacters", candidates.size)
             }.toString()
         }
+        usageTracker.onRequest()
         val response = AiChatService.chatStream(
             messages = listOf(
                 AiChatMessage(
@@ -1063,7 +1112,8 @@ object AiReadAloudRoleService {
             useAllTools = false,
             extraTools = listOf(tool),
             modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
-            promptCacheKeyOverride = promptCacheKey
+            promptCacheKeyOverride = promptCacheKey,
+            onUsage = usageTracker::onUsage
         )
         if (collectedResolutions.isEmpty()) {
             val fallback = parseUnitFallbackResult(response, requestedUnitIds)

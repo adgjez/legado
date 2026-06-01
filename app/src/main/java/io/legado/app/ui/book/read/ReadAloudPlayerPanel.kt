@@ -2113,6 +2113,20 @@ private fun RoleAssignmentSummary(
         RoleSummaryChip(roleStatusLabel(roleState), colors)
         RoleSummaryChip(roleSourceLabel(roleState.previewSource), colors)
         RoleSummaryChip("${preview.size} 片段", colors)
+        if (roleState.elapsedMillis > 0L) {
+            RoleSummaryChip("耗时 ${formatRoleElapsed(roleState.elapsedMillis)}", colors)
+        }
+        if (roleState.requestCount > 0) {
+            RoleSummaryChip("${roleState.requestCount} 次请求", colors)
+        }
+        if (roleState.totalTokens > 0) {
+            RoleSummaryChip("Token ${roleState.totalTokens}", colors)
+        } else if (roleState.requestCount > 0 && !roleState.running) {
+            RoleSummaryChip("Token 未返回", colors)
+        }
+        if (roleState.cachedInputTokens > 0) {
+            RoleSummaryChip("缓存命中 ${roleState.cachedInputTokens}", colors)
+        }
         if (roleState.createdCharacterCount > 0) {
             RoleSummaryChip("新增 ${roleState.createdCharacterCount} 角色", colors)
         }
@@ -2139,6 +2153,15 @@ private fun RoleAssignmentSummary(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp)
         )
+    }
+}
+
+private fun formatRoleElapsed(millis: Long): String {
+    val seconds = (millis / 1000L).coerceAtLeast(0L)
+    return if (seconds < 60L) {
+        "${seconds}s"
+    } else {
+        "${seconds / 60L}m${seconds % 60L}s"
     }
 }
 

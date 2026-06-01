@@ -33,6 +33,12 @@ data class AiReadAloudRoleState(
     val newCharacterCandidateCount: Int = 0,
     val previewSource: String = SOURCE_NONE,
     val previewSegments: List<AiReadAloudRolePreviewSegment> = emptyList(),
+    val elapsedMillis: Long = 0L,
+    val requestCount: Int = 0,
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+    val totalTokens: Int = 0,
+    val cachedInputTokens: Int = 0,
     val error: String = ""
 ) {
     val running: Boolean

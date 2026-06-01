@@ -22,6 +22,22 @@ import java.io.IOException
 import java.net.SocketException
 import java.util.concurrent.TimeUnit
 
+data class AiUsageStats(
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+    val totalTokens: Int = 0,
+    val cachedInputTokens: Int = 0
+) {
+    operator fun plus(other: AiUsageStats): AiUsageStats {
+        return AiUsageStats(
+            inputTokens = inputTokens + other.inputTokens,
+            outputTokens = outputTokens + other.outputTokens,
+            totalTokens = totalTokens + other.totalTokens,
+            cachedInputTokens = cachedInputTokens + other.cachedInputTokens
+        )
+    }
+}
+
 object AiChatService {
 
     private const val MAX_TOOL_ROUNDS = 12
@@ -132,7 +148,8 @@ object AiChatService {
         toolOverride: List<AiResolvedTool>? = null,
         extraTools: List<AiResolvedTool> = emptyList(),
         modelConfigOverride: AiModelConfig? = null,
-        promptCacheKeyOverride: String? = null
+        promptCacheKeyOverride: String? = null,
+        onUsage: (AiUsageStats) -> Unit = {}
     ): String {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
         val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
@@ -210,7 +227,8 @@ object AiChatService {
                 includeStructuredBlocks = includeStructuredBlocks,
                 promptCacheKey = promptCacheKey,
                 useAllTools = useAllTools,
-                extraToolNames = extraToolNames
+                extraToolNames = extraToolNames,
+                onUsage = onUsage
             )
         }.getOrElse { throwable ->
             if (throwable is AiChatException) {
@@ -240,7 +258,8 @@ object AiChatService {
         includeStructuredBlocks: Boolean,
         promptCacheKey: String?,
         useAllTools: Boolean,
-        extraToolNames: Set<String>
+        extraToolNames: Set<String>,
+        onUsage: (AiUsageStats) -> Unit
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -270,7 +289,8 @@ object AiChatService {
                 requestLog = requestLog,
                 round = roundNo,
                 onPartial = onPartial,
-                onThinking = onThinking
+                onThinking = onThinking,
+                onUsage = onUsage
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
@@ -390,7 +410,8 @@ object AiChatService {
             requestLog = requestLog,
             round = MAX_TOOL_ROUNDS + 1,
             onPartial = onPartial,
-            onThinking = onThinking
+            onThinking = onThinking,
+            onUsage = onUsage
         )
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
@@ -559,7 +580,8 @@ object AiChatService {
         requestLog: StringBuilder,
         round: Int,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        onUsage: (AiUsageStats) -> Unit
     ): AssistantTurn {
         var lastError: Throwable? = null
         repeat(NETWORK_ABORT_RETRY_COUNT + 1) { attempt ->
@@ -583,7 +605,8 @@ object AiChatService {
                     requestLog = requestLog,
                     round = round,
                     onPartial = onPartial,
-                    onThinking = onThinking
+                    onThinking = onThinking,
+                    onUsage = onUsage
                 )
             } catch (throwable: Throwable) {
                 lastError = throwable
@@ -607,7 +630,8 @@ object AiChatService {
         requestLog: StringBuilder,
         round: Int,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        onUsage: (AiUsageStats) -> Unit
     ): AssistantTurn {
         val requestBody = buildRequestBody(
             messages = messages,
@@ -661,15 +685,15 @@ object AiChatService {
                         val payload = rawLine.removePrefix("data:").trim()
                         if (payload == "[DONE]") break
                         if (apiMode == AI_API_MODE_RESPONSES) {
-                            consumeResponsesStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                            consumeResponsesStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking, onUsage)
                         } else {
-                            consumeStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                            consumeStreamPayload(payload, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking, onUsage)
                         }
                     } else if (rawLine.startsWith("{")) {
                         if (apiMode == AI_API_MODE_RESPONSES) {
-                            consumeResponsesStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                            consumeResponsesStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking, onUsage)
                         } else {
-                            consumeStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking)
+                            consumeStreamPayload(rawLine, rawRendered, rendered, reasoningRendered, toolCallBuilders, onPartial, onThinking, onUsage)
                         }
                     }
                 }
@@ -827,12 +851,14 @@ object AiChatService {
         reasoningRendered: StringBuilder,
         toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        onUsage: (AiUsageStats) -> Unit
     ) {
         extractError(payload).takeIf { it.isNotBlank() }?.let {
             throw IllegalStateException(it)
         }
         val root = JSONObject(payload)
+        extractUsage(root)?.let(onUsage)
         val type = root.optString("type")
         when {
             type.contains("reasoning", ignoreCase = true) && type.endsWith(".delta") -> {
@@ -1011,12 +1037,14 @@ object AiChatService {
         reasoningRendered: StringBuilder,
         toolCallBuilders: MutableMap<Int, ToolCallBuilder>,
         onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit
+        onThinking: (String) -> Unit,
+        onUsage: (AiUsageStats) -> Unit
     ) {
         extractError(payload).takeIf { it.isNotBlank() }?.let {
             throw IllegalStateException(it)
         }
         val root = JSONObject(payload)
+        extractUsage(root)?.let(onUsage)
         val choice = root.optJSONArray("choices")?.optJSONObject(0) ?: return
         val delta = choice.optJSONObject("delta") ?: choice.optJSONObject("message") ?: return
         val reasoningText = extractContentText(delta.opt("reasoning_content"))
@@ -1050,6 +1078,39 @@ object AiChatService {
                 is JSONObject, is JSONArray -> builder.arguments.append(args.toString())
             }
         }
+    }
+
+    private fun extractUsage(root: JSONObject): AiUsageStats? {
+        val usage = root.optJSONObject("usage")
+            ?: root.optJSONObject("response")?.optJSONObject("usage")
+            ?: return null
+        val inputTokens = usage.firstInt("prompt_tokens", "input_tokens")
+        val outputTokens = usage.firstInt("completion_tokens", "output_tokens")
+        val totalTokens = usage.firstInt("total_tokens")
+            .takeIf { it > 0 }
+            ?: (inputTokens + outputTokens).takeIf { it > 0 }
+            ?: 0
+        val cachedInputTokens = usage.firstInt("cached_tokens", "cache_read_input_tokens") +
+                usage.firstInt("prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens")
+        return AiUsageStats(
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            totalTokens = totalTokens,
+            cachedInputTokens = cachedInputTokens
+        )
+    }
+
+    private fun JSONObject.firstInt(vararg keys: String): Int {
+        keys.forEach { key ->
+            val parts = key.split('.')
+            val value = when (parts.size) {
+                1 -> optInt(parts[0], -1)
+                2 -> optJSONObject(parts[0])?.optInt(parts[1], -1) ?: -1
+                else -> -1
+            }
+            if (value >= 0) return value
+        }
+        return 0
     }
 
     private fun buildAssistantRawMessage(
