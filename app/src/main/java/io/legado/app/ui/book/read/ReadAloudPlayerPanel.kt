@@ -1240,8 +1240,8 @@ private fun ReadAloudPlayerContent(
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
-    var activeSheet by remember(state.mode) { mutableStateOf(PlayerSheet.None) }
-    var sheetVisible by remember(state.mode) { mutableStateOf(false) }
+    var activeSheet by remember { mutableStateOf(PlayerSheet.None) }
+    var sheetVisible by remember { mutableStateOf(false) }
     val animateTextChanges = !AppConfig.isEInkMode && state.foregroundActive
     val animatePanelChanges = !AppConfig.isEInkMode && state.foregroundActive
     val sheetEnter = if (animatePanelChanges) {
@@ -2680,9 +2680,16 @@ private fun ScenePlayerStage(
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
         val listState = rememberLazyListState()
         val currentIndex = state.sceneSegments.indexOfFirst { it.current }.coerceAtLeast(0)
-        LaunchedEffect(state.chapterKey, currentIndex, state.sceneSegments.size) {
+        var lastSceneTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
+        LaunchedEffect(state.chapterKey, currentIndex) {
             if (state.sceneSegments.isNotEmpty()) {
-                listState.animateScrollToItem(currentIndex)
+                val firstTarget = lastSceneTarget == null
+                if (firstTarget) {
+                    listState.scrollToItem(currentIndex)
+                } else if (lastSceneTarget != currentIndex && !listState.isScrollInProgress) {
+                    listState.animateScrollToItem(currentIndex)
+                }
+                lastSceneTarget = currentIndex
             }
         }
         LazyColumn(
@@ -3006,6 +3013,7 @@ private fun LyricCueBody(
     val listState = rememberLazyListState()
     var userSeeking by remember(state.chapterKey) { mutableStateOf(false) }
     var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
+    var lastCenteredTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
     val currentIndex = state.currentCueIndex.coerceIn(0, cues.lastIndex)
     BoxWithConstraints(
         modifier = modifier
@@ -3037,14 +3045,14 @@ private fun LyricCueBody(
 
         LaunchedEffect(state.chapterKey) {
             userSeeking = false
-            programmaticScroll = true
-            centerCue(currentIndex, animated = false)
-            programmaticScroll = false
+            lastCenteredTarget = null
         }
         LaunchedEffect(state.chapterKey, currentIndex) {
             if (!userSeeking && cues.isNotEmpty()) {
                 programmaticScroll = true
-                centerCue(currentIndex, animated = true)
+                val firstTarget = lastCenteredTarget == null
+                centerCue(currentIndex, animated = !firstTarget)
+                lastCenteredTarget = currentIndex
                 programmaticScroll = false
             }
         }
