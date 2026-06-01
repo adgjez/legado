@@ -463,7 +463,9 @@ class HttpReadAloudService : BaseReadAloudService(),
     private fun speechRouteForIndex(index: Int): SpeechRoute? {
         val defaultRoute = ReadAloud.speechRoute.takeIf { it.isConfigured }
         if (!AppConfig.aiReadAloudRoleEnabled) return defaultRoute
-        speechRoutes.getOrNull(index)?.let { return it }
+        if (index in speechRoutes.indices) {
+            return speechRoutes[index] ?: defaultRoute
+        }
         val book = ReadBook.book ?: return null
         val chapter = textChapter ?: return null
         return AiReadAloudRoleService.routeForCue(
@@ -633,6 +635,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 play()
             } else {
                 exoPlayer.play()
+                postExoPlaybackPhase()
                 upPlayPos()
             }
         }
@@ -684,17 +687,18 @@ class HttpReadAloudService : BaseReadAloudService(),
         when (playbackState) {
             Player.STATE_IDLE -> {
                 // 空闲
+                postExoPlaybackPhase()
             }
 
             Player.STATE_BUFFERING -> {
-                postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_BUFFERING, message = "音频加载中")
+                postExoPlaybackPhase("音频加载中")
             }
 
             Player.STATE_READY -> {
                 // 准备好
                 if (pause) return
                 exoPlayer.play()
-                postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PLAYING)
+                postExoPlaybackPhase()
                 upPlayPos()
             }
 
@@ -726,6 +730,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             playErrorNo = 0
         }
         updateNextPos()
+        postExoPlaybackPhase()
         upPlayPos()
     }
 
@@ -745,6 +750,14 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
     }
 
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        super.onIsPlayingChanged(isPlaying)
+        postExoPlaybackPhase()
+        if (isPlaying) {
+            upPlayPos()
+        }
+    }
+
     private fun retryCurrentCue() {
         playIndexJob?.cancel()
         downloadTask?.cancel()
@@ -761,6 +774,25 @@ class HttpReadAloudService : BaseReadAloudService(),
                 downloadAndPlayAudios()
             }
         }
+    }
+
+    private fun postExoPlaybackPhase(message: String = "") {
+        val actualPlaying = exoPlayer.isPlaying
+        val buffering = exoPlayer.playbackState == Player.STATE_BUFFERING ||
+                (!pause && exoPlayer.playbackState == Player.STATE_READY && !actualPlaying)
+        val phase = when {
+            actualPlaying -> ReadAloudPlaybackState.PHASE_PLAYING
+            pause -> ReadAloudPlaybackState.PHASE_PAUSED
+            buffering -> ReadAloudPlaybackState.PHASE_BUFFERING
+            exoPlayer.playbackState == Player.STATE_ENDED -> ReadAloudPlaybackState.PHASE_STOPPED
+            else -> ReadAloudPlaybackState.PHASE_PREPARING
+        }
+        postReadAloudPlaybackPhase(
+            phase = phase,
+            message = message,
+            playing = actualPlaying,
+            buffering = buffering
+        )
     }
 
     private fun deleteCurrentSpeakFile() {

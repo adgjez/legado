@@ -4,10 +4,13 @@ data class ReadAloudPlaybackState(
     val phase: String = PHASE_STOPPED,
     val chapterIndex: Int = -1,
     val cueIndex: Int = -1,
-    val message: String = ""
+    val message: String = "",
+    val playing: Boolean? = null,
+    val buffering: Boolean = false,
+    val serviceRunning: Boolean = false
 ) {
     val busy: Boolean
-        get() = phase == PHASE_PREPARING || phase == PHASE_BUFFERING
+        get() = buffering || phase == PHASE_PREPARING || phase == PHASE_BUFFERING
 
     companion object {
         const val PHASE_PREPARING = "preparing"

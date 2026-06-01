@@ -304,6 +304,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var roleDetailKey = ""
     private var playbackPhase = ReadAloudPlaybackState.PHASE_STOPPED
     private var playbackMessage = ""
+    private var playbackActualPlaying: Boolean? = null
+    private var playbackBuffering = false
+    private var playbackCueIndex = -1
+    private var playbackChapterIndex = -1
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -385,6 +389,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 ) {
                     playbackPhase = ReadAloudPlaybackState.PHASE_PREPARING
                     playbackMessage = ""
+                    playbackActualPlaying = null
+                    playbackBuffering = true
                 }
                 syncPlaybackUiState()
                 if (autoExpand && !dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
@@ -396,6 +402,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 switchingTtsEngine = false
                 playbackPhase = ReadAloudPlaybackState.PHASE_PAUSED
                 playbackMessage = ""
+                playbackActualPlaying = false
+                playbackBuffering = false
                 syncPlaybackUiState()
             }
             io.legado.app.constant.Status.STOP -> {
@@ -418,6 +426,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 }
                 playbackPhase = ReadAloudPlaybackState.PHASE_STOPPED
                 playbackMessage = ""
+                playbackActualPlaying = false
+                playbackBuffering = false
+                playbackCueIndex = -1
+                playbackChapterIndex = -1
                 dismissedForCurrentRun = false
                 hidePanel()
             }
@@ -434,6 +446,10 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
         playbackPhase = state.phase
         playbackMessage = state.message
+        playbackActualPlaying = state.playing
+        playbackBuffering = state.busy
+        playbackCueIndex = state.cueIndex
+        playbackChapterIndex = state.chapterIndex
         syncPlaybackUiState()
     }
 
@@ -529,13 +545,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun syncPlaybackUiState() {
-        val servicePlaying = BaseReadAloudService.isPlay()
+        val servicePlaying = playbackActualPlaying ?: BaseReadAloudService.isPlay()
         uiState = uiState.copy(
             playing = servicePlaying,
             playbackPhase = playbackPhase,
-            playbackBusy = servicePlaying &&
-                    (playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
-                            playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING),
+            playbackBusy = playbackBuffering ||
+                    playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
+                    playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING,
             serviceRunning = BaseReadAloudService.isRun,
             foregroundActive = foregroundActive && visibility == VISIBLE
         )
@@ -913,7 +929,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterSequence = model?.chapterSequence ?: ReadBook.durChapterIndex
         val chapterKey = model?.chapterKey ?: "${ReadBook.book?.bookUrl.orEmpty()}:$chapterSequence"
         val totalLength = model?.totalLength ?: 1
+        val playbackCue = model?.cues?.getOrNull(playbackCueIndex)
+            ?.takeIf { playbackChapterIndex < 0 || playbackChapterIndex == chapterSequence }
         val chapterStart = when {
+            playbackCue != null &&
+                    playbackPhase != ReadAloudPlaybackState.PHASE_STOPPED &&
+                    playbackPhase != ReadAloudPlaybackState.PHASE_ERROR -> playbackCue.chapterPosition
             lastChapterStart > 0 -> lastChapterStart
             else -> ReadBook.durChapterPos
         }.coerceIn(0, totalLength)
@@ -958,7 +979,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 !model.roleCacheReady
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
-        val servicePlaying = BaseReadAloudService.isPlay()
+        val servicePlaying = playbackActualPlaying ?: BaseReadAloudService.isPlay()
         val roleEventVisible = roleStatusText.isNotBlank() &&
                 !roleDetailClosed &&
                 (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
@@ -971,9 +992,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapterIndexText = model?.chapterIndexText.orEmpty(),
             playing = servicePlaying,
             playbackPhase = playbackPhase,
-            playbackBusy = servicePlaying &&
-                    (playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
-                            playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING),
+            playbackBusy = playbackBuffering ||
+                    playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
+                    playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING,
             serviceRunning = BaseReadAloudService.isRun,
             timerMinute = timerMinute,
             progress = paragraphProgress,
@@ -2997,12 +3018,16 @@ private fun SceneBubble(
     val actionShape = LocalContext.current.composeActionShape()
     Surface(
         onClick = onClick,
-        modifier = modifier.widthIn(max = if (compact) 460.dp else 520.dp),
+        modifier = modifier
+            .widthIn(max = if (compact) 460.dp else 520.dp)
+            .graphicsLayer {
+                alpha = if (current) 1f else 0.88f
+            },
         shape = actionShape,
         color = bubbleColor,
         border = BorderStroke(
             1.dp,
-            if (current) colors.accent.copy(alpha = 0.62f) else colors.panelBorder.copy(alpha = 0.45f)
+            colors.panelBorder.copy(alpha = if (current) 0.28f else 0.45f)
         )
     ) {
         Column(

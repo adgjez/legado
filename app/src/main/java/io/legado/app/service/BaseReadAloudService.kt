@@ -443,15 +443,27 @@ abstract class BaseReadAloudService : BaseService(),
     protected fun postReadAloudPlaybackPhase(
         phase: String,
         cueIndex: Int = nowSpeak,
-        message: String = ""
+        message: String = "",
+        playing: Boolean? = null,
+        buffering: Boolean = phase == ReadAloudPlaybackState.PHASE_BUFFERING
     ) {
+        val isPlaying = playing ?: when (phase) {
+            ReadAloudPlaybackState.PHASE_PLAYING -> isPlay()
+            ReadAloudPlaybackState.PHASE_PAUSED,
+            ReadAloudPlaybackState.PHASE_STOPPED,
+            ReadAloudPlaybackState.PHASE_ERROR -> false
+            else -> null
+        }
         postEvent(
             EventBus.READ_ALOUD_PLAYBACK_STATE,
             ReadAloudPlaybackState(
                 phase = phase,
                 chapterIndex = ReadBook.durChapterIndex,
                 cueIndex = cueIndex,
-                message = message
+                message = message,
+                playing = isPlaying,
+                buffering = buffering,
+                serviceRunning = isRun
             )
         )
     }
