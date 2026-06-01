@@ -72,7 +72,7 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRolePreprocess,
             PreferKey.aiReadAloudRoleThreadCount,
-            PreferKey.aiReadAloudRoleContextParagraphs,
+            PreferKey.aiReadAloudRoleBatchParagraphCount,
             PreferKey.aiReadAloudRolePrompt
         )
     ),
@@ -255,13 +255,13 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     AppConfig.aiReadAloudRoleThreadCount = it
                     updateAiRolePreferences()
                 }
-                PreferKey.aiReadAloudRoleContextParagraphs -> showAiRoleNumberDialog(
-                    title = "AI分角色上下文段数",
-                    value = AppConfig.aiReadAloudRoleContextParagraphs,
-                    min = 0,
-                    max = 20
+                PreferKey.aiReadAloudRoleBatchParagraphCount -> showAiRoleNumberDialog(
+                    title = "AI分角色每批段落数",
+                    value = AppConfig.aiReadAloudRoleBatchParagraphCount,
+                    min = 4,
+                    max = 40
                 ) {
-                    AppConfig.aiReadAloudRoleContextParagraphs = it
+                    AppConfig.aiReadAloudRoleBatchParagraphCount = it
                     updateAiRolePreferences()
                 }
                 PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
@@ -298,7 +298,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudAutoCreateCharacters,
                 PreferKey.aiReadAloudRoleMode,
                 PreferKey.aiReadAloudRoleThreadCount,
-                PreferKey.aiReadAloudRoleContextParagraphs,
+                PreferKey.aiReadAloudRoleBatchParagraphCount,
                 PreferKey.aiReadAloudRolePrompt -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
@@ -334,8 +334,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 val preference = findPreference<Preference>(key) ?: return@forEach
                 val visibleInGroup = key in group.preferenceKeys
                 val visibleForMode = when (key) {
-                    PreferKey.aiReadAloudRoleThreadCount,
-                    PreferKey.aiReadAloudRoleContextParagraphs -> !fullMode
+                    PreferKey.aiReadAloudRoleThreadCount -> !fullMode
                     else -> true
                 }
                 preference.isVisible = visibleInGroup && visibleForMode
@@ -386,17 +385,17 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
             findPreference<Preference>(PreferKey.aiReadAloudRolePreprocess)?.let {
                 it.isEnabled = enabled
-                it.summary = "内置规则先稳定切成 unitId，AI 只确认不确定单元；播放端会补齐未覆盖文本"
+                it.summary = "内置规则只负责稳定切成 unitId；AI 批量确认不确定单元，不再返回 start/end"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleThreadCount)?.let {
                 it.isEnabled = enabled
                 it.isVisible = !fullMode
                 it.summary = AppConfig.aiReadAloudRoleThreadCount.toString()
             }
-            findPreference<Preference>(PreferKey.aiReadAloudRoleContextParagraphs)?.let {
+            findPreference<Preference>(PreferKey.aiReadAloudRoleBatchParagraphCount)?.let {
                 it.isEnabled = enabled
-                it.isVisible = !fullMode
-                it.summary = AppConfig.aiReadAloudRoleContextParagraphs.toString()
+                it.isVisible = true
+                it.summary = AppConfig.aiReadAloudRoleBatchParagraphCount.toString()
             }
             findPreference<Preference>(PreferKey.aiReadAloudRolePrompt)?.let {
                 it.isEnabled = enabled
@@ -453,7 +452,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         ) {
             val displayTitle = when (max) {
                 8 -> "多角色线程数"
-                20 -> "上下文"
+                40 -> "每批段落数"
                 else -> title
             }
             NumberPickerDialog(requireContext())
