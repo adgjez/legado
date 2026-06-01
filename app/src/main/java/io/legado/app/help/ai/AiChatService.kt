@@ -131,7 +131,8 @@ object AiChatService {
         useAllTools: Boolean = false,
         toolOverride: List<AiResolvedTool>? = null,
         extraTools: List<AiResolvedTool> = emptyList(),
-        modelConfigOverride: AiModelConfig? = null
+        modelConfigOverride: AiModelConfig? = null,
+        promptCacheKeyOverride: String? = null
     ): String {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
         val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
@@ -140,7 +141,10 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
-        val promptCacheKey = provider
+        val promptCacheKey = promptCacheKeyOverride
+            ?.takeIf { provider?.promptCache == true }
+            ?.let(::normalizePromptCacheKey)
+            ?: provider
             ?.takeIf { it.promptCache }
             ?.let { buildPromptCacheKey(it, model) }
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
@@ -1358,9 +1362,13 @@ object AiChatService {
 
     private fun buildPromptCacheKey(provider: AiProviderConfig, model: String): String {
         val raw = "${provider.id}:${model}".lowercase()
-        return raw.replace(Regex("[^a-z0-9._:-]"), "_")
+        return normalizePromptCacheKey(raw).ifBlank { provider.id.take(64) }
+    }
+
+    private fun normalizePromptCacheKey(raw: String): String {
+        return raw.lowercase()
+            .replace(Regex("[^a-z0-9._:-]"), "_")
             .take(128)
-            .ifBlank { provider.id.take(64) }
     }
 
     private fun resolveChatUrl(baseUrl: String, apiMode: String): String {
