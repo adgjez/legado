@@ -39,7 +39,7 @@ data class ReadAloudRolePreprocessResult(
 
 object ReadAloudRolePreprocessor {
 
-    const val VERSION = "builtin-quote-colon-v1"
+    const val VERSION = "builtin-quote-colon-v2"
 
     private val quotePairs = mapOf(
         '“' to '”',
@@ -145,20 +145,17 @@ object ReadAloudRolePreprocessor {
             val speaker = raw.substring(0, colonIndex).trim()
             val speechStart = start + colonIndex + 1
             if (speechStart < end && isLikelySpeakerName(speaker)) {
-                val speechText = text.substring(speechStart, end)
-                if (speechText.isNotBlank()) {
-                    units += unit(
-                        kind = "dialogue",
-                        roleType = "character",
-                        characterName = speaker,
-                        ranges = listOf(ReadAloudRoleRange(paragraphIndex, speechStart, end)),
-                        text = speechText,
-                        speakerHint = speaker,
-                        confidence = 0.78,
-                        needsAi = false,
-                        reason = "speaker_colon"
-                    )
-                }
+                units += unit(
+                    kind = "dialogue",
+                    roleType = "character",
+                    characterName = speaker,
+                    ranges = listOf(ReadAloudRoleRange(paragraphIndex, start, end)),
+                    text = raw,
+                    speakerHint = speaker,
+                    confidence = 0.78,
+                    needsAi = false,
+                    reason = "speaker_colon"
+                )
                 return
             }
         }
