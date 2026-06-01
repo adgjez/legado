@@ -1,5 +1,8 @@
 package io.legado.app.help.readaloud.role
 
+import io.legado.app.help.config.AppConfig
+import org.json.JSONObject
+
 data class ReadAloudRoleRange(
     val paragraphIndex: Int,
     val start: Int,
@@ -43,7 +46,7 @@ object ReadAloudRolePreprocessor {
 
     const val VERSION = "builtin-dialogue-cluster-v4"
 
-    private val quotePairs = mapOf(
+    private val defaultQuotePairs = mapOf(
         '“' to '”',
         '‘' to '’',
         '"' to '"',
@@ -51,13 +54,32 @@ object ReadAloudRolePreprocessor {
         '「' to '」',
         '『' to '』'
     )
-    private val sentencePunctuation = setOf('。', '！', '？', '…', '!', '?')
-    private val thoughtCueRegex = Regex("(?:心道|暗道|想道|心想)\\s*[，,、：:]?\\s*$")
+    private val defaultSentencePunctuation = setOf('。', '！', '？', '…', '!', '?')
+    private val defaultThoughtCuePatterns = listOf("心道", "暗道", "想道", "心想")
+
+    private data class RuleConfig(
+        val quotePairs: Map<Char, Char> = defaultQuotePairs,
+        val sentencePunctuation: Set<Char> = defaultSentencePunctuation,
+        val thoughtCuePatterns: List<String> = defaultThoughtCuePatterns,
+        val dialogueMinLength: Int = 6,
+        val emphasisMaxLength: Int = 8,
+        val colonCueMaxLength: Int = 24,
+        val mergeCrossParagraphQuote: Boolean = true
+    ) {
+        val thoughtCueRegex: Regex by lazy {
+            val pattern = thoughtCuePatterns
+                .filter { it.isNotBlank() }
+                .joinToString("|") { Regex.escape(it) }
+                .ifBlank { "心道|暗道|想道|心想" }
+            Regex("(?:$pattern)\\s*[，,、：:]?\\s*$")
+        }
+    }
 
     fun process(
         paragraphs: List<String>,
         paragraphOffset: Int = 0
     ): ReadAloudRolePreprocessResult {
+        val config = loadRuleConfig()
         if (paragraphs.isEmpty()) {
             return ReadAloudRolePreprocessResult(VERSION, emptyList())
         }
@@ -72,7 +94,7 @@ object ReadAloudRolePreprocessor {
                 val closeIndex = text.indexOf(open.closeChar)
                 if (closeIndex >= 0) {
                     val ranges = open.ranges + ReadAloudRoleRange(paragraphIndex, 0, closeIndex + 1)
-                    units += quoteUnit(paragraphs, paragraphOffset, ranges, open.openChar, open.closeChar)
+                    units += quoteUnit(paragraphs, paragraphOffset, ranges, open.openChar, open.closeChar, config)
                     cursor = closeIndex + 1
                     index = cursor
                     openQuote = null
@@ -84,20 +106,20 @@ object ReadAloudRolePreprocessor {
             }
 
             while (index < text.length) {
-                val closeChar = quotePairs[text[index]]
+                val closeChar = config.quotePairs[text[index]]
                 if (closeChar == null) {
                     index++
                     continue
                 }
                 val endQuote = findClosingQuote(text, index + 1, closeChar)
                 if (endQuote >= 0) {
-                    addPlainUnits(units, paragraphIndex, text, cursor, index)
+                    addPlainUnits(units, paragraphIndex, text, cursor, index, config)
                     val range = ReadAloudRoleRange(paragraphIndex, index, endQuote + 1)
-                    units += quoteUnit(paragraphs, paragraphOffset, listOf(range), text[index], closeChar)
+                    units += quoteUnit(paragraphs, paragraphOffset, listOf(range), text[index], closeChar, config)
                     cursor = endQuote + 1
                     index = cursor
                 } else {
-                    addPlainUnits(units, paragraphIndex, text, cursor, index)
+                    addPlainUnits(units, paragraphIndex, text, cursor, index, config)
                     openQuote = OpenQuote(
                         openChar = text[index],
                         closeChar = closeChar,
@@ -107,12 +129,12 @@ object ReadAloudRolePreprocessor {
                     index = text.length
                 }
             }
-            addPlainUnits(units, paragraphIndex, text, cursor, text.length)
+            addPlainUnits(units, paragraphIndex, text, cursor, text.length, config)
         }
 
         openQuote?.let { open ->
             if (open.ranges.isNotEmpty()) {
-                units += quoteUnit(paragraphs, paragraphOffset, open.ranges, open.openChar, open.closeChar)
+                units += quoteUnit(paragraphs, paragraphOffset, open.ranges, open.openChar, open.closeChar, config)
             }
         }
 
@@ -129,13 +151,14 @@ object ReadAloudRolePreprocessor {
         paragraphIndex: Int,
         text: String,
         start: Int,
-        end: Int
+        end: Int,
+        config: RuleConfig
     ) {
         if (start >= end) return
         val raw = text.substring(start, end)
         if (raw.isBlank()) return
         val colonIndex = raw.indexOfFirst { it == '：' || it == ':' }
-        if (colonIndex in 1..24) {
+        if (colonIndex in 1..config.colonCueMaxLength) {
             val prefix = raw.substring(0, colonIndex).trim()
             val speechStart = start + colonIndex + 1
             if (speechStart < end && prefix.isNotBlank() && isSimpleCuePrefix(prefix)) {
@@ -168,7 +191,8 @@ object ReadAloudRolePreprocessor {
         paragraphOffset: Int,
         ranges: List<ReadAloudRoleRange>,
         openChar: Char,
-        closeChar: Char
+        closeChar: Char,
+        config: RuleConfig
     ): ReadAloudRoleUnit {
         val text = ranges.joinToString("\n") { range ->
             val paragraph = paragraphs.getOrNull(range.paragraphIndex - paragraphOffset).orEmpty()
@@ -181,16 +205,16 @@ object ReadAloudRolePreprocessor {
             .trim(openChar, closeChar, '“', '”', '‘', '’', '"', '\'', '「', '」', '『', '』')
             .trim()
         val isCrossParagraph = ranges.map { it.paragraphIndex }.distinct().size > 1
-        val looksLikeDialogue = isCrossParagraph ||
-            inner.length >= 6 ||
-            inner.any { it in sentencePunctuation }
-        val thought = thoughtCueRegex.containsMatchIn(prefix.takeLast(40)) ||
+        val looksLikeDialogue = (isCrossParagraph && config.mergeCrossParagraphQuote) ||
+            inner.length >= config.dialogueMinLength ||
+            inner.any { it in config.sentencePunctuation }
+        val thought = config.thoughtCueRegex.containsMatchIn(prefix.takeLast(40)) ||
             suffix.take(40).contains("心想") ||
             suffix.take(40).contains("心道") ||
             suffix.take(40).contains("暗道")
 
         if (!looksLikeDialogue) {
-            val kind = if (inner.length <= 8) "emphasis" else "citation"
+            val kind = if (inner.length <= config.emphasisMaxLength) "emphasis" else "citation"
             return unit(
                 kind = kind,
                 roleType = "narrator",
@@ -218,6 +242,43 @@ object ReadAloudRolePreprocessor {
             cueBefore = prefix,
             cueAfter = suffix
         )
+    }
+
+    private fun loadRuleConfig(): RuleConfig {
+        return runCatching {
+            val root = JSONObject(AppConfig.aiReadAloudRolePreprocessRules)
+            val quotePairs = linkedMapOf<Char, Char>()
+            val pairArray = root.optJSONArray("quotePairs")
+            if (pairArray != null) {
+                for (index in 0 until pairArray.length()) {
+                    val item = pairArray.optJSONObject(index) ?: continue
+                    val open = item.optString("open").firstOrNull() ?: continue
+                    val close = item.optString("close").firstOrNull() ?: continue
+                    quotePairs[open] = close
+                }
+            }
+            val thoughtPatterns = mutableListOf<String>()
+            val patternArray = root.optJSONArray("thoughtCuePatterns")
+            if (patternArray != null) {
+                for (index in 0 until patternArray.length()) {
+                    patternArray.optString(index).trim().takeIf { it.isNotBlank() }?.let(thoughtPatterns::add)
+                }
+            }
+            RuleConfig(
+                quotePairs = quotePairs.ifEmpty { defaultQuotePairs },
+                sentencePunctuation = root.optString("sentencePunctuation")
+                    .takeIf { it.isNotBlank() }
+                    ?.toSet()
+                    ?: defaultSentencePunctuation,
+                thoughtCuePatterns = thoughtPatterns.ifEmpty { defaultThoughtCuePatterns },
+                dialogueMinLength = root.optInt("dialogueMinLength", 6).coerceIn(1, 80),
+                emphasisMaxLength = root.optInt("emphasisMaxLength", 8).coerceIn(1, 80),
+                colonCueMaxLength = root.optInt("colonCueMaxLength", 24).coerceIn(1, 80),
+                mergeCrossParagraphQuote = root.optBoolean("mergeCrossParagraphQuote", true)
+            )
+        }.getOrElse {
+            RuleConfig()
+        }
     }
 
     private fun unit(

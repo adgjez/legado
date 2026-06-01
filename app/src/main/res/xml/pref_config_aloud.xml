@@ -97,8 +97,7 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="aiReadAloudRolePreprocess"
-            android:selectable="false"
-            android:summary="内置引号、冒号、跨段对话预切分；AI 只确认不确定 unitId，不再要求返回 start/end"
+            android:summary="内置引号、冒号、跨段对话预切分；AI 只确认不确定 unitId"
             android:title="预处理规则"
             app:iconSpaceReserved="false" />
 

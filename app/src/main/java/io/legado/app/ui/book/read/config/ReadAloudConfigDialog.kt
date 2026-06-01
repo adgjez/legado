@@ -40,6 +40,7 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import org.json.JSONObject
 
 enum class ReadAloudConfigGroup(
     val title: String,
@@ -274,6 +275,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     AppConfig.aiReadAloudRoleMergeGapParagraphs = it
                     updateAiRolePreferences()
                 }
+                PreferKey.aiReadAloudRolePreprocess -> showMultiRolePreprocessRulesDialog()
                 PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
             }
             return super.onPreferenceTreeClick(preference)
@@ -307,6 +309,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudRoleModelId,
                 PreferKey.aiReadAloudAutoCreateCharacters,
                 PreferKey.aiReadAloudRoleMode,
+                PreferKey.aiReadAloudRolePreprocess,
                 PreferKey.aiReadAloudRoleThreadCount,
                 PreferKey.aiReadAloudRoleContextParagraphs,
                 PreferKey.aiReadAloudRoleMergeGapParagraphs,
@@ -398,7 +401,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
             findPreference<Preference>(PreferKey.aiReadAloudRolePreprocess)?.let {
                 it.isEnabled = enabled
-                it.summary = "内置规则只负责稳定切成 unitId；AI 批量确认不确定单元，不再返回 start/end"
+                val prefix = if (AppConfig.aiReadAloudRoleUsingDefaultPreprocessRules) "内置默认 · " else ""
+                it.summary = prefix + "引号、冒号、跨段对话、心理活动等预切分规则"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleThreadCount)?.let {
                 it.isEnabled = enabled
@@ -502,6 +506,39 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 neutralButton("恢复默认") {
                     AppConfig.aiReadAloudRolePrompt = ""
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showMultiRolePreprocessRulesDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "JSON 规则。可调整 quotePairs、sentencePunctuation、thoughtCuePatterns、dialogueMinLength、emphasisMaxLength、colonCueMaxLength。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 10
+                editView.setText(AppConfig.aiReadAloudRolePreprocessRules)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("预处理规则") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 8000) {
+                        toastOnUi("预处理规则最多 8000 字")
+                        return@okButton
+                    }
+                    if (value.isNotBlank()) {
+                        runCatching { JSONObject(value) }.onFailure {
+                            toastOnUi("预处理规则不是有效 JSON")
+                            return@okButton
+                        }
+                    }
+                    AppConfig.aiReadAloudRolePreprocessRules = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudRolePreprocessRules = ""
                     updateAiRolePreferences()
                 }
                 cancelButton()

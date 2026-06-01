@@ -188,7 +188,8 @@ object AiReadAloudRoleService {
         val modelConfig = AppConfig.aiReadAloudRoleModelConfig ?: return null
         val prompt = AppConfig.aiReadAloudRolePrompt.trim()
         val baseMode = AppConfig.aiReadAloudRoleMode
-        val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}"
+        val preprocessRuleHash = MD5Utils.md5Encode(AppConfig.aiReadAloudRolePreprocessRules)
+        val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}|rules=$preprocessRuleHash"
         val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
         val promptHash = MD5Utils.md5Encode(prompt)
         val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
@@ -1413,10 +1414,10 @@ object AiReadAloudRoleService {
                 .toList()
         }
         val unitSummary = relatedUnits.joinToString("\n") { unit ->
-            "${unit.id}|${unit.roleType}|${rangeLabel(unit)}|${unit.reason}|前=${unit.cueBefore.compactForPrompt(50)}|后=${unit.cueAfter.compactForPrompt(50)}|${unit.text.compactForPrompt(220)}"
+            "${unit.id}|${unit.roleType}|${unitParagraphLabel(unit)}|${unit.reason}|前=${unit.cueBefore.compactForPrompt(50)}|后=${unit.cueAfter.compactForPrompt(50)}|${unit.text.compactForPrompt(220)}"
         }.ifBlank { "无" }
         val targetUnits = batch.units.joinToString("\n") { unit ->
-            "${unit.id}|${unit.roleType}|${rangeLabel(unit)}|${unit.text.compactForPrompt(360)}"
+            "${unit.id}|${unit.roleType}|${unitParagraphLabel(unit)}|${unit.text.compactForPrompt(360)}"
         }
         val resolvedSummary = knownResolutions
             .sortedBy { it.unitId }
@@ -1429,7 +1430,7 @@ object AiReadAloudRoleService {
             else -> "补救：只处理未解决 unit；仍无明确证据就 unknown，不猜。"
         }
         return """
-            任务：小说朗读分角色。客户端已切好 unit；只给 targetUnitIds 归因，不返回 start/end，不改原文。
+            任务：小说朗读分角色。客户端已切好 unit；只给 targetUnitIds 归因，不新增 unit，不改原文。
             规则：必须调用 $TOOL_CONFIRM_UNITS；units 只含 targetUnitIds 且逐个覆盖。roleType=narrator/character/thought/other。证据不足 status=unknown、characterName 空。引号和句末符号跟随同一句台词。强调/称号/书名引用不是发言时归旁白。优先用角色卡 name；新角色必须有明确证据并写 newCharacters。不要把代词、称呼对象、动作、语气、副词当角色。情绪不明确留空。
             角色(id|name|info)：
             $characters
@@ -1639,17 +1640,17 @@ object AiReadAloudRoleService {
             "$mark 段落${absolute + 1}: $text"
         }.joinToString("\n")
         val localSummary = units.joinToString("\n") { unit ->
-            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${rangeLabel(unit)} | speakerHint=${unit.speakerHint.ifBlank { "无" }} | confidence=${"%.2f".format(unit.confidence)} | text=${unit.text.compactForPrompt(220)}"
+            "- ${unit.id} | ${unit.kind}/${unit.roleType} | ${unitParagraphLabel(unit)} | speakerHint=${unit.speakerHint.ifBlank { "无" }} | confidence=${"%.2f".format(unit.confidence)} | text=${unit.text.compactForPrompt(220)}"
         }.ifBlank { "无" }
         val uncertainSummary = uncertainUnits.joinToString("\n") { unit ->
-            "- ${unit.id} | reason=${unit.reason} | ${rangeLabel(unit)} | text=${unit.text.compactForPrompt(360)}"
+            "- ${unit.id} | reason=${unit.reason} | ${unitParagraphLabel(unit)} | text=${unit.text.compactForPrompt(360)}"
         }
         return """
             你是小说朗读分角色确认器。客户端已经用本地规则把章节切成稳定 unit，已经确定的 unit 不需要你重复标注；你只需要确认“不确定 unit”的朗读身份、说话人和情绪。
 
             必须遵守：
             1. 必须调用工具 $TOOL_CONFIRM_UNITS 记录结果。
-            2. 只处理“不确定 unit 列表”里的 unitId，不要新造 unitId，不要返回 start/end。
+            2. 只处理“不确定 unit 列表”里的 unitId，不要新造 unitId，不要改写原文。
             3. roleType 只能使用 narrator、character、thought、other。
             4. 引号、句末标点、省略号属于同一句台词时，应跟随台词角色，不要把符号单独标为旁白。
             5. ““卧龙”军师”这类强调、称号、书名、外号引用，不是直接发言时应保持 narrator。
@@ -1682,10 +1683,11 @@ object AiReadAloudRoleService {
         """.trimIndent()
     }
 
-    private fun rangeLabel(unit: ReadAloudRoleUnit): String {
-        return unit.ranges.joinToString(",") { range ->
-            "P${range.paragraphIndex + 1}[${range.start},${range.end})"
-        }
+    private fun unitParagraphLabel(unit: ReadAloudRoleUnit): String {
+        return unit.ranges
+            .map { "P${it.paragraphIndex + 1}" }
+            .distinct()
+            .joinToString("+")
     }
 
     private fun String.compactForPrompt(maxLength: Int): String {
@@ -1823,7 +1825,7 @@ object AiReadAloudRoleService {
             1. 必须调用工具 $TOOL_RECORD_SEGMENTS 记录结果。
             2. 只记录 [TARGET] 段落，不要记录 [CONTEXT] 段落。
             3. paragraphIndex 使用从 0 开始的绝对段落索引。
-            4. start/end 使用 Kotlin 字符串下标，start 包含，end 不包含。
+            4. 片段位置使用 Kotlin 字符串字符下标，左闭右开。
             5. 一个段落可以有多个片段，例如“我说‘你好’”应拆成旁白和角色台词。
             6. roleType 只能使用 narrator、character、thought、other。
             7. characterName 不确定时留空；已有角色请优先使用角色卡中的准确名称。

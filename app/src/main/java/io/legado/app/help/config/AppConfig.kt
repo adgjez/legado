@@ -844,13 +844,31 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     const val AI_READ_ALOUD_ROLE_MODE_CHUNK = "chunk_context"
     val DEFAULT_AI_READ_ALOUD_ROLE_PROMPT = """
         请按“适合朗读配音”的标准做多角色分配：
-        1. 客户端已经切好 unitId，不要返回 start/end，不要改写或丢弃原文。
+        1. 客户端已经切好 unitId，只按 unitId 给出朗读身份，不要改写或丢弃原文。
         2. 台词、心理活动、旁白按 unit 归因；引号和句末符号属于同一句台词时跟随台词角色。
         3. 说话人必须有文本证据；无法确认时 status=unknown，characterName 留空，不要猜。
         4. 优先使用已有角色卡里的准确角色名；角色卡会注入到上下文。
         5. 只有角色列表不存在且文本明确出现稳定新角色/稳定路人称谓时，才记录 newCharacters，并给出 evidence。
         6. 不要把代词、称呼对象、动作、语气、情绪、副词、短语当成新角色。
         7. 情绪明确时填写 emotionName/emotionTag；不明确留空，避免过度脑补。
+    """.trimIndent()
+    val DEFAULT_AI_READ_ALOUD_PREPROCESS_RULES = """
+        {
+          "quotePairs": [
+            {"open": "“", "close": "”"},
+            {"open": "‘", "close": "’"},
+            {"open": "\"", "close": "\""},
+            {"open": "'", "close": "'"},
+            {"open": "「", "close": "」"},
+            {"open": "『", "close": "』"}
+          ],
+          "sentencePunctuation": "。！？…!?",
+          "thoughtCuePatterns": ["心道", "暗道", "想道", "心想"],
+          "dialogueMinLength": 6,
+          "emphasisMaxLength": 8,
+          "colonCueMaxLength": 24,
+          "mergeCrossParagraphQuote": true
+        }
     """.trimIndent()
 
     var aiReadAloudRoleEnabled: Boolean
@@ -887,6 +905,22 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val aiReadAloudRoleUsingDefaultPrompt: Boolean
         get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePrompt).isNullOrBlank()
+
+    var aiReadAloudRolePreprocessRules: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePreprocessRules)
+            .orEmpty()
+            .ifBlank { DEFAULT_AI_READ_ALOUD_PREPROCESS_RULES }
+        set(value) {
+            val rules = value.trim()
+            if (rules.isBlank() || rules == DEFAULT_AI_READ_ALOUD_PREPROCESS_RULES) {
+                appCtx.removePref(PreferKey.aiReadAloudRolePreprocessRules)
+            } else {
+                appCtx.putPrefString(PreferKey.aiReadAloudRolePreprocessRules, rules.take(8000))
+            }
+        }
+
+    val aiReadAloudRoleUsingDefaultPreprocessRules: Boolean
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePreprocessRules).isNullOrBlank()
 
     var aiReadAloudRoleMode: String
         get() = appCtx.getPrefString(PreferKey.aiReadAloudRoleMode)
