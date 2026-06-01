@@ -39,6 +39,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -686,13 +687,14 @@ class HttpReadAloudService : BaseReadAloudService(),
             }
 
             Player.STATE_BUFFERING -> {
-                // 缓冲中
+                postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_BUFFERING, message = "音频加载中")
             }
 
             Player.STATE_READY -> {
                 // 准备好
                 if (pause) return
                 exoPlayer.play()
+                postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PLAYING)
                 upPlayPos()
             }
 
@@ -735,8 +737,10 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (playErrorNo >= 5) {
             toastOnUi("朗读连续5次错误, 最后一次错误代码(${error.localizedMessage})")
             AppLog.put("朗读连续5次错误, 最后一次错误代码(${error.localizedMessage})", error)
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_ERROR, message = error.localizedMessage ?: "")
             pauseReadAloud()
         } else {
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_BUFFERING, message = "重试当前音频")
             retryCurrentCue()
         }
     }

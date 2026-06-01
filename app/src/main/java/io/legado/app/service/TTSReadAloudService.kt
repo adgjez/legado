@@ -11,6 +11,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.LogUtils
@@ -200,6 +201,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         private val TAG = "TTSUtteranceListener"
 
         override fun onStart(s: String) {
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PLAYING)
             LogUtils.d(TAG, "onStart nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$s")
             textChapter?.let {
                 if (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex)) {
@@ -237,6 +239,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_ERROR, message = "TTS错误 $errorCode")
             LogUtils.d(
                 TAG,
                 "onError nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$utteranceId errorCode:$errorCode"
@@ -253,6 +256,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
         @Deprecated("Deprecated in Java")
         override fun onError(s: String) {
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_ERROR, message = "TTS错误")
             LogUtils.d(TAG, "onError nowSpeak:$nowSpeak pageIndex:$pageIndex s:$s")
             nextParagraph()
         }

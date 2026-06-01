@@ -39,6 +39,7 @@ import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
 import io.legado.app.help.readaloud.speech.SpeechRoute
@@ -245,6 +246,7 @@ abstract class BaseReadAloudService : BaseService(),
         pause = true
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
+        postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_STOPPED)
         postEvent(EventBus.ALOUD_STATE, Status.STOP)
         notificationManager.cancel(NotificationId.ReadAloudService)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -291,6 +293,10 @@ abstract class BaseReadAloudService : BaseService(),
             val baseCues = textChapter.buildReadAloudCues(readAloudByPage)
             readAloudCues = baseCues
             contentList = baseCues.map { it.text }
+            postReadAloudPlaybackPhase(
+                if (play) ReadAloudPlaybackState.PHASE_PREPARING else ReadAloudPlaybackState.PHASE_PAUSED,
+                message = if (play) "准备朗读" else ""
+            )
             val roleContentList = contentList
             var roleCacheKey: String? = null
             if (AppConfig.aiReadAloudRoleEnabled) {
@@ -359,6 +365,7 @@ abstract class BaseReadAloudService : BaseService(),
         pause = true
         pageChanged = true
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PAUSED, message = "等待角色分配")
         postEvent(EventBus.ALOUD_STATE, Status.PAUSE)
     }
 
@@ -405,6 +412,7 @@ abstract class BaseReadAloudService : BaseService(),
         }
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PAUSED)
         postEvent(EventBus.ALOUD_STATE, Status.PAUSE)
         ReadBook.uploadProgress()
         doDs()
@@ -422,6 +430,7 @@ abstract class BaseReadAloudService : BaseService(),
         needResumeOnCallStateIdle = false
         upReadAloudNotification()
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PREPARING)
         postEvent(EventBus.ALOUD_STATE, Status.PLAY)
     }
 
@@ -429,6 +438,22 @@ abstract class BaseReadAloudService : BaseService(),
 
     fun upTtsProgress(progress: Int) {
         postEvent(EventBus.TTS_PROGRESS, progress)
+    }
+
+    protected fun postReadAloudPlaybackPhase(
+        phase: String,
+        cueIndex: Int = nowSpeak,
+        message: String = ""
+    ) {
+        postEvent(
+            EventBus.READ_ALOUD_PLAYBACK_STATE,
+            ReadAloudPlaybackState(
+                phase = phase,
+                chapterIndex = ReadBook.durChapterIndex,
+                cueIndex = cueIndex,
+                message = message
+            )
+        )
     }
 
     private fun prevP() {

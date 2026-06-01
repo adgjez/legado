@@ -115,6 +115,7 @@ import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
+import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
@@ -241,6 +242,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterTitle: String = "",
         val chapterIndexText: String = "",
         val playing: Boolean = false,
+        val playbackPhase: String = ReadAloudPlaybackState.PHASE_STOPPED,
+        val playbackBusy: Boolean = false,
         val serviceRunning: Boolean = false,
         val timerMinute: Int = 0,
         val progress: Float = 0f,
@@ -293,6 +296,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var roleDetailCollapsed = false
     private var roleDetailClosed = false
     private var roleDetailKey = ""
+    private var playbackPhase = ReadAloudPlaybackState.PHASE_STOPPED
+    private var playbackMessage = ""
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -399,6 +404,14 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun onTtsProgress(chapterStart: Int) {
         lastChapterStart = chapterStart.coerceAtLeast(0)
+        refresh()
+    }
+
+    fun onPlaybackState(state: ReadAloudPlaybackState) {
+        val currentChapterIndex = ReadBook.curTextChapter?.chapter?.index ?: ReadBook.durChapterIndex
+        if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
+        playbackPhase = state.phase
+        playbackMessage = state.message
         refresh()
     }
 
@@ -847,7 +860,18 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             sourceOrigin = book?.origin,
             chapterTitle = chapterTitle,
             chapterIndexText = chapterIndexText,
-            playing = BaseReadAloudService.isPlay(),
+            playing = playbackPhase == ReadAloudPlaybackState.PHASE_PLAYING ||
+                    (BaseReadAloudService.isPlay() &&
+                            playbackPhase !in setOf(
+                        ReadAloudPlaybackState.PHASE_PREPARING,
+                        ReadAloudPlaybackState.PHASE_BUFFERING,
+                        ReadAloudPlaybackState.PHASE_PAUSED,
+                        ReadAloudPlaybackState.PHASE_STOPPED,
+                        ReadAloudPlaybackState.PHASE_ERROR
+                    )),
+            playbackPhase = playbackPhase,
+            playbackBusy = playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
+                    playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING,
             serviceRunning = BaseReadAloudService.isRun,
             timerMinute = timerMinute,
             progress = paragraphProgress,
@@ -1673,12 +1697,21 @@ private fun ReadAloudCapsule(
                     color = Color.White.copy(alpha = 0.92f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
-                            contentDescription = null,
-                            tint = Color.Black.copy(alpha = 0.86f),
-                            modifier = Modifier.size(21.dp)
-                        )
+                        if (state.playbackBusy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.Black.copy(alpha = 0.72f),
+                                trackColor = Color.Black.copy(alpha = 0.12f)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
+                                contentDescription = null,
+                                tint = Color.Black.copy(alpha = 0.86f),
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
                     }
                 }
                 Surface(
@@ -3208,12 +3241,21 @@ private fun PlayerControlDock(
                 shadowElevation = 16.dp
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
-                        contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
-                        tint = Color.Black.copy(alpha = 0.88f),
-                        modifier = Modifier.size(34.dp)
-                    )
+                    if (state.playbackBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(30.dp),
+                            strokeWidth = 3.dp,
+                            color = Color.Black.copy(alpha = 0.72f),
+                            trackColor = Color.Black.copy(alpha = 0.12f)
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
+                            contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
+                            tint = Color.Black.copy(alpha = 0.88f),
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
                 }
             }
             RoundTransportButton(

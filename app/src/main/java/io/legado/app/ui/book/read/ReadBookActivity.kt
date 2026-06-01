@@ -94,6 +94,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
@@ -4519,6 +4520,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<Int>(EventBus.READ_ALOUD_DS) {
             readAloudPlayerPanel.onTimerChanged(it)
+        }
+        observeEvent<ReadAloudPlaybackState>(EventBus.READ_ALOUD_PLAYBACK_STATE) {
+            readAloudPlayerPanel.onPlaybackState(it)
         }
         observeEvent<AiReadAloudRoleState>(EventBus.AI_READ_ALOUD_ROLE_STATE) {
             readAloudPlayerPanel.onAiRoleState(it)
