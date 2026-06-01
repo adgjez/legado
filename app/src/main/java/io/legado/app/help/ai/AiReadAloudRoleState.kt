@@ -17,7 +17,7 @@ data class AiReadAloudRolePreviewSegment(
     val source: String = ""
 ) {
     val key: String
-        get() = "$paragraphIndex:$start:$end:$roleType:$characterId:$characterName:$source"
+        get() = "$paragraphIndex:$start:$end"
 }
 
 data class AiReadAloudRoleState(
@@ -51,6 +51,8 @@ data class AiReadAloudRoleState(
 
         const val SOURCE_NONE = "none"
         const val SOURCE_AI = "ai"
+        const val SOURCE_RULE = "rule"
+        const val SOURCE_AI_CONFIRM = "ai_confirm"
         const val SOURCE_CACHE = "cache"
         const val SOURCE_FALLBACK = "fallback"
         const val SOURCE_RESOLVED = "resolved"
