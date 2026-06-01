@@ -313,6 +313,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private var switchingTtsEngine = false
     private var pendingTtsEngineSwitch: PendingTtsEngineSwitch? = null
+    private var chapterModelCache: PlayerChapterModel? = null
 
     private var uiState by mutableStateOf(PlayerUiState())
 
@@ -469,6 +470,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val bookUrl = ReadBook.book?.bookUrl ?: return
         val chapter = ReadBook.curTextChapter ?: return
         AiReadAloudRoleService.clearChapterCache(bookUrl, chapter.chapter.index)
+        chapterModelCache = null
         roleDetailCollapsed = false
         roleDetailClosed = false
         roleStatusText = "当前章节重新分配角色中"
@@ -753,16 +755,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun seekToParagraphProgress(progress: Float) {
-        val chapter = ReadBook.curTextChapter ?: return
-        val baseCues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
-        val roleCacheKey = AiReadAloudRoleService.cacheKeyFor(ReadBook.book, chapter, baseCues.map { it.text })
-        val cues = ReadAloudSpeechPlanner.build(
-            bookUrl = ReadBook.book?.bookUrl,
-            chapter = chapter,
-            baseCues = baseCues,
-            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
-            roleCacheKey = roleCacheKey
-        ).cues
+        val cues = buildChapterModel()?.cues.orEmpty()
         if (cues.isEmpty()) return
         val targetIndex = if (cues.size == 1) {
             0
@@ -789,50 +782,95 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = buildState(uiState.mode)
     }
 
-    private fun buildState(mode: DisplayMode): PlayerUiState {
-        val book = ReadBook.book
-        val chapter = ReadBook.curTextChapter
-        val bookName = book?.name?.ifBlank { context.getString(R.string.book_name) }.orEmpty()
-        val author = book?.author.orEmpty()
-        val chapterTitle = chapter?.chapter?.title?.ifBlank { "当前章节" }.orEmpty()
-        val chapterIndexText = chapter?.chapter?.let {
-            "${it.index + 1}/${chapter.chaptersSize.coerceAtLeast(it.index + 1)}"
-        }.orEmpty()
-        val chapterSequence = chapter?.chapter?.index ?: ReadBook.durChapterIndex
-        val chapterKey = "${book?.bookUrl.orEmpty()}:$chapterSequence"
-        val paragraphs = chapter?.getParagraphs(false).orEmpty()
-        val baseCues = chapter?.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage)).orEmpty()
-        val roleCacheKey = chapter?.let {
-            AiReadAloudRoleService.cacheKeyFor(book, it, baseCues.map { cue -> cue.text })
-        }
+    private fun buildChapterModel(): PlayerChapterModel? {
+        val book = ReadBook.book ?: return null
+        val chapter = ReadBook.curTextChapter ?: return null
+        val chapterSequence = chapter.chapter.index
+        val readAloudByPage = context.getPrefBoolean(PreferKey.readAloudByPage)
+        val paragraphs = chapter.getParagraphs(false)
+        val baseCues = chapter.buildReadAloudCues(readAloudByPage)
+        val roleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, baseCues.map { cue -> cue.text })
         val roleCache = roleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
         val roleCacheReady = roleCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
                 roleCache.segmentsJson.isNotBlank()
-        val currentRoleState = roleState?.takeIf {
-            it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
-                    it.bookUrl == book?.bookUrl &&
-                    it.chapterIndex == chapterSequence
+        val roleCacheRunning = roleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING
+        val coverUrl = book.getDisplayCover()
+        val cueFingerprint = buildString {
+            append(baseCues.size)
+            append(':')
+            append(baseCues.firstOrNull()?.key.orEmpty())
+            append(':')
+            append(baseCues.lastOrNull()?.key.orEmpty())
+            append(':')
+            append(baseCues.sumOf { it.text.length })
         }
-        val currentRoleRunning = currentRoleState?.running == true ||
-                roleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING
-        val roleBlockingCurrentContent = AppConfig.aiReadAloudRoleEnabled &&
-                roleCacheKey != null &&
-                currentRoleRunning &&
-                !roleCacheReady
-        val speechPlan = chapter?.let {
-            ReadAloudSpeechPlanner.build(
-                bookUrl = book?.bookUrl,
-                chapter = it,
-                baseCues = baseCues,
-                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
-                roleCacheKey = roleCacheKey
-            )
-        }
-        val cues = speechPlan?.cues ?: baseCues
-        val totalLength = chapter?.lastPage
+        val modelKey = listOf(
+            book.bookUrl,
+            book.name,
+            book.author,
+            book.origin,
+            coverUrl.orEmpty(),
+            chapterSequence.toString(),
+            chapter.chapter.url.orEmpty(),
+            chapter.chapter.title,
+            chapter.chaptersSize.toString(),
+            ReadBook.chapterSize.toString(),
+            readAloudByPage.toString(),
+            AppConfig.aiReadAloudRoleEnabled.toString(),
+            cueFingerprint,
+            roleCacheKey.orEmpty(),
+            roleCache?.status.orEmpty(),
+            roleCache?.updatedAt?.toString().orEmpty(),
+            roleCache?.characterHash.orEmpty(),
+            roleCache?.voiceHash.orEmpty(),
+            roleCache?.segmentsJson?.length?.toString().orEmpty(),
+            roleCache?.segmentsJson?.hashCode()?.toString().orEmpty()
+        ).joinToString("|")
+        chapterModelCache?.takeIf { it.key == modelKey }?.let { return it }
+        val speechPlan = ReadAloudSpeechPlanner.build(
+            bookUrl = book.bookUrl,
+            chapter = chapter,
+            baseCues = baseCues,
+            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+            roleCacheKey = roleCacheKey
+        )
+        val totalLength = chapter.lastPage
             ?.let { it.chapterPosition + it.charSize }
             ?.coerceAtLeast(1)
             ?: 1
+        return PlayerChapterModel(
+            key = modelKey,
+            bookName = book.name.ifBlank { context.getString(R.string.book_name) },
+            author = book.author,
+            coverUrl = coverUrl,
+            sourceOrigin = book.origin,
+            chapterTitle = chapter.chapter.title.ifBlank { "当前章节" },
+            chapterIndexText = "${chapterSequence + 1}/${chapter.chaptersSize.coerceAtLeast(chapterSequence + 1)}",
+            chapterSequence = chapterSequence,
+            chapterKey = "${book.bookUrl}:$chapterSequence",
+            chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
+            totalLength = totalLength,
+            paragraphs = paragraphs,
+            baseCues = baseCues,
+            cues = speechPlan.cues,
+            speechItems = speechPlan.items,
+            roleCacheKey = roleCacheKey,
+            roleCacheReady = roleCacheReady,
+            roleCacheRunning = roleCacheRunning,
+            chapterPreview = buildChapterPreview(book.bookUrl, chapterSequence, ReadBook.chapterSize),
+            characterPreview = buildCharacterPreview(book.bookUrl)
+        ).also {
+            chapterModelCache = it
+        }
+    }
+
+    private fun buildState(mode: DisplayMode): PlayerUiState {
+        val model = buildChapterModel()
+        val paragraphs = model?.paragraphs.orEmpty()
+        val cues = model?.cues.orEmpty()
+        val chapterSequence = model?.chapterSequence ?: ReadBook.durChapterIndex
+        val chapterKey = model?.chapterKey ?: "${ReadBook.book?.bookUrl.orEmpty()}:$chapterSequence"
+        val totalLength = model?.totalLength ?: 1
         val chapterStart = when {
             lastChapterStart > 0 -> lastChapterStart
             else -> ReadBook.durChapterPos
@@ -864,21 +902,31 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
         val nearby = cues.nearbyCueParagraphs(cueIndex, chapterKey, chapterSequence)
         val textCues = cues.toTextCueUi(cueIndex, chapterKey, chapterSequence)
-        val sceneSegments = speechPlan?.items
+        val sceneSegments = model?.speechItems
             ?.toSceneSegmentUi(currentIndex = cueIndex, chapterKey = chapterKey)
             .orEmpty()
+        val currentRoleState = roleState?.takeIf {
+            it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
+                    it.bookUrl == ReadBook.book?.bookUrl &&
+                    it.chapterIndex == chapterSequence
+        }
+        val currentRoleRunning = currentRoleState?.running == true || model?.roleCacheRunning == true
+        val roleBlockingCurrentContent = AppConfig.aiReadAloudRoleEnabled &&
+                model?.roleCacheKey != null &&
+                currentRoleRunning &&
+                !model.roleCacheReady
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
         val roleEventVisible = roleStatusText.isNotBlank() &&
                 !roleDetailClosed &&
                 (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
         return PlayerUiState(
-            bookName = bookName,
-            author = author,
-            coverUrl = book?.getDisplayCover(),
-            sourceOrigin = book?.origin,
-            chapterTitle = chapterTitle,
-            chapterIndexText = chapterIndexText,
+            bookName = model?.bookName.orEmpty(),
+            author = model?.author.orEmpty(),
+            coverUrl = model?.coverUrl,
+            sourceOrigin = model?.sourceOrigin,
+            chapterTitle = model?.chapterTitle.orEmpty(),
+            chapterIndexText = model?.chapterIndexText.orEmpty(),
             playing = playbackPhase == ReadAloudPlaybackState.PHASE_PLAYING ||
                     (BaseReadAloudService.isPlay() &&
                             playbackPhase !in setOf(
@@ -899,11 +947,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             paragraphIndex = if (cueIndex >= 0) cueIndex + 1 else 0,
             paragraphCount = paragraphCount,
             chapterIndex = chapterSequence.coerceAtLeast(0),
-            chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
-            chapterPreview = buildChapterPreview(book?.bookUrl, chapterSequence, ReadBook.chapterSize),
+            chapterCount = model?.chapterCount ?: ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
+            chapterPreview = model?.chapterPreview.orEmpty(),
             ttsEngines = buildTtsEngineOptions(),
             speechRoute = speechRoute,
-            characterPreview = buildCharacterPreview(book?.bookUrl),
+            characterPreview = model?.characterPreview.orEmpty(),
             nearbyParagraphs = nearby,
             textCues = textCues,
             sceneSegments = sceneSegments,
@@ -1454,6 +1502,29 @@ private data class PendingTtsEngineSwitch(
     val wasPlaying: Boolean,
     val pageIndex: Int,
     val startPos: Int
+)
+
+private data class PlayerChapterModel(
+    val key: String,
+    val bookName: String,
+    val author: String,
+    val coverUrl: String?,
+    val sourceOrigin: String?,
+    val chapterTitle: String,
+    val chapterIndexText: String,
+    val chapterSequence: Int,
+    val chapterKey: String,
+    val chapterCount: Int,
+    val totalLength: Int,
+    val paragraphs: List<TextParagraph>,
+    val baseCues: List<ReadAloudCue>,
+    val cues: List<ReadAloudCue>,
+    val speechItems: List<ReadAloudSpeechPlanItem>,
+    val roleCacheKey: String?,
+    val roleCacheReady: Boolean,
+    val roleCacheRunning: Boolean,
+    val chapterPreview: List<ReadAloudPlayerPanel.ChapterPreviewUi>,
+    val characterPreview: List<ReadAloudPlayerPanel.CharacterPreviewUi>
 )
 
 @Composable
