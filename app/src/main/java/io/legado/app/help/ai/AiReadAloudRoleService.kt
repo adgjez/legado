@@ -713,17 +713,28 @@ object AiReadAloudRoleService {
         cueIndex: Int,
         cacheKey: String? = null
     ): List<Segment> {
-        if (bookUrl.isNullOrBlank() || cueIndex < 0) return emptyList()
+        if (cueIndex < 0) return emptyList()
+        return assignedSegmentsByCue(bookUrl, chapterIndex, cacheKey)[cueIndex].orEmpty()
+    }
+
+    fun assignedSegmentsByCue(
+        bookUrl: String?,
+        chapterIndex: Int,
+        cacheKey: String? = null
+    ): Map<Int, List<Segment>> {
+        if (bookUrl.isNullOrBlank()) return emptyMap()
         val cache = if (!cacheKey.isNullOrBlank()) {
             appDb.aiReadAloudRoleCacheDao.get(cacheKey)
                 ?.takeIf { it.status == AiReadAloudRoleCache.STATUS_SUCCESS }
         } else {
             appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
                 ?.takeIf { it.mode.contains(ReadAloudRolePreprocessor.VERSION) }
-        } ?: return emptyList()
-        val result = segmentsFromJson(cache.segmentsJson).filter { it.paragraphIndex == cueIndex }
-        return result
-            .sortedWith(compareBy<Segment> { it.start }.thenBy { it.end })
+        } ?: return emptyMap()
+        return segmentsFromJson(cache.segmentsJson)
+            .groupBy { it.paragraphIndex }
+            .mapValues { (_, segments) ->
+                segments.sortedWith(compareBy<Segment> { it.start }.thenBy { it.end })
+            }
     }
 
     fun defaultSegmentsForCue(cueIndex: Int, cueText: String): List<Segment> {

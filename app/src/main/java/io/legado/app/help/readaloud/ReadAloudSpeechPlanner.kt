@@ -73,14 +73,18 @@ object ReadAloudSpeechPlanner {
         val characters = appDb.bookCharacterDao.characters(bookUrl)
         val byId = characters.associateBy { it.id }
         val byName = characters.associateBy { it.name }
+        val assignedSegmentsByCue = AiReadAloudRoleService.assignedSegmentsByCue(
+            bookUrl = bookUrl,
+            chapterIndex = chapter.chapter.index,
+            cacheKey = roleCacheKey
+        )
         val plannedItems = arrayListOf<ReadAloudSpeechPlanItem>()
         baseCues.forEachIndexed { cueIndex, cue ->
             val beforeSize = plannedItems.size
             val segments = completeCueSegments(
                 cueIndex = cueIndex,
                 cueText = cue.text,
-                rawSegments = AiReadAloudRoleService
-                    .assignedSegmentsForCue(bookUrl, chapter.chapter.index, cueIndex, roleCacheKey)
+                rawSegments = assignedSegmentsByCue[cueIndex].orEmpty()
             )
             segments.forEach { segment ->
                 val text = cue.text.substring(segment.start, segment.end)
@@ -99,7 +103,7 @@ object ReadAloudSpeechPlanner {
                     else -> "角色"
                 }
                 val characterId = character?.id ?: segment.characterId
-                val route = AiReadAloudRoleService.routeForSegment(bookUrl, segment)
+                val route = routeForSegment(character, segment)
                 val plannedCue = ReadAloudCue(
                     index = plannedItems.size,
                     text = text,
@@ -162,6 +166,21 @@ object ReadAloudSpeechPlanner {
             segment.characterId > 0L -> byId[segment.characterId]
             segment.characterName.isNotBlank() -> byName[segment.characterName]
             else -> null
+        }
+    }
+
+    private fun routeForSegment(
+        character: BookCharacter?,
+        segment: AiReadAloudRoleService.Segment
+    ): SpeechRoute? {
+        val route = SpeechRoute.fromJson(character?.speechRouteJson)
+        if (!route.isConfigured) return null
+        val emotionName = segment.emotionName.trim()
+        val emotionTag = segment.emotionTag.trim()
+        return if (emotionName.isNotBlank() || emotionTag.isNotBlank()) {
+            route.copy(emotionName = emotionName, emotionTag = emotionTag)
+        } else {
+            route
         }
     }
 
