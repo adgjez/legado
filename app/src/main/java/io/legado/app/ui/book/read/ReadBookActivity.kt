@@ -4522,6 +4522,13 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<AiReadAloudRoleState>(EventBus.AI_READ_ALOUD_ROLE_STATE) {
             readAloudPlayerPanel.onAiRoleState(it)
+            if (pendingReadAloudPlayerOpen &&
+                it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
+                it.bookUrl == ReadBook.book?.bookUrl
+            ) {
+                pendingReadAloudPlayerOpen = false
+                readAloudPlayerPanel.openFromBottom(force = true)
+            }
         }
         observeEventSticky<Int>(EventBus.TTS_PROGRESS) { chapterStart ->
             readAloudPlayerPanel.onTtsProgress(chapterStart)

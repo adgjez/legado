@@ -40,6 +40,7 @@ import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
@@ -291,14 +292,29 @@ abstract class BaseReadAloudService : BaseService(),
             contentList = baseCues.map { it.text }
             val roleContentList = contentList
             if (AppConfig.aiReadAloudRoleEnabled) {
-                AiReadAloudRoleService.ensureCache(ReadBook.book, textChapter, roleContentList)
+                val roleResult = AiReadAloudRoleService.ensurePlayableCache(
+                    ReadBook.book,
+                    textChapter,
+                    roleContentList
+                )
+                if (roleResult.status != AiReadAloudRoleState.STATUS_SUCCESS || roleResult.segmentCount <= 0) {
+                    launch(Main) {
+                        markReadAloudStartBlocked()
+                    }
+                    return@execute
+                }
                 launch(IO) {
                     prewarmNextChapterRoleCache()
                 }
             }
-            val speechPlan = buildSpeechPlan(textChapter, baseCues)
-            readAloudCues = speechPlan.first
-            speechRoutes = speechPlan.second
+            val speechPlan = ReadAloudSpeechPlanner.build(
+                bookUrl = ReadBook.book?.bookUrl,
+                chapter = textChapter,
+                baseCues = baseCues,
+                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+            )
+            readAloudCues = speechPlan.cues
+            speechRoutes = speechPlan.routes
             contentList = readAloudCues.map { it.text }
             if (contentList.isNotEmpty()) {
                 val startChapterPosition = textChapter.getReadLength(pageIndex) + startPos
@@ -322,48 +338,11 @@ abstract class BaseReadAloudService : BaseService(),
         }
     }
 
-    private fun buildSpeechPlan(
-        chapter: TextChapter,
-        baseCues: List<ReadAloudCue>
-    ): Pair<List<ReadAloudCue>, List<SpeechRoute?>> {
-        if (!AppConfig.aiReadAloudRoleEnabled || baseCues.isEmpty()) {
-            return baseCues to List(baseCues.size) { null }
-        }
-        val bookUrl = ReadBook.book?.bookUrl
-        val chapterIndex = chapter.chapter.index
-        val plannedCues = arrayListOf<ReadAloudCue>()
-        val plannedRoutes = arrayListOf<SpeechRoute?>()
-        baseCues.forEachIndexed { cueIndex, cue ->
-            val beforeSize = plannedCues.size
-            val segments = AiReadAloudRoleService
-                .segmentsForCue(bookUrl, chapterIndex, cueIndex, cue.text)
-                .filter { it.start < cue.text.length }
-                .map { it.copy(start = it.start.coerceIn(0, cue.text.length), end = it.end.coerceIn(0, cue.text.length)) }
-                .filter { it.start < it.end }
-            segments.forEach { segment ->
-                val text = cue.text.substring(segment.start, segment.end).trim()
-                if (text.isBlank()) return@forEach
-                val chapterPosition = cue.chapterPosition + segment.start
-                val pageIndex = chapter.getPageIndexByCharIndex(chapterPosition)
-                    .takeIf { it >= 0 }
-                    ?: cue.pageIndex
-                val pageStartPos = (chapterPosition - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
-                plannedCues += ReadAloudCue(
-                    index = plannedCues.size,
-                    text = text,
-                    chapterPosition = chapterPosition,
-                    pageIndex = pageIndex,
-                    pageStartPos = pageStartPos,
-                    key = "${cue.key}:role:${segment.start}:${segment.end}:${text.hashCode()}"
-                )
-                plannedRoutes += AiReadAloudRoleService.routeForSegment(bookUrl, segment)
-            }
-            if (plannedCues.size == beforeSize) {
-                plannedCues += cue.copy(index = plannedCues.size)
-                plannedRoutes += AiReadAloudRoleService.routeForCue(bookUrl, chapterIndex, cueIndex, cue.text)
-            }
-        }
-        return plannedCues to plannedRoutes
+    private fun markReadAloudStartBlocked() {
+        pause = true
+        pageChanged = true
+        upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        postEvent(EventBus.ALOUD_STATE, Status.PAUSE)
     }
 
     private suspend fun prewarmNextChapterRoleCache() {

@@ -48,6 +48,9 @@ interface AiReadAloudRoleCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(cache: AiReadAloudRoleCache)
 
+    @Query("DELETE FROM ai_read_aloud_role_caches WHERE bookUrl = :bookUrl AND chapterIndex = :chapterIndex")
+    fun deleteByChapter(bookUrl: String, chapterIndex: Int)
+
     @Query("DELETE FROM ai_read_aloud_role_caches WHERE bookUrl = :bookUrl")
     fun deleteByBook(bookUrl: String)
 }

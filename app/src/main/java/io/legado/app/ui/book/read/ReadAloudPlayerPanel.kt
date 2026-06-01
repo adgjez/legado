@@ -113,6 +113,8 @@ import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
+import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
@@ -335,7 +337,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onOpenCharacters = { callBack?.openBookCharacters() },
                 onHideRoleDetail = ::hideRoleDetail,
                 onOpenRoleDetail = ::openRoleDetail,
-                onDismissRoleStatus = ::dismissRoleStatus
+                onDismissRoleStatus = ::dismissRoleStatus,
+                onRetryRoleAssignment = ::retryRoleAssignment
             )
         }
     }
@@ -435,6 +438,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         roleState = null
         roleDetailCollapsed = false
         roleDetailClosed = true
+        refresh()
+    }
+
+    private fun retryRoleAssignment() {
+        val bookUrl = ReadBook.book?.bookUrl ?: return
+        val chapter = ReadBook.curTextChapter ?: return
+        AiReadAloudRoleService.clearChapterCache(bookUrl, chapter.chapter.index)
+        roleDetailCollapsed = false
+        roleDetailClosed = false
+        roleStatusText = "当前章节重新分配角色中"
+        roleStatusRunning = true
+        roleStatusError = false
+        roleStatusUntil = Long.MAX_VALUE
+        val pageIndex = ReadBook.durPageIndex
+        val startPos = (ReadBook.durChapterPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
+        ReadAloud.play(context, play = true, pageIndex = pageIndex, startPos = startPos)
         refresh()
     }
 
@@ -711,7 +730,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     private fun seekToParagraphProgress(progress: Float) {
         val chapter = ReadBook.curTextChapter ?: return
-        val cues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
+        val baseCues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
+        val cues = ReadAloudSpeechPlanner.build(
+            bookUrl = ReadBook.book?.bookUrl,
+            chapter = chapter,
+            baseCues = baseCues,
+            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+        ).cues
         if (cues.isEmpty()) return
         val targetIndex = if (cues.size == 1) {
             0
@@ -750,7 +775,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterSequence = chapter?.chapter?.index ?: ReadBook.durChapterIndex
         val chapterKey = "${book?.bookUrl.orEmpty()}:$chapterSequence"
         val paragraphs = chapter?.getParagraphs(false).orEmpty()
-        val cues = chapter?.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage)).orEmpty()
+        val baseCues = chapter?.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage)).orEmpty()
+        val speechPlan = chapter?.let {
+            ReadAloudSpeechPlanner.build(
+                bookUrl = book?.bookUrl,
+                chapter = it,
+                baseCues = baseCues,
+                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+            )
+        }
+        val cues = speechPlan?.cues ?: baseCues
         val totalLength = chapter?.lastPage
             ?.let { it.chapterPosition + it.charSize }
             ?.coerceAtLeast(1)
@@ -786,13 +820,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
         val nearby = cues.nearbyCueParagraphs(cueIndex, chapterKey, chapterSequence)
         val textCues = cues.toTextCueUi(cueIndex, chapterKey, chapterSequence)
-        val sceneSegments = buildSceneSegments(
-            bookUrl = book?.bookUrl,
-            chapterIndex = chapterSequence,
-            cueIndex = cueIndex,
-            cue = cue,
-            chapterKey = chapterKey
-        )
+        val sceneSegments = speechPlan?.items
+            ?.toSceneSegmentUi(currentIndex = cueIndex, chapterKey = chapterKey)
+            .orEmpty()
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
         val roleEventVisible = roleStatusText.isNotBlank() &&
@@ -968,6 +998,27 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         }.getOrDefault(emptyList())
     }
 
+    private fun List<ReadAloudSpeechPlanItem>.toSceneSegmentUi(
+        currentIndex: Int,
+        chapterKey: String
+    ): List<SceneSegmentUi> {
+        return map { item ->
+            SceneSegmentUi(
+                key = "$chapterKey:scene:${item.index}:${item.sourceCueIndex}:${item.sourceStart}:${item.sourceEnd}",
+                text = item.cue.text.cleanReadAloudText(),
+                roleType = item.roleType,
+                characterId = item.characterId,
+                characterName = item.characterName,
+                avatar = item.avatar,
+                emotionName = item.emotionName,
+                leftSide = item.leftSide,
+                narrator = item.narrator,
+                current = item.index == currentIndex,
+                chapterPosition = item.cue.chapterPosition
+            )
+        }
+    }
+
     private fun buildSceneSegments(
         bookUrl: String?,
         chapterIndex: Int,
@@ -1124,7 +1175,8 @@ private fun ReadAloudPlayerContent(
     onOpenCharacters: () -> Unit,
     onHideRoleDetail: () -> Unit,
     onOpenRoleDetail: () -> Unit,
-    onDismissRoleStatus: () -> Unit
+    onDismissRoleStatus: () -> Unit,
+    onRetryRoleAssignment: () -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
@@ -1287,7 +1339,8 @@ private fun ReadAloudPlayerContent(
             state = state,
             colors = colors,
             onHide = onHideRoleDetail,
-            onDismiss = onDismissRoleStatus
+            onDismiss = onDismissRoleStatus,
+            onRetry = onRetryRoleAssignment
         )
     }
 }
@@ -1800,7 +1853,8 @@ private fun RoleAssignmentProgressDialog(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     onHide: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit
 ) {
     val roleState = state.roleState ?: return
     AnimatedVisibility(
@@ -1848,6 +1902,9 @@ private fun RoleAssignmentProgressDialog(
                             )
                         }
                         RoleDialogAction("隐藏", colors, onHide)
+                        if (!state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
+                            RoleDialogAction("重新分配", colors, onRetry)
+                        }
                         if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
                     }
                     RoleAssignmentSummary(state, roleState, colors)
@@ -2482,7 +2539,15 @@ private fun ScenePlayerStage(
             compact = compact
         )
         Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
+        val listState = rememberLazyListState()
+        val currentIndex = state.sceneSegments.indexOfFirst { it.current }.coerceAtLeast(0)
+        LaunchedEffect(state.chapterKey, currentIndex, state.sceneSegments.size) {
+            if (state.sceneSegments.isNotEmpty()) {
+                listState.animateScrollToItem(currentIndex)
+            }
+        }
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -2514,23 +2579,17 @@ private fun SceneSegmentRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
-            Surface(
+            Text(
+                text = segment.text,
+                color = if (segment.current) colors.secondaryText else colors.subtleText,
+                fontSize = if (compact) 12.sp else 13.sp,
+                lineHeight = if (compact) 18.sp else 20.sp,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
                     .widthIn(max = 420.dp)
-                    .clickable(onClick = onClick),
-                shape = RoundedCornerShape(999.dp),
-                color = colors.panel.copy(alpha = 0.48f),
-                border = BorderStroke(1.dp, colors.panelBorder.copy(alpha = 0.55f))
-            ) {
-                Text(
-                    text = segment.text,
-                    color = colors.secondaryText,
-                    fontSize = if (compact) 12.sp else 13.sp,
-                    lineHeight = if (compact) 18.sp else 20.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                )
-            }
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            )
         }
         return
     }
@@ -2541,13 +2600,40 @@ private fun SceneSegmentRow(
     ) {
         if (segment.leftSide) {
             SceneAvatar(segment, colors, compact)
-            Spacer(modifier = Modifier.width(8.dp))
+            SceneBubbleArrow(leftSide = true, colors = colors)
             SceneBubble(segment, colors, compact, onClick)
         } else {
             SceneBubble(segment, colors, compact, onClick)
-            Spacer(modifier = Modifier.width(8.dp))
+            SceneBubbleArrow(leftSide = false, colors = colors)
             SceneAvatar(segment, colors, compact)
         }
+    }
+}
+
+@Composable
+private fun SceneBubbleArrow(
+    leftSide: Boolean,
+    colors: PlayerColors
+) {
+    val arrowColor = if (leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
+    Canvas(
+        modifier = Modifier
+            .padding(top = 14.dp)
+            .size(width = 8.dp, height = 14.dp)
+    ) {
+        val path = androidx.compose.ui.graphics.Path().apply {
+            if (leftSide) {
+                moveTo(size.width, 0f)
+                lineTo(0f, size.height / 2f)
+                lineTo(size.width, size.height)
+            } else {
+                moveTo(0f, 0f)
+                lineTo(size.width, size.height / 2f)
+                lineTo(0f, size.height)
+            }
+            close()
+        }
+        drawPath(path, arrowColor)
     }
 }
 
@@ -2571,7 +2657,10 @@ private fun SceneBubble(
             bottomEnd = if (segment.leftSide) 18.dp else 4.dp
         ),
         color = bubbleColor,
-        border = BorderStroke(1.dp, colors.panelBorder.copy(alpha = 0.45f))
+        border = BorderStroke(
+            1.dp,
+            if (segment.current) colors.accent.copy(alpha = 0.62f) else colors.panelBorder.copy(alpha = 0.45f)
+        )
     ) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
