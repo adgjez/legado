@@ -2937,7 +2937,8 @@ private fun SceneSegmentRow(
                     current = current,
                     colors = colors,
                     compact = compact,
-                    onClick = onClick
+                    onClick = onClick,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
             } else {
                 SceneBubble(
@@ -2945,7 +2946,8 @@ private fun SceneSegmentRow(
                     current = current,
                     colors = colors,
                     compact = compact,
-                    onClick = onClick
+                    onClick = onClick,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 SceneBubbleArrow(leftSide = false, colors = colors)
                 SceneAvatar(segment, colors, compact)
