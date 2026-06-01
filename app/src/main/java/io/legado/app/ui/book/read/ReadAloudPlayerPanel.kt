@@ -555,7 +555,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 opening = true
                 panelPhase = PanelPhase.Opening
                 openToken++
-                uiState = buildState(uiState.mode).copy(
+                uiState = uiState.copy(
                     foregroundActive = foregroundActive,
                     expanded = false,
                     opening = true,
