@@ -22,6 +22,7 @@ data class ReadAloudSpeechPlanItem(
     val characterName: String,
     val avatar: String,
     val emotionName: String,
+    val roleLevel: Int = BookCharacter.ROLE_NORMAL,
     val leftSide: Boolean,
     val narrator: Boolean,
     val sourceCueIndex: Int,
@@ -30,6 +31,8 @@ data class ReadAloudSpeechPlanItem(
 )
 
 object ReadAloudSpeechPlanner {
+
+    private const val LOCAL_DIALOGUE_CUE_GAP = 2
 
     fun build(
         bookUrl: String?,
@@ -52,6 +55,7 @@ object ReadAloudSpeechPlanner {
                     characterName = "旁白",
                     avatar = "",
                     emotionName = "",
+                    roleLevel = BookCharacter.ROLE_NORMAL,
                     leftSide = false,
                     narrator = true,
                     sourceCueIndex = cue.index,
@@ -113,7 +117,8 @@ object ReadAloudSpeechPlanner {
                     characterName = displayName,
                     avatar = character?.avatar.orEmpty(),
                     emotionName = segment.emotionName.ifBlank { route?.emotionName.orEmpty() },
-                    leftSide = sideFor(characterId, displayName),
+                    roleLevel = character?.roleLevel ?: BookCharacter.ROLE_NORMAL,
+                    leftSide = true,
                     narrator = segment.roleType == "narrator" || displayName == "旁白",
                     sourceCueIndex = cueIndex,
                     sourceStart = segment.start,
@@ -131,6 +136,7 @@ object ReadAloudSpeechPlanner {
                     characterName = "旁白",
                     avatar = "",
                     emotionName = "",
+                    roleLevel = BookCharacter.ROLE_NORMAL,
                     leftSide = false,
                     narrator = true,
                     sourceCueIndex = cueIndex,
@@ -139,10 +145,11 @@ object ReadAloudSpeechPlanner {
                 )
             }
         }
+        val displayItems = assignConversationSides(plannedItems)
         return ReadAloudSpeechPlan(
-            cues = plannedItems.map { it.cue },
-            routes = plannedItems.map { it.route },
-            items = plannedItems
+            cues = displayItems.map { it.cue },
+            routes = displayItems.map { it.route },
+            items = displayItems
         )
     }
 
@@ -158,9 +165,67 @@ object ReadAloudSpeechPlanner {
         }
     }
 
-    private fun sideFor(characterId: Long, name: String): Boolean {
-        val seed = characterId.takeIf { it > 0 } ?: name.hashCode().toLong()
-        return Math.floorMod(seed.hashCode(), 2) == 0
+    private fun assignConversationSides(
+        items: List<ReadAloudSpeechPlanItem>
+    ): List<ReadAloudSpeechPlanItem> {
+        if (items.none { !it.narrator }) return items
+        val result = items.toMutableList()
+        val block = mutableListOf<Int>()
+        var lastSpeechCue = -1
+
+        fun flushBlock() {
+            if (block.isEmpty()) return
+            val speechItems = block.map { result[it] }
+            val rightRoleLevel = when {
+                speechItems.any { it.roleLevel == BookCharacter.ROLE_MAIN } -> BookCharacter.ROLE_MAIN
+                speechItems.any { it.roleLevel == BookCharacter.ROLE_IMPORTANT } -> BookCharacter.ROLE_IMPORTANT
+                else -> BookCharacter.ROLE_NORMAL
+            }
+            val rightSpeakerByLevel = mutableMapOf<Int, String>()
+            val sideBySpeaker = mutableMapOf<String, Boolean>()
+            block.forEach { index ->
+                val item = result[index]
+                val speakerKey = item.speakerKey()
+                val leftSide = sideBySpeaker.getOrPut(speakerKey) {
+                    val roleLevel = item.roleLevel.coerceIn(
+                        BookCharacter.ROLE_NORMAL,
+                        BookCharacter.ROLE_MAIN
+                    )
+                    if (roleLevel != rightRoleLevel) {
+                        true
+                    } else {
+                        val rightSpeaker = rightSpeakerByLevel[roleLevel]
+                        if (rightSpeaker == null || rightSpeaker == speakerKey) {
+                            rightSpeakerByLevel[roleLevel] = speakerKey
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                }
+                result[index] = item.copy(leftSide = leftSide)
+            }
+            block.clear()
+        }
+
+        items.forEachIndexed { index, item ->
+            if (item.narrator) return@forEachIndexed
+            if (block.isNotEmpty() && item.sourceCueIndex - lastSpeechCue > LOCAL_DIALOGUE_CUE_GAP) {
+                flushBlock()
+            }
+            block += index
+            lastSpeechCue = item.sourceCueIndex
+        }
+        flushBlock()
+        return result
+    }
+
+    private fun ReadAloudSpeechPlanItem.speakerKey(): String {
+        return if (characterId > 0L) {
+            "id:$characterId"
+        } else {
+            "name:$roleType:$characterName"
+        }
     }
 
     private fun completeCueSegments(

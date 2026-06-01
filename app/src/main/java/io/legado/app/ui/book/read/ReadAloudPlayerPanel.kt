@@ -2764,10 +2764,17 @@ private fun ScenePlayerStage(
         LaunchedEffect(state.chapterKey, currentIndex) {
             if (state.sceneSegments.isNotEmpty()) {
                 val firstTarget = lastSceneTarget == null
+                val targetDistance = lastSceneTarget
+                    ?.let { kotlin.math.abs(it - currentIndex) }
+                    ?: 0
                 if (firstTarget) {
                     listState.scrollToItem(currentIndex)
                 } else if (lastSceneTarget != currentIndex && !listState.isScrollInProgress) {
-                    listState.animateScrollToItem(currentIndex)
+                    if (AppConfig.isEInkMode || !state.foregroundActive || targetDistance > 8) {
+                        listState.scrollToItem(currentIndex)
+                    } else {
+                        listState.animateScrollToItem(currentIndex)
+                    }
                 }
                 lastSceneTarget = currentIndex
             }
@@ -2819,19 +2826,35 @@ private fun SceneSegmentRow(
         }
         return
     }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (segment.leftSide) Arrangement.Start else Arrangement.End,
-        verticalAlignment = Alignment.Top
-    ) {
-        if (segment.leftSide) {
-            SceneAvatar(segment, colors, compact)
-            SceneBubbleArrow(leftSide = true, colors = colors)
-            SceneBubble(segment, colors, compact, onClick)
-        } else {
-            SceneBubble(segment, colors, compact, onClick)
-            SceneBubbleArrow(leftSide = false, colors = colors)
-            SceneAvatar(segment, colors, compact)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.86f)
+                .align(if (segment.leftSide) Alignment.CenterStart else Alignment.CenterEnd),
+            horizontalArrangement = if (segment.leftSide) Arrangement.Start else Arrangement.End,
+            verticalAlignment = Alignment.Top
+        ) {
+            if (segment.leftSide) {
+                SceneAvatar(segment, colors, compact)
+                SceneBubbleArrow(leftSide = true, colors = colors)
+                SceneBubble(
+                    segment = segment,
+                    colors = colors,
+                    compact = compact,
+                    onClick = onClick,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            } else {
+                SceneBubble(
+                    segment = segment,
+                    colors = colors,
+                    compact = compact,
+                    onClick = onClick,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                SceneBubbleArrow(leftSide = false, colors = colors)
+                SceneAvatar(segment, colors, compact)
+            }
         }
     }
 }
@@ -2868,14 +2891,15 @@ private fun SceneBubble(
     segment: ReadAloudPlayerPanel.SceneSegmentUi,
     colors: PlayerColors,
     compact: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val bubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
     val textColor = if (segment.leftSide) colors.primaryText else colors.accentText
     val actionShape = LocalContext.current.composeActionShape()
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(0.72f),
+        modifier = modifier.widthIn(max = if (compact) 460.dp else 520.dp),
         shape = actionShape,
         color = bubbleColor,
         border = BorderStroke(
@@ -2883,8 +2907,28 @@ private fun SceneBubble(
             if (segment.current) colors.accent.copy(alpha = 0.62f) else colors.panelBorder.copy(alpha = 0.45f)
         )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            horizontalAlignment = if (segment.leftSide) Alignment.Start else Alignment.End
+        ) {
+            val emotion = segment.emotionName.takeIf { it.isNotBlank() }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!segment.leftSide) {
+                    emotion?.let {
+                        Text(
+                            text = it,
+                            color = textColor.copy(alpha = 0.70f),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 120.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                }
                 Text(
                     text = segment.characterName,
                     color = textColor.copy(alpha = 0.86f),
@@ -2892,15 +2936,21 @@ private fun SceneBubble(
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    textAlign = if (segment.leftSide) TextAlign.Start else TextAlign.End,
+                    modifier = if (emotion != null) Modifier.weight(1f) else Modifier.fillMaxWidth()
                 )
-                segment.emotionName.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        color = textColor.copy(alpha = 0.70f),
-                        fontSize = 10.sp,
-                        maxLines = 1
-                    )
+                if (segment.leftSide) {
+                    emotion?.let {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = it,
+                            color = textColor.copy(alpha = 0.70f),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 120.dp)
+                        )
+                    }
                 }
             }
             Text(
