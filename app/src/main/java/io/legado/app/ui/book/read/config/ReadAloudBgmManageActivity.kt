@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -65,6 +66,30 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
+    private val importAudios = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@registerForActivityResult
+        lifecycleScope.launch {
+            var success = 0
+            kotlin.runCatching {
+                withContext(Dispatchers.IO) {
+                    uris.forEach { uri ->
+                        runCatching {
+                            importTrack(uri)
+                            success += 1
+                        }
+                    }
+                }
+            }.onSuccess {
+                selectedIds.clear()
+                load()
+                toastOnUi("已导入 $success 首音乐")
+            }.onFailure {
+                load()
+                toastOnUi(it.localizedMessage ?: "批量导入失败")
+            }
+        }
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initView()
         load()
@@ -89,14 +114,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_ADD_GROUP, 0, "新增分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_MOVE_SELECTED, 1, "批量分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_DELETE_SELECTED, 2, "批量删除").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_MANAGE_GROUPS, 1, "管理分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_MOVE_SELECTED, 2, "批量分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_DELETE_SELECTED, 3, "批量删除").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             MENU_ADD_GROUP -> showGroupEditor()
+            MENU_MANAGE_GROUPS -> showGroupManage()
             MENU_MOVE_SELECTED -> moveSelected()
             MENU_DELETE_SELECTED -> deleteSelected()
         }
@@ -104,14 +131,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showImportActions() {
-        selector("智能配乐", listOf("导入音频文件", "新增分组")) { _, index ->
+        selector("智能配乐", listOf("批量导入音频", "导入单个音频", "新增分组", "管理分组")) { _, index ->
             when (index) {
-                0 -> importAudio.launch {
+                0 -> importAudios.launch("audio/*")
+                1 -> importAudio.launch {
                     mode = HandleFileContract.FILE
                     title = "导入配乐"
                     allowExtensions = arrayOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
                 }
-                1 -> showGroupEditor()
+                2 -> showGroupEditor()
+                3 -> showGroupManage()
             }
         }
     }
@@ -160,6 +189,41 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     } else {
                         appDb.readAloudBgmDao.updateGroup(group.copy(name = name, updatedAt = now))
                     }
+                    launch(Dispatchers.Main) { load() }
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showGroupManage() {
+        if (groups.isEmpty()) {
+            toastOnUi("暂无分组")
+            return
+        }
+        selector("管理分组", groups.map { it.displayName() }) { _, index ->
+            val group = groups[index]
+            selector(group.displayName(), listOf("编辑分组", "删除分组")) { _, action ->
+                when (action) {
+                    0 -> showGroupEditor(group)
+                    1 -> confirmDeleteGroup(group)
+                }
+            }
+        }
+    }
+
+    private fun confirmDeleteGroup(group: ReadAloudBgmGroup) {
+        if (group.name == "默认分组") {
+            toastOnUi("默认分组不能删除")
+            return
+        }
+        alert("删除分组") {
+            setMessage("确定删除“${group.displayName()}”？组内音乐会移回默认分组，本地文件不会删除。")
+            okButton {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.readAloudBgmDao.resetTrackGroup(group.id)
+                    appDb.readAloudBgmDao.deleteGroup(group.id)
+                    selectedIds.clear()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -401,5 +465,6 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         private const val MENU_ADD_GROUP = 1
         private const val MENU_MOVE_SELECTED = 2
         private const val MENU_DELETE_SELECTED = 3
+        private const val MENU_MANAGE_GROUPS = 4
     }
 }
