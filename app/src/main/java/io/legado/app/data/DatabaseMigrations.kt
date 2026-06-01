@@ -22,8 +22,68 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_99_100,
+            migration_99_100, migration_100_101,
         )
+    }
+
+    private val migration_100_101 = object : Migration(100, 101) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `name` TEXT NOT NULL DEFAULT '',
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_sortOrder_id` ON `read_aloud_bgm_groups` (`sortOrder`, `id`)")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `groupId` INTEGER NOT NULL DEFAULT 0,
+                    `name` TEXT NOT NULL DEFAULT '',
+                    `fileName` TEXT NOT NULL DEFAULT '',
+                    `filePath` TEXT NOT NULL DEFAULT '',
+                    `tags` TEXT NOT NULL DEFAULT '',
+                    `checksum` TEXT NOT NULL DEFAULT '',
+                    `durationMs` INTEGER NOT NULL DEFAULT 0,
+                    `enabled` INTEGER NOT NULL DEFAULT 1,
+                    `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`groupId`, `sortOrder`, `id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_checksum` ON `read_aloud_bgm_tracks` (`checksum`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_enabled` ON `read_aloud_bgm_tracks` (`enabled`)")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_assignment_caches` (
+                    `cacheKey` TEXT NOT NULL,
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `chapterKey` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT 0,
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `contentHash` TEXT NOT NULL DEFAULT '',
+                    `modelId` TEXT NOT NULL DEFAULT '',
+                    `catalogHash` TEXT NOT NULL DEFAULT '',
+                    `assignmentsJson` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT 'success',
+                    `lastError` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`cacheKey`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_chapterIndex` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_contentHash` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `contentHash`)")
+        }
     }
 
     private val migration_99_100 = object : Migration(99, 100) {

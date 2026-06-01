@@ -42,6 +42,8 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import org.json.JSONObject
 
+private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
+
 enum class ReadAloudConfigGroup(
     val title: String,
     val preferenceKeys: Set<String>
@@ -75,7 +77,9 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleThreadCount,
             PreferKey.aiReadAloudRoleContextParagraphs,
             PreferKey.aiReadAloudRoleMergeGapParagraphs,
-            PreferKey.aiReadAloudRolePrompt
+            PreferKey.aiReadAloudRolePrompt,
+            PreferKey.aiReadAloudBgmEnabled,
+            KEY_AI_READ_ALOUD_BGM_MANAGE
         )
     ),
     Engine(
@@ -277,6 +281,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 PreferKey.aiReadAloudRolePreprocess -> showMultiRolePreprocessRulesDialog()
                 PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
+                KEY_AI_READ_ALOUD_BGM_MANAGE -> startActivity(
+                    android.content.Intent(requireContext(), ReadAloudBgmManageActivity::class.java)
+                )
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -314,6 +321,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudRoleContextParagraphs,
                 PreferKey.aiReadAloudRoleMergeGapParagraphs,
                 PreferKey.aiReadAloudRolePrompt -> {
+                    updateAiRolePreferences()
+                    selectGroup(selectedGroup)
+                }
+                PreferKey.aiReadAloudBgmEnabled -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
                 }
@@ -428,6 +439,19 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     ?.take(40)
                     ?.ifBlank { null }
                     .orEmpty()
+            }
+            findPreference<SwitchPreference>(PreferKey.aiReadAloudBgmEnabled)?.let {
+                it.isEnabled = enabled
+                it.isChecked = AppConfig.aiReadAloudBgmEnabled
+                it.summary = if (AppConfig.aiReadAloudBgmEnabled) {
+                    "AI 可按段落范围选择配乐，朗读时淡入淡出"
+                } else {
+                    "关闭后不会请求或播放章节配乐"
+                }
+            }
+            findPreference<Preference>(KEY_AI_READ_ALOUD_BGM_MANAGE)?.let {
+                it.isEnabled = enabled
+                it.summary = "${appDb.readAloudBgmDao.enabledTracks().size} 首可用音乐"
             }
         }
 
@@ -571,5 +595,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 cancelButton()
             }
         }
+
     }
 }

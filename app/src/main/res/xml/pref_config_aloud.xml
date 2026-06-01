@@ -125,6 +125,19 @@
             android:title="预注入分角色提示词"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="aiReadAloudBgmEnabled"
+            android:summary="AI 可按段落范围选择配乐"
+            android:title="智能配乐"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudBgmManage"
+            android:summary="添加、分组、批量管理配乐"
+            android:title="智能配乐设置"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="appTtsEngine"
             android:summary="TTS"

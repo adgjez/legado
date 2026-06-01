@@ -25,6 +25,7 @@ import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ParagraphRuleDao
+import io.legado.app.data.dao.ReadAloudBgmDao
 import io.legado.app.data.dao.ReadMenuCustomButtonDao
 import io.legado.app.data.dao.ReadRecentBookDao
 import io.legado.app.data.dao.ReadRecordDao
@@ -59,6 +60,9 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.ParagraphRule
 import io.legado.app.data.entities.ParagraphRuleVar
+import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
+import io.legado.app.data.entities.ReadAloudBgmGroup
+import io.legado.app.data.entities.ReadAloudBgmTrack
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
@@ -88,7 +92,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 100,
+    version = 101,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -100,7 +104,8 @@ val appDb by lazy {
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
         AiImageGroup::class, AiGeneratedImage::class,
         BookCharacter::class, BookCharacterRelation::class,
-        BookAiChapterSummary::class, AiReadAloudRoleCache::class],
+        BookAiChapterSummary::class, AiReadAloudRoleCache::class,
+        ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -185,6 +190,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiGeneratedImageDao: AiGeneratedImageDao
     abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
     abstract val aiReadAloudRoleCacheDao: AiReadAloudRoleCacheDao
+    abstract val readAloudBgmDao: ReadAloudBgmDao
 
     companion object {
 

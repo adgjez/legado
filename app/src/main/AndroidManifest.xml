@@ -235,6 +235,9 @@
             android:name=".ui.book.read.config.ParagraphRuleManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.book.read.config.ReadAloudBgmManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.book.read.config.ParagraphRuleEditActivity"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize|stateHidden" />

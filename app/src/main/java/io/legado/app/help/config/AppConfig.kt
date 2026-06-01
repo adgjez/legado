@@ -936,6 +936,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, value)
 
+    var aiReadAloudBgmEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudBgmEnabled, value)
+
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)
