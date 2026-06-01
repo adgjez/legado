@@ -6,8 +6,8 @@
 	</string-array>
 
     <string-array name="ai_read_aloud_role_mode_title">
-        <item>整章批处理</item>
-        <item>并发批处理</item>
+        <item>全文批处理</item>
+        <item>并发查找模式</item>
     </string-array>
 
     <string-array name="ai_read_aloud_role_mode_value">

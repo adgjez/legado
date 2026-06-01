@@ -109,9 +109,15 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiReadAloudRoleBatchParagraphCount"
-            android:summary="12"
-            android:title="每批段落数"
+            android:key="aiReadAloudRoleContextParagraphs"
+            android:summary="2"
+            android:title="上下文段落数"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudRoleMergeGapParagraphs"
+            android:summary="1"
+            android:title="相隔段落合并"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

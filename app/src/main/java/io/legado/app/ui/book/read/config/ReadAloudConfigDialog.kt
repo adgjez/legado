@@ -72,7 +72,8 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRolePreprocess,
             PreferKey.aiReadAloudRoleThreadCount,
-            PreferKey.aiReadAloudRoleBatchParagraphCount,
+            PreferKey.aiReadAloudRoleContextParagraphs,
+            PreferKey.aiReadAloudRoleMergeGapParagraphs,
             PreferKey.aiReadAloudRolePrompt
         )
     ),
@@ -255,13 +256,22 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     AppConfig.aiReadAloudRoleThreadCount = it
                     updateAiRolePreferences()
                 }
-                PreferKey.aiReadAloudRoleBatchParagraphCount -> showAiRoleNumberDialog(
-                    title = "AI分角色每批段落数",
-                    value = AppConfig.aiReadAloudRoleBatchParagraphCount,
-                    min = 4,
-                    max = 40
+                PreferKey.aiReadAloudRoleContextParagraphs -> showAiRoleNumberDialog(
+                    title = "上下文段落数",
+                    value = AppConfig.aiReadAloudRoleContextParagraphs,
+                    min = 0,
+                    max = 20
                 ) {
-                    AppConfig.aiReadAloudRoleBatchParagraphCount = it
+                    AppConfig.aiReadAloudRoleContextParagraphs = it
+                    updateAiRolePreferences()
+                }
+                PreferKey.aiReadAloudRoleMergeGapParagraphs -> showAiRoleNumberDialog(
+                    title = "相隔段落合并",
+                    value = AppConfig.aiReadAloudRoleMergeGapParagraphs,
+                    min = 0,
+                    max = 10
+                ) {
+                    AppConfig.aiReadAloudRoleMergeGapParagraphs = it
                     updateAiRolePreferences()
                 }
                 PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
@@ -298,7 +308,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudAutoCreateCharacters,
                 PreferKey.aiReadAloudRoleMode,
                 PreferKey.aiReadAloudRoleThreadCount,
-                PreferKey.aiReadAloudRoleBatchParagraphCount,
+                PreferKey.aiReadAloudRoleContextParagraphs,
+                PreferKey.aiReadAloudRoleMergeGapParagraphs,
                 PreferKey.aiReadAloudRolePrompt -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
@@ -335,6 +346,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 val visibleInGroup = key in group.preferenceKeys
                 val visibleForMode = when (key) {
                     PreferKey.aiReadAloudRoleThreadCount -> !fullMode
+                    PreferKey.aiReadAloudRoleContextParagraphs -> !fullMode
+                    PreferKey.aiReadAloudRoleMergeGapParagraphs -> !fullMode
                     else -> true
                 }
                 preference.isVisible = visibleInGroup && visibleForMode
@@ -392,10 +405,15 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 it.isVisible = !fullMode
                 it.summary = AppConfig.aiReadAloudRoleThreadCount.toString()
             }
-            findPreference<Preference>(PreferKey.aiReadAloudRoleBatchParagraphCount)?.let {
+            findPreference<Preference>(PreferKey.aiReadAloudRoleContextParagraphs)?.let {
                 it.isEnabled = enabled
-                it.isVisible = true
-                it.summary = AppConfig.aiReadAloudRoleBatchParagraphCount.toString()
+                it.isVisible = !fullMode
+                it.summary = "上下各 ${AppConfig.aiReadAloudRoleContextParagraphs} 段"
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudRoleMergeGapParagraphs)?.let {
+                it.isEnabled = enabled
+                it.isVisible = !fullMode
+                it.summary = "${AppConfig.aiReadAloudRoleMergeGapParagraphs} 段内合并为同一请求"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRolePrompt)?.let {
                 it.isEnabled = enabled
