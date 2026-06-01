@@ -43,6 +43,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
+import io.legado.app.help.readaloud.bgm.ReadAloudBgmPlayer
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
@@ -115,6 +116,9 @@ abstract class BaseReadAloudService : BaseService(),
             ?.apply {
                 setReferenceCounted(false)
             }
+    }
+    private val bgmPlayer: ReadAloudBgmPlayer by lazy {
+        ReadAloudBgmPlayer(this, lifecycleScope)
     }
     private val mFocusRequest: AudioFocusRequestCompat by lazy {
         MediaHelp.buildAudioFocusRequestCompat(this)
@@ -248,6 +252,7 @@ abstract class BaseReadAloudService : BaseService(),
         abandonFocus()
         unregisterReceiver(broadcastReceiver)
         postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_STOPPED)
+        bgmPlayer.release()
         postEvent(EventBus.ALOUD_STATE, Status.STOP)
         notificationManager.cancel(NotificationId.ReadAloudService)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
@@ -464,17 +469,19 @@ abstract class BaseReadAloudService : BaseService(),
             ReadAloudPlaybackState.PHASE_ERROR -> false
             else -> null
         }
+        val state = ReadAloudPlaybackState(
+            phase = phase,
+            chapterIndex = ReadBook.durChapterIndex,
+            cueIndex = cueIndex,
+            message = message,
+            playing = isPlaying,
+            buffering = buffering,
+            serviceRunning = isRun
+        )
+        bgmPlayer.onPlaybackState(state)
         postEvent(
             EventBus.READ_ALOUD_PLAYBACK_STATE,
-            ReadAloudPlaybackState(
-                phase = phase,
-                chapterIndex = ReadBook.durChapterIndex,
-                cueIndex = cueIndex,
-                message = message,
-                playing = isPlaying,
-                buffering = buffering,
-                serviceRunning = isRun
-            )
+            state
         )
     }
 
