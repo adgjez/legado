@@ -374,6 +374,15 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         when (status) {
             io.legado.app.constant.Status.PLAY -> {
                 switchingTtsEngine = false
+                if (playbackPhase in setOf(
+                        ReadAloudPlaybackState.PHASE_PAUSED,
+                        ReadAloudPlaybackState.PHASE_STOPPED,
+                        ReadAloudPlaybackState.PHASE_ERROR
+                    )
+                ) {
+                    playbackPhase = ReadAloudPlaybackState.PHASE_PREPARING
+                    playbackMessage = ""
+                }
                 refresh()
                 if (autoExpand && !dismissedForCurrentRun && (visibility != VISIBLE || !expanded)) {
                     showPanel(animateFromBottom = true)
@@ -382,6 +391,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
             io.legado.app.constant.Status.PAUSE -> {
                 switchingTtsEngine = false
+                playbackPhase = ReadAloudPlaybackState.PHASE_PAUSED
+                playbackMessage = ""
                 refresh()
             }
             io.legado.app.constant.Status.STOP -> {
@@ -402,6 +413,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                     refresh()
                     return
                 }
+                playbackPhase = ReadAloudPlaybackState.PHASE_STOPPED
+                playbackMessage = ""
                 dismissedForCurrentRun = false
                 hidePanel()
             }
@@ -509,7 +522,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun setForegroundActive(active: Boolean) {
         foregroundActive = active
-        uiState = uiState.copy(foregroundActive = active && visibility == VISIBLE)
+        refresh()
     }
 
     fun setReadMenuVisible(visible: Boolean) {
@@ -922,6 +935,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 !model.roleCacheReady
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
+        val servicePlaying = BaseReadAloudService.isPlay()
         val roleEventVisible = roleStatusText.isNotBlank() &&
                 !roleDetailClosed &&
                 (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
@@ -932,18 +946,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             sourceOrigin = model?.sourceOrigin,
             chapterTitle = model?.chapterTitle.orEmpty(),
             chapterIndexText = model?.chapterIndexText.orEmpty(),
-            playing = playbackPhase == ReadAloudPlaybackState.PHASE_PLAYING ||
-                    (BaseReadAloudService.isPlay() &&
-                            playbackPhase !in setOf(
-                        ReadAloudPlaybackState.PHASE_PREPARING,
-                        ReadAloudPlaybackState.PHASE_BUFFERING,
-                        ReadAloudPlaybackState.PHASE_PAUSED,
-                        ReadAloudPlaybackState.PHASE_STOPPED,
-                        ReadAloudPlaybackState.PHASE_ERROR
-                    )),
+            playing = servicePlaying,
             playbackPhase = playbackPhase,
-            playbackBusy = playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
-                    playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING,
+            playbackBusy = servicePlaying &&
+                    (playbackPhase == ReadAloudPlaybackState.PHASE_PREPARING ||
+                            playbackPhase == ReadAloudPlaybackState.PHASE_BUFFERING),
             serviceRunning = BaseReadAloudService.isRun,
             timerMinute = timerMinute,
             progress = paragraphProgress,
