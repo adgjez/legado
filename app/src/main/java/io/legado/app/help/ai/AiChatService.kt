@@ -38,6 +38,15 @@ data class AiUsageStats(
     }
 }
 
+data class AiSingleToolCallResult(
+    val toolName: String = "",
+    val arguments: String = "",
+    val content: String = ""
+) {
+    val hasToolCall: Boolean
+        get() = toolName.isNotBlank() && arguments.isNotBlank()
+}
+
 object AiChatService {
 
     private const val MAX_TOOL_ROUNDS = 12
@@ -101,6 +110,73 @@ object AiChatService {
 
     suspend fun chat(messages: List<AiChatMessage>): String {
         return chatStream(messages, onPartial = {})
+    }
+
+    suspend fun requestSingleToolCall(
+        messages: List<AiChatMessage>,
+        tool: AiResolvedTool,
+        modelConfigOverride: AiModelConfig? = null,
+        promptCacheKeyOverride: String? = null,
+        onUsage: (AiUsageStats) -> Unit = {}
+    ): AiSingleToolCallResult {
+        val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
+        val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
+            ?: AppConfig.aiCurrentProvider
+        val baseUrl = provider?.baseUrl?.trim().orEmpty()
+        val model = modelConfig?.modelId?.trim().orEmpty()
+        val apiMode = normalizeApiMode(provider?.apiMode)
+        val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        val promptCacheKey = promptCacheKeyOverride
+            ?.takeIf { provider?.promptCache == true }
+            ?.let(::normalizePromptCacheKey)
+            ?: provider
+                ?.takeIf { it.promptCache }
+                ?.let { buildPromptCacheKey(it, model) }
+        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        require(model.isNotBlank()) { "Model is empty" }
+
+        val requestLog = StringBuilder().apply {
+            append("url=$chatUrl").append('\n')
+            append("model=$model").append('\n')
+            append("apiMode=$apiMode").append('\n')
+            append("provider=${provider?.name.orEmpty()}").append('\n')
+            append("singleTool=${tool.name}").append('\n')
+        }
+        val reserveTokens = estimateStaticRequestTokens(messages, listOf(tool))
+        val preparedContext = AiContextManager.prepare(messages, null, reserveTokens)
+        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
+        return runCatching {
+            val assistantTurn = requestCompletionStreamWithRetry(
+                chatUrl = chatUrl,
+                apiMode = apiMode,
+                model = model,
+                providerApiKey = provider?.apiKey.orEmpty(),
+                providerHeaders = provider?.headers.orEmpty(),
+                messages = conversation,
+                tools = listOf(tool),
+                promptCacheKey = promptCacheKey,
+                requestLog = requestLog,
+                round = 1,
+                onPartial = {},
+                onThinking = {},
+                onUsage = onUsage
+            )
+            val toolCall = assistantTurn.toolCalls.firstOrNull { it.name == tool.name }
+            AiSingleToolCallResult(
+                toolName = toolCall?.name.orEmpty(),
+                arguments = toolCall?.arguments.orEmpty(),
+                content = assistantTurn.content
+            )
+        }.getOrElse { throwable ->
+            if (throwable is AiChatException) {
+                throw throwable
+            }
+            throw AiChatException(
+                message = throwable.message ?: throwable.javaClass.simpleName,
+                debugLog = requestLog.toSafeDebugLog(),
+                cause = throwable
+            )
+        }
     }
 
     suspend fun fetchModels(provider: AiProviderConfig): List<String> {

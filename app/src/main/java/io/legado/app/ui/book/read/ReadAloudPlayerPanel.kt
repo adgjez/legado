@@ -789,11 +789,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val readAloudByPage = context.getPrefBoolean(PreferKey.readAloudByPage)
         val paragraphs = chapter.getParagraphs(false)
         val baseCues = chapter.buildReadAloudCues(readAloudByPage)
-        val roleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, baseCues.map { cue -> cue.text })
-        val roleCache = roleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
+        val exactRoleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, baseCues.map { cue -> cue.text })
+        val exactRoleCache = exactRoleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
+        val roleCache = AiReadAloudRoleService.cacheForPlayback(book, chapter, baseCues.map { cue -> cue.text })
+            ?: exactRoleCache
+        val roleCacheKey = roleCache?.cacheKey ?: exactRoleCacheKey
         val roleCacheReady = roleCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
                 roleCache.segmentsJson.isNotBlank()
-        val roleCacheRunning = roleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING
+        val roleCacheRunning = !roleCacheReady &&
+                exactRoleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING &&
+                AiReadAloudRoleService.isRunningCacheActive(exactRoleCacheKey, exactRoleCache.updatedAt)
         val coverUrl = book.getDisplayCover()
         val cueFingerprint = buildString {
             append(baseCues.size)
@@ -2103,6 +2108,16 @@ private fun RoleAssignmentSummary(
             RoleSummaryChip("Token ${roleState.totalTokens}", colors)
         } else if (roleState.requestCount > 0 && !roleState.running) {
             RoleSummaryChip("Token 未返回", colors)
+        }
+        if (roleState.inputTokens > 0) {
+            val uncached = (roleState.inputTokens - roleState.cachedInputTokens).coerceAtLeast(0)
+            RoleSummaryChip("输入 ${roleState.inputTokens}", colors)
+            if (uncached > 0) {
+                RoleSummaryChip("未命中 $uncached", colors)
+            }
+        }
+        if (roleState.outputTokens > 0) {
+            RoleSummaryChip("输出 ${roleState.outputTokens}", colors)
         }
         if (roleState.cachedInputTokens > 0) {
             RoleSummaryChip("缓存命中 ${roleState.cachedInputTokens}", colors)
