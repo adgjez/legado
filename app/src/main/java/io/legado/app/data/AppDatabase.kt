@@ -27,6 +27,7 @@ import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ParagraphRuleDao
 import io.legado.app.data.dao.ReadAloudBgmDao
+import io.legado.app.data.dao.ReadAloudSpeakerGroupDao
 import io.legado.app.data.dao.ReadMenuCustomButtonDao
 import io.legado.app.data.dao.ReadRecentBookDao
 import io.legado.app.data.dao.ReadRecordDao
@@ -65,6 +66,8 @@ import io.legado.app.data.entities.ParagraphRuleVar
 import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
 import io.legado.app.data.entities.ReadAloudBgmGroup
 import io.legado.app.data.entities.ReadAloudBgmTrack
+import io.legado.app.data.entities.ReadAloudSpeakerGroup
+import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.data.entities.ReadRecentBook
 import io.legado.app.data.entities.ReadRecord
@@ -94,7 +97,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 105,
+    version = 106,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -108,6 +111,7 @@ val appDb by lazy {
         BookCharacter::class, BookCharacterRelation::class,
         BookAiChapterSummary::class, AiReadAloudRoleCache::class,
         ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class,
+        ReadAloudSpeakerGroup::class, ReadAloudSpeakerGroupItem::class,
         AiReadAloudUsageRecord::class],
     views = [BookSourcePart::class],
     autoMigrations = [
@@ -194,6 +198,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
     abstract val aiReadAloudRoleCacheDao: AiReadAloudRoleCacheDao
     abstract val readAloudBgmDao: ReadAloudBgmDao
+    abstract val readAloudSpeakerGroupDao: ReadAloudSpeakerGroupDao
     abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
 
     companion object {

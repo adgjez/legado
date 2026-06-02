@@ -23,8 +23,16 @@ object DatabaseMigrations {
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
-            migration_103_104, migration_104_105,
+            migration_103_104, migration_104_105, migration_105_106,
         )
+    }
+
+    private val migration_105_106 = object : Migration(105, 106) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            repairReadAloudAudioTables(db)
+            splitReadAloudAudioGroupsByType(db)
+            repairReadAloudSpeakerGroupTables(db)
+        }
     }
 
     private val migration_104_105 = object : Migration(104, 105) {
@@ -52,13 +60,19 @@ object DatabaseMigrations {
             CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (
                 `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 `name` TEXT NOT NULL DEFAULT '',
+                `assetType` TEXT NOT NULL DEFAULT 'bgm',
                 `sortOrder` INTEGER NOT NULL DEFAULT 0,
                 `createdAt` INTEGER NOT NULL DEFAULT 0,
                 `updatedAt` INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
+        val groupColumns = columnNames(db, "read_aloud_bgm_groups")
+        if ("assetType" !in groupColumns) {
+            db.execSQL("ALTER TABLE `read_aloud_bgm_groups` ADD COLUMN `assetType` TEXT NOT NULL DEFAULT 'bgm'")
+        }
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_sortOrder_id` ON `read_aloud_bgm_groups` (`sortOrder`, `id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_assetType_sortOrder_id` ON `read_aloud_bgm_groups` (`assetType`, `sortOrder`, `id`)")
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (
@@ -112,6 +126,111 @@ object DatabaseMigrations {
         )
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_chapterIndex` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `chapterIndex`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_contentHash` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `contentHash`)")
+    }
+
+    private fun splitReadAloudAudioGroupsByType(db: SupportSQLiteDatabase) {
+        if (!tableExists(db, "read_aloud_bgm_groups") || !tableExists(db, "read_aloud_bgm_tracks")) return
+        db.query(
+            """
+            SELECT `id`, `name`, `sortOrder`, `createdAt`, `updatedAt`
+            FROM `read_aloud_bgm_groups`
+            ORDER BY `id` ASC
+            """.trimIndent()
+        ).use { cursor ->
+            val groups = mutableListOf<Array<Any>>()
+            while (cursor.moveToNext()) {
+                groups += arrayOf(
+                    cursor.getLong(0),
+                    cursor.getString(1).orEmpty(),
+                    cursor.getInt(2),
+                    cursor.getLong(3),
+                    cursor.getLong(4)
+                )
+            }
+            groups.forEach { row ->
+                val id = row[0] as Long
+                val name = row[1] as String
+                val sortOrder = row[2] as Int
+                val createdAt = row[3] as Long
+                val updatedAt = row[4] as Long
+                val hasBgm = hasAudioTracks(db, id, "bgm")
+                val hasSfx = hasAudioTracks(db, id, "sfx")
+                when {
+                    hasBgm && hasSfx -> {
+                        db.execSQL(
+                            """
+                            INSERT INTO `read_aloud_bgm_groups`
+                            (`name`, `assetType`, `sortOrder`, `createdAt`, `updatedAt`)
+                            VALUES (?, 'sfx', ?, ?, ?)
+                            """.trimIndent(),
+                            arrayOf(name, sortOrder, createdAt, updatedAt)
+                        )
+                        val newId = lastInsertRowId(db)
+                        if (newId > 0L) {
+                            db.execSQL(
+                                "UPDATE `read_aloud_bgm_tracks` SET `groupId` = ? WHERE `groupId` = ? AND `assetType` = 'sfx'",
+                                arrayOf(newId, id)
+                            )
+                        }
+                        db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf(id))
+                    }
+                    hasSfx -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'sfx' WHERE `id` = ?", arrayOf(id))
+                    else -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf(id))
+                }
+            }
+        }
+    }
+
+    private fun hasAudioTracks(db: SupportSQLiteDatabase, groupId: Long, assetType: String): Boolean {
+        db.query(
+            "SELECT `id` FROM `read_aloud_bgm_tracks` WHERE `groupId` = ? AND `assetType` = ? LIMIT 1",
+            arrayOf(groupId, assetType)
+        ).use { cursor ->
+            return cursor.moveToFirst()
+        }
+    }
+
+    private fun lastInsertRowId(db: SupportSQLiteDatabase): Long {
+        db.query("SELECT last_insert_rowid()").use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+        }
+    }
+
+    private fun repairReadAloudSpeakerGroupTables(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `read_aloud_speaker_groups` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `name` TEXT NOT NULL DEFAULT '',
+                `enabled` INTEGER NOT NULL DEFAULT 1,
+                `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_enabled_sortOrder_id` ON `read_aloud_speaker_groups` (`enabled`, `sortOrder`, `id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_sortOrder_id` ON `read_aloud_speaker_groups` (`sortOrder`, `id`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `read_aloud_speaker_group_items` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `groupId` INTEGER NOT NULL DEFAULT 0,
+                `engineType` TEXT NOT NULL DEFAULT '',
+                `engineValue` TEXT NOT NULL DEFAULT '',
+                `engineName` TEXT NOT NULL DEFAULT '',
+                `speakerName` TEXT NOT NULL DEFAULT '',
+                `toneID` TEXT NOT NULL DEFAULT '',
+                `sourceGroupId` TEXT NOT NULL DEFAULT '',
+                `sourceGroupName` TEXT NOT NULL DEFAULT '',
+                `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId_sortOrder_id` ON `read_aloud_speaker_group_items` (`groupId`, `sortOrder`, `id`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_engineType_engineValue_toneID` ON `read_aloud_speaker_group_items` (`engineType`, `engineValue`, `toneID`)")
     }
 
     private fun repairAiReadAloudUsageTable(db: SupportSQLiteDatabase) {

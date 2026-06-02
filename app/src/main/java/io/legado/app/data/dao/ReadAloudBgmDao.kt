@@ -19,6 +19,9 @@ interface ReadAloudBgmDao {
     @Query("SELECT * FROM read_aloud_bgm_groups ORDER BY sortOrder ASC, id ASC")
     fun groups(): List<ReadAloudBgmGroup>
 
+    @Query("SELECT * FROM read_aloud_bgm_groups WHERE assetType = :assetType ORDER BY sortOrder ASC, id ASC")
+    fun groupsByType(assetType: String): List<ReadAloudBgmGroup>
+
     @Query("SELECT * FROM read_aloud_bgm_tracks ORDER BY groupId ASC, sortOrder ASC, id ASC")
     fun flowTracks(): Flow<List<ReadAloudBgmTrack>>
 
@@ -40,8 +43,14 @@ interface ReadAloudBgmDao {
     @Query("SELECT MAX(sortOrder) FROM read_aloud_bgm_groups")
     fun maxGroupOrder(): Int?
 
+    @Query("SELECT MAX(sortOrder) FROM read_aloud_bgm_groups WHERE assetType = :assetType")
+    fun maxGroupOrderByType(assetType: String): Int?
+
     @Query("SELECT MAX(sortOrder) FROM read_aloud_bgm_tracks WHERE groupId = :groupId")
     fun maxTrackOrder(groupId: Long): Int?
+
+    @Query("SELECT MAX(sortOrder) FROM read_aloud_bgm_tracks WHERE groupId = :groupId AND assetType = :assetType")
+    fun maxTrackOrder(groupId: Long, assetType: String): Int?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertGroup(group: ReadAloudBgmGroup): Long
@@ -67,8 +76,14 @@ interface ReadAloudBgmDao {
     @Query("DELETE FROM read_aloud_bgm_groups WHERE id = :groupId")
     fun deleteGroup(groupId: Long)
 
+    @Query("DELETE FROM read_aloud_bgm_groups WHERE id = :groupId AND assetType = :assetType")
+    fun deleteGroup(groupId: Long, assetType: String)
+
     @Query("UPDATE read_aloud_bgm_tracks SET groupId = 0, updatedAt = :updatedAt WHERE groupId = :groupId")
     fun resetTrackGroup(groupId: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE read_aloud_bgm_tracks SET groupId = 0, updatedAt = :updatedAt WHERE groupId = :groupId AND assetType = :assetType")
+    fun resetTrackGroup(groupId: Long, assetType: String, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM read_aloud_bgm_assignment_caches WHERE cacheKey = :cacheKey LIMIT 1")
     fun assignmentCache(cacheKey: String): ReadAloudBgmAssignmentCache?

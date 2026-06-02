@@ -6,19 +6,19 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "read_aloud_bgm_groups",
+    tableName = "read_aloud_speaker_groups",
     indices = [
-        Index(value = ["sortOrder", "id"]),
-        Index(value = ["assetType", "sortOrder", "id"])
+        Index(value = ["enabled", "sortOrder", "id"]),
+        Index(value = ["sortOrder", "id"])
     ]
 )
-data class ReadAloudBgmGroup(
+data class ReadAloudSpeakerGroup(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
     @ColumnInfo(defaultValue = "")
     val name: String = "",
-    @ColumnInfo(defaultValue = "'bgm'")
-    val assetType: String = ReadAloudBgmTrack.TYPE_BGM,
+    @ColumnInfo(defaultValue = "1")
+    val enabled: Boolean = true,
     @ColumnInfo(defaultValue = "0")
     val sortOrder: Int = 0,
     @ColumnInfo(defaultValue = "0")
@@ -26,5 +26,5 @@ data class ReadAloudBgmGroup(
     @ColumnInfo(defaultValue = "0")
     val updatedAt: Long = System.currentTimeMillis()
 ) {
-    fun displayName(): String = name.ifBlank { "默认分组" }
+    fun displayName(): String = name.ifBlank { "未命名分组" }
 }
