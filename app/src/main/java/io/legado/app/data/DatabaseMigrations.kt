@@ -163,19 +163,19 @@ object DatabaseMigrations {
                             (`name`, `assetType`, `sortOrder`, `createdAt`, `updatedAt`)
                             VALUES (?, 'sfx', ?, ?, ?)
                             """.trimIndent(),
-                            arrayOf(name, sortOrder, createdAt, updatedAt)
+                            arrayOf<Any>(name, sortOrder, createdAt, updatedAt)
                         )
                         val newId = lastInsertRowId(db)
                         if (newId > 0L) {
                             db.execSQL(
                                 "UPDATE `read_aloud_bgm_tracks` SET `groupId` = ? WHERE `groupId` = ? AND `assetType` = 'sfx'",
-                                arrayOf(newId, id)
+                                arrayOf<Any>(newId, id)
                             )
                         }
-                        db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf(id))
+                        db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf<Any>(id))
                     }
-                    hasSfx -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'sfx' WHERE `id` = ?", arrayOf(id))
-                    else -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf(id))
+                    hasSfx -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'sfx' WHERE `id` = ?", arrayOf<Any>(id))
+                    else -> db.execSQL("UPDATE `read_aloud_bgm_groups` SET `assetType` = 'bgm' WHERE `id` = ?", arrayOf<Any>(id))
                 }
             }
         }
@@ -184,7 +184,7 @@ object DatabaseMigrations {
     private fun hasAudioTracks(db: SupportSQLiteDatabase, groupId: Long, assetType: String): Boolean {
         db.query(
             "SELECT `id` FROM `read_aloud_bgm_tracks` WHERE `groupId` = ? AND `assetType` = ? LIMIT 1",
-            arrayOf(groupId, assetType)
+            arrayOf<Any>(groupId, assetType)
         ).use { cursor ->
             return cursor.moveToFirst()
         }
