@@ -292,6 +292,7 @@ object AiReadAloudRoleService {
         val cacheKey = roleKey.cacheKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
         val usageTracker = RoleUsageTracker()
+        var keepAliveId: String? = null
         fun postPreview(
             status: String,
             message: String,
@@ -333,6 +334,17 @@ object AiReadAloudRoleService {
                 snapshot,
                 error,
                 usageTracker.snapshot()
+            )
+            updateRoleKeepAlive(
+                taskId = keepAliveId,
+                book = currentBook,
+                chapter = currentChapter,
+                stage = stage,
+                status = status,
+                message = message,
+                paragraphCount = cleanParagraphs.size,
+                segmentCount = snapshot.size,
+                usageSnapshot = usageTracker.snapshot()
             )
         }
         val oldCache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
@@ -429,7 +441,24 @@ object AiReadAloudRoleService {
             return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中", cacheKey = cacheKey)
         }
         val now = System.currentTimeMillis()
+        keepAliveId = AiTaskKeepAlive.retain(
+            title = stageMessage(stage, "分配角色中"),
+            content = "${currentBook.name} · ${currentChapter.chapter.title}",
+            kind = AiTaskKeepAlive.KIND_ROLE_ASSIGN
+        )
         postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_RUNNING, stageMessage(stage, "分配角色中"), cleanParagraphs.size)
+        updateRoleKeepAlive(
+            taskId = keepAliveId,
+            book = currentBook,
+            chapter = currentChapter,
+            stage = stage,
+            status = AiReadAloudRoleState.STATUS_RUNNING,
+            message = stageMessage(stage, "分配角色中"),
+            paragraphCount = cleanParagraphs.size,
+            segmentCount = 0,
+            usageSnapshot = usageTracker.snapshot(),
+            force = true
+        )
         appDb.aiReadAloudRoleCacheDao.upsert(
             AiReadAloudRoleCache(
                 cacheKey = cacheKey,
@@ -608,6 +637,7 @@ object AiReadAloudRoleService {
             return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
         } finally {
             runningCacheKeys.remove(cacheKey)
+            AiTaskKeepAlive.release(keepAliveId)
         }
     }
 
@@ -907,6 +937,53 @@ object AiReadAloudRoleService {
     private fun stageMessage(stage: String, action: String): String {
         val prefix = if (stage == AiReadAloudRoleState.STAGE_NEXT) "下一章节" else "当前章节"
         return "$prefix$action"
+    }
+
+    private fun updateRoleKeepAlive(
+        taskId: String?,
+        book: Book,
+        chapter: TextChapter,
+        stage: String,
+        status: String,
+        message: String,
+        paragraphCount: Int,
+        segmentCount: Int,
+        usageSnapshot: RoleUsageSnapshot,
+        force: Boolean = status != AiReadAloudRoleState.STATUS_RUNNING
+    ) {
+        if (taskId.isNullOrBlank()) return
+        val title = when (status) {
+            AiReadAloudRoleState.STATUS_SUCCESS -> stageMessage(stage, "角色分配完成")
+            AiReadAloudRoleState.STATUS_FAILED -> stageMessage(stage, "角色分配失败")
+            else -> stageMessage(stage, "分配角色中")
+        }
+        AiTaskKeepAlive.update(
+            taskId = taskId,
+            title = title,
+            content = "${book.name} · ${chapter.chapter.title}",
+            progressText = buildRoleKeepAliveProgress(
+                message = message,
+                paragraphCount = paragraphCount,
+                segmentCount = segmentCount,
+                usageSnapshot = usageSnapshot
+            ),
+            force = force
+        )
+    }
+
+    private fun buildRoleKeepAliveProgress(
+        message: String,
+        paragraphCount: Int,
+        segmentCount: Int,
+        usageSnapshot: RoleUsageSnapshot
+    ): String {
+        return buildList {
+            add(message)
+            if (segmentCount > 0) add("已确认 $segmentCount 个片段")
+            if (paragraphCount > 0) add("$paragraphCount 段")
+            if (usageSnapshot.requestCount > 0) add("请求 ${usageSnapshot.requestCount} 次")
+            if (usageSnapshot.elapsedMillis > 0) add("${(usageSnapshot.elapsedMillis / 1000L).coerceAtLeast(1L)}s")
+        }.joinToString(" · ")
     }
 
     private fun segmentCount(json: String): Int {
