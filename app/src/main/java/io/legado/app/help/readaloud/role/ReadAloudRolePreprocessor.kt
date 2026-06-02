@@ -1,8 +1,5 @@
 package io.legado.app.help.readaloud.role
 
-import io.legado.app.help.config.AppConfig
-import org.json.JSONObject
-
 data class ReadAloudRoleRange(
     val paragraphIndex: Int,
     val start: Int,
@@ -246,35 +243,25 @@ object ReadAloudRolePreprocessor {
 
     private fun loadRuleConfig(): RuleConfig {
         return runCatching {
-            val root = JSONObject(AppConfig.aiReadAloudRolePreprocessRules)
-            val quotePairs = linkedMapOf<Char, Char>()
-            val pairArray = root.optJSONArray("quotePairs")
-            if (pairArray != null) {
-                for (index in 0 until pairArray.length()) {
-                    val item = pairArray.optJSONObject(index) ?: continue
-                    val open = item.optString("open").firstOrNull() ?: continue
-                    val close = item.optString("close").firstOrNull() ?: continue
-                    quotePairs[open] = close
-                }
-            }
-            val thoughtPatterns = mutableListOf<String>()
-            val patternArray = root.optJSONArray("thoughtCuePatterns")
-            if (patternArray != null) {
-                for (index in 0 until patternArray.length()) {
-                    patternArray.optString(index).trim().takeIf { it.isNotBlank() }?.let(thoughtPatterns::add)
-                }
-            }
+            val config = ReadAloudPreprocessRuleConfig.current()
             RuleConfig(
-                quotePairs = quotePairs.ifEmpty { defaultQuotePairs },
-                sentencePunctuation = root.optString("sentencePunctuation")
+                quotePairs = config.quotePairs
+                    .mapNotNull { pair ->
+                        val open = pair.open.firstOrNull() ?: return@mapNotNull null
+                        val close = pair.close.firstOrNull() ?: return@mapNotNull null
+                        open to close
+                    }
+                    .toMap()
+                    .ifEmpty { defaultQuotePairs },
+                sentencePunctuation = config.sentencePunctuation
                     .takeIf { it.isNotBlank() }
                     ?.toSet()
                     ?: defaultSentencePunctuation,
-                thoughtCuePatterns = thoughtPatterns.ifEmpty { defaultThoughtCuePatterns },
-                dialogueMinLength = root.optInt("dialogueMinLength", 6).coerceIn(1, 80),
-                emphasisMaxLength = root.optInt("emphasisMaxLength", 8).coerceIn(1, 80),
-                colonCueMaxLength = root.optInt("colonCueMaxLength", 24).coerceIn(1, 80),
-                mergeCrossParagraphQuote = root.optBoolean("mergeCrossParagraphQuote", true)
+                thoughtCuePatterns = config.thoughtCuePatterns.ifEmpty { defaultThoughtCuePatterns },
+                dialogueMinLength = config.dialogueMinLength,
+                emphasisMaxLength = config.emphasisMaxLength,
+                colonCueMaxLength = config.colonCueMaxLength,
+                mergeCrossParagraphQuote = config.mergeCrossParagraphQuote
             )
         }.getOrElse {
             RuleConfig()

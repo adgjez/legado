@@ -867,7 +867,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
           "dialogueMinLength": 6,
           "emphasisMaxLength": 8,
           "colonCueMaxLength": 24,
-          "mergeCrossParagraphQuote": true
+          "mergeCrossParagraphQuote": true,
+          "soundEffectCuePatterns": [
+            "吱呀", "砰", "咚", "哐", "啪", "轰", "咔嚓", "咯吱", "哗啦", "嗡",
+            "铃声", "脚步声", "敲门声", "开门声", "关门声", "枪声", "雷声", "风声", "雨声"
+          ],
+          "soundEffectExcludePatterns": ["心声", "名声", "声音很", "声音低", "声音冷", "声音沙哑"],
+          "soundEffectContextChars": 28
         }
     """.trimIndent()
 

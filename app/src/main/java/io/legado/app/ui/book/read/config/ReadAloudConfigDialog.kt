@@ -22,6 +22,10 @@ import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.role.ReadAloudPreprocessRuleConfig
+import io.legado.app.help.readaloud.role.ReadAloudQuotePair
+import io.legado.app.help.readaloud.role.ReadAloudRolePreprocessor
+import io.legado.app.help.readaloud.role.ReadAloudSoundEffectPreprocessor
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
@@ -546,14 +550,253 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         }
 
         private fun showMultiRolePreprocessRulesDialog() {
+            val config = ReadAloudPreprocessRuleConfig.current()
+            val items = listOf(
+                "引号与句末规则 · ${config.quotePairs.size} 组引号",
+                "心理活动提示词 · ${config.thoughtCuePatterns.size} 条",
+                "判断阈值 · 台词 ${config.dialogueMinLength} / 强调 ${config.emphasisMaxLength}",
+                "音效候选规则 · ${config.soundEffectCuePatterns.size} 个候选词",
+                "试运行预处理",
+                "高级 JSON",
+                "恢复默认"
+            )
+            requireContext().selector("预处理规则", items) { _, _, index ->
+                when (index) {
+                    0 -> showPreprocessQuoteDialog(config)
+                    1 -> showRuleListEditor(
+                        title = "心理活动提示词",
+                        values = config.thoughtCuePatterns,
+                        hint = "每行一个提示词，例如：心道",
+                        onSave = { savePreprocessConfig(config.copy(thoughtCuePatterns = it)) }
+                    )
+                    2 -> showPreprocessThresholdDialog(config)
+                    3 -> showSoundEffectRuleDialog(config)
+                    4 -> showPreprocessTrialDialog()
+                    5 -> showPreprocessJsonDialog()
+                    6 -> {
+                        AppConfig.aiReadAloudRolePreprocessRules = ""
+                        updateAiRolePreferences()
+                        toastOnUi("已恢复内置预处理规则")
+                    }
+                }
+            }
+        }
+
+        private fun showPreprocessQuoteDialog(config: ReadAloudPreprocessRuleConfig) {
             val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "JSON 规则。可调整 quotePairs、sentencePunctuation、thoughtCuePatterns、dialogueMinLength、emphasisMaxLength、colonCueMaxLength。"
+                editView.hint = "每行一组引号，格式：开引号 空格 闭引号，例如：\n“ ”\n「 」"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(config.quotePairs.joinToString("\n") { "${it.open} ${it.close}" })
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("引号与句末规则") {
+                customView { binding.root }
+                okButton {
+                    val pairs = parseQuotePairs(binding.editView.text?.toString().orEmpty())
+                    if (pairs.isEmpty()) {
+                        toastOnUi("至少保留一组引号")
+                        return@okButton
+                    }
+                    savePreprocessConfig(config.copy(quotePairs = pairs))
+                }
+                neutralButton("句末符号") {
+                    showSentencePunctuationDialog(config)
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showSentencePunctuationDialog(config: ReadAloudPreprocessRuleConfig) {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "直接填写句末符号，例如：。！？…!?"
+                editView.inputType = InputType.TYPE_CLASS_TEXT
+                editView.setText(config.sentencePunctuation)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("句末符号") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty().trim()
+                    if (value.isBlank()) {
+                        toastOnUi("句末符号不能为空")
+                        return@okButton
+                    }
+                    savePreprocessConfig(config.copy(sentencePunctuation = value))
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showPreprocessThresholdDialog(config: ReadAloudPreprocessRuleConfig) {
+            val items = listOf(
+                "台词最短长度 · ${config.dialogueMinLength}",
+                "强调文本最大长度 · ${config.emphasisMaxLength}",
+                "冒号前提示最大长度 · ${config.colonCueMaxLength}",
+                "跨段引号合并 · ${if (config.mergeCrossParagraphQuote) "开启" else "关闭"}",
+                "音效上下文字符数 · ${config.soundEffectContextChars}"
+            )
+            requireContext().selector("判断阈值", items) { _, _, index ->
+                when (index) {
+                    0 -> showPreprocessNumberDialog("台词最短长度", config.dialogueMinLength, 1, 80) {
+                        savePreprocessConfig(config.copy(dialogueMinLength = it))
+                    }
+                    1 -> showPreprocessNumberDialog("强调文本最大长度", config.emphasisMaxLength, 1, 80) {
+                        savePreprocessConfig(config.copy(emphasisMaxLength = it))
+                    }
+                    2 -> showPreprocessNumberDialog("冒号前提示最大长度", config.colonCueMaxLength, 1, 80) {
+                        savePreprocessConfig(config.copy(colonCueMaxLength = it))
+                    }
+                    3 -> savePreprocessConfig(config.copy(mergeCrossParagraphQuote = !config.mergeCrossParagraphQuote))
+                    4 -> showPreprocessNumberDialog("音效上下文字符数", config.soundEffectContextChars, 8, 120) {
+                        savePreprocessConfig(config.copy(soundEffectContextChars = it))
+                    }
+                }
+            }
+        }
+
+        private fun showSoundEffectRuleDialog(config: ReadAloudPreprocessRuleConfig) {
+            val items = listOf(
+                "音效候选词 · ${config.soundEffectCuePatterns.size} 条",
+                "音效排除词 · ${config.soundEffectExcludePatterns.size} 条",
+                "上下文字符数 · ${config.soundEffectContextChars}"
+            )
+            requireContext().selector("音效候选规则", items) { _, _, index ->
+                when (index) {
+                    0 -> showRuleListEditor(
+                        title = "音效候选词",
+                        values = config.soundEffectCuePatterns,
+                        hint = "每行一个候选词，例如：吱呀、敲门声、枪声",
+                        onSave = { savePreprocessConfig(config.copy(soundEffectCuePatterns = it)) }
+                    )
+                    1 -> showRuleListEditor(
+                        title = "音效排除词",
+                        values = config.soundEffectExcludePatterns,
+                        hint = "每行一个排除词，例如：心声、名声",
+                        onSave = { savePreprocessConfig(config.copy(soundEffectExcludePatterns = it)) }
+                    )
+                    2 -> showPreprocessNumberDialog("音效上下文字符数", config.soundEffectContextChars, 8, 120) {
+                        savePreprocessConfig(config.copy(soundEffectContextChars = it))
+                    }
+                }
+            }
+        }
+
+        private fun showRuleListEditor(
+            title: String,
+            values: List<String>,
+            hint: String,
+            onSave: (List<String>) -> Unit
+        ) {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = hint
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 8
+                editView.setText(values.joinToString("\n"))
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert(title) {
+                customView { binding.root }
+                okButton {
+                    val items = parseRuleItems(binding.editView.text?.toString().orEmpty())
+                    if (items.isEmpty()) {
+                        toastOnUi("至少保留一条规则")
+                        return@okButton
+                    }
+                    onSave(items)
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showPreprocessNumberDialog(
+            title: String,
+            value: Int,
+            min: Int,
+            max: Int,
+            onValue: (Int) -> Unit
+        ) {
+            NumberPickerDialog(requireContext())
+                .setTitle(title)
+                .setMinValue(min)
+                .setMaxValue(max)
+                .setValue(value)
+                .show(onValue)
+        }
+
+        private fun showPreprocessTrialDialog() {
+            val sample = """
+                江艳凑在杨间身边小心翼翼地问道：
+                “那栋房子真的有鬼啊？”
+                门轴忽然吱呀一声响了起来。
+                他心道：“事情不太对。”
+            """.trimIndent()
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "粘贴几段正文，试运行当前预处理规则。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 10
+                editView.setText(sample)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("预处理试运行") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.isBlank()) {
+                        toastOnUi("请先输入正文")
+                        return@okButton
+                    }
+                    showPreprocessTrialResult(value)
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showPreprocessTrialResult(text: String) {
+            val paragraphs = text.lines().map { it.trim() }.filter { it.isNotBlank() }
+            val roleResult = ReadAloudRolePreprocessor.process(paragraphs)
+            val sfxResult = ReadAloudSoundEffectPreprocessor.process(paragraphs)
+            val message = buildString {
+                appendLine("角色 unit：${roleResult.units.size}")
+                roleResult.units.take(40).forEachIndexed { index, unit ->
+                    append(index + 1)
+                    append(". ")
+                    append(unit.kind)
+                    append(" · ")
+                    append(if (unit.needsAi) "需要 AI" else unit.characterName.ifBlank { unit.roleType })
+                    append(" · P")
+                    append(unit.firstParagraphIndex + 1)
+                    append(" · ")
+                    appendLine(unit.text.replace('\n', ' ').take(80))
+                }
+                if (roleResult.units.size > 40) appendLine("……")
+                appendLine()
+                appendLine("音效候选：${sfxResult.candidates.size}")
+                sfxResult.candidates.take(30).forEachIndexed { index, item ->
+                    append(index + 1)
+                    append(". ")
+                    append(item.cue)
+                    append(" · P")
+                    append(item.paragraphIndex + 1)
+                    append(" · ")
+                    appendLine(item.context.take(80))
+                }
+            }.take(6000)
+            alert("试运行结果") {
+                setMessage(message)
+                okButton()
+            }
+        }
+
+        private fun showPreprocessJsonDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "高级 JSON。普通编辑建议使用前面的分组入口。"
                 editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
                 editView.minLines = 10
                 editView.setText(AppConfig.aiReadAloudRolePreprocessRules)
                 editView.setSelection(editView.text?.length ?: 0)
             }
-            alert("预处理规则") {
+            alert("高级 JSON") {
                 customView { binding.root }
                 okButton {
                     val value = binding.editView.text?.toString().orEmpty()
@@ -576,6 +819,42 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 cancelButton()
             }
+        }
+
+        private fun savePreprocessConfig(config: ReadAloudPreprocessRuleConfig) {
+            val json = config.toJsonString()
+            if (json.length > 8000) {
+                toastOnUi("预处理规则最多 8000 字")
+                return
+            }
+            AppConfig.aiReadAloudRolePreprocessRules = json
+            updateAiRolePreferences()
+            toastOnUi("已保存预处理规则")
+        }
+
+        private fun parseQuotePairs(value: String): List<ReadAloudQuotePair> {
+            return value.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .mapNotNull { line ->
+                    val parts = line.split(Regex("\\s+")).filter { it.isNotBlank() }
+                    when {
+                        parts.size >= 2 -> ReadAloudQuotePair(parts[0].take(1), parts[1].take(1))
+                        line.length >= 2 -> ReadAloudQuotePair(line.take(1), line.takeLast(1))
+                        else -> null
+                    }
+                }
+                .distinct()
+                .toList()
+        }
+
+        private fun parseRuleItems(value: String): List<String> {
+            return value.lineSequence()
+                .flatMap { it.split(',', '，', '、').asSequence() }
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
         }
 
         private fun showAiRolePromptDialog() {
