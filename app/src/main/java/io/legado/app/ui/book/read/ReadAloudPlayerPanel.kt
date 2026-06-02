@@ -1804,7 +1804,7 @@ private data class LyricsTarget(
     val paragraphs: List<ReadAloudPlayerPanel.ParagraphUi>
 )
 
-private data class PlayerColors(
+internal data class PlayerColors(
     val background: Color,
     val panel: Color,
     val panelStrong: Color,
@@ -1819,7 +1819,7 @@ private data class PlayerColors(
     val fluidC: Color
 )
 
-private data class CapsulePositionState(
+internal data class CapsulePositionState(
     val x: Float? = null,
     val y: Float? = null
 )
@@ -1859,7 +1859,7 @@ private data class PlayerChapterModel(
 )
 
 @Composable
-private fun rememberPlayerColors(palette: ReaderSheetStyle.Palette): PlayerColors {
+internal fun rememberPlayerColors(palette: ReaderSheetStyle.Palette): PlayerColors {
     val accent = Color(palette.accentColor)
     val panel = Color(ColorUtils.blendColors(palette.panel, android.graphics.Color.BLACK, 0.56f))
     val panelStrong = Color(ColorUtils.blendColors(palette.panelStrong, android.graphics.Color.BLACK, 0.66f))
@@ -1947,7 +1947,7 @@ private fun CoverBackdropImage(
 }
 
 @Composable
-private fun ReadAloudCapsule(
+internal fun ReadAloudCapsule(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     onPlayPause: () -> Unit,
