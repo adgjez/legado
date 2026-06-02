@@ -1593,6 +1593,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         handler.post {
             upMenu()
             binding.readMenu.upBookView()
+            binding.readAloudPlayerPanel.onChapterContentChanged()
             if (BookCloudEntryModeStore.get(ReadBook.book?.bookUrl.orEmpty()) == BookCloudEntryMode.LIBRARY_CHAPTER) {
                 refreshLibraryCloudSession(refresh = false, silent = true)
             } else {

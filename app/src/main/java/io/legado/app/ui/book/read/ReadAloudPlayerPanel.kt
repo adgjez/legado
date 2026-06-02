@@ -362,9 +362,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onOpenChapterList = {
                     callBack?.openChapterList()
                 },
-                onPreviousChapter = { ReadBook.moveToPrevChapter(upContent = true, toLast = false) },
-                onNextChapter = { ReadBook.moveToNextChapter(true) },
-                onChapterSelect = { ReadBook.openChapter(it, upContent = true) },
+                onPreviousChapter = { moveChapterFromPanel(-1) },
+                onNextChapter = { moveChapterFromPanel(1) },
+                onChapterSelect = ::selectChapterFromPanel,
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
                 onEngineSelect = ::selectTtsEngine,
@@ -462,6 +462,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         refresh()
     }
 
+    fun onChapterContentChanged() {
+        chapterModelCache = null
+        if (visibility != VISIBLE && !BaseReadAloudService.isRun) return
+        lastChapterStart = ReadBook.durChapterPos.coerceAtLeast(0)
+        refresh()
+    }
+
     fun onPlaybackState(state: ReadAloudPlaybackState) {
         val currentChapterIndex = ReadBook.curTextChapter?.chapter?.index ?: ReadBook.durChapterIndex
         if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
@@ -534,6 +541,79 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val startPos = (ReadBook.durChapterPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
         ReadAloud.play(context, play = true, pageIndex = pageIndex, startPos = startPos)
         refresh()
+    }
+
+    private fun selectChapterFromPanel(index: Int) {
+        val chapterCount = ReadBook.chapterSize
+        if (chapterCount <= 0) return
+        val targetIndex = index.coerceIn(0, chapterCount - 1)
+        prepareChapterNavigation(targetIndex)
+        ReadBook.openChapter(targetIndex, upContent = true) {
+            onChapterContentChanged()
+        }
+    }
+
+    private fun moveChapterFromPanel(delta: Int) {
+        val chapterCount = ReadBook.chapterSize
+        if (chapterCount <= 0) return
+        val targetIndex = (ReadBook.durChapterIndex + delta).coerceIn(0, chapterCount - 1)
+        if (targetIndex == ReadBook.durChapterIndex) return
+        prepareChapterNavigation(targetIndex)
+        val moved = if (delta < 0) {
+            ReadBook.moveToPrevChapter(upContent = true, toLast = false)
+        } else {
+            ReadBook.moveToNextChapter(true)
+        }
+        if (!moved) {
+            refresh()
+            return
+        }
+        post { onChapterContentChanged() }
+    }
+
+    private fun prepareChapterNavigation(chapterIndex: Int) {
+        chapterModelCache = null
+        roleState = null
+        roleStatusText = ""
+        roleStatusRunning = false
+        roleStatusError = false
+        roleStatusUntil = 0L
+        roleDetailCollapsed = false
+        roleDetailClosed = false
+        playbackCueIndex = -1
+        playbackChapterIndex = chapterIndex
+        lastChapterStart = 0
+        val bookUrl = ReadBook.book?.bookUrl.orEmpty()
+        val chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterIndex + 1)
+        val title = runCatching {
+            ReadBook.book?.let { appDb.bookChapterDao.getChapter(it.bookUrl, chapterIndex)?.title }
+        }.getOrNull().orEmpty().ifBlank { "第 ${chapterIndex + 1} 章" }
+        uiState = uiState.copy(
+            chapterTitle = title,
+            chapterIndexText = "${chapterIndex + 1}/$chapterCount",
+            chapterIndex = chapterIndex,
+            chapterCount = chapterCount,
+            chapterPreview = buildChapterPreview(bookUrl, chapterIndex, chapterCount),
+            progress = 0f,
+            progressText = "0/0",
+            paragraphText = "章节加载中",
+            paragraphIndex = 0,
+            paragraphCount = 0,
+            nearbyParagraphs = emptyList(),
+            textCues = emptyList(),
+            sceneSegments = emptyList(),
+            currentCueIndex = 0,
+            chapterKey = "$bookUrl:$chapterIndex",
+            paragraphKey = "$bookUrl:$chapterIndex:loading",
+            paragraphSequence = chapterIndex * 100_000,
+            focusText = FocusTextUi(
+                key = "$bookUrl:$chapterIndex:loading",
+                sequence = chapterIndex * 100_000,
+                text = "章节加载中"
+            ),
+            roleBlockingCurrentContent = false,
+            roleBlockingText = ""
+        )
     }
 
     private fun buildRoleStatusText(state: AiReadAloudRoleState): String {
