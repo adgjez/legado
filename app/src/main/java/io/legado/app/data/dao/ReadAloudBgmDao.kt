@@ -79,6 +79,9 @@ interface ReadAloudBgmDao {
     @Query("DELETE FROM read_aloud_bgm_groups WHERE id = :groupId AND assetType = :assetType")
     fun deleteGroup(groupId: Long, assetType: String)
 
+    @Query("DELETE FROM read_aloud_bgm_groups WHERE assetType = :assetType")
+    fun deleteGroupsByType(assetType: String)
+
     @Query("UPDATE read_aloud_bgm_tracks SET groupId = 0, updatedAt = :updatedAt WHERE groupId = :groupId")
     fun resetTrackGroup(groupId: Long, updatedAt: Long = System.currentTimeMillis())
 

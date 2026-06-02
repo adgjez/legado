@@ -55,6 +55,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var expandedGroupsInitialized = false
     private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
     private var pendingPackageAssetType: String = ReadAloudBgmTrack.TYPE_SFX
+    private var importing = false
+    private var importingText = ""
     private lateinit var batchActionBar: LinearLayout
 
     private val currentAssetLabel: String
@@ -62,7 +64,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private val importAudio = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
+            if (importing) return@registerForActivityResult
             lifecycleScope.launch {
+                setImporting(true, "正在导入${currentAssetLabel}…")
                 kotlin.runCatching {
                     withContext(Dispatchers.IO) { importTrack(uri) }
                 }.onSuccess {
@@ -71,6 +75,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     toastOnUi("导入完成")
                 }.onFailure {
                     toastOnUi(it.localizedMessage ?: "导入失败")
+                }.also {
+                    setImporting(false)
                 }
             }
         }
@@ -78,7 +84,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private val importAudios = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@registerForActivityResult
+        if (importing) return@registerForActivityResult
         lifecycleScope.launch {
+            setImporting(true, "正在批量导入${currentAssetLabel}…")
             var success = 0
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
@@ -96,6 +104,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onFailure {
                 load()
                 toastOnUi(it.localizedMessage ?: "批量导入失败")
+            }.also {
+                setImporting(false)
             }
         }
     }
@@ -103,22 +113,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private val importAudioPackage = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
             val assetType = pendingPackageAssetType
-            lifecycleScope.launch {
-                kotlin.runCatching {
-                    withContext(Dispatchers.IO) {
-                        importAudioPackage(uri, assetType, replaceOld = true)
-                    }
-                }.onSuccess { count ->
-                    currentAssetType = assetType
-                    selectedIds.clear()
-                    updateAssetTabs()
-                    load()
-                    toastOnUi("已导入 $count 个${currentAssetLabel}")
-                }.onFailure {
-                    load()
-                    toastOnUi(it.localizedMessage ?: "音频包导入失败")
-                }
-            }
+            confirmImportAudioPackage(uri, assetType)
         }
     }
 
@@ -211,6 +206,10 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showImportActions() {
+        if (importing) {
+            toastOnUi(importingText.ifBlank { "正在导入，请稍候" })
+            return
+        }
         selector(
             "导入智能音频",
             listOf(
@@ -238,6 +237,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun openAudioPackageImport(assetType: String) {
+        if (importing) return
         pendingPackageAssetType = ReadAloudBgmTrack.normalizeAssetType(assetType)
         importAudioPackage.launch {
             mode = HandleFileContract.FILE
@@ -246,17 +246,54 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }
     }
 
+    private fun confirmImportAudioPackage(uri: Uri, assetType: String) {
+        val normalized = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        val label = assetLabel(normalized)
+        selector(
+            "导入${label} ZIP",
+            listOf(
+                "清空旧${label}并导入",
+                "追加导入"
+            )
+        ) { _, index ->
+            val replaceOld = index == 0
+            lifecycleScope.launch {
+                setImporting(true, "正在导入${label} ZIP…")
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) {
+                        importAudioPackage(uri, normalized, replaceOld = replaceOld)
+                    }
+                }.onSuccess { count ->
+                    currentAssetType = normalized
+                    selectedIds.clear()
+                    expandedGroupIds.clear()
+                    expandedGroupsInitialized = false
+                    updateAssetTabs()
+                    load()
+                    toastOnUi("已导入 $count 个${label}")
+                }.onFailure {
+                    load()
+                    toastOnUi(it.localizedMessage ?: "音频包导入失败")
+                }.also {
+                    setImporting(false)
+                }
+            }
+        }
+    }
+
     private fun load() {
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
-                appDb.readAloudBgmDao.groups() to appDb.readAloudBgmDao.enabledTracksByType(currentAssetType)
+                appDb.readAloudBgmDao.groupsByType(currentAssetType) to appDb.readAloudBgmDao.enabledTracksByType(currentAssetType)
             }
             groups = data.first
             tracks = data.second
             selectedIds.retainAll(tracks.map { it.id }.toSet())
             adapter.submit(buildRows())
             updateBatchActionBar()
-            binding.tvSummary.text = if (tracks.isEmpty()) {
+            binding.tvSummary.text = if (importing) {
+                importingText.ifBlank { "正在导入…" }
+            } else if (tracks.isEmpty()) {
                 if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) {
                     "暂无音效。导入短音频并添加标签后，AI 可以为开门、脚步、撞击等候选事件选择音效。"
                 } else {
@@ -289,8 +326,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun updateBatchActionBar() {
         if (::batchActionBar.isInitialized) {
-            batchActionBar.visibility = if (selectedIds.isEmpty()) View.GONE else View.VISIBLE
+            batchActionBar.visibility = if (selectedIds.isEmpty() || importing) View.GONE else View.VISIBLE
         }
+    }
+
+    private fun setImporting(value: Boolean, text: String = "") {
+        importing = value
+        importingText = if (value) text else ""
+        binding.recyclerView.alpha = if (value) 0.45f else 1f
+        binding.tvSummary.text = if (value) text.ifBlank { "正在导入…" } else binding.tvSummary.text
+        updateBatchActionBar()
     }
 
     private fun assetLabel(assetType: String): String {
@@ -321,7 +366,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                         appDb.readAloudBgmDao.insertGroup(
                             ReadAloudBgmGroup(
                                 name = name,
-                                sortOrder = (appDb.readAloudBgmDao.maxGroupOrder() ?: 0) + 1,
+                                assetType = currentAssetType,
+                                sortOrder = (appDb.readAloudBgmDao.maxGroupOrderByType(currentAssetType) ?: 0) + 1,
                                 createdAt = now,
                                 updatedAt = now
                             )
@@ -358,11 +404,11 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             return
         }
         alert("删除分组") {
-            setMessage("确定删除“${group.displayName()}”？组内音乐会移回默认分组，本地文件不会删除。")
+            setMessage("确定删除“${group.displayName()}”？组内${currentAssetLabel}会移回默认分组，本地文件不会删除。")
             okButton {
                 lifecycleScope.launch(Dispatchers.IO) {
-                    appDb.readAloudBgmDao.resetTrackGroup(group.id)
-                    appDb.readAloudBgmDao.deleteGroup(group.id)
+                    appDb.readAloudBgmDao.resetTrackGroup(group.id, currentAssetType)
+                    appDb.readAloudBgmDao.deleteGroup(group.id, currentAssetType)
                     selectedIds.clear()
                     launch(Dispatchers.Main) { load() }
                 }
@@ -372,7 +418,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private suspend fun importTrack(uri: Uri) {
-        val groupId = ensureDefaultGroup()
+        val groupId = ensureDefaultGroup(currentAssetType)
         val displayName = displayName(uri).ifBlank { "${currentAssetType}-${System.currentTimeMillis()}" }
         val extension = displayName.substringAfterLast('.', "mp3").lowercase()
         val folder = File(filesDir, "readAloudAudio/$currentAssetType").apply { mkdirs() }
@@ -392,7 +438,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 filePath = target.absolutePath,
                 checksum = checksum,
                 durationMs = duration,
-                sortOrder = (appDb.readAloudBgmDao.maxTrackOrder(groupId) ?: 0) + 1,
+                sortOrder = (appDb.readAloudBgmDao.maxTrackOrder(groupId, currentAssetType) ?: 0) + 1,
                 createdAt = now,
                 updatedAt = now
             )
@@ -411,6 +457,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 runCatching { File(track.filePath).delete() }
             }
             appDb.readAloudBgmDao.deleteTracksByType(normalizedType)
+            appDb.readAloudBgmDao.deleteGroupsByType(normalizedType)
         }
         val folder = File(filesDir, "readAloudAudio/$normalizedType").apply { mkdirs() }
         val groupIds = mutableMapOf<String, Long>()
@@ -426,6 +473,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                             "audio-${System.currentTimeMillis()}.mp3"
                         }
                         val info = metadata[fileName.lowercase(Locale.ROOT)]
+                            ?: metadata[entryName.substringAfterLast('/').lowercase(Locale.ROOT)]
                         val extension = fileName.substringAfterLast('.', "mp3").lowercase(Locale.ROOT)
                         val target = File(
                             folder,
@@ -433,10 +481,11 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                         )
                         target.outputStream().use { output -> zip.copyTo(output) }
                         val checksum = target.inputStream().use { MD5Utils.md5Encode(it) }
-                        val groupName = info?.groupName?.ifBlank { "默认分组" } ?: "默认分组"
-                        val groupId = groupIds.getOrPut(groupName) { ensureGroup(groupName) }
+                        val fallbackGroup = fallbackGroupName(entryName)
+                        val groupName = info?.groupName?.ifBlank { fallbackGroup } ?: fallbackGroup
+                        val groupId = groupIds.getOrPut(groupName) { ensureGroup(groupName, normalizedType) }
                         val sortOrder = nextSortByGroup.getOrPut(groupId) {
-                            (appDb.readAloudBgmDao.maxTrackOrder(groupId) ?: 0) + 1
+                            (appDb.readAloudBgmDao.maxTrackOrder(groupId, normalizedType) ?: 0) + 1
                         }
                         nextSortByGroup[groupId] = sortOrder + 1
                         val now = System.currentTimeMillis()
@@ -444,11 +493,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                             ReadAloudBgmTrack(
                                 groupId = groupId,
                                 assetType = normalizedType,
-                                name = info?.name?.ifBlank { fileName.substringBeforeLast('.') }
-                                    ?: fileName.substringBeforeLast('.'),
+                                name = info?.name?.ifBlank { fallbackTrackName(fileName) }
+                                    ?: fallbackTrackName(fileName),
                                 fileName = fileName,
                                 filePath = target.absolutePath,
-                                tags = info?.tags.orEmpty(),
+                                tags = info?.tags?.ifBlank { fallbackTags(groupName, fileName) }
+                                    ?: fallbackTags(groupName, fileName),
                                 checksum = checksum,
                                 durationMs = readDuration(target),
                                 defaultVolume = (info?.volume ?: 1f).coerceIn(0f, 1f),
@@ -559,24 +609,27 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         }.getOrDefault(0L)
     }
 
-    private fun ensureDefaultGroup(): Long {
-        groups.firstOrNull { it.id == 0L || it.name == "默认分组" }?.let { return it.id }
-        appDb.readAloudBgmDao.groups().firstOrNull { it.name == "默认分组" }?.let { return it.id }
+    private fun ensureDefaultGroup(assetType: String = currentAssetType): Long {
+        val normalized = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        groups.firstOrNull { (it.id == 0L || it.name == "默认分组") && it.assetType == normalized }?.let { return it.id }
+        appDb.readAloudBgmDao.groupsByType(normalized).firstOrNull { it.name == "默认分组" }?.let { return it.id }
         val now = System.currentTimeMillis()
         return appDb.readAloudBgmDao.insertGroup(
-            ReadAloudBgmGroup(name = "默认分组", sortOrder = 0, createdAt = now, updatedAt = now)
+            ReadAloudBgmGroup(name = "默认分组", assetType = normalized, sortOrder = 0, createdAt = now, updatedAt = now)
         )
     }
 
-    private fun ensureGroup(name: String): Long {
+    private fun ensureGroup(name: String, assetType: String = currentAssetType): Long {
+        val normalizedType = ReadAloudBgmTrack.normalizeAssetType(assetType)
         val normalized = name.trim().ifBlank { "默认分组" }
-        if (normalized == "默认分组") return ensureDefaultGroup()
-        appDb.readAloudBgmDao.groups().firstOrNull { it.name == normalized }?.let { return it.id }
+        if (normalized == "默认分组") return ensureDefaultGroup(normalizedType)
+        appDb.readAloudBgmDao.groupsByType(normalizedType).firstOrNull { it.name == normalized }?.let { return it.id }
         val now = System.currentTimeMillis()
         return appDb.readAloudBgmDao.insertGroup(
             ReadAloudBgmGroup(
                 name = normalized,
-                sortOrder = (appDb.readAloudBgmDao.maxGroupOrder() ?: 0) + 1,
+                assetType = normalizedType,
+                sortOrder = (appDb.readAloudBgmDao.maxGroupOrderByType(normalizedType) ?: 0) + 1,
                 createdAt = now,
                 updatedAt = now
             )
@@ -648,7 +701,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun moveTracks(ids: List<Long>) {
-        val options = listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组")) + groups
+        val options = listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", assetType = currentAssetType)) + groups
         selector("选择分组", options.map { it.displayName() }) { _, index ->
             val groupId = options[index].id
             lifecycleScope.launch(Dispatchers.IO) {
@@ -696,6 +749,31 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return value.trim('"', '\'')
     }
 
+    private fun fallbackGroupName(entryName: String): String {
+        val firstSegment = entryName.split('/').firstOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != entryName.substringAfterLast('/') }
+        return firstSegment ?: "默认分组"
+    }
+
+    private fun fallbackTrackName(fileName: String): String {
+        return fileName.substringBeforeLast('.')
+            .replace(Regex("""^\d+[-_ ]*"""), "")
+            .trim()
+            .ifBlank { fileName.substringBeforeLast('.') }
+    }
+
+    private fun fallbackTags(groupName: String, fileName: String): String {
+        val bracketTags = Regex("""[（(【\[]([^）)】\]]+)[）)】\]]""")
+            .findAll(fileName)
+            .map { it.groupValues.getOrNull(1).orEmpty().trim() }
+            .filter { it.isNotBlank() }
+        return (sequenceOf(groupName.takeIf { it != "默认分组" }.orEmpty()) + bracketTags)
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(",")
+    }
+
     private fun String.isSupportedAudioEntry(): Boolean {
         return substringAfterLast('/').isSupportedAudioFileName()
     }
@@ -712,7 +790,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun buildRows(): List<AudioRow> {
         val tracksByGroup = tracks.groupBy { it.groupId }
-        val rowGroups = (listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", sortOrder = Int.MIN_VALUE)) + groups)
+        val rowGroups = (listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", assetType = currentAssetType, sortOrder = Int.MIN_VALUE)) + groups)
             .distinctBy { it.id }
             .filter { group -> group.id != 0L || tracksByGroup.containsKey(0L) || tracks.isEmpty() }
             .sortedWith(compareBy<ReadAloudBgmGroup> { it.sortOrder }.thenBy { it.id })
