@@ -334,14 +334,32 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudRolePrompt -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
+                    postReadAloudConfigChanged(
+                        if (key == PreferKey.aiReadAloudRoleEnabled) {
+                            EventBus.READ_ALOUD_CONFIG_SCOPE_ENGINE
+                        } else {
+                            EventBus.READ_ALOUD_CONFIG_SCOPE_SPEECH
+                        }
+                    )
                 }
                 PreferKey.aiReadAloudBgmEnabled,
                 PreferKey.aiReadAloudBgmVolume,
                 PreferKey.aiReadAloudSfxVolume -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
+                    postReadAloudConfigChanged(EventBus.READ_ALOUD_CONFIG_SCOPE_AUDIO)
                 }
             }
+        }
+
+        private fun postReadAloudConfigChanged(scope: String) {
+            if (!BaseReadAloudService.isRun) return
+            postEvent(
+                EventBus.READ_ALOUD_CONFIG_CHANGED,
+                Bundle().apply {
+                    putString(EventBus.READ_ALOUD_CONFIG_SCOPE, scope)
+                }
+            )
         }
 
         private fun upPreferenceSummary(preference: Preference?, value: String) {

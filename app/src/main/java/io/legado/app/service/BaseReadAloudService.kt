@@ -101,6 +101,8 @@ abstract class BaseReadAloudService : BaseService(),
 
         private const val TAG = "BaseReadAloudService"
 
+        private var suppressNextStopEvent = false
+
     }
 
     private val useWakeLock = appCtx.getPrefBoolean(PreferKey.readAloudWakeLock, false)
@@ -231,6 +233,13 @@ abstract class BaseReadAloudService : BaseService(),
             val startPos = it.getInt("startPos")
             newReadAloud(play, pageIndex, startPos)
         }
+        observeEvent<Bundle>(EventBus.READ_ALOUD_CONFIG_CHANGED) {
+            when (it.getString(EventBus.READ_ALOUD_CONFIG_SCOPE)) {
+                EventBus.READ_ALOUD_CONFIG_SCOPE_AUDIO -> bgmPlayer.refreshConfig()
+                EventBus.READ_ALOUD_CONFIG_SCOPE_ENGINE -> restartOrRebuildReadAloud()
+                EventBus.READ_ALOUD_CONFIG_SCOPE_SPEECH -> rebuildCurrentReadAloud()
+            }
+        }
         observeSharedPreferences { _, key ->
             when (key) {
                 PreferKey.ignoreAudioFocus,
@@ -239,6 +248,42 @@ abstract class BaseReadAloudService : BaseService(),
                 }
             }
         }
+    }
+
+    private fun restartOrRebuildReadAloud() {
+        val targetClass = ReadAloud.resolveReadAloudClass()
+        if (targetClass == this::class.java) {
+            rebuildCurrentReadAloud()
+            return
+        }
+        val (targetPageIndex, targetStartPos) = currentReadAloudStart() ?: return
+        val shouldPlay = !pause
+        playStop()
+        postReadAloudPlaybackPhase(
+            ReadAloudPlaybackState.PHASE_PREPARING,
+            message = "刷新朗读引擎",
+            playing = false,
+            buffering = true
+        )
+        ReadAloud.refreshReadAloudClass()
+        ReadAloud.play(appCtx, play = shouldPlay, pageIndex = targetPageIndex, startPos = targetStartPos)
+        suppressNextStopEvent = true
+        stopSelf()
+    }
+
+    private fun rebuildCurrentReadAloud() {
+        val (targetPageIndex, targetStartPos) = currentReadAloudStart() ?: return
+        val shouldPlay = !pause
+        playStop()
+        newReadAloud(shouldPlay, targetPageIndex, targetStartPos)
+    }
+
+    private fun currentReadAloudStart(): Pair<Int, Int>? {
+        val chapter = textChapter ?: return null
+        val targetPageIndex = pageIndex
+        val targetStartPos = (readAloudNumber - chapter.getReadLength(targetPageIndex) + paragraphStartPos)
+            .coerceAtLeast(0)
+        return targetPageIndex to targetStartPos
     }
 
     override fun onDestroy() {
@@ -253,7 +298,11 @@ abstract class BaseReadAloudService : BaseService(),
         unregisterReceiver(broadcastReceiver)
         postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_STOPPED)
         bgmPlayer.release()
-        postEvent(EventBus.ALOUD_STATE, Status.STOP)
+        if (suppressNextStopEvent) {
+            suppressNextStopEvent = false
+        } else {
+            postEvent(EventBus.ALOUD_STATE, Status.STOP)
+        }
         notificationManager.cancel(NotificationId.ReadAloudService)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSessionCompat.release()

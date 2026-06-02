@@ -30,6 +30,7 @@ class ReadAloudBgmPlayer(
     private var currentSoundEffectCueKey: String = ""
     private var resolveJob: Job? = null
     private var volumeAnimator: ValueAnimator? = null
+    private var lastPlaybackState: ReadAloudPlaybackState? = null
     private val soundEffectPlayers = linkedSetOf<ExoPlayer>()
     private val soundEffectJobs = linkedSetOf<Job>()
 
@@ -39,8 +40,22 @@ class ReadAloudBgmPlayer(
     )
 
     fun onPlaybackState(state: ReadAloudPlaybackState) {
+        lastPlaybackState = state
         scope.launch(Dispatchers.Main.immediate) {
             handlePlaybackState(state)
+        }
+    }
+
+    fun refreshConfig() {
+        scope.launch(Dispatchers.Main.immediate) {
+            if (!AppConfig.aiReadAloudBgmEnabled) {
+                fadeOutAndStop()
+                stopSoundEffects()
+                return@launch
+            }
+            currentCueKey = ""
+            currentSoundEffectCueKey = ""
+            lastPlaybackState?.let(::handlePlaybackState)
         }
     }
 

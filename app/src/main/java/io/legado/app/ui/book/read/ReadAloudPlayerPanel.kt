@@ -491,9 +491,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             return
         }
         val nextKey = "${state.bookUrl}:${state.chapterIndex}:${state.stage}"
-        if (nextKey != roleDetailKey || state.running && roleDetailClosed) {
+        if (nextKey != roleDetailKey) {
             roleDetailKey = nextKey
-            roleDetailCollapsed = state.running
+            roleDetailCollapsed = true
             roleDetailClosed = false
         }
         roleState = state
@@ -531,7 +531,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapter = ReadBook.curTextChapter ?: return
         AiReadAloudRoleService.clearChapterCache(bookUrl, chapter.chapter.index)
         chapterModelCache = null
-        roleDetailCollapsed = false
+        roleDetailCollapsed = true
         roleDetailClosed = false
         roleStatusText = "当前章节重新分配角色中"
         roleStatusRunning = true
