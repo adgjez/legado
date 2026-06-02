@@ -360,10 +360,10 @@ object AiReadAloudBgmService {
 
     private fun catalogSnapshot(): CatalogSnapshot {
         val groups = appDb.readAloudBgmDao.groups()
-        val tracks = appDb.readAloudBgmDao.enabledTracks()
+        val tracks = appDb.readAloudBgmDao.enabledTracksByType(ReadAloudBgmTrack.TYPE_BGM)
         val hash = MD5Utils.md5Encode(
             tracks.joinToString("|") {
-                "${it.id}:${it.groupId}:${it.displayName()}:${it.tags}:${it.checksum}:${it.enabled}:${it.updatedAt}"
+                "${it.id}:${it.groupId}:${it.displayName()}:${it.tags}:${it.checksum}:${it.enabled}:${it.defaultVolume}:${it.updatedAt}"
             }
         )
         return CatalogSnapshot(groups, tracks, hash)

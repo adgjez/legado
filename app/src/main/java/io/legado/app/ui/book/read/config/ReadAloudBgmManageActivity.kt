@@ -49,6 +49,10 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var groups: List<ReadAloudBgmGroup> = emptyList()
     private var tracks: List<ReadAloudBgmTrack> = emptyList()
     private val selectedIds = linkedSetOf<Long>()
+    private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
+
+    private val currentAssetLabel: String
+        get() = if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) "音效" else "配乐"
 
     private val importAudio = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
@@ -82,7 +86,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onSuccess {
                 selectedIds.clear()
                 load()
-                toastOnUi("已导入 $success 首音乐")
+                    toastOnUi("已导入 $success 个${currentAssetLabel}")
             }.onFailure {
                 load()
                 toastOnUi(it.localizedMessage ?: "批量导入失败")
@@ -96,9 +100,17 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun initView() = binding.run {
-        titleBar.title = "智能配乐"
-        tabBar.visibility = View.GONE
-        btnAdd.text = "导入音乐"
+        titleBar.title = "智能音频"
+        tabBar.visibility = View.VISIBLE
+        tabBar.background = UiCorner.opaqueRounded(
+            ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
+            UiCorner.actionRadius(this@ReadAloudBgmManageActivity)
+        )
+        btnDay.text = "配乐"
+        btnNight.text = "音效"
+        btnDay.setOnClickListener { switchAssetType(ReadAloudBgmTrack.TYPE_BGM) }
+        btnNight.setOnClickListener { switchAssetType(ReadAloudBgmTrack.TYPE_SFX) }
+        btnAdd.text = "导入配乐"
         btnAdd.background = UiCorner.actionSelector(
             ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
             ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_menu),
@@ -110,6 +122,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         recyclerView.adapter = adapter
         (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         root.applyUiBodyTypefaceDeep(uiTypeface())
+        updateAssetTabs()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -131,12 +144,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showImportActions() {
-        selector("智能配乐", listOf("批量导入音频", "导入单个音频", "新增分组", "管理分组")) { _, index ->
+        selector("智能音频", listOf("批量导入${currentAssetLabel}", "导入单个${currentAssetLabel}", "新增分组", "管理分组")) { _, index ->
             when (index) {
                 0 -> importAudios.launch("audio/*")
                 1 -> importAudio.launch {
                     mode = HandleFileContract.FILE
-                    title = "导入配乐"
+                    title = "导入${currentAssetLabel}"
                     allowExtensions = arrayOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
                 }
                 2 -> showGroupEditor()
@@ -148,17 +161,39 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun load() {
         lifecycleScope.launch {
             val data = withContext(Dispatchers.IO) {
-                appDb.readAloudBgmDao.groups() to appDb.readAloudBgmDao.enabledTracks()
+                appDb.readAloudBgmDao.groups() to appDb.readAloudBgmDao.enabledTracksByType(currentAssetType)
             }
             groups = data.first
             tracks = data.second
             adapter.submit(tracks)
+            binding.btnAdd.text = "导入${currentAssetLabel}"
             binding.tvSummary.text = if (tracks.isEmpty()) {
-                "暂无配乐。导入音乐后，AI 可以按段落范围选择配乐。"
+                if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) {
+                    "暂无音效。导入短音频并添加标签后，AI 可以为开门、脚步、撞击等候选事件选择音效。"
+                } else {
+                    "暂无配乐。导入音乐后，AI 可以按段落范围选择配乐。"
+                }
             } else {
-                "${tracks.size} 首音乐 · ${groups.size.coerceAtLeast(1)} 个分组 · 已选 ${selectedIds.size}"
+                "${tracks.size} 个${currentAssetLabel} · ${groups.size.coerceAtLeast(1)} 个分组 · 已选 ${selectedIds.size}"
             }
         }
+    }
+
+    private fun switchAssetType(assetType: String) {
+        val normalized = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        if (currentAssetType == normalized) return
+        currentAssetType = normalized
+        selectedIds.clear()
+        updateAssetTabs()
+        load()
+    }
+
+    private fun updateAssetTabs() = binding.run {
+        val bgmSelected = currentAssetType == ReadAloudBgmTrack.TYPE_BGM
+        btnDay.isSelected = bgmSelected
+        btnNight.isSelected = !bgmSelected
+        btnDay.setTextColor(if (bgmSelected) primaryTextColor else secondaryTextColor)
+        btnNight.setTextColor(if (!bgmSelected) primaryTextColor else secondaryTextColor)
     }
 
     private fun showGroupEditor(group: ReadAloudBgmGroup? = null) {
@@ -233,9 +268,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private suspend fun importTrack(uri: Uri) {
         val groupId = ensureDefaultGroup()
-        val displayName = displayName(uri).ifBlank { "bgm-${System.currentTimeMillis()}" }
+        val displayName = displayName(uri).ifBlank { "${currentAssetType}-${System.currentTimeMillis()}" }
         val extension = displayName.substringAfterLast('.', "mp3").lowercase()
-        val folder = File(filesDir, "readAloudBgm").apply { mkdirs() }
+        val folder = File(filesDir, "readAloudAudio/$currentAssetType").apply { mkdirs() }
         val target = File(folder, "${System.currentTimeMillis()}_${displayName.toSafeFileName(extension)}")
         contentResolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
@@ -246,6 +281,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         appDb.readAloudBgmDao.insertTrack(
             ReadAloudBgmTrack(
                 groupId = groupId,
+                assetType = currentAssetType,
                 name = displayName.substringBeforeLast('.'),
                 fileName = displayName,
                 filePath = target.absolutePath,
@@ -290,11 +326,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showTrackActions(track: ReadAloudBgmTrack) {
-        selector(track.displayName(), listOf("编辑标签", "移动分组", "删除")) { _, index ->
+        selector(track.displayName(), listOf("编辑标签", "默认音量", "移动分组", "删除")) { _, index ->
             when (index) {
                 0 -> showTagsEditor(track)
-                1 -> moveTracks(listOf(track.id))
-                2 -> confirmDelete(listOf(track.id))
+                1 -> showVolumeEditor(track)
+                2 -> moveTracks(listOf(track.id))
+                3 -> confirmDelete(listOf(track.id))
             }
         }
     }
@@ -321,6 +358,26 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }
             cancelButton()
         }
+    }
+
+    private fun showVolumeEditor(track: ReadAloudBgmTrack) {
+        val current = (track.defaultVolume * 100).toInt().coerceIn(0, 100)
+        io.legado.app.ui.widget.number.NumberPickerDialog(this)
+            .setTitle("${track.assetTypeLabel()}默认音量")
+            .setMinValue(0)
+            .setMaxValue(100)
+            .setValue(current)
+            .show { value ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    appDb.readAloudBgmDao.updateTrack(
+                        track.copy(
+                            defaultVolume = (value / 100f).coerceIn(0f, 1f),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                    launch(Dispatchers.Main) { load() }
+                }
+            }
     }
 
     private fun moveSelected() {
@@ -354,8 +411,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun confirmDelete(ids: List<Long>) {
-        alert("删除配乐") {
-            setMessage("确定删除选中的 ${ids.size} 首音乐？文件也会从本地移除。")
+        alert("删除${currentAssetLabel}") {
+            setMessage("确定删除选中的 ${ids.size} 个${currentAssetLabel}？文件也会从本地移除。")
             okButton {
                 lifecycleScope.launch(Dispatchers.IO) {
                     ids.mapNotNull { appDb.readAloudBgmDao.track(it) }.forEach { track ->
@@ -371,7 +428,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun String.toSafeFileName(extension: String): String {
-        val safe = replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "bgm.$extension" }
+        val safe = replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "$currentAssetType.$extension" }
         return if (safe.contains('.')) safe else "$safe.$extension"
     }
 
@@ -439,7 +496,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             title.text = if (selected) "✓ ${track.displayName()}" else track.displayName()
             sub.text = buildList {
                 add(groupName(track.groupId))
+                add(track.assetTypeLabel())
                 if (track.tags.isNotBlank()) add(track.tags)
+                add("音量 ${(track.defaultVolume * 100).toInt().coerceIn(0, 100)}%")
                 if (track.durationMs > 0) add("${track.durationMs / 1000}s")
             }.joinToString(" · ")
             itemView.setOnClickListener {

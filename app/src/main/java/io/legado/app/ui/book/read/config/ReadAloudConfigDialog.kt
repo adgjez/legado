@@ -85,7 +85,9 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRolePrompt,
             KEY_AI_READ_ALOUD_USAGE_RECORDS,
             PreferKey.aiReadAloudBgmEnabled,
-            KEY_AI_READ_ALOUD_BGM_MANAGE
+            KEY_AI_READ_ALOUD_BGM_MANAGE,
+            PreferKey.aiReadAloudBgmVolume,
+            PreferKey.aiReadAloudSfxVolume
         )
     ),
     Engine(
@@ -333,7 +335,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
                 }
-                PreferKey.aiReadAloudBgmEnabled -> {
+                PreferKey.aiReadAloudBgmEnabled,
+                PreferKey.aiReadAloudBgmVolume,
+                PreferKey.aiReadAloudSfxVolume -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
                 }
@@ -464,7 +468,19 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
             findPreference<Preference>(KEY_AI_READ_ALOUD_BGM_MANAGE)?.let {
                 it.isEnabled = enabled
-                it.summary = "${appDb.readAloudBgmDao.enabledTracks().size} 首可用音乐"
+                val bgmCount = appDb.readAloudBgmDao.enabledTracksByType(io.legado.app.data.entities.ReadAloudBgmTrack.TYPE_BGM).size
+                val sfxCount = appDb.readAloudBgmDao.enabledTracksByType(io.legado.app.data.entities.ReadAloudBgmTrack.TYPE_SFX).size
+                it.summary = "$bgmCount 首配乐 · $sfxCount 个音效"
+            }
+            findPreference<SeekBarPreference>(PreferKey.aiReadAloudBgmVolume)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudBgmEnabled
+                it.value = AppConfig.aiReadAloudBgmVolume
+                it.summary = "当前 ${AppConfig.aiReadAloudBgmVolume}%"
+            }
+            findPreference<SeekBarPreference>(PreferKey.aiReadAloudSfxVolume)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudBgmEnabled
+                it.value = AppConfig.aiReadAloudSfxVolume
+                it.summary = "当前 ${AppConfig.aiReadAloudSfxVolume}%"
             }
         }
 

@@ -946,6 +946,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudBgmEnabled, value)
 
+    var aiReadAloudBgmVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudBgmVolume, 100).coerceIn(0, 100)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudBgmVolume, value.coerceIn(0, 100))
+
+    val aiReadAloudBgmVolumeScale: Float
+        get() = aiReadAloudBgmVolume / 100f
+
+    var aiReadAloudSfxVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudSfxVolume, 80).coerceIn(0, 100)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudSfxVolume, value.coerceIn(0, 100))
+
+    val aiReadAloudSfxVolumeScale: Float
+        get() = aiReadAloudSfxVolume / 100f
+
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)

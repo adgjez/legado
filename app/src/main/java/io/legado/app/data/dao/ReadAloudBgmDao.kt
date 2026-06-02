@@ -22,8 +22,14 @@ interface ReadAloudBgmDao {
     @Query("SELECT * FROM read_aloud_bgm_tracks ORDER BY groupId ASC, sortOrder ASC, id ASC")
     fun flowTracks(): Flow<List<ReadAloudBgmTrack>>
 
+    @Query("SELECT * FROM read_aloud_bgm_tracks WHERE assetType = :assetType ORDER BY groupId ASC, sortOrder ASC, id ASC")
+    fun flowTracksByType(assetType: String): Flow<List<ReadAloudBgmTrack>>
+
     @Query("SELECT * FROM read_aloud_bgm_tracks WHERE enabled = 1 ORDER BY groupId ASC, sortOrder ASC, id ASC")
     fun enabledTracks(): List<ReadAloudBgmTrack>
+
+    @Query("SELECT * FROM read_aloud_bgm_tracks WHERE enabled = 1 AND assetType = :assetType ORDER BY groupId ASC, sortOrder ASC, id ASC")
+    fun enabledTracksByType(assetType: String): List<ReadAloudBgmTrack>
 
     @Query("SELECT * FROM read_aloud_bgm_tracks WHERE id = :id LIMIT 1")
     fun track(id: Long): ReadAloudBgmTrack?

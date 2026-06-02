@@ -140,8 +140,26 @@
 
         <io.legado.app.lib.prefs.Preference
             android:key="aiReadAloudBgmManage"
-            android:summary="添加、分组、批量管理配乐"
-            android:title="智能配乐设置"
+            android:summary="添加、分组、批量管理配乐和音效"
+            android:title="智能音频设置"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SeekBarPreference
+            android:defaultValue="100"
+            android:key="aiReadAloudBgmVolume"
+            android:summary="配乐总音量"
+            android:title="配乐音量"
+            app:MaxValue="100"
+            app:MinValue="0"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SeekBarPreference
+            android:defaultValue="80"
+            android:key="aiReadAloudSfxVolume"
+            android:summary="音效总音量"
+            android:title="音效音量"
+            app:MaxValue="100"
+            app:MinValue="0"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

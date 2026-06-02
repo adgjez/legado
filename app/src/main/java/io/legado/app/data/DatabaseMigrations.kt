@@ -22,8 +22,16 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_99_100, migration_100_101, migration_101_102,
+            migration_99_100, migration_100_101, migration_101_102, migration_102_103,
         )
+    }
+
+    private val migration_102_103 = object : Migration(102, 103) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `read_aloud_bgm_tracks` ADD COLUMN `assetType` TEXT NOT NULL DEFAULT 'bgm'")
+            db.execSQL("ALTER TABLE `read_aloud_bgm_tracks` ADD COLUMN `defaultVolume` REAL NOT NULL DEFAULT 1.0")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_assetType_enabled_groupId_sortOrder_id` ON `read_aloud_bgm_tracks` (`assetType`, `enabled`, `groupId`, `sortOrder`, `id`)")
+        }
     }
 
     private val migration_101_102 = object : Migration(101, 102) {
