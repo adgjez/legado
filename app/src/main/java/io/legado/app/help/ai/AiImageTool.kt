@@ -46,6 +46,7 @@ object AiImageTool {
                             .put("error", "image provider is unavailable: $providerId")
                             .toString()
                     } else {
+                        val targetProvider = provider ?: AiImageService.currentProviderOrNull()
                         runCatching {
                             val image = AiImageService.generateAndStore(
                                 prompt,
@@ -71,6 +72,14 @@ object AiImageTool {
                                 .put("ok", false)
                                 .put("success", false)
                                 .put("error", it.localizedMessage ?: it.javaClass.simpleName)
+                                .apply {
+                                    targetProvider?.let { current ->
+                                        put("provider", current.displayName())
+                                        put("providerType", current.type)
+                                        put("baseUrl", current.baseUrl)
+                                        put("model", current.model)
+                                    }
+                                }
                                 .toString()
                         }
                     }

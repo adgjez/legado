@@ -33,12 +33,20 @@ import java.util.WeakHashMap
 
 object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
+    private data class PendingPanelOpenRequest(
+        val bookUrl: String,
+        val token: Long,
+        val requestedAt: Long
+    )
+
     private val observedActivities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
     private var currentActivity: Activity? = null
     private var overlay: ComposeCapsuleOverlay? = null
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private val capsuleBounds = RectF()
+    private var pendingPanelOpenRequest: PendingPanelOpenRequest? = null
+    private var pendingPanelOpenToken = 0L
 
     fun init(application: Application) {
         application.registerActivityLifecycleCallbacks(this)
@@ -165,10 +173,32 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
     private fun openReadAloudPanel(activity: Activity) {
         ReadBook.book?.let { book ->
+            requestReadAloudPanelOpen(book.bookUrl)
             activity.startActivityForBook(book) {
                 putExtra("openReadAloudPanel", true)
             }
         }
+    }
+
+    fun requestReadAloudPanelOpen(bookUrl: String) {
+        if (bookUrl.isBlank()) return
+        pendingPanelOpenToken += 1
+        pendingPanelOpenRequest = PendingPanelOpenRequest(
+            bookUrl = bookUrl,
+            token = pendingPanelOpenToken,
+            requestedAt = System.currentTimeMillis()
+        )
+    }
+
+    fun consumeReadAloudPanelOpen(bookUrl: String?): Boolean {
+        val request = pendingPanelOpenRequest ?: return false
+        if (bookUrl.isNullOrBlank() || request.bookUrl != bookUrl) return false
+        if (System.currentTimeMillis() - request.requestedAt > 30_000L) {
+            pendingPanelOpenRequest = null
+            return false
+        }
+        pendingPanelOpenRequest = null
+        return true
     }
 
     private class ComposeCapsuleOverlay(

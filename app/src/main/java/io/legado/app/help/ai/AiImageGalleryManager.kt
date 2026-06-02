@@ -274,7 +274,10 @@ object AiImageGalleryManager {
             if (file.length() > MAX_IMAGE_BYTES) error("Image is too large: ${file.length()} bytes")
             return copyToFileLimited(file.inputStream(), target)
         }
-        error("Unsupported image result")
+        error(
+            "Unsupported image result: provider=${provider.displayName()}, " +
+                "type=${provider.type}, source=${sourceSummary(imageSource)}"
+        )
     }
 
     private fun copyToFileLimited(input: InputStream, target: File): Long {
@@ -371,7 +374,10 @@ object AiImageGalleryManager {
     }
 
     private fun sourceSummary(source: String): String {
-        return if (source.startsWith("data:image", true)) "data:image" else source.take(500)
+        if (source.startsWith("data:", true)) {
+            return source.substringBefore(',', source).take(80)
+        }
+        return source.take(500)
     }
 
     fun buildBookKey(bookName: String, author: String): String {

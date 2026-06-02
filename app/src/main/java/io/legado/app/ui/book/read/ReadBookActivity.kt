@@ -431,6 +431,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.readAiPanel.attach(this)
         binding.readAiSummaryPanel.attach(this)
         binding.readAloudPlayerPanel.attach(this, this)
+        binding.readAloudPlayerPanel.post {
+            consumeGlobalReadAloudPanelOpen()
+        }
         binding.epubReadView.setListener(object : EpubReadView.Listener {
             override fun onCenterTap(x: Float, y: Float) {
                 showActionMenu()
@@ -634,10 +637,14 @@ class ReadBookActivity : BaseReadBookActivity(),
             openPendingReadAloudPanel()
             return
         }
+        if (consumeGlobalReadAloudPanelOpen()) {
+            return
+        }
         viewModel.initData(intent) {
             if (openReadAloudPanel) {
                 openPendingReadAloudPanel()
             }
+            consumeGlobalReadAloudPanelOpen()
         }
     }
 
@@ -699,6 +706,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readAloudPlayerPanel.post {
                 openPendingReadAloudPanel()
             }
+        }
+        binding.readAloudPlayerPanel.post {
+            consumeGlobalReadAloudPanelOpen()
         }
     }
 
@@ -1632,6 +1642,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             ReadBook.readAloud()
         }
         consumeOpenReadAloudPanelIntent(intent)
+        consumeGlobalReadAloudPanelOpen()
         loadStates = true
     }
 
@@ -1651,6 +1662,18 @@ class ReadBookActivity : BaseReadBookActivity(),
     private fun openPendingReadAloudPanel(): Boolean {
         if (!pendingReadAloudPanelIntentOpen) return false
         pendingReadAloudPanelIntentOpen = false
+        return openReadAloudPanelFromExternalRequest()
+    }
+
+    private fun consumeGlobalReadAloudPanelOpen(): Boolean {
+        if (!BaseReadAloudService.isRun) return false
+        val bookUrl = ReadBook.book?.bookUrl ?: return false
+        if (!ReadAloudAppCapsuleHost.consumeReadAloudPanelOpen(bookUrl)) return false
+        return openReadAloudPanelFromExternalRequest()
+    }
+
+    private fun openReadAloudPanelFromExternalRequest(): Boolean {
+        if (!BaseReadAloudService.isRun) return false
         pendingReadAloudPlayerOpen = false
         binding.readAloudPlayerPanel.post {
             binding.readAloudPlayerPanel.openFromBottom(force = true)
