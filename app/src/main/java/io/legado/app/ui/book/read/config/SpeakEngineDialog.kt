@@ -48,12 +48,14 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.readaloud.speech.SpeechVoiceOption
@@ -75,6 +77,7 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
@@ -180,7 +183,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
     override fun setForBook() {
         ReadBook.book?.setTtsEngine(ttsEngine)
         callBack?.upSpeakEngineSummary()
-        ReadAloud.upReadAloudClass()
+        notifyReadAloudEngineChanged()
         dismissAllowingStateLoss()
     }
 
@@ -188,7 +191,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
         ReadBook.book?.setTtsEngine(null)
         AppConfig.ttsEngine = ttsEngine
         callBack?.upSpeakEngineSummary()
-        ReadAloud.upReadAloudClass()
+        notifyReadAloudEngineChanged()
         dismissAllowingStateLoss()
     }
 
@@ -204,8 +207,33 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
         alert(R.string.draw) {
             setMessage(getString(R.string.sure_del) + "\n" + httpTTS.name)
             noButton()
-            yesButton { appDb.httpTTSDao.delete(httpTTS) }
+            yesButton {
+                val appContext = requireContext().applicationContext
+                lifecycleScope.launch(IO) {
+                    appDb.httpTTSDao.delete(httpTTS)
+                    val result = SpeechRouteSanitizer.cleanDeletedHttpTts(httpTTS)
+                    if (result.changed) {
+                        appContext.toastOnUi(
+                            "已重置 ${result.characterCount} 个角色、${result.bookCount} 本书的失效朗读配置"
+                        )
+                    }
+                    notifyReadAloudEngineChanged()
+                }
+            }
         }
+    }
+
+    private fun notifyReadAloudEngineChanged() {
+        ReadAloud.refreshReadAloudClass()
+        postEvent(
+            EventBus.READ_ALOUD_CONFIG_CHANGED,
+            Bundle().apply {
+                putString(
+                    EventBus.READ_ALOUD_CONFIG_SCOPE,
+                    EventBus.READ_ALOUD_CONFIG_SCOPE_ENGINE
+                )
+            }
+        )
     }
 
     override fun login(group: SpeechVoiceEngineGroup) {
@@ -290,7 +318,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
 
     override fun clearCache() {
         execute {
-            ReadAloud.upReadAloudClass()
+            notifyReadAloudEngineChanged()
             val ttsFolderPath = "${requireContext().cacheDir.absolutePath}${File.separator}httpTTS${File.separator}"
             FileUtils.listDirsAndFiles(ttsFolderPath)?.forEach {
                 FileUtils.delete(it.absolutePath)

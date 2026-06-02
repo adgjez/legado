@@ -11,6 +11,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.role.ReadAloudRolePreprocessor
 import io.legado.app.help.readaloud.role.ReadAloudRoleUnit
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -687,7 +688,8 @@ object AiReadAloudRoleService {
             segment.characterName.isNotBlank() -> appDb.bookCharacterDao.getCharacter(bookUrl, segment.characterName)
             else -> null
         } ?: return null
-        val route = SpeechRoute.fromJson(character.speechRouteJson)
+        val route = SpeechRouteSanitizer.validOrNull(SpeechRoute.fromJson(character.speechRouteJson))
+            ?: return null
         if (!route.isConfigured) return null
         val emotionName = segment.emotionName.trim()
         val emotionTag = segment.emotionTag.trim()

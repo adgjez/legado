@@ -115,9 +115,14 @@ fun speechRouteSummary(
     defaultText: String = "使用默认朗读引擎"
 ): String {
     if (!route.isConfigured) return defaultText
-    val engineName = groups.firstOrNull {
+    val group = groups.firstOrNull {
         it.engineType == route.engineType && it.engineValue == route.engineValue
-    }?.title
+    }
+    if (route.engineType == SpeechRoute.ENGINE_HTTP && group == null) return defaultText
+    if (route.toneID.isNotBlank() && group?.options?.none { it.toneID == route.toneID } == true) {
+        return defaultText
+    }
+    val engineName = group?.title
     val parts = buildList {
         add(engineName ?: when (route.engineType) {
             SpeechRoute.ENGINE_HTTP -> "HTTP TTS"

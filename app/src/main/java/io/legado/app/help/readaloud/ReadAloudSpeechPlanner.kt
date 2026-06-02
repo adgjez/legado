@@ -4,6 +4,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.ui.book.read.page.entities.ReadAloudCue
 import io.legado.app.ui.book.read.page.entities.TextChapter
 
@@ -173,7 +174,8 @@ object ReadAloudSpeechPlanner {
         character: BookCharacter?,
         segment: AiReadAloudRoleService.Segment
     ): SpeechRoute? {
-        val route = SpeechRoute.fromJson(character?.speechRouteJson)
+        val route = SpeechRouteSanitizer.validOrNull(SpeechRoute.fromJson(character?.speechRouteJson))
+            ?: return null
         if (!route.isConfigured) return null
         val emotionName = segment.emotionName.trim()
         val emotionTag = segment.emotionTag.trim()

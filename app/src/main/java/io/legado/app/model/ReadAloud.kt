@@ -10,6 +10,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.HttpReadAloudService
 import io.legado.app.service.TTSReadAloudService
@@ -22,7 +23,7 @@ import splitties.init.appCtx
 object ReadAloud {
     private var aloudClass: Class<*> = getReadAloudClass()
     val ttsEngine get() = ReadBook.book?.getTtsEngine() ?: AppConfig.ttsEngine
-    val speechRoute get() = SpeechRoute.fromTtsEngineValue(ttsEngine)
+    val speechRoute get() = SpeechRouteSanitizer.validOrDefault(SpeechRoute.fromTtsEngineValue(ttsEngine))
     var httpTTS: HttpTTS? = null
 
     private fun getReadAloudClass(): Class<*> {
@@ -52,6 +53,15 @@ object ReadAloud {
     fun upReadAloudClass() {
         stop(appCtx)
         aloudClass = getReadAloudClass()
+    }
+
+    fun resolveReadAloudClass(): Class<*> {
+        return getReadAloudClass()
+    }
+
+    fun refreshReadAloudClass(): Class<*> {
+        aloudClass = getReadAloudClass()
+        return aloudClass
     }
 
     fun play(

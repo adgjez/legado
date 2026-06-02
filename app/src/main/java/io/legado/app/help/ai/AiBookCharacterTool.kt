@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
 import kotlinx.coroutines.Dispatchers.IO
@@ -677,7 +678,7 @@ object AiBookCharacterTool {
     }
 
     private fun speechRouteJson(json: String): JSONObject {
-        val route = SpeechRoute.fromJson(json)
+        val route = SpeechRouteSanitizer.validOrDefault(SpeechRoute.fromJson(json))
         return JSONObject().apply {
             put("configured", route.isConfigured)
             put("engineType", route.engineType)
