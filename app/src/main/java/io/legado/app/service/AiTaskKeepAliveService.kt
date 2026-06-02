@@ -37,15 +37,20 @@ class AiTaskKeepAliveService : BaseService() {
 
     private fun createNotification(): NotificationCompat.Builder {
         val count = AiTaskKeepAlive.activeCount.coerceAtLeast(1)
+        val tasks = AiTaskKeepAlive.activeTaskSnapshot()
         val text = if (count > 1) {
-            "还有 $count 个 AI 任务运行中"
+            tasks.take(3)
+                .joinToString("\n") { "${it.title}：${it.displayText}" }
+                .ifBlank { "还有 $count 个 AI 任务运行中" }
         } else {
-            AiTaskKeepAlive.title
+            AiTaskKeepAlive.content
         }
+        val title = if (count > 1) "AI任务处理中 · $count 个" else AiTaskKeepAlive.title
         return NotificationCompat.Builder(this, AppConst.channelIdAiTask)
             .setSmallIcon(R.drawable.ic_web_service_noti)
-            .setContentTitle("AI任务处理中")
-            .setContentText(text)
+            .setContentTitle(title)
+            .setContentText(text.lineSequence().firstOrNull().orEmpty())
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
