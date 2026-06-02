@@ -54,6 +54,16 @@ object AiReadAloudBgmService {
         val track: ReadAloudBgmTrack
     )
 
+    data class CachedAudioInfo(
+        val cacheKey: String,
+        val status: String,
+        val assignmentCount: Int,
+        val soundEffectCount: Int,
+        val bgmTrackNames: List<String>,
+        val soundEffectTrackNames: List<String>,
+        val updatedAt: Long
+    )
+
     data class EnsureResult(
         val status: String,
         val assignmentCount: Int = 0,
@@ -425,6 +435,41 @@ object AiReadAloudBgmService {
                     ?: return@mapNotNull null
                 ResolvedSoundEffectEvent(event, track)
             }
+    }
+
+    fun cachedAudioInfoForChapter(
+        bookUrl: String?,
+        chapterIndex: Int
+    ): CachedAudioInfo? {
+        if (bookUrl.isNullOrBlank() || chapterIndex < 0) return null
+        val cache = appDb.readAloudBgmDao.latestAssignmentCacheByChapter(bookUrl, chapterIndex)
+            ?: return null
+        val audio = audioAssignmentsFromJson(cache.assignmentsJson)
+        val bgmNames = audio.assignments
+            .mapNotNull { assignment ->
+                appDb.readAloudBgmDao.track(assignment.trackId)
+                    ?.takeIf { it.normalizedAssetType() == ReadAloudBgmTrack.TYPE_BGM }
+                    ?.displayName()
+            }
+            .distinct()
+            .take(4)
+        val sfxNames = audio.soundEffects
+            .mapNotNull { event ->
+                appDb.readAloudBgmDao.track(event.trackId)
+                    ?.takeIf { it.normalizedAssetType() == ReadAloudBgmTrack.TYPE_SFX }
+                    ?.displayName()
+            }
+            .distinct()
+            .take(6)
+        return CachedAudioInfo(
+            cacheKey = cache.cacheKey,
+            status = cache.status,
+            assignmentCount = audio.assignments.size,
+            soundEffectCount = audio.soundEffects.size,
+            bgmTrackNames = bgmNames,
+            soundEffectTrackNames = sfxNames,
+            updatedAt = cache.updatedAt
+        )
     }
 
     private fun buildAssignmentPrompt(

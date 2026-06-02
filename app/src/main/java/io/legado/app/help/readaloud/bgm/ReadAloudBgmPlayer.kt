@@ -13,6 +13,7 @@ import io.legado.app.model.ReadBook
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -26,8 +27,16 @@ class ReadAloudBgmPlayer(
     private var player: ExoPlayer? = null
     private var currentTrackId: Long? = null
     private var currentCueKey: String = ""
+    private var currentSoundEffectCueKey: String = ""
     private var resolveJob: Job? = null
     private var volumeAnimator: ValueAnimator? = null
+    private val soundEffectPlayers = linkedSetOf<ExoPlayer>()
+    private val soundEffectJobs = linkedSetOf<Job>()
+
+    private data class ResolvedAudio(
+        val bgm: AiReadAloudBgmService.ResolvedAssignment?,
+        val soundEffects: List<AiReadAloudBgmService.ResolvedSoundEffectEvent>
+    )
 
     fun onPlaybackState(state: ReadAloudPlaybackState) {
         scope.launch(Dispatchers.Main.immediate) {
@@ -42,8 +51,10 @@ class ReadAloudBgmPlayer(
         volumeAnimator = null
         player?.release()
         player = null
+        stopSoundEffects()
         currentTrackId = null
         currentCueKey = ""
+        currentSoundEffectCueKey = ""
     }
 
     private fun handlePlaybackState(state: ReadAloudPlaybackState) {
@@ -53,10 +64,12 @@ class ReadAloudBgmPlayer(
             !state.serviceRunning
         ) {
             fadeOutAndStop()
+            stopSoundEffects()
             return
         }
         if (state.playing != true || state.busy) {
             player?.pause()
+            stopSoundEffects()
             return
         }
         val bookUrl = ReadBook.book?.bookUrl
@@ -64,16 +77,34 @@ class ReadAloudBgmPlayer(
         val cueIndex = state.cueIndex
         if (bookUrl.isNullOrBlank() || chapterIndex < 0 || cueIndex < 0) {
             fadeOutAndStop()
+            stopSoundEffects()
             return
         }
         val cueKey = "$bookUrl|$chapterIndex|$cueIndex"
-        if (cueKey == currentCueKey && player?.isPlaying == true) return
+        val bgmHandled = cueKey == currentCueKey &&
+                (currentTrackId == null || player?.isPlaying == true)
+        val soundEffectsHandled = cueKey == currentSoundEffectCueKey
+        if (bgmHandled && soundEffectsHandled) return
         resolveJob?.cancel()
         resolveJob = scope.launch(Dispatchers.IO) {
-            val resolved = AiReadAloudBgmService.cachedAssignmentForCue(bookUrl, chapterIndex, cueIndex)
+            val resolved = ResolvedAudio(
+                bgm = AiReadAloudBgmService.cachedAssignmentForCue(bookUrl, chapterIndex, cueIndex),
+                soundEffects = AiReadAloudBgmService.cachedSoundEffectsForCue(bookUrl, chapterIndex, cueIndex)
+            )
             withContext(Dispatchers.Main.immediate) {
-                applyResolvedAssignment(cueKey, resolved)
+                applyResolvedAudio(cueKey, resolved)
             }
+        }
+    }
+
+    private fun applyResolvedAudio(
+        cueKey: String,
+        resolved: ResolvedAudio
+    ) {
+        applyResolvedAssignment(cueKey, resolved.bgm)
+        if (cueKey != currentSoundEffectCueKey) {
+            currentSoundEffectCueKey = cueKey
+            playSoundEffects(resolved.soundEffects)
         }
     }
 
@@ -96,7 +127,10 @@ class ReadAloudBgmPlayer(
             return
         }
         val bgmPlayer = ensurePlayer()
-        val targetVolume = resolved.assignment.volume
+        val targetVolume = (resolved.assignment.volume *
+                resolved.track.defaultVolume *
+                AppConfig.aiReadAloudBgmVolumeScale)
+            .coerceIn(0f, 1f)
         if (currentTrackId == resolved.track.id) {
             if (!bgmPlayer.isPlaying) {
                 bgmPlayer.play()
@@ -114,6 +148,66 @@ class ReadAloudBgmPlayer(
         bgmPlayer.prepare()
         bgmPlayer.play()
         animateVolume(targetVolume, resolved.assignment.fadeInMs)
+    }
+
+    private fun playSoundEffects(events: List<AiReadAloudBgmService.ResolvedSoundEffectEvent>) {
+        if (events.isEmpty() || !AppConfig.aiReadAloudBgmEnabled) return
+        events.take(4).forEach { resolved ->
+            val job = scope.launch(Dispatchers.Main.immediate) {
+                if (resolved.event.offsetMs > 0) {
+                    delay(resolved.event.offsetMs.toLong())
+                }
+                playSoundEffect(resolved)
+            }
+            soundEffectJobs += job
+            job.invokeOnCompletion { soundEffectJobs.remove(job) }
+        }
+    }
+
+    private fun playSoundEffect(resolved: AiReadAloudBgmService.ResolvedSoundEffectEvent) {
+        val file = File(resolved.track.filePath)
+        if (!file.exists() || file.length() <= 0L) return
+        while (soundEffectPlayers.size >= 4) {
+            soundEffectPlayers.firstOrNull()?.let(::releaseSoundEffectPlayer) ?: break
+        }
+        val effectPlayer = ExoPlayer.Builder(appContext).build()
+        soundEffectPlayers += effectPlayer
+        effectPlayer.volume = (resolved.event.volume *
+                resolved.track.defaultVolume *
+                AppConfig.aiReadAloudSfxVolumeScale)
+            .coerceIn(0f, 1f)
+        effectPlayer.repeatMode = Player.REPEAT_MODE_OFF
+        effectPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        effectPlayer.addListener(
+            object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+                        releaseSoundEffectPlayer(effectPlayer)
+                    }
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    releaseSoundEffectPlayer(effectPlayer)
+                }
+            }
+        )
+        effectPlayer.prepare()
+        effectPlayer.play()
+    }
+
+    private fun stopSoundEffects() {
+        soundEffectJobs.toList().forEach { it.cancel() }
+        soundEffectJobs.clear()
+        soundEffectPlayers.toList().forEach(::releaseSoundEffectPlayer)
+        soundEffectPlayers.clear()
+    }
+
+    private fun releaseSoundEffectPlayer(effectPlayer: ExoPlayer) {
+        soundEffectPlayers.remove(effectPlayer)
+        runCatching {
+            effectPlayer.stop()
+            effectPlayer.release()
+        }
     }
 
     private fun ensurePlayer(): ExoPlayer {

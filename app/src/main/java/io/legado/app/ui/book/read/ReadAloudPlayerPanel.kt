@@ -110,8 +110,10 @@ import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.ai.AiReadAloudBgmService
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
@@ -238,6 +240,24 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val key: String
     )
 
+    data class AudioInfoUi(
+        val enabled: Boolean = false,
+        val cacheKey: String = "",
+        val status: String = "",
+        val bgmCount: Int = 0,
+        val soundEffectCount: Int = 0,
+        val bgmNames: List<String> = emptyList(),
+        val soundEffectNames: List<String> = emptyList(),
+        val elapsedMillis: Long = 0L,
+        val requestCount: Int = 0,
+        val inputTokens: Int = 0,
+        val cachedInputTokens: Int = 0,
+        val outputTokens: Int = 0,
+        val totalTokens: Int = 0,
+        val error: String = "",
+        val fingerprint: String = ""
+    )
+
     data class PlayerUiState(
         val bookName: String = "",
         val author: String = "",
@@ -261,6 +281,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val ttsEngines: List<TtsEngineUi> = emptyList(),
         val speechRoute: SpeechRoute = SpeechRoute(),
         val characterPreview: List<CharacterPreviewUi> = emptyList(),
+        val audioInfo: AudioInfoUi = AudioInfoUi(),
         val nearbyParagraphs: List<ParagraphUi> = emptyList(),
         val textCues: List<TextCueUi> = emptyList(),
         val sceneSegments: List<SceneSegmentUi> = emptyList(),
@@ -848,6 +869,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleCacheRunning = !roleCacheReady &&
                 exactRoleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING &&
                 AiReadAloudRoleService.isRunningCacheActive(exactRoleCacheKey, exactRoleCache.updatedAt)
+        val audioInfo = buildAudioInfo(book.bookUrl, chapterSequence)
         val coverUrl = book.getDisplayCover()
         val cueFingerprint = buildString {
             append(baseCues.size)
@@ -878,7 +900,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleCache?.characterHash.orEmpty(),
             roleCache?.voiceHash.orEmpty(),
             roleCache?.segmentsJson?.length?.toString().orEmpty(),
-            roleCache?.segmentsJson?.hashCode()?.toString().orEmpty()
+            roleCache?.segmentsJson?.hashCode()?.toString().orEmpty(),
+            audioInfo.fingerprint
         ).joinToString("|")
         chapterModelCache?.takeIf { it.key == modelKey }?.let { return it }
         val chapterKey = "${book.bookUrl}:$chapterSequence"
@@ -916,7 +939,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleCacheReady = roleCacheReady,
             roleCacheRunning = roleCacheRunning,
             chapterPreview = buildChapterPreview(book.bookUrl, chapterSequence, ReadBook.chapterSize),
-            characterPreview = buildCharacterPreview(book.bookUrl)
+            characterPreview = buildCharacterPreview(book.bookUrl),
+            audioInfo = audioInfo
         ).also {
             chapterModelCache = it
         }
@@ -1008,6 +1032,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             ttsEngines = buildTtsEngineOptions(),
             speechRoute = speechRoute,
             characterPreview = model?.characterPreview.orEmpty(),
+            audioInfo = model?.audioInfo ?: AudioInfoUi(enabled = AppConfig.aiReadAloudBgmEnabled),
             nearbyParagraphs = nearby,
             textCues = textCues,
             sceneSegments = sceneSegments,
@@ -1195,6 +1220,54 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 )
             }
         }.getOrDefault(emptyList())
+    }
+
+    private fun buildAudioInfo(bookUrl: String?, chapterIndex: Int): AudioInfoUi {
+        if (bookUrl.isNullOrBlank() || chapterIndex < 0) {
+            return AudioInfoUi(enabled = AppConfig.aiReadAloudBgmEnabled)
+        }
+        val cached = runCatching {
+            AiReadAloudBgmService.cachedAudioInfoForChapter(bookUrl, chapterIndex)
+        }.getOrNull()
+        val usage = runCatching {
+            appDb.aiReadAloudUsageRecordDao
+                .list(AiReadAloudUsageRecord.TYPE_AUDIO, bookUrl, limit = 80)
+                .firstOrNull { it.chapterIndex == chapterIndex }
+        }.getOrNull()
+        val fingerprint = buildString {
+            append(AppConfig.aiReadAloudBgmEnabled)
+            append('|')
+            append(cached?.cacheKey.orEmpty())
+            append('|')
+            append(cached?.status.orEmpty())
+            append('|')
+            append(cached?.assignmentCount ?: 0)
+            append('|')
+            append(cached?.soundEffectCount ?: 0)
+            append('|')
+            append(cached?.updatedAt ?: 0L)
+            append('|')
+            append(usage?.id ?: 0L)
+            append('|')
+            append(usage?.totalTokens ?: 0)
+        }
+        return AudioInfoUi(
+            enabled = AppConfig.aiReadAloudBgmEnabled,
+            cacheKey = cached?.cacheKey.orEmpty(),
+            status = cached?.status.orEmpty(),
+            bgmCount = cached?.assignmentCount ?: 0,
+            soundEffectCount = cached?.soundEffectCount ?: 0,
+            bgmNames = cached?.bgmTrackNames.orEmpty(),
+            soundEffectNames = cached?.soundEffectTrackNames.orEmpty(),
+            elapsedMillis = usage?.elapsedMillis ?: 0L,
+            requestCount = usage?.requestCount ?: 0,
+            inputTokens = usage?.inputTokens ?: 0,
+            cachedInputTokens = usage?.cachedInputTokens ?: 0,
+            outputTokens = usage?.outputTokens ?: 0,
+            totalTokens = usage?.totalTokens ?: 0,
+            error = usage?.error.orEmpty(),
+            fingerprint = fingerprint
+        )
     }
 
     private fun List<ReadAloudSpeechPlanItem>.toSceneSegmentUi(
@@ -1621,7 +1694,8 @@ private data class PlayerChapterModel(
     val roleCacheReady: Boolean,
     val roleCacheRunning: Boolean,
     val chapterPreview: List<ReadAloudPlayerPanel.ChapterPreviewUi>,
-    val characterPreview: List<ReadAloudPlayerPanel.CharacterPreviewUi>
+    val characterPreview: List<ReadAloudPlayerPanel.CharacterPreviewUi>,
+    val audioInfo: ReadAloudPlayerPanel.AudioInfoUi
 )
 
 @Composable
@@ -2146,6 +2220,7 @@ private fun RoleAssignmentProgressDialog(
                         if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
                     }
                     RoleAssignmentSummary(state, roleState, colors)
+                    AudioAssignmentSummary(state.audioInfo, colors)
                     RolePreviewList(
                         state = state,
                         roleState = roleState,
@@ -2177,6 +2252,94 @@ private fun RoleDialogAction(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
         )
+    }
+}
+
+@Composable
+private fun AudioAssignmentSummary(
+    audioInfo: ReadAloudPlayerPanel.AudioInfoUi,
+    colors: PlayerColors
+) {
+    if (!audioInfo.enabled) return
+    Column(modifier = Modifier.padding(top = 10.dp)) {
+        Text(
+            text = "智能音频",
+            color = colors.subtleText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RoleSummaryChip(
+                if (audioInfo.cacheKey.isBlank()) "未分析" else audioStatusLabel(audioInfo.status),
+                colors
+            )
+            RoleSummaryChip("配乐 ${audioInfo.bgmCount}", colors)
+            RoleSummaryChip("音效 ${audioInfo.soundEffectCount}", colors)
+            if (audioInfo.elapsedMillis > 0L) {
+                RoleSummaryChip("耗时 ${formatRoleElapsed(audioInfo.elapsedMillis)}", colors)
+            }
+            if (audioInfo.requestCount > 0) {
+                RoleSummaryChip("${audioInfo.requestCount} 次请求", colors)
+            }
+            if (audioInfo.totalTokens > 0) {
+                RoleSummaryChip("Token ${audioInfo.totalTokens}", colors)
+            }
+            if (audioInfo.inputTokens > 0) {
+                val uncached = (audioInfo.inputTokens - audioInfo.cachedInputTokens).coerceAtLeast(0)
+                RoleSummaryChip("输入 ${audioInfo.inputTokens}", colors)
+                if (uncached > 0) RoleSummaryChip("未命中 $uncached", colors)
+            }
+            if (audioInfo.cachedInputTokens > 0) {
+                RoleSummaryChip("缓存命中 ${audioInfo.cachedInputTokens}", colors)
+            }
+            if (audioInfo.outputTokens > 0) {
+                RoleSummaryChip("输出 ${audioInfo.outputTokens}", colors)
+            }
+        }
+        val names = buildList {
+            if (audioInfo.bgmNames.isNotEmpty()) {
+                add("配乐：" + audioInfo.bgmNames.joinToString("、"))
+            }
+            if (audioInfo.soundEffectNames.isNotEmpty()) {
+                add("音效：" + audioInfo.soundEffectNames.joinToString("、"))
+            }
+        }.joinToString("  ")
+        if (names.isNotBlank()) {
+            Text(
+                text = names,
+                color = colors.secondaryText,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        if (audioInfo.error.isNotBlank()) {
+            Text(
+                text = audioInfo.error,
+                color = Color(0xFFFF8A9A),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+}
+
+private fun audioStatusLabel(status: String): String {
+    return when (status) {
+        "running" -> "分析中"
+        "success" -> "已完成"
+        "failed" -> "失败"
+        else -> "已缓存"
     }
 }
 
