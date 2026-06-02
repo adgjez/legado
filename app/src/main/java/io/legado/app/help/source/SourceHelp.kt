@@ -2,8 +2,10 @@ package io.legado.app.help.source
 
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import io.legado.app.R
 import io.legado.app.constant.SourceType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
@@ -13,6 +15,8 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.help.AppCacheManager
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.permission.Permissions
+import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
@@ -187,6 +191,19 @@ object SourceHelp {
 
     fun openVideoPlayer(source: BaseSource?, url: String, title: String, isFloat: Boolean) {
         if (isFloat) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(appCtx)) {
+                PermissionsCompat.Builder()
+                    .addPermissions(Permissions.SYSTEM_ALERT_WINDOW)
+                    .rationale(R.string.float_permission_rationale)
+                    .onGranted {
+                        openVideoPlayer(source, url, title, isFloat = true)
+                    }
+                    .onDenied {
+                        appCtx.toastOnUi("授权后重新打开悬浮播放")
+                    }
+                    .request()
+                return
+            }
             val intent = Intent(appCtx, VideoPlayService::class.java).apply {
                 putExtra("videoUrl", url)
                 putExtra("videoTitle", title)

@@ -6,6 +6,8 @@ object IntentAction {
     const val play = "play"
     const val playNew = "playNew"
     const val stop = "stop"
+    const val stopReason = "stopReason"
+    const val stopReasonBookSwitch = "bookSwitch"
     const val resume = "resume"
     const val pause = "pause"
     const val addTimer = "addTimer"

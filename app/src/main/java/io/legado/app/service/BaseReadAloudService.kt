@@ -146,6 +146,7 @@ abstract class BaseReadAloudService : BaseService(),
     private var nextRolePrewarmJob: Job? = null
     private var nextRolePrewarmKey = ""
     private var upNotificationJob: Coroutine<*>? = null
+    private var skipDestroyProgressUpload = false
     private var cover: Bitmap =
         BitmapFactory.decodeResource(appCtx.resources, R.drawable.icon_read_book)
     var pageChanged = false
@@ -312,7 +313,9 @@ abstract class BaseReadAloudService : BaseService(),
         notificationManager.cancel(NotificationId.ReadAloudService)
         upMediaSessionPlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSessionCompat.release()
-        ReadBook.uploadProgress()
+        if (!skipDestroyProgressUpload) {
+            ReadBook.uploadProgress()
+        }
         unregisterPhoneStateListener(phoneStateListener)
         upNotificationJob?.invokeOnCompletion {
             notificationManager.cancel(NotificationId.ReadAloudService)
@@ -336,7 +339,11 @@ abstract class BaseReadAloudService : BaseService(),
             IntentAction.next -> nextChapter()
             IntentAction.addTimer -> addTimer()
             IntentAction.setTimer -> setTimer(intent.getIntExtra("minute", 0))
-            IntentAction.stop -> stopSelf()
+            IntentAction.stop -> {
+                skipDestroyProgressUpload =
+                    intent.getStringExtra(IntentAction.stopReason) == IntentAction.stopReasonBookSwitch
+                stopSelf()
+            }
         }
         return super.onStartCommand(intent, flags, startId)
     }

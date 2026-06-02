@@ -17,6 +17,7 @@ import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.RhinoWrapFactory
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst.channelIdDownload
+import io.legado.app.constant.AppConst.channelIdAiTask
 import io.legado.app.constant.AppConst.channelIdReadAloud
 import io.legado.app.constant.AppConst.channelIdWeb
 import io.legado.app.constant.PreferKey
@@ -51,6 +52,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.RestoreJournal
 import io.legado.app.model.BookCover
+import io.legado.app.ui.book.read.ReadAloudAppCapsuleHost
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -77,6 +79,7 @@ class App : Application() {
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
+        ReadAloudAppCapsuleHost.init(this)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
         Coroutine.async {
             RestoreJournal.recoverIfNeeded("应用启动检测到上次恢复未完成")
@@ -213,12 +216,24 @@ class App : Application() {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
 
+        val aiTaskChannel = NotificationChannel(
+            channelIdAiTask,
+            "AI任务",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+
         //向notification manager 提交channel
         notificationManager.createNotificationChannels(
             listOf(
                 downloadChannel,
                 readAloudChannel,
-                webChannel
+                webChannel,
+                aiTaskChannel
             )
         )
     }

@@ -1617,6 +1617,13 @@ class ReadBookActivity : BaseReadBookActivity(),
             intent.removeExtra("readAloud")
             ReadBook.readAloud()
         }
+        if (intent.getBooleanExtra("openReadAloudPanel", false)) {
+            intent.removeExtra("openReadAloudPanel")
+            binding.readAloudPlayerPanel.post {
+                binding.readAloudPlayerPanel.openFromBottom(force = true)
+                binding.readAloudPlayerPanel.refresh()
+            }
+        }
         loadStates = true
     }
 

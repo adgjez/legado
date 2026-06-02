@@ -118,6 +118,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun resetData(book: Book) {
+        stopReadAloudForBookSwitch(book)
         releaseAndCancel()
         ReadBook.book = book
         refreshParagraphRuleLayoutKey()
@@ -150,6 +151,7 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun upData(book: Book) {
+        stopReadAloudForBookSwitch(book)
         releaseAndCancel()
         ReadBook.book = book
         refreshParagraphRuleLayoutKey()
@@ -181,6 +183,22 @@ object ReadBook : CoroutineScope by MainScope() {
             downloadedChapters.clear()
             downloadFailChapters.clear()
         }
+    }
+
+    private fun stopReadAloudForBookSwitch(newBook: Book) {
+        val oldBook = ReadBook.book ?: return
+        if (oldBook.bookUrl == newBook.bookUrl || !BaseReadAloudService.isRun) return
+        saveRead()
+        ReadAloud.stopForBookSwitch(appCtx)
+        postEvent(
+            EventBus.READ_ALOUD_PLAYBACK_STATE,
+            io.legado.app.help.readaloud.ReadAloudPlaybackState(
+                phase = io.legado.app.help.readaloud.ReadAloudPlaybackState.PHASE_STOPPED,
+                chapterIndex = durChapterIndex,
+                serviceRunning = false
+            )
+        )
+        postEvent(EventBus.ALOUD_STATE, io.legado.app.constant.Status.STOP)
     }
 
     fun upWebBook(book: Book) {

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -73,51 +74,56 @@ class AiChatViewModel : ViewModel() {
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
         var updatedContextSummary = currentSessionSummary()
+        val keepAliveId = AiTaskKeepAlive.retain("AI回复生成中")
         activeJob = requestScope.launch {
-            val result = runCatching {
-                AiChatService.chatStream(
-                    messages = requestMessages,
-                    onPartial = { partial ->
-                        activePendingContent = partial
-                        targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
-                    },
-                    onThinking = { thinking ->
-                        targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
-                    },
-                    onStatus = { status ->
-                        targetFor(requestSessionId).upsertStatus(status)
-                    },
-                    contextSummary = updatedContextSummary,
-                    onContextSummary = { summary ->
-                        updatedContextSummary = summary
-                    }
-                )
-            }
-            targetFor(requestSessionId).setRequesting(false)
-            activeJob = null
-            activeSessionId = null
-            result.onSuccess { content ->
-                targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
-                activePendingContent = ""
-                activeToolMessageIds.clear()
-                updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
-                targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
-            }.onFailure { throwable ->
-                targetFor(requestSessionId).finishActiveThinking(fallback = throwable.localizedMessage)
-                targetFor(requestSessionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
-                activePendingContent = ""
-                activeToolMessageIds.clear()
-                if (throwable is CancellationException) {
-                    targetFor(requestSessionId).replacePendingAssistant(cancelledText)
-                    return@onFailure
+            try {
+                val result = runCatching {
+                    AiChatService.chatStream(
+                        messages = requestMessages,
+                        onPartial = { partial ->
+                            activePendingContent = partial
+                            targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
+                        },
+                        onThinking = { thinking ->
+                            targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
+                        },
+                        onStatus = { status ->
+                            targetFor(requestSessionId).upsertStatus(status)
+                        },
+                        contextSummary = updatedContextSummary,
+                        onContextSummary = { summary ->
+                            updatedContextSummary = summary
+                        }
+                    )
                 }
-                val chatError = throwable as? AiChatException ?: AiChatException(
-                    message = throwable.localizedMessage ?: throwable.javaClass.simpleName,
-                    debugLog = throwable.stackTraceToString(),
-                    cause = throwable
-                )
-                AppLog.put("AI 请求失败\n${chatError.debugLog}", chatError)
-                targetFor(requestSessionId).failPendingAssistant(failureMessage(chatError.message))
+                targetFor(requestSessionId).setRequesting(false)
+                activeJob = null
+                activeSessionId = null
+                result.onSuccess { content ->
+                    targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
+                    activePendingContent = ""
+                    activeToolMessageIds.clear()
+                    updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
+                    targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
+                }.onFailure { throwable ->
+                    targetFor(requestSessionId).finishActiveThinking(fallback = throwable.localizedMessage)
+                    targetFor(requestSessionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
+                    activePendingContent = ""
+                    activeToolMessageIds.clear()
+                    if (throwable is CancellationException) {
+                        targetFor(requestSessionId).replacePendingAssistant(cancelledText)
+                        return@onFailure
+                    }
+                    val chatError = throwable as? AiChatException ?: AiChatException(
+                        message = throwable.localizedMessage ?: throwable.javaClass.simpleName,
+                        debugLog = throwable.stackTraceToString(),
+                        cause = throwable
+                    )
+                    AppLog.put("AI 请求失败\n${chatError.debugLog}", chatError)
+                    targetFor(requestSessionId).failPendingAssistant(failureMessage(chatError.message))
+                }
+            } finally {
+                AiTaskKeepAlive.release(keepAliveId)
             }
         }
     }

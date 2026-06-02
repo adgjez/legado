@@ -122,6 +122,15 @@ object ReadAloud {
         }
     }
 
+    fun stopForBookSwitch(context: Context) {
+        if (BaseReadAloudService.isRun) {
+            val intent = Intent(context, aloudClass)
+            intent.action = IntentAction.stop
+            intent.putExtra(IntentAction.stopReason, IntentAction.stopReasonBookSwitch)
+            context.startForegroundServiceCompat(intent)
+        }
+    }
+
     fun prevParagraph(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, aloudClass)

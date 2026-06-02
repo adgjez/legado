@@ -53,6 +53,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.ai.AiChapterSummaryService
+import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.uiTypeface
@@ -151,7 +152,6 @@ class ReadAiSummaryPanel @JvmOverloads constructor(
 
     fun close() {
         visibility = GONE
-        stop()
     }
 
     private fun stop() {
@@ -166,53 +166,58 @@ class ReadAiSummaryPanel @JvmOverloads constructor(
             context.toastOnUi("请等待当前总结完成")
             return
         }
+        val keepAliveId = AiTaskKeepAlive.retain("AI章节总结")
         job = requestScope.launch {
-            post {
-                uiState = uiState.copy(
-                    requesting = true,
-                    cached = false,
-                    statusLines = if (forceRefresh) listOf("正在重新总结") else listOf("正在检查缓存"),
-                    summary = if (forceRefresh) "正在请求 AI 总结..." else uiState.summary
-                )
-            }
-            val result = runCatching {
-                if (!forceRefresh) {
-                    AiChapterSummaryService.cached(currentInput)?.let { cached ->
-                        return@runCatching cached to true
-                    }
-                }
-                withContext(IO) {
-                    AiChapterSummaryService.summarize(
-                        input = currentInput,
-                        forceRefresh = forceRefresh,
-                        onPartial = { partial ->
-                            if (partial.isNotBlank()) {
-                                post { uiState = uiState.copy(summary = partial, cached = false) }
-                            }
-                        },
-                        onStatus = { status ->
-                            post { appendStatus(status) }
-                        }
-                    )
-                } to false
-            }
-            post {
-                val (summary, fromCache) = result.getOrElse { throwable ->
-                    val text = if (throwable is CancellationException) {
-                        "已停止总结"
-                    } else {
-                        "总结失败：${throwable.localizedMessage ?: throwable.message ?: throwable.javaClass.simpleName}"
-                    }
+            try {
+                post {
                     uiState = uiState.copy(
-                        summary = text,
-                        requesting = false,
-                        cached = false
+                        requesting = true,
+                        cached = false,
+                        statusLines = if (forceRefresh) listOf("正在重新总结") else listOf("正在检查缓存"),
+                        summary = if (forceRefresh) "正在请求 AI 总结..." else uiState.summary
                     )
-                    job = null
-                    return@post
                 }
-                showSummary(summary, fromCache)
-                job = null
+                val result = runCatching {
+                    if (!forceRefresh) {
+                        AiChapterSummaryService.cached(currentInput)?.let { cached ->
+                            return@runCatching cached to true
+                        }
+                    }
+                    withContext(IO) {
+                        AiChapterSummaryService.summarize(
+                            input = currentInput,
+                            forceRefresh = forceRefresh,
+                            onPartial = { partial ->
+                                if (partial.isNotBlank()) {
+                                    post { uiState = uiState.copy(summary = partial, cached = false) }
+                                }
+                            },
+                            onStatus = { status ->
+                                post { appendStatus(status) }
+                            }
+                        )
+                    } to false
+                }
+                post {
+                    val (summary, fromCache) = result.getOrElse { throwable ->
+                        val text = if (throwable is CancellationException) {
+                            "已停止总结"
+                        } else {
+                            "总结失败：${throwable.localizedMessage ?: throwable.message ?: throwable.javaClass.simpleName}"
+                        }
+                        uiState = uiState.copy(
+                            summary = text,
+                            requesting = false,
+                            cached = false
+                        )
+                        job = null
+                        return@post
+                    }
+                    showSummary(summary, fromCache)
+                    job = null
+                }
+            } finally {
+                AiTaskKeepAlive.release(keepAliveId)
             }
         }
     }

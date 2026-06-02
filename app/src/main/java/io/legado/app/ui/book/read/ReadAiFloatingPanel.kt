@@ -62,6 +62,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
@@ -265,48 +266,53 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         )
         val requestMessages = buildRequestMessages(context, question)
         streamingAssistantMessageId = pendingAssistantId
+        val keepAliveId = AiTaskKeepAlive.retain("阅读页问AI")
         answerJob = requestScope.launch {
-            post { updateRequestingState() }
-            val result = runCatching {
-                withContext(IO) {
-                    AiChatService.chatStream(
-                        messages = requestMessages,
-                        onPartial = { partial ->
-                            if (partial.isNotBlank()) {
-                                post {
-                                    streamingAssistantContent = partial
-                                    if (!showingHistory) renderCurrentSession()
+            try {
+                post { updateRequestingState() }
+                val result = runCatching {
+                    withContext(IO) {
+                        AiChatService.chatStream(
+                            messages = requestMessages,
+                            onPartial = { partial ->
+                                if (partial.isNotBlank()) {
+                                    post {
+                                        streamingAssistantContent = partial
+                                        if (!showingHistory) renderCurrentSession()
+                                    }
                                 }
-                            }
-                        },
-                        includeStructuredBlocks = false,
-                        toolOverride = AiToolRegistry.resolveReadTools(),
-                        modelConfigOverride = AppConfig.aiAskModelConfig
-                    )
-                }
-            }
-            post {
-                streamingAssistantContent = null
-                streamingAssistantMessageId = null
-                val content = result.fold(
-                    onSuccess = { it.ifBlank { resources.getString(R.string.ai_chat_cancelled) } },
-                    onFailure = { throwable ->
-                        if (throwable is CancellationException) {
-                            resources.getString(R.string.ai_chat_cancelled)
-                        } else {
-                            resources.getString(
-                                R.string.ai_request_failed,
-                                throwable.localizedMessage
-                                    ?: throwable.message
-                                    ?: resources.getString(R.string.ai_request_cancelled)
-                            )
-                        }
+                            },
+                            includeStructuredBlocks = false,
+                            toolOverride = AiToolRegistry.resolveReadTools(),
+                            modelConfigOverride = AppConfig.aiAskModelConfig
+                        )
                     }
-                )
-                replaceMessage(context, pendingAssistantId, content, requestSessionId)
-                answerJob = null
-                updateRequestingState()
-                if (!showingHistory) renderCurrentSession()
+                }
+                post {
+                    streamingAssistantContent = null
+                    streamingAssistantMessageId = null
+                    val content = result.fold(
+                        onSuccess = { it.ifBlank { resources.getString(R.string.ai_chat_cancelled) } },
+                        onFailure = { throwable ->
+                            if (throwable is CancellationException) {
+                                resources.getString(R.string.ai_chat_cancelled)
+                            } else {
+                                resources.getString(
+                                    R.string.ai_request_failed,
+                                    throwable.localizedMessage
+                                        ?: throwable.message
+                                        ?: resources.getString(R.string.ai_request_cancelled)
+                                )
+                            }
+                        }
+                    )
+                    replaceMessage(context, pendingAssistantId, content, requestSessionId)
+                    answerJob = null
+                    updateRequestingState()
+                    if (!showingHistory) renderCurrentSession()
+                }
+            } finally {
+                AiTaskKeepAlive.release(keepAliveId)
             }
         }
         updateRequestingState()
