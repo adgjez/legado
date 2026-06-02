@@ -48,6 +48,7 @@ import org.json.JSONObject
 
 private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
 private const val KEY_AI_READ_ALOUD_USAGE_RECORDS = "aiReadAloudUsageRecords"
+private const val KEY_READ_ALOUD_SPEAKER_MANAGE = "readAloudSpeakerManage"
 
 enum class ReadAloudConfigGroup(
     val title: String,
@@ -94,6 +95,7 @@ enum class ReadAloudConfigGroup(
         "\u5f15\u64ce",
         setOf(
             PreferKey.ttsEngine,
+            KEY_READ_ALOUD_SPEAKER_MANAGE,
             "sysTtsConfig"
         )
     );
@@ -258,6 +260,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
+                KEY_READ_ALOUD_SPEAKER_MANAGE -> showDialogFragment(SpeakerGroupManageDialog())
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
                 PreferKey.aiReadAloudRoleModelId -> showAiRoleModelDialog()
                 PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(

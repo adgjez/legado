@@ -169,6 +169,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="readAloudSpeakerManage"
+            android:summary="创建分组，并从不同朗读引擎选择可复用发言人"
+            android:title="发言人管理"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="sysTtsConfig"
             android:summary="@string/sys_tts_config_summary"
             android:title="@string/sys_tts_config"
