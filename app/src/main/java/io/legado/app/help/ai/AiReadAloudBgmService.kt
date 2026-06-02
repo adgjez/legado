@@ -1,11 +1,14 @@
 package io.legado.app.help.ai
 
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
 import io.legado.app.data.entities.ReadAloudBgmGroup
 import io.legado.app.data.entities.ReadAloudBgmTrack
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.role.ReadAloudSoundEffectCandidate
+import io.legado.app.help.readaloud.role.ReadAloudSoundEffectPreprocessor
 import io.legado.app.ui.book.read.page.entities.ReadAloudCue
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -19,7 +22,7 @@ import java.io.File
 object AiReadAloudBgmService {
 
     const val TOOL_ASSIGN_BGM_RANGES = "assign_read_aloud_bgm_ranges"
-    private const val SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
 
     data class Assignment(
         val fromCueIndex: Int,
@@ -37,9 +40,24 @@ object AiReadAloudBgmService {
         val track: ReadAloudBgmTrack
     )
 
+    data class SoundEffectEvent(
+        val cueIndex: Int,
+        val trackId: Long,
+        val volume: Float = 0.72f,
+        val offsetMs: Int = 0,
+        val reason: String = "",
+        val confidence: Double = 0.0
+    )
+
+    data class ResolvedSoundEffectEvent(
+        val event: SoundEffectEvent,
+        val track: ReadAloudBgmTrack
+    )
+
     data class EnsureResult(
         val status: String,
         val assignmentCount: Int = 0,
+        val soundEffectCount: Int = 0,
         val message: String = "",
         val error: String = "",
         val cacheKey: String = ""
@@ -47,8 +65,14 @@ object AiReadAloudBgmService {
 
     private data class CatalogSnapshot(
         val groups: List<ReadAloudBgmGroup>,
-        val tracks: List<ReadAloudBgmTrack>,
+        val bgmTracks: List<ReadAloudBgmTrack>,
+        val soundEffectTracks: List<ReadAloudBgmTrack>,
         val hash: String
+    )
+
+    private data class AudioAssignmentResult(
+        val assignments: List<Assignment>,
+        val soundEffects: List<SoundEffectEvent>
     )
 
     private data class BgmCacheKey(
@@ -80,8 +104,9 @@ object AiReadAloudBgmService {
             return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "当前章节无可配乐文本")
         }
         val catalog = catalogSnapshot()
-        if (catalog.tracks.isEmpty()) {
-            return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "暂无可用配乐")
+        val sfxCandidates = soundEffectCandidates(cleanCues)
+        if (catalog.bgmTracks.isEmpty() && (catalog.soundEffectTracks.isEmpty() || sfxCandidates.isEmpty())) {
+            return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "暂无可用配乐或音效")
         }
         val key = buildCacheKey(currentBook, currentChapter, cleanCues, catalog.hash, modelConfig.id)
         appDb.readAloudBgmDao.latestAssignmentCache(
@@ -90,10 +115,12 @@ object AiReadAloudBgmService {
             key.contentHash,
             key.catalogHash
         )?.takeIf { it.assignmentsJson.isNotBlank() }?.let { cache ->
+            val cachedAudio = audioAssignmentsFromJson(cache.assignmentsJson)
             return@withContext EnsureResult(
                 status = ReadAloudBgmAssignmentCache.STATUS_SUCCESS,
-                assignmentCount = assignmentsFromJson(cache.assignmentsJson).size,
-                message = "当前章节配乐已缓存",
+                assignmentCount = cachedAudio.assignments.size,
+                soundEffectCount = cachedAudio.soundEffects.size,
+                message = "当前章节智能音频已缓存",
                 cacheKey = cache.cacheKey
             )
         }
@@ -121,25 +148,38 @@ object AiReadAloudBgmService {
                 updatedAt = now
             )
         )
+        val usageTracker = AiReadAloudUsageRecorder.Tracker()
         try {
+            usageTracker.onRequest()
             val response = AiChatService.requestSingleToolCall(
                 messages = listOf(
                     AiChatMessage(
                         role = AiChatMessage.Role.USER,
-                        content = buildAssignmentPrompt(currentBook, currentChapter, cleanCues, catalog)
+                        content = buildAssignmentPrompt(currentBook, currentChapter, cleanCues, catalog, sfxCandidates)
                     )
                 ),
                 tool = AiResolvedTool(TOOL_ASSIGN_BGM_RANGES, assignmentToolDefinition()) {
                     JSONObject().put("ok", true).toString()
                 },
                 modelConfigOverride = modelConfig,
-                promptCacheKeyOverride = key.promptCacheKey
+                promptCacheKeyOverride = key.promptCacheKey,
+                onUsage = usageTracker::onUsage
             )
-            val assignments = when {
-                response.hasToolCall -> parseAssignments(JSONObject(response.arguments), cleanCues.size, catalog.tracks)
-                else -> parseAssignmentsFromContent(response.content, cleanCues.size, catalog.tracks)
+            val audio = when {
+                response.hasToolCall -> parseAudioAssignments(
+                    JSONObject(response.arguments),
+                    cleanCues.size,
+                    catalog.bgmTracks,
+                    catalog.soundEffectTracks
+                )
+                else -> parseAudioAssignmentsFromContent(
+                    response.content,
+                    cleanCues.size,
+                    catalog.bgmTracks,
+                    catalog.soundEffectTracks
+                )
             }
-            val json = assignmentsToJson(assignments, key.contentHash, key.catalogHash)
+            val json = assignmentsToJson(audio.assignments, audio.soundEffects, key.contentHash, key.catalogHash)
             appDb.readAloudBgmDao.upsertAssignmentCache(
                 ReadAloudBgmAssignmentCache(
                     cacheKey = key.cacheKey,
@@ -156,10 +196,22 @@ object AiReadAloudBgmService {
                     updatedAt = System.currentTimeMillis()
                 )
             )
+            AiReadAloudUsageRecorder.record(
+                type = AiReadAloudUsageRecord.TYPE_AUDIO,
+                status = AiReadAloudUsageRecord.STATUS_SUCCESS,
+                book = currentBook,
+                chapter = currentChapter,
+                cacheKey = key.cacheKey,
+                batchName = "配乐音效分析",
+                modelConfig = modelConfig,
+                snapshot = usageTracker.snapshot(),
+                summary = "bgm=${audio.assignments.size}, sfx=${audio.soundEffects.size}, candidates=${sfxCandidates.size}"
+            )
             EnsureResult(
                 status = ReadAloudBgmAssignmentCache.STATUS_SUCCESS,
-                assignmentCount = assignments.size,
-                message = "智能配乐已缓存",
+                assignmentCount = audio.assignments.size,
+                soundEffectCount = audio.soundEffects.size,
+                message = "智能音频已缓存",
                 cacheKey = key.cacheKey
             )
         } catch (throwable: Throwable) {
@@ -180,6 +232,18 @@ object AiReadAloudBgmService {
                     createdAt = old?.createdAt?.takeIf { it > 0 } ?: now,
                     updatedAt = System.currentTimeMillis()
                 )
+            )
+            AiReadAloudUsageRecorder.record(
+                type = AiReadAloudUsageRecord.TYPE_AUDIO,
+                status = AiReadAloudUsageRecord.STATUS_FAILED,
+                book = currentBook,
+                chapter = currentChapter,
+                cacheKey = key.cacheKey,
+                batchName = "配乐音效分析",
+                modelConfig = modelConfig,
+                snapshot = usageTracker.snapshot(),
+                summary = "candidates=${sfxCandidates.size}",
+                error = error
             )
             EnsureResult(
                 status = ReadAloudBgmAssignmentCache.STATUS_FAILED,
@@ -203,7 +267,12 @@ object AiReadAloudBgmService {
                 }
             })
             put("tracks", JSONArray().apply {
-                snapshot.tracks.forEach { track ->
+                snapshot.bgmTracks.forEach { track ->
+                    put(trackJson(track, snapshot.groups))
+                }
+            })
+            put("soundEffectTracks", JSONArray().apply {
+                snapshot.soundEffectTracks.forEach { track ->
                     put(trackJson(track, snapshot.groups))
                 }
             })
@@ -215,7 +284,7 @@ object AiReadAloudBgmService {
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", TOOL_ASSIGN_BGM_RANGES)
-                put("description", "给朗读章节按 cue 范围选择背景音乐。只返回需要播放配乐的范围，旁白无配乐时不用返回。")
+                put("description", "给朗读章节按 cue 范围选择背景音乐，并给候选事件选择音效。配乐用 assignments，音效用 soundEffects。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {
@@ -237,6 +306,22 @@ object AiReadAloudBgmService {
                                 put("additionalProperties", false)
                             })
                         })
+                        put("soundEffects", JSONObject().apply {
+                            put("type", "array")
+                            put("items", JSONObject().apply {
+                                put("type", "object")
+                                put("properties", JSONObject().apply {
+                                    put("cueIndex", intProp("0-based cue index where sound effect should play."))
+                                    put("trackId", intProp("sound effect track id from soundEffectTracks."))
+                                    put("volume", numberProp("0.0..1.0, default 0.72."))
+                                    put("offsetMs", intProp("delay from cue start, milliseconds, default 0."))
+                                    put("reason", stringProp("short reason."))
+                                    put("confidence", numberProp("0.0..1.0."))
+                                })
+                                put("required", JSONArray().put("cueIndex").put("trackId"))
+                                put("additionalProperties", false)
+                            })
+                        })
                         put("bookUrl", stringProp("optional, used only when persisting from general AI tools."))
                         put("chapterIndex", intProp("optional, 0-based chapter index."))
                         put("contentHash", stringProp("optional content hash."))
@@ -251,7 +336,12 @@ object AiReadAloudBgmService {
 
     fun toolAssign(args: JSONObject?): String {
         val snapshot = catalogSnapshot()
-        val assignments = parseAssignments(args ?: JSONObject(), args?.optInt("cueCount", 10_000) ?: 10_000, snapshot.tracks)
+        val audio = parseAudioAssignments(
+            args ?: JSONObject(),
+            args?.optInt("cueCount", 10_000) ?: 10_000,
+            snapshot.bgmTracks,
+            snapshot.soundEffectTracks
+        )
         val bookUrl = args?.optString("bookUrl").orEmpty()
         val chapterIndex = args?.optInt("chapterIndex", -1) ?: -1
         val contentHash = args?.optString("contentHash").orEmpty()
@@ -268,7 +358,7 @@ object AiReadAloudBgmService {
                     contentHash = contentHash,
                     catalogHash = catalogHash,
                     modelId = modelId,
-                    assignmentsJson = assignmentsToJson(assignments, contentHash, catalogHash),
+                    assignmentsJson = assignmentsToJson(audio.assignments, audio.soundEffects, contentHash, catalogHash),
                     status = ReadAloudBgmAssignmentCache.STATUS_SUCCESS,
                     createdAt = now,
                     updatedAt = now
@@ -281,9 +371,13 @@ object AiReadAloudBgmService {
         return JSONObject().apply {
             put("ok", true)
             put("persisted", persisted)
-            put("assignmentCount", assignments.size)
+            put("assignmentCount", audio.assignments.size)
+            put("soundEffectCount", audio.soundEffects.size)
             put("assignments", JSONArray().apply {
-                assignments.forEach { put(it.toJson()) }
+                audio.assignments.forEach { put(it.toJson()) }
+            })
+            put("soundEffects", JSONArray().apply {
+                audio.soundEffects.forEach { put(it.toJson()) }
             })
         }.toString()
     }
@@ -300,36 +394,84 @@ object AiReadAloudBgmService {
             .firstOrNull { cueIndex in it.fromCueIndex..it.toCueIndex }
             ?: return null
         val track = appDb.readAloudBgmDao.track(assignment.trackId)
-            ?.takeIf { it.enabled && it.filePath.isNotBlank() && File(it.filePath).exists() }
+            ?.takeIf {
+                it.enabled &&
+                    it.normalizedAssetType() == ReadAloudBgmTrack.TYPE_BGM &&
+                    it.filePath.isNotBlank() &&
+                    File(it.filePath).exists()
+            }
             ?: return null
         return ResolvedAssignment(assignment, track)
+    }
+
+    fun cachedSoundEffectsForCue(
+        bookUrl: String?,
+        chapterIndex: Int,
+        cueIndex: Int
+    ): List<ResolvedSoundEffectEvent> {
+        if (bookUrl.isNullOrBlank() || chapterIndex < 0 || cueIndex < 0) return emptyList()
+        val cache = appDb.readAloudBgmDao.latestAssignmentCacheByChapter(bookUrl, chapterIndex)
+            ?: return emptyList()
+        return soundEffectsFromJson(cache.assignmentsJson)
+            .filter { it.cueIndex == cueIndex }
+            .mapNotNull { event ->
+                val track = appDb.readAloudBgmDao.track(event.trackId)
+                    ?.takeIf {
+                        it.enabled &&
+                            it.normalizedAssetType() == ReadAloudBgmTrack.TYPE_SFX &&
+                            it.filePath.isNotBlank() &&
+                            File(it.filePath).exists()
+                    }
+                    ?: return@mapNotNull null
+                ResolvedSoundEffectEvent(event, track)
+            }
     }
 
     private fun buildAssignmentPrompt(
         book: Book,
         chapter: TextChapter,
         cues: List<ReadAloudCue>,
-        catalog: CatalogSnapshot
+        catalog: CatalogSnapshot,
+        soundEffectCandidates: List<ReadAloudSoundEffectCandidate>
     ): String {
-        val catalogText = catalog.tracks.joinToString("\n") { track ->
+        val catalogText = catalog.bgmTracks.joinToString("\n") { track ->
             val group = catalog.groups.firstOrNull { it.id == track.groupId }?.displayName() ?: "默认分组"
             val tags = track.tags.ifBlank { "-" }
-            "${track.id}|${track.displayName()}|$group|$tags|${track.durationMs / 1000}s"
-        }
+            "${track.id}|${track.displayName()}|$group|$tags|${track.durationMs / 1000}s|vol=${track.defaultVolume}"
+        }.ifBlank { "无可用配乐" }
+        val sfxCatalogText = catalog.soundEffectTracks.joinToString("\n") { track ->
+            val group = catalog.groups.firstOrNull { it.id == track.groupId }?.displayName() ?: "默认分组"
+            val tags = track.tags.ifBlank { "-" }
+            "${track.id}|${track.displayName()}|$group|$tags|${track.durationMs / 1000}s|vol=${track.defaultVolume}"
+        }.ifBlank { "无可用音效" }
         val cueText = cues.mapIndexed { index, cue ->
-            "C$index|pos=${cue.chapterPosition}|${cue.text.compactForPrompt(180)}"
+            "C$index|pos=${cue.chapterPosition}|${cue.text.compactForPrompt(120)}"
         }.joinToString("\n")
+        val sfxCandidateText = soundEffectCandidates.take(80).joinToString("\n") { item ->
+            "S${item.id}|cue=C${item.paragraphIndex}|word=${item.cue}|${item.context.compactForPrompt(80)}"
+        }
         return """
-            任务：为小说朗读选择背景音乐范围。必须调用 $TOOL_ASSIGN_BGM_RANGES。
-            规则：只给需要配乐的连续 cue 范围；安静阅读、普通对话可以不配乐。不要逐句都换音乐，优先减少切换。一个范围用 fromCueIndex/toCueIndex，均为 0-based 且包含边界。trackId 必须来自曲库。音量建议 0.12-0.28，避免盖过朗读。开头和末尾都要给淡入淡出毫秒数。
+            任务：为小说朗读选择背景音乐范围和音效事件。必须调用 $TOOL_ASSIGN_BGM_RANGES。
+            规则：
+            1. 配乐写入 assignments，只给需要配乐的连续 cue 范围；普通对话和安静过渡可以不配乐，避免逐句切换。
+            2. 音效写入 soundEffects，只能从“音效候选”里选择确实需要播放的事件；没有合适音效就不要返回。
+            3. cueIndex/fromCueIndex/toCueIndex 都是 0-based。trackId 必须来自对应曲库。
+            4. 配乐音量建议 0.12-0.28，音效音量建议 0.45-0.85，不能盖过朗读。
+            5. 不要臆造不存在的音效，不要把人物说话声音当音效。
             书：${book.name} / ${book.author}
             章：${chapter.chapter.title}
 
-            曲库(trackId|名称|分组|标签|时长)：
+            配乐曲库(trackId|名称|分组|标签|时长|默认音量)：
             $catalogText
+
+            音效曲库(trackId|名称|分组|标签|时长|默认音量)：
+            $sfxCatalogText
 
             章节 cue：
             $cueText
+
+            音效候选(candidateId|cue|候选词|上下文)：
+            ${sfxCandidateText.ifBlank { "无音效候选" }}
         """.trimIndent()
     }
 
@@ -344,39 +486,57 @@ object AiReadAloudBgmService {
             cues.joinToString("\n") { "${it.chapterPosition}|${it.text}" }
         )
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-bgm|${book.bookUrl}|${chapter.chapter.index}|${chapter.chapter.url}|$contentHash|$catalogHash|$modelId|$SCHEMA_VERSION"
+            "read-aloud-audio|${book.bookUrl}|${chapter.chapter.index}|${chapter.chapter.url}|$contentHash|$catalogHash|$modelId|$SCHEMA_VERSION"
         )
         val promptCacheKey = MD5Utils.md5Encode(
-            "read-aloud-bgm-prompt|${book.bookUrl}|$catalogHash|$modelId|$SCHEMA_VERSION"
+            "read-aloud-audio-prompt|${book.bookUrl}|$catalogHash|$modelId|$SCHEMA_VERSION"
         )
         return BgmCacheKey(
             cacheKey = cacheKey,
             contentHash = contentHash,
             catalogHash = catalogHash,
             modelId = modelId,
-            promptCacheKey = "read_aloud_bgm_$promptCacheKey"
+            promptCacheKey = "read_aloud_audio_$promptCacheKey"
         )
     }
 
     private fun catalogSnapshot(): CatalogSnapshot {
         val groups = appDb.readAloudBgmDao.groups()
-        val tracks = appDb.readAloudBgmDao.enabledTracksByType(ReadAloudBgmTrack.TYPE_BGM)
+        val bgmTracks = appDb.readAloudBgmDao.enabledTracksByType(ReadAloudBgmTrack.TYPE_BGM)
+        val sfxTracks = appDb.readAloudBgmDao.enabledTracksByType(ReadAloudBgmTrack.TYPE_SFX)
         val hash = MD5Utils.md5Encode(
-            tracks.joinToString("|") {
-                "${it.id}:${it.groupId}:${it.displayName()}:${it.tags}:${it.checksum}:${it.enabled}:${it.defaultVolume}:${it.updatedAt}"
+            (bgmTracks + sfxTracks).joinToString("|") {
+                "${it.id}:${it.normalizedAssetType()}:${it.groupId}:${it.displayName()}:${it.tags}:${it.checksum}:${it.enabled}:${it.defaultVolume}:${it.updatedAt}"
             }
         )
-        return CatalogSnapshot(groups, tracks, hash)
+        return CatalogSnapshot(groups, bgmTracks, sfxTracks, hash)
     }
 
-    private fun parseAssignmentsFromContent(
+    private fun soundEffectCandidates(cues: List<ReadAloudCue>): List<ReadAloudSoundEffectCandidate> {
+        return ReadAloudSoundEffectPreprocessor.process(cues.map { it.text }).candidates
+    }
+
+    private fun parseAudioAssignmentsFromContent(
         content: String,
         cueCount: Int,
-        tracks: List<ReadAloudBgmTrack>
-    ): List<Assignment> {
+        bgmTracks: List<ReadAloudBgmTrack>,
+        soundEffectTracks: List<ReadAloudBgmTrack>
+    ): AudioAssignmentResult {
         return runCatching {
-            parseAssignments(JSONObject(content), cueCount, tracks)
-        }.getOrDefault(emptyList())
+            parseAudioAssignments(JSONObject(content), cueCount, bgmTracks, soundEffectTracks)
+        }.getOrDefault(AudioAssignmentResult(emptyList(), emptyList()))
+    }
+
+    private fun parseAudioAssignments(
+        args: JSONObject,
+        cueCount: Int,
+        bgmTracks: List<ReadAloudBgmTrack>,
+        soundEffectTracks: List<ReadAloudBgmTrack>
+    ): AudioAssignmentResult {
+        return AudioAssignmentResult(
+            assignments = parseAssignments(args, cueCount, bgmTracks),
+            soundEffects = parseSoundEffects(args, cueCount, soundEffectTracks)
+        )
     }
 
     private fun parseAssignments(
@@ -429,7 +589,15 @@ object AiReadAloudBgmService {
     }
 
     private fun assignmentsFromJson(json: String): List<Assignment> {
-        if (json.isBlank()) return emptyList()
+        return audioAssignmentsFromJson(json).assignments
+    }
+
+    private fun soundEffectsFromJson(json: String): List<SoundEffectEvent> {
+        return audioAssignmentsFromJson(json).soundEffects
+    }
+
+    private fun audioAssignmentsFromJson(json: String): AudioAssignmentResult {
+        if (json.isBlank()) return AudioAssignmentResult(emptyList(), emptyList())
         return runCatching {
             val root = JSONObject(json)
             val array = root.optJSONArray("assignments") ?: JSONArray()
@@ -451,12 +619,16 @@ object AiReadAloudBgmService {
                     confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
                 )
             }
-            result
-        }.getOrDefault(emptyList())
+            AudioAssignmentResult(
+                assignments = result,
+                soundEffects = soundEffectsFromJsonRoot(root)
+            )
+        }.getOrDefault(AudioAssignmentResult(emptyList(), emptyList()))
     }
 
     private fun assignmentsToJson(
         assignments: List<Assignment>,
+        soundEffects: List<SoundEffectEvent>,
         contentHash: String,
         catalogHash: String
     ): String {
@@ -466,6 +638,9 @@ object AiReadAloudBgmService {
             put("catalogHash", catalogHash)
             put("assignments", JSONArray().apply {
                 assignments.forEach { put(it.toJson()) }
+            })
+            put("soundEffects", JSONArray().apply {
+                soundEffects.forEach { put(it.toJson()) }
             })
         }.toString()
     }
@@ -478,6 +653,70 @@ object AiReadAloudBgmService {
             put("volume", volume.toDouble())
             put("fadeInMs", fadeInMs)
             put("fadeOutMs", fadeOutMs)
+            put("reason", reason)
+            put("confidence", confidence)
+        }
+    }
+
+    private fun parseSoundEffects(
+        args: JSONObject,
+        cueCount: Int,
+        tracks: List<ReadAloudBgmTrack>
+    ): List<SoundEffectEvent> {
+        val validTrackIds = tracks.mapTo(hashSetOf()) { it.id }
+        val array = args.optJSONArray("soundEffects")
+            ?: args.optJSONArray("sfx")
+            ?: JSONArray()
+        val maxCueIndex = (cueCount - 1).coerceAtLeast(0)
+        val result = mutableListOf<SoundEffectEvent>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val trackId = item.optLong("trackId", 0L)
+            if (trackId !in validTrackIds) continue
+            val cueIndex = item.firstInt("cueIndex", "cue", "paragraphIndex", "paragraph")
+                ?.let { normalizeCueIndex(it, item.has("paragraph")) }
+                ?.coerceIn(0, maxCueIndex)
+                ?: continue
+            result += SoundEffectEvent(
+                cueIndex = cueIndex,
+                trackId = trackId,
+                volume = item.optDouble("volume", 0.72).toFloat().coerceIn(0.0f, 1.0f),
+                offsetMs = item.optInt("offsetMs", 0).coerceIn(0, 20_000),
+                reason = item.optString("reason").trim().take(120),
+                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+            )
+        }
+        return result
+            .sortedWith(compareBy<SoundEffectEvent> { it.cueIndex }.thenBy { it.offsetMs })
+            .distinctBy { "${it.cueIndex}:${it.trackId}:${it.offsetMs}" }
+    }
+
+    private fun soundEffectsFromJsonRoot(root: JSONObject): List<SoundEffectEvent> {
+        val array = root.optJSONArray("soundEffects") ?: JSONArray()
+        val result = mutableListOf<SoundEffectEvent>()
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val cueIndex = item.optInt("cueIndex", -1)
+            val trackId = item.optLong("trackId", 0L)
+            if (cueIndex < 0 || trackId <= 0L) continue
+            result += SoundEffectEvent(
+                cueIndex = cueIndex,
+                trackId = trackId,
+                volume = item.optDouble("volume", 0.72).toFloat().coerceIn(0.0f, 1.0f),
+                offsetMs = item.optInt("offsetMs", 0).coerceIn(0, 20_000),
+                reason = item.optString("reason").trim().take(120),
+                confidence = item.optDouble("confidence", 0.0).coerceIn(0.0, 1.0)
+            )
+        }
+        return result
+    }
+
+    private fun SoundEffectEvent.toJson(): JSONObject {
+        return JSONObject().apply {
+            put("cueIndex", cueIndex)
+            put("trackId", trackId)
+            put("volume", volume.toDouble())
+            put("offsetMs", offsetMs)
             put("reason", reason)
             put("confidence", confidence)
         }
@@ -496,6 +735,8 @@ object AiReadAloudBgmService {
                     .forEach(::put)
             })
             put("durationMs", track.durationMs)
+            put("assetType", track.normalizedAssetType())
+            put("defaultVolume", track.defaultVolume.toDouble())
             put("enabled", track.enabled)
         }
     }

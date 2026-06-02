@@ -27,7 +27,7 @@ object AiReadAloudBgmTool {
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", TOOL_LIST_BGM_CATALOG)
-                put("description", "读取朗读智能配乐曲库，只返回可用音乐的 trackId、分组、标签和时长，不返回本地文件路径。")
+                put("description", "读取朗读智能音频资源库，返回可用配乐和音效的 trackId、分组、标签、类型和时长，不返回本地文件路径。")
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject())
