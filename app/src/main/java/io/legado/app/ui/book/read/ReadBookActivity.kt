@@ -239,6 +239,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     LayoutProgressListener {
 
     private var pendingReadAloudPlayerOpen = false
+    private var pendingReadAloudPanelIntentOpen = false
 
     private val tocActivity =
         registerForActivityResult(TocActivityResult()) {
@@ -625,14 +626,19 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.getBooleanExtra("openReadAloudPanel", false) &&
+        val openReadAloudPanel = requestOpenReadAloudPanelFromIntent(intent)
+        if (openReadAloudPanel &&
             BaseReadAloudService.isRun &&
             intent.getStringExtra("bookUrl") == ReadBook.book?.bookUrl
         ) {
-            consumeOpenReadAloudPanelIntent(intent)
+            openPendingReadAloudPanel()
             return
         }
-        viewModel.initData(intent)
+        viewModel.initData(intent) {
+            if (openReadAloudPanel) {
+                openPendingReadAloudPanel()
+            }
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -689,6 +695,11 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
         }
         binding.readAloudPlayerPanel.setForegroundActive(true)
+        if (pendingReadAloudPanelIntentOpen && BaseReadAloudService.isRun) {
+            binding.readAloudPlayerPanel.post {
+                openPendingReadAloudPanel()
+            }
+        }
     }
 
     override fun onPause() {
@@ -1625,8 +1636,21 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun consumeOpenReadAloudPanelIntent(intent: Intent = this.intent): Boolean {
+        val requested = requestOpenReadAloudPanelFromIntent(intent) || pendingReadAloudPanelIntentOpen
+        if (!requested) return false
+        return openPendingReadAloudPanel()
+    }
+
+    private fun requestOpenReadAloudPanelFromIntent(intent: Intent): Boolean {
         if (!intent.getBooleanExtra("openReadAloudPanel", false)) return false
         intent.removeExtra("openReadAloudPanel")
+        pendingReadAloudPanelIntentOpen = true
+        return true
+    }
+
+    private fun openPendingReadAloudPanel(): Boolean {
+        if (!pendingReadAloudPanelIntentOpen) return false
+        pendingReadAloudPanelIntentOpen = false
         pendingReadAloudPlayerOpen = false
         binding.readAloudPlayerPanel.post {
             binding.readAloudPlayerPanel.openFromBottom(force = true)
