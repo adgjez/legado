@@ -40,6 +40,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
+import java.util.zip.ZipInputStream
 
 class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
@@ -50,6 +52,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var tracks: List<ReadAloudBgmTrack> = emptyList()
     private val selectedIds = linkedSetOf<Long>()
     private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
+    private var pendingPackageAssetType: String = ReadAloudBgmTrack.TYPE_SFX
 
     private val currentAssetLabel: String
         get() = if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) "音效" else "配乐"
@@ -90,6 +93,28 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onFailure {
                 load()
                 toastOnUi(it.localizedMessage ?: "批量导入失败")
+            }
+        }
+    }
+
+    private val importAudioPackage = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let { uri ->
+            val assetType = pendingPackageAssetType
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) {
+                        importAudioPackage(uri, assetType, replaceOld = true)
+                    }
+                }.onSuccess { count ->
+                    currentAssetType = assetType
+                    selectedIds.clear()
+                    updateAssetTabs()
+                    load()
+                    toastOnUi("已重新导入 $count 个${currentAssetLabel}")
+                }.onFailure {
+                    load()
+                    toastOnUi(it.localizedMessage ?: "音频包导入失败")
+                }
             }
         }
     }
@@ -144,7 +169,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showImportActions() {
-        selector("智能音频", listOf("批量导入${currentAssetLabel}", "导入单个${currentAssetLabel}", "新增分组", "管理分组")) { _, index ->
+        selector("智能音频", listOf("批量导入${currentAssetLabel}", "导入单个${currentAssetLabel}", "导入音效包（删旧再导新）", "新增分组", "管理分组")) { _, index ->
             when (index) {
                 0 -> importAudios.launch("audio/*")
                 1 -> importAudio.launch {
@@ -152,9 +177,25 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     title = "导入${currentAssetLabel}"
                     allowExtensions = arrayOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
                 }
-                2 -> showGroupEditor()
-                3 -> showGroupManage()
+                2 -> confirmImportSoundEffectPackage()
+                3 -> showGroupEditor()
+                4 -> showGroupManage()
             }
+        }
+    }
+
+    private fun confirmImportSoundEffectPackage() {
+        alert("导入音效包") {
+            setMessage("会先删除旧音效和对应本地文件，再导入 zip 包内的新音效。配乐不会被删除。")
+            okButton {
+                pendingPackageAssetType = ReadAloudBgmTrack.TYPE_SFX
+                importAudioPackage.launch {
+                    mode = HandleFileContract.FILE
+                    title = "导入音效包"
+                    allowExtensions = arrayOf("zip")
+                }
+            }
+            cancelButton()
         }
     }
 
@@ -294,6 +335,144 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         )
     }
 
+    private suspend fun importAudioPackage(
+        uri: Uri,
+        assetType: String,
+        replaceOld: Boolean
+    ): Int {
+        val normalizedType = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        val metadata = readAudioPackageMetadata(uri)
+        if (replaceOld) {
+            appDb.readAloudBgmDao.tracksByType(normalizedType).forEach { track ->
+                runCatching { File(track.filePath).delete() }
+            }
+            appDb.readAloudBgmDao.deleteTracksByType(normalizedType)
+        }
+        val folder = File(filesDir, "readAloudAudio/$normalizedType").apply { mkdirs() }
+        val groupIds = mutableMapOf<String, Long>()
+        val nextSortByGroup = mutableMapOf<Long, Int>()
+        var imported = 0
+        contentResolver.openInputStream(uri)?.use { input ->
+            ZipInputStream(input).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val entryName = entry.name
+                    if (!entry.isDirectory && entryName.isSupportedAudioEntry()) {
+                        val fileName = entryName.substringAfterLast('/').ifBlank {
+                            "audio-${System.currentTimeMillis()}.mp3"
+                        }
+                        val info = metadata[fileName.lowercase(Locale.ROOT)]
+                        val extension = fileName.substringAfterLast('.', "mp3").lowercase(Locale.ROOT)
+                        val target = File(
+                            folder,
+                            "${System.currentTimeMillis()}_${imported}_${fileName.toSafeFileName(extension)}"
+                        )
+                        target.outputStream().use { output -> zip.copyTo(output) }
+                        val checksum = target.inputStream().use { MD5Utils.md5Encode(it) }
+                        val groupName = info?.groupName?.ifBlank { "默认分组" } ?: "默认分组"
+                        val groupId = groupIds.getOrPut(groupName) { ensureGroup(groupName) }
+                        val sortOrder = nextSortByGroup.getOrPut(groupId) {
+                            (appDb.readAloudBgmDao.maxTrackOrder(groupId) ?: 0) + 1
+                        }
+                        nextSortByGroup[groupId] = sortOrder + 1
+                        val now = System.currentTimeMillis()
+                        appDb.readAloudBgmDao.insertTrack(
+                            ReadAloudBgmTrack(
+                                groupId = groupId,
+                                assetType = normalizedType,
+                                name = info?.name?.ifBlank { fileName.substringBeforeLast('.') }
+                                    ?: fileName.substringBeforeLast('.'),
+                                fileName = fileName,
+                                filePath = target.absolutePath,
+                                tags = info?.tags.orEmpty(),
+                                checksum = checksum,
+                                durationMs = readDuration(target),
+                                defaultVolume = (info?.volume ?: 1f).coerceIn(0f, 1f),
+                                sortOrder = sortOrder,
+                                createdAt = now,
+                                updatedAt = now
+                            )
+                        )
+                        imported += 1
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+        } ?: error("无法读取音频包")
+        if (imported == 0) error("音频包内没有可导入的音频")
+        return imported
+    }
+
+    private fun readAudioPackageMetadata(uri: Uri): Map<String, PackageAudioInfo> {
+        val configText = contentResolver.openInputStream(uri)?.use { input ->
+            ZipInputStream(input).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name.substringAfterLast('/') == "config.yaml") {
+                        return@use zip.readBytes().toString(Charsets.UTF_8)
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+                ""
+            }
+        }.orEmpty()
+        return parsePackageAudioConfig(configText)
+    }
+
+    private fun parsePackageAudioConfig(text: String): Map<String, PackageAudioInfo> {
+        if (text.isBlank()) return emptyMap()
+        val result = linkedMapOf<String, PackageAudioInfo>()
+        var name = ""
+        var desc = ""
+        var param = ""
+        var volume = 1f
+
+        fun commit() {
+            val fileName = param.substringAfterLast('/').trim()
+            if (!fileName.isSupportedAudioFileName()) return
+            val groupName = desc.substringBefore('｜')
+                .substringBefore('|')
+                .trim()
+                .ifBlank { "默认分组" }
+            val tags = desc.replace('｜', ',')
+                .replace('|', ',')
+                .split(',', '，')
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .joinToString(",")
+            result[fileName.lowercase(Locale.ROOT)] = PackageAudioInfo(
+                name = name.ifBlank { fileName.substringBeforeLast('.') },
+                groupName = groupName,
+                tags = tags,
+                volume = volume
+            )
+        }
+
+        text.lineSequence().forEach { rawLine ->
+            val line = rawLine.trimStart()
+            if (line.startsWith("- ")) {
+                commit()
+                name = ""
+                desc = ""
+                param = ""
+                volume = 1f
+            }
+            when {
+                line.startsWith("name:") -> name = line.substringAfter(':').cleanYamlScalar()
+                line.startsWith("desc:") -> desc = line.substringAfter(':').cleanYamlScalar()
+                line.startsWith("param:") -> param = line.substringAfter(':').cleanYamlScalar()
+                line.startsWith("volume:") -> volume = line.substringAfter(':').cleanYamlScalar()
+                    .toFloatOrNull()
+                    ?: 1f
+            }
+        }
+        commit()
+        return result
+    }
+
     private fun displayName(uri: Uri): String {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -322,6 +501,21 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         val now = System.currentTimeMillis()
         return appDb.readAloudBgmDao.insertGroup(
             ReadAloudBgmGroup(name = "默认分组", sortOrder = 0, createdAt = now, updatedAt = now)
+        )
+    }
+
+    private fun ensureGroup(name: String): Long {
+        val normalized = name.trim().ifBlank { "默认分组" }
+        if (normalized == "默认分组") return ensureDefaultGroup()
+        appDb.readAloudBgmDao.groups().firstOrNull { it.name == normalized }?.let { return it.id }
+        val now = System.currentTimeMillis()
+        return appDb.readAloudBgmDao.insertGroup(
+            ReadAloudBgmGroup(
+                name = normalized,
+                sortOrder = (appDb.readAloudBgmDao.maxGroupOrder() ?: 0) + 1,
+                createdAt = now,
+                updatedAt = now
+            )
         )
     }
 
@@ -432,6 +626,21 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return if (safe.contains('.')) safe else "$safe.$extension"
     }
 
+    private fun String.cleanYamlScalar(): String {
+        val value = trim()
+        if (value.isBlank() || value == "null" || value.startsWith("|")) return ""
+        return value.trim('"', '\'')
+    }
+
+    private fun String.isSupportedAudioEntry(): Boolean {
+        return substringAfterLast('/').isSupportedAudioFileName()
+    }
+
+    private fun String.isSupportedAudioFileName(): Boolean {
+        val ext = substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return ext in supportedAudioExtensions
+    }
+
     private fun groupName(groupId: Long): String {
         if (groupId == 0L) return "默认分组"
         return groups.firstOrNull { it.id == groupId }?.displayName() ?: "默认分组"
@@ -525,5 +734,13 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         private const val MENU_MOVE_SELECTED = 2
         private const val MENU_DELETE_SELECTED = 3
         private const val MENU_MANAGE_GROUPS = 4
+        private val supportedAudioExtensions = setOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
     }
+
+    private data class PackageAudioInfo(
+        val name: String,
+        val groupName: String,
+        val tags: String,
+        val volume: Float
+    )
 }

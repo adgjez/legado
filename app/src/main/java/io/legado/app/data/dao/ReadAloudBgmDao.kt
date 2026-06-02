@@ -25,6 +25,9 @@ interface ReadAloudBgmDao {
     @Query("SELECT * FROM read_aloud_bgm_tracks WHERE assetType = :assetType ORDER BY groupId ASC, sortOrder ASC, id ASC")
     fun flowTracksByType(assetType: String): Flow<List<ReadAloudBgmTrack>>
 
+    @Query("SELECT * FROM read_aloud_bgm_tracks WHERE assetType = :assetType ORDER BY groupId ASC, sortOrder ASC, id ASC")
+    fun tracksByType(assetType: String): List<ReadAloudBgmTrack>
+
     @Query("SELECT * FROM read_aloud_bgm_tracks WHERE enabled = 1 ORDER BY groupId ASC, sortOrder ASC, id ASC")
     fun enabledTracks(): List<ReadAloudBgmTrack>
 
@@ -54,6 +57,9 @@ interface ReadAloudBgmDao {
 
     @Query("DELETE FROM read_aloud_bgm_tracks WHERE id IN (:ids)")
     fun deleteTracks(ids: List<Long>)
+
+    @Query("DELETE FROM read_aloud_bgm_tracks WHERE assetType = :assetType")
+    fun deleteTracksByType(assetType: String)
 
     @Query("UPDATE read_aloud_bgm_tracks SET groupId = :groupId, updatedAt = :updatedAt WHERE id IN (:ids)")
     fun moveTracks(ids: List<Long>, groupId: Long, updatedAt: Long = System.currentTimeMillis())
