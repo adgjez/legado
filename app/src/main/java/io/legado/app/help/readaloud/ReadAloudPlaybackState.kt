@@ -3,7 +3,13 @@ package io.legado.app.help.readaloud
 data class ReadAloudPlaybackState(
     val phase: String = PHASE_STOPPED,
     val chapterIndex: Int = -1,
+    val chapterUrl: String = "",
     val cueIndex: Int = -1,
+    val cueCount: Int = 0,
+    val cueChapterPosition: Int = -1,
+    val cueKey: String = "",
+    val cueText: String = "",
+    val planKey: String = "",
     val message: String = "",
     val playing: Boolean? = null,
     val buffering: Boolean = false,

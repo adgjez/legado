@@ -35,6 +35,31 @@ object ReadAloudSpeechPlanner {
 
     private const val LOCAL_DIALOGUE_CUE_GAP = 2
 
+    fun planKey(
+        bookUrl: String?,
+        chapter: TextChapter?,
+        cues: List<ReadAloudCue>,
+        roleCacheKey: String? = null
+    ): String {
+        return buildString {
+            append(bookUrl.orEmpty())
+            append('|')
+            append(chapter?.chapter?.index ?: -1)
+            append('|')
+            append(chapter?.chapter?.url.orEmpty())
+            append('|')
+            append(cues.size)
+            append('|')
+            append(cues.firstOrNull()?.key.orEmpty())
+            append('|')
+            append(cues.lastOrNull()?.key.orEmpty())
+            append('|')
+            append(cues.sumOf { it.text.length })
+            append('|')
+            append(roleCacheKey.orEmpty())
+        }
+    }
+
     fun build(
         bookUrl: String?,
         chapter: TextChapter,

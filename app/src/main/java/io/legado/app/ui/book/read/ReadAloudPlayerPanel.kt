@@ -307,7 +307,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleDetailVisible: Boolean = false,
         val roleBlockingCurrentContent: Boolean = false,
         val roleBlockingText: String = "",
-        val roleState: AiReadAloudRoleState? = null
+        val roleState: AiReadAloudRoleState? = null,
+        val multiRoleEnabled: Boolean = AppConfig.aiReadAloudRoleEnabled
     )
 
     private val composeView = ComposeView(context)
@@ -329,6 +330,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private var playbackBuffering = false
     private var playbackCueIndex = -1
     private var playbackChapterIndex = -1
+    private var playbackChapterUrl = ""
+    private var playbackCueCount = 0
+    private var playbackCueChapterPosition = -1
+    private var playbackCueKey = ""
+    private var playbackCueText = ""
+    private var playbackPlanKey = ""
     private var expanded = false
     private var opening = false
     private var panelPhase = PanelPhase.Hidden
@@ -464,6 +471,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun onChapterContentChanged() {
         chapterModelCache = null
+        playbackCueIndex = -1
+        playbackCueCount = 0
+        playbackCueChapterPosition = -1
+        playbackCueKey = ""
+        playbackCueText = ""
+        playbackPlanKey = ""
         if (visibility != VISIBLE && !BaseReadAloudService.isRun) return
         lastChapterStart = ReadBook.durChapterPos.coerceAtLeast(0)
         refresh()
@@ -471,13 +484,21 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
 
     fun onPlaybackState(state: ReadAloudPlaybackState) {
         val currentChapterIndex = ReadBook.curTextChapter?.chapter?.index ?: ReadBook.durChapterIndex
+        val currentChapterUrl = ReadBook.curTextChapter?.chapter?.url.orEmpty()
         if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
+        if (state.chapterUrl.isNotBlank() && currentChapterUrl.isNotBlank() && state.chapterUrl != currentChapterUrl) return
         playbackPhase = state.phase
         playbackMessage = state.message
         playbackActualPlaying = state.playing
         playbackBuffering = state.busy
         playbackCueIndex = state.cueIndex
         playbackChapterIndex = state.chapterIndex
+        playbackChapterUrl = state.chapterUrl
+        playbackCueCount = state.cueCount
+        playbackCueChapterPosition = state.cueChapterPosition
+        playbackCueKey = state.cueKey
+        playbackCueText = state.cueText
+        playbackPlanKey = state.planKey
         syncPlaybackUiState()
     }
 
@@ -582,6 +603,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         roleDetailClosed = false
         playbackCueIndex = -1
         playbackChapterIndex = chapterIndex
+        playbackChapterUrl = ""
+        playbackCueCount = 0
+        playbackCueChapterPosition = -1
+        playbackCueKey = ""
+        playbackCueText = ""
+        playbackPlanKey = ""
         lastChapterStart = 0
         val bookUrl = ReadBook.book?.bookUrl.orEmpty()
         val chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterIndex + 1)
@@ -898,8 +925,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun setMode(mode: DisplayMode) {
-        if (uiState.mode != mode) {
-            uiState = uiState.copy(mode = mode)
+        val targetMode = if (!AppConfig.aiReadAloudRoleEnabled && mode == DisplayMode.Scene) {
+            DisplayMode.Immersive
+        } else {
+            mode
+        }
+        if (uiState.mode != targetMode) {
+            uiState = uiState.copy(mode = targetMode)
         }
     }
 
@@ -939,14 +971,23 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val paragraphs = chapter.getParagraphs(false)
         val baseCues = chapter.buildReadAloudCues(readAloudByPage)
         val cueTexts = baseCues.map { cue -> cue.text }
-        val exactRoleCacheKey = AiReadAloudRoleService.cacheKeyFor(book, chapter, cueTexts)
+        val multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+        val exactRoleCacheKey = if (multiRoleEnabled) {
+            AiReadAloudRoleService.cacheKeyFor(book, chapter, cueTexts)
+        } else {
+            null
+        }
         val exactRoleCache = exactRoleCacheKey?.let { appDb.aiReadAloudRoleCacheDao.get(it) }
-        val roleCache = AiReadAloudRoleService.cacheForPlayback(book, chapter, cueTexts)
-            ?: exactRoleCache
+        val roleCache = if (multiRoleEnabled) {
+            AiReadAloudRoleService.cacheForPlayback(book, chapter, cueTexts) ?: exactRoleCache
+        } else {
+            null
+        }
         val roleCacheKey = roleCache?.cacheKey ?: exactRoleCacheKey
         val roleCacheReady = roleCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
                 roleCache.segmentsJson.isNotBlank()
-        val roleCacheRunning = !roleCacheReady &&
+        val roleCacheRunning = multiRoleEnabled &&
+                !roleCacheReady &&
                 exactRoleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING &&
                 AiReadAloudRoleService.isRunningCacheActive(exactRoleCacheKey, exactRoleCache.updatedAt)
         val audioInfo = buildAudioInfo(book.bookUrl, chapterSequence)
@@ -972,7 +1013,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapter.chaptersSize.toString(),
             ReadBook.chapterSize.toString(),
             readAloudByPage.toString(),
-            AppConfig.aiReadAloudRoleEnabled.toString(),
+            multiRoleEnabled.toString(),
             cueFingerprint,
             roleCacheKey.orEmpty(),
             roleCache?.status.orEmpty(),
@@ -989,7 +1030,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             bookUrl = book.bookUrl,
             chapter = chapter,
             baseCues = baseCues,
-            multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+            multiRoleEnabled = multiRoleEnabled,
+            roleCacheKey = roleCacheKey
+        )
+        val planKey = ReadAloudSpeechPlanner.planKey(
+            bookUrl = book.bookUrl,
+            chapter = chapter,
+            cues = speechPlan.cues,
             roleCacheKey = roleCacheKey
         )
         val totalLength = chapter.lastPage
@@ -1006,6 +1053,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             chapterIndexText = "${chapterSequence + 1}/${chapter.chaptersSize.coerceAtLeast(chapterSequence + 1)}",
             chapterSequence = chapterSequence,
             chapterKey = chapterKey,
+            planKey = planKey,
             chapterCount = ReadBook.chapterSize.coerceAtLeast(chapterSequence + 1),
             totalLength = totalLength,
             paragraphs = paragraphs,
@@ -1014,7 +1062,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             cuePositions = speechPlan.cues.map { it.chapterPosition }.toIntArray(),
             speechItems = speechPlan.items,
             textCues = speechPlan.cues.toTextCueUi(chapterKey, chapterSequence),
-            sceneSegments = speechPlan.items.toSceneSegmentUi(chapterKey),
+            sceneSegments = if (multiRoleEnabled) speechPlan.items.toSceneSegmentUi(chapterKey) else emptyList(),
             roleCacheKey = roleCacheKey,
             roleCacheReady = roleCacheReady,
             roleCacheRunning = roleCacheRunning,
@@ -1027,41 +1075,68 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun buildState(mode: DisplayMode): PlayerUiState {
+        val multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled
+        val effectiveMode = if (!multiRoleEnabled && mode == DisplayMode.Scene) {
+            DisplayMode.Immersive
+        } else {
+            mode
+        }
         val model = buildChapterModel()
         val paragraphs = model?.paragraphs.orEmpty()
         val cues = model?.cues.orEmpty()
         val chapterSequence = model?.chapterSequence ?: ReadBook.durChapterIndex
         val chapterKey = model?.chapterKey ?: "${ReadBook.book?.bookUrl.orEmpty()}:$chapterSequence"
         val totalLength = model?.totalLength ?: 1
-        val playbackCue = model?.cues?.getOrNull(playbackCueIndex)
-            ?.takeIf { playbackChapterIndex < 0 || playbackChapterIndex == chapterSequence }
+        val playbackPlanCurrent = playbackPlanKey.isBlank() ||
+                model?.planKey.isNullOrBlank() ||
+                model?.planKey == playbackPlanKey
+        val playbackCurrent = playbackCueIndex >= 0 &&
+                playbackChapterIndex == chapterSequence &&
+                playbackPlanCurrent &&
+                playbackPhase != ReadAloudPlaybackState.PHASE_STOPPED &&
+                playbackPhase != ReadAloudPlaybackState.PHASE_ERROR
+        val playbackStart = playbackCueChapterPosition
+            .takeIf { playbackCurrent && it >= 0 }
         val chapterStart = when {
-            playbackCue != null &&
-                    playbackPhase != ReadAloudPlaybackState.PHASE_STOPPED &&
-                    playbackPhase != ReadAloudPlaybackState.PHASE_ERROR -> playbackCue.chapterPosition
+            playbackStart != null -> playbackStart
             lastChapterStart > 0 -> lastChapterStart
             else -> ReadBook.durChapterPos
         }.coerceIn(0, totalLength)
         val paragraphIndex = paragraphs.indexForChapterPosition(chapterStart)
-        val cueIndex = model?.indexForChapterPosition(chapterStart)
+        val modelCueIndex = model?.indexForChapterPosition(chapterStart)
             ?: cues.indexForChapterPosition(chapterStart)
+        val cueIndex = if (playbackCurrent) playbackCueIndex else modelCueIndex
         val cue = cues.getOrNull(cueIndex)
         val paragraph = paragraphs.getOrNull(paragraphIndex)
-        val paragraphText = cue?.text ?: paragraph?.text?.cleanReadAloudText().orEmpty()
-        val paragraphCount = cues.size
+        val paragraphText = playbackCueText
+            .takeIf { playbackCurrent && it.isNotBlank() }
+            ?: cue?.text
+            ?: paragraph?.text?.cleanReadAloudText().orEmpty()
+        val paragraphCount = if (playbackCurrent && playbackCueCount > 0) playbackCueCount else cues.size
+        val displayCueIndex = cueIndex.coerceIn(0, (paragraphCount - 1).coerceAtLeast(0))
         val paragraphProgress = when {
             paragraphCount <= 1 || cueIndex < 0 -> 0f
-            else -> (cueIndex.toFloat() / (paragraphCount - 1).toFloat()).coerceIn(0f, 1f)
+            else -> (displayCueIndex.toFloat() / (paragraphCount - 1).toFloat()).coerceIn(0f, 1f)
         }
         val paragraphProgressText = if (paragraphCount > 0 && cueIndex >= 0) {
-            "${cueIndex + 1}/$paragraphCount"
+            "${displayCueIndex + 1}/$paragraphCount"
         } else {
             "0/0"
         }
-        val paragraphSequence = chapterSequence * 100_000 + cueIndex.coerceAtLeast(0)
-        val paragraphKey = "$chapterKey:${cue?.chapterPosition ?: paragraph?.chapterPosition ?: cueIndex}"
-        val sentence = (cue?.text ?: paragraph?.text)
-            ?.focusSentenceAt(chapterStart - (cue?.chapterPosition ?: paragraph?.chapterPosition ?: 0))
+        val paragraphSequence = chapterSequence * 100_000 + displayCueIndex.coerceAtLeast(0)
+        val paragraphKey = playbackCueKey
+            .takeIf { playbackCurrent && it.isNotBlank() }
+            ?: "$chapterKey:${cue?.chapterPosition ?: paragraph?.chapterPosition ?: cueIndex}"
+        val sentenceSourceText = playbackCueText
+            .takeIf { playbackCurrent && it.isNotBlank() }
+            ?: cue?.text
+            ?: paragraph?.text
+        val sentenceStart = playbackStart
+            ?: cue?.chapterPosition
+            ?: paragraph?.chapterPosition
+            ?: 0
+        val sentence = sentenceSourceText
+            ?.focusSentenceAt(chapterStart - sentenceStart)
             ?: (0 to paragraphText)
         val focusText = FocusTextUi(
             key = "$paragraphKey:${sentence.first}:${sentence.second.hashCode()}",
@@ -1070,21 +1145,23 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         )
         val nearby = emptyList<ParagraphUi>()
         val textCues = model?.textCues.orEmpty()
-        val sceneSegments = model?.sceneSegments.orEmpty()
+        val sceneSegments = if (multiRoleEnabled) model?.sceneSegments.orEmpty() else emptyList()
         val currentRoleState = roleState?.takeIf {
-            it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
+            multiRoleEnabled &&
+                    it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
                     it.bookUrl == ReadBook.book?.bookUrl &&
                     it.chapterIndex == chapterSequence
         }
         val currentRoleRunning = currentRoleState?.running == true || model?.roleCacheRunning == true
-        val roleBlockingCurrentContent = AppConfig.aiReadAloudRoleEnabled &&
+        val roleBlockingCurrentContent = multiRoleEnabled &&
                 model?.roleCacheKey != null &&
                 currentRoleRunning &&
                 !model.roleCacheReady
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         val timerMinute = BaseReadAloudService.timeMinute
         val servicePlaying = playbackActualPlaying ?: BaseReadAloudService.isPlay()
-        val roleEventVisible = roleStatusText.isNotBlank() &&
+        val roleEventVisible = multiRoleEnabled &&
+                roleStatusText.isNotBlank() &&
                 !roleDetailClosed &&
                 (roleStatusRunning || roleStatusUntil > System.currentTimeMillis())
         return PlayerUiState(
@@ -1116,14 +1193,14 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             nearbyParagraphs = nearby,
             textCues = textCues,
             sceneSegments = sceneSegments,
-            currentCueIndex = cueIndex.coerceAtLeast(0),
+            currentCueIndex = displayCueIndex.coerceAtLeast(0),
             chapterKey = chapterKey,
             paragraphKey = paragraphKey,
             paragraphSequence = paragraphSequence,
             focusText = focusText,
             speechRate = AppConfig.ttsSpeechRate.coerceIn(0, 45),
             followSystemSpeechRate = AppConfig.ttsFlowSys,
-            mode = mode,
+            mode = effectiveMode,
             foregroundActive = foregroundActive && visibility == VISIBLE,
             expanded = expanded,
             opening = opening,
@@ -1141,7 +1218,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 ?.ifBlank { roleStatusText }
                 ?.ifBlank { "当前章节角色分配中" }
                 ?: "当前章节角色分配中",
-            roleState = roleState
+            roleState = roleState.takeIf { multiRoleEnabled },
+            multiRoleEnabled = multiRoleEnabled
         )
     }
 
@@ -1590,6 +1668,7 @@ private fun ReadAloudPlayerContent(
             ) {
                 MinimalHeader(
                     mode = state.mode,
+                    multiRoleEnabled = state.multiRoleEnabled,
                     colors = colors,
                     onClose = onClose,
                     onOpenSettings = onOpenSettings,
@@ -1761,6 +1840,7 @@ private data class PlayerChapterModel(
     val chapterIndexText: String,
     val chapterSequence: Int,
     val chapterKey: String,
+    val planKey: String,
     val chapterCount: Int,
     val totalLength: Int,
     val paragraphs: List<TextParagraph>,
@@ -2168,6 +2248,7 @@ private fun FluidBackdropLayer(
 @Composable
 private fun MinimalHeader(
     mode: ReadAloudPlayerPanel.DisplayMode,
+    multiRoleEnabled: Boolean,
     colors: PlayerColors,
     onClose: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -2186,7 +2267,7 @@ private fun MinimalHeader(
             onClick = onClose
         )
         Spacer(modifier = Modifier.weight(1f))
-        ModeSwitch(mode, colors, onModeChange)
+        ModeSwitch(mode, multiRoleEnabled, colors, onModeChange)
         Spacer(modifier = Modifier.weight(1f))
         HeaderIconButton(
             icon = R.drawable.ic_settings,
@@ -2764,45 +2845,37 @@ private fun HeaderIconButton(
 @Composable
 private fun ModeSwitch(
     mode: ReadAloudPlayerPanel.DisplayMode,
+    multiRoleEnabled: Boolean,
     colors: PlayerColors,
     onModeChange: (ReadAloudPlayerPanel.DisplayMode) -> Unit
 ) {
     val actionShape = LocalContext.current.composeActionShape()
+    val modes = remember(multiRoleEnabled) {
+        buildList {
+            add(ReadAloudPlayerPanel.DisplayMode.Immersive to "沉浸")
+            if (multiRoleEnabled) add(ReadAloudPlayerPanel.DisplayMode.Scene to "情景")
+            add(ReadAloudPlayerPanel.DisplayMode.Text to "原文")
+        }
+    }
     Row(
         modifier = Modifier
-            .width(188.dp)
+            .width(if (multiRoleEnabled) 188.dp else 132.dp)
             .height(32.dp)
             .clip(actionShape)
             .background(Color.White.copy(alpha = 0.13f))
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        ModeChip(
-            text = "沉浸",
-            selected = mode == ReadAloudPlayerPanel.DisplayMode.Immersive,
-            colors = colors,
-            shape = actionShape,
-            modifier = Modifier.weight(1f)
-        ) {
-            onModeChange(ReadAloudPlayerPanel.DisplayMode.Immersive)
-        }
-        ModeChip(
-            text = "情景",
-            selected = mode == ReadAloudPlayerPanel.DisplayMode.Scene,
-            colors = colors,
-            shape = actionShape,
-            modifier = Modifier.weight(1f)
-        ) {
-            onModeChange(ReadAloudPlayerPanel.DisplayMode.Scene)
-        }
-        ModeChip(
-            text = "原文",
-            selected = mode == ReadAloudPlayerPanel.DisplayMode.Text,
-            colors = colors,
-            shape = actionShape,
-            modifier = Modifier.weight(1f)
-        ) {
-            onModeChange(ReadAloudPlayerPanel.DisplayMode.Text)
+        modes.forEach { (displayMode, text) ->
+            ModeChip(
+                text = text,
+                selected = mode == displayMode,
+                colors = colors,
+                shape = actionShape,
+                modifier = Modifier.weight(1f)
+            ) {
+                onModeChange(displayMode)
+            }
         }
     }
 }
@@ -3616,19 +3689,13 @@ private fun LyricCueLine(
         animationSpec = tween(if (animate) 220 else 1),
         label = "readAloudCueEmphasis"
     )
-    val fontSize = when {
-        compact -> 14f + emphasis * 6f
-        else -> 15f + emphasis * 8f
-    }
-    val lineHeight = when {
-        compact -> 21f + emphasis * 7f
-        else -> 23f + emphasis * 9f
-    }
+    val fontSize = if (compact) 20.sp else 23.sp
+    val lineHeight = if (compact) 28.sp else 32.sp
     Text(
         text = cue.text,
         color = colors.primaryText.copy(alpha = 0.36f + emphasis * 0.58f),
-        fontSize = fontSize.sp,
-        lineHeight = lineHeight.sp,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
         fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal,
         maxLines = if (current) currentMaxLines else 2,
         overflow = TextOverflow.Ellipsis,
@@ -3846,7 +3913,7 @@ private fun PlayerControlDock(
             )
             Surface(
                 onClick = onPlayPause,
-                modifier = Modifier.size(72.dp),
+                modifier = Modifier.size(68.dp),
                 shape = CircleShape,
                 color = Color.White.copy(alpha = 0.92f),
                 shadowElevation = 16.dp
@@ -3854,7 +3921,7 @@ private fun PlayerControlDock(
                 Box(contentAlignment = Alignment.Center) {
                     if (state.playbackBusy) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(30.dp),
+                            modifier = Modifier.size(28.dp),
                             strokeWidth = 3.dp,
                             color = Color.Black.copy(alpha = 0.72f),
                             trackColor = Color.Black.copy(alpha = 0.12f)
@@ -3864,7 +3931,7 @@ private fun PlayerControlDock(
                             painter = painterResource(if (state.playing) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp),
                             contentDescription = if (state.playing) context.getString(R.string.pause) else context.getString(R.string.audio_play),
                             tint = Color.Black.copy(alpha = 0.88f),
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(32.dp)
                         )
                     }
                 }
