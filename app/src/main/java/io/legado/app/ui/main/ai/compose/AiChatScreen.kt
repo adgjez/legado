@@ -112,6 +112,7 @@ data class AiChatScreenActions(
     val onNewChat: () -> Unit,
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
+    val onToggleProcessToolbar: (() -> Unit)? = null,
     val onOpenImageGallery: (() -> Unit)? = null
 )
 
@@ -139,13 +140,26 @@ fun AiChatRoute(
         AppConfig.aiCurrentModelConfig?.modelId ?: ""
     }
     val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
+    var showProcessToolbar by remember(refreshToken) {
+        mutableStateOf(AppConfig.aiShowProcessToolbar)
+    }
+    val screenActions = remember(actions, showProcessToolbar) {
+        actions.copy(
+            onToggleProcessToolbar = {
+                val next = !showProcessToolbar
+                AppConfig.aiShowProcessToolbar = next
+                showProcessToolbar = next
+            }
+        )
+    }
     AiChatScreen(
         messages = messages,
         requesting = requesting,
         modelLabel = modelLabel,
         enterToSend = enterToSend,
+        showProcessToolbar = showProcessToolbar,
         compactHeader = compactHeader,
-        actions = actions
+        actions = screenActions
     )
 }
 
@@ -155,6 +169,7 @@ fun AiChatScreen(
     requesting: Boolean,
     modelLabel: String,
     enterToSend: Boolean,
+    showProcessToolbar: Boolean,
     compactHeader: Boolean,
     actions: AiChatScreenActions
 ) {
@@ -167,8 +182,8 @@ fun AiChatScreen(
     var processExpandSignal by remember { mutableStateOf(0) }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
-    val uiItems = remember(context, messages) {
-        buildAiChatUiItems(context, messages)
+    val uiItems = remember(context, messages, showProcessToolbar) {
+        buildAiChatUiItems(context, messages, showProcessToolbar)
     }
     val displayItems = remember(uiItems) {
         uiItems.asReversed()
@@ -234,6 +249,7 @@ fun AiChatScreen(
                 modelLabel = modelLabel,
                 requesting = requesting,
                 compactHeader = compactHeader,
+                showProcessToolbar = showProcessToolbar,
                 style = style,
                 actions = actions
             )
@@ -332,6 +348,7 @@ private fun AiChatTopBar(
     modelLabel: String,
     requesting: Boolean,
     compactHeader: Boolean,
+    showProcessToolbar: Boolean,
     style: AiComposeStyle,
     actions: AiChatScreenActions
 ) {
@@ -405,6 +422,20 @@ private fun AiChatTopBar(
                     actions = buildList {
                         add(AiTopMenuAction(stringResource(R.string.ai_new_chat)) { actions.onNewChat() })
                         add(AiTopMenuAction(stringResource(R.string.ai_chat_history)) { actions.onOpenHistory() })
+                        actions.onToggleProcessToolbar?.let { toggleProcessToolbar ->
+                            add(
+                                AiTopMenuAction(
+                                    stringResource(
+                                        if (showProcessToolbar) {
+                                            R.string.ai_hide_process_toolbar
+                                        } else {
+                                            R.string.ai_show_process_toolbar_action
+                                        }
+                                    ),
+                                    toggleProcessToolbar
+                                )
+                            )
+                        }
                         add(AiTopMenuAction(stringResource(R.string.ai_setting)) { actions.onOpenSettings() })
                         actions.onOpenImageGallery?.let { openGallery ->
                             add(AiTopMenuAction(stringResource(R.string.ai_image_gallery), openGallery))

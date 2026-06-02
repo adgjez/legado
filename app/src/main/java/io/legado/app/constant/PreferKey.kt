@@ -89,6 +89,7 @@ object PreferKey {
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"
     const val aiEnterToSend = "aiEnterToSend"
+    const val aiShowProcessToolbar = "aiShowProcessToolbar"
     const val aiEnabledToolNames = "aiEnabledToolNames"
     const val aiEnabledToolNamesVersion = "aiEnabledToolNamesVersion"
     const val aiReadToolMode = "aiReadToolMode"

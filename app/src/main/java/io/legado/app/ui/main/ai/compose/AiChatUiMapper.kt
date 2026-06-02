@@ -114,7 +114,8 @@ data class AiImageResultUi(
 
 fun buildAiChatUiItems(
     context: Context,
-    messages: List<AiChatMessage>
+    messages: List<AiChatMessage>,
+    showProcessToolbar: Boolean = true
 ): List<AiChatUiItem> {
     val result = mutableListOf<AiChatUiItem>()
     var assistantId: String? = null
@@ -129,8 +130,11 @@ fun buildAiChatUiItems(
             val processImages = processSteps
                 .flatMap { it.payload?.images.orEmpty() }
                 .distinctBy { it.imageKey() }
+            val processBooks = processSteps
+                .flatMap { it.payload?.books.orEmpty() }
+                .distinctBy { it.bookUrl }
             val assistantParts = mutableListOf<AiMessagePartUi>()
-            if (processSteps.isNotEmpty()) {
+            if (showProcessToolbar && processSteps.isNotEmpty()) {
                 assistantParts += AiMessagePartUi.ProcessChain(
                     id = "process-${processSteps.first().id}",
                     steps = processSteps
@@ -139,6 +143,20 @@ fun buildAiChatUiItems(
             assistantMessages
                 .filterNot { it.isProcessMessage() }
                 .forEach { assistantParts += it.toTextParts() }
+            if (!showProcessToolbar && processBooks.isNotEmpty()) {
+                val existingBookUrls = assistantParts
+                    .filterIsInstance<AiMessagePartUi.SearchBooks>()
+                    .flatMap { it.books }
+                    .map { it.bookUrl }
+                    .toSet()
+                val visibleBooks = processBooks.filterNot { it.bookUrl in existingBookUrls }
+                if (visibleBooks.isNotEmpty()) {
+                    assistantParts += AiMessagePartUi.SearchBooks(
+                        id = "process-books-${processSteps.first().id}",
+                        books = visibleBooks
+                    )
+                }
+            }
             if (processImages.isNotEmpty()) {
                 val existingImageKeys = assistantParts
                     .filterIsInstance<AiMessagePartUi.Images>()

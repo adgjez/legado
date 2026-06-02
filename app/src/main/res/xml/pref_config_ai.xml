@@ -53,6 +53,13 @@
             android:title="@string/ai_enter_to_send"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiShowProcessToolbar"
+            android:defaultValue="true"
+            android:summary="@string/ai_show_process_toolbar_summary"
+            android:title="@string/ai_show_process_toolbar"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="aiContextCompression"
             android:summary="@string/ai_context_compression_summary_default"
