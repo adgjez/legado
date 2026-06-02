@@ -23,8 +23,14 @@ object DatabaseMigrations {
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
-            migration_103_104,
+            migration_103_104, migration_104_105,
         )
+    }
+
+    private val migration_104_105 = object : Migration(104, 105) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `httpTTS` ADD COLUMN `synthesisThreadCount` INTEGER NOT NULL DEFAULT 1")
+        }
     }
 
     private val migration_103_104 = object : Migration(103, 104) {

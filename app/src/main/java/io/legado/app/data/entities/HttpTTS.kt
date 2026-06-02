@@ -21,6 +21,8 @@ data class HttpTTS(
     var contentType: String? = null,
     @ColumnInfo(defaultValue = "0")
     override var concurrentRate: String? = "0",
+    @ColumnInfo(defaultValue = "1")
+    var synthesisThreadCount: Int = 1,
     override var loginUrl: String? = null,
     override var loginUi: String? = null,
     override var header: String? = null,
@@ -49,6 +51,7 @@ data class HttpTTS(
                 url == source.url &&
                 contentType == source.contentType &&
                 concurrentRate == source.concurrentRate &&
+                synthesisThreadCount == source.synthesisThreadCount &&
                 loginUrl == source.loginUrl &&
                 loginUi == source.loginUi &&
                 header == source.header &&
@@ -71,6 +74,8 @@ data class HttpTTS(
                     url = doc.readString("$.url")!!,
                     contentType = doc.readString("$.contentType"),
                     concurrentRate = doc.readString("$.concurrentRate"),
+                    synthesisThreadCount = doc.readLong("$.synthesisThreadCount")?.toInt()
+                        ?.coerceIn(1, 8) ?: 1,
                     loginUrl = doc.readString("$.loginUrl"),
                     loginUi = if (loginUi is List<*>) GSON.toJson(loginUi) else loginUi?.toString(),
                     header = doc.readString("$.header"),

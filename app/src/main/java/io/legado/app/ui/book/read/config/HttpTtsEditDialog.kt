@@ -210,6 +210,7 @@ private enum class HttpTtsField(val label: String) {
     Url("url"),
     ContentType("Content-Type"),
     ConcurrentRate("并发率"),
+    SynthesisThreadCount("生成线程数"),
     LoginUrl("登录 URL"),
     LoginUi("登录 UI"),
     LoginCheckJs("登录检测 JS"),
@@ -224,6 +225,7 @@ private data class HttpTtsEditDraft(
     val url: String = "",
     val contentType: String = "",
     val concurrentRate: String = "0",
+    val synthesisThreadCount: String = "1",
     val loginUrl: String = "",
     val loginUi: String = "",
     val loginCheckJs: String = "",
@@ -237,6 +239,7 @@ private data class HttpTtsEditDraft(
         HttpTtsField.Url -> url
         HttpTtsField.ContentType -> contentType
         HttpTtsField.ConcurrentRate -> concurrentRate
+        HttpTtsField.SynthesisThreadCount -> synthesisThreadCount
         HttpTtsField.LoginUrl -> loginUrl
         HttpTtsField.LoginUi -> loginUi
         HttpTtsField.LoginCheckJs -> loginCheckJs
@@ -251,6 +254,7 @@ private data class HttpTtsEditDraft(
         HttpTtsField.Url -> copy(url = value)
         HttpTtsField.ContentType -> copy(contentType = value)
         HttpTtsField.ConcurrentRate -> copy(concurrentRate = value)
+        HttpTtsField.SynthesisThreadCount -> copy(synthesisThreadCount = value)
         HttpTtsField.LoginUrl -> copy(loginUrl = value)
         HttpTtsField.LoginUi -> copy(loginUi = value)
         HttpTtsField.LoginCheckJs -> copy(loginCheckJs = value)
@@ -265,6 +269,7 @@ private data class HttpTtsEditDraft(
             url = url,
             contentType = contentType,
             concurrentRate = concurrentRate,
+            synthesisThreadCount = synthesisThreadCount.toIntOrNull()?.coerceIn(1, 8) ?: 1,
             loginUrl = loginUrl,
             loginUi = loginUi,
             loginCheckJs = loginCheckJs,
@@ -284,6 +289,7 @@ private fun HttpTTS.toDraft(): HttpTtsEditDraft {
         url = url,
         contentType = contentType.orEmpty(),
         concurrentRate = concurrentRate.orEmpty(),
+        synthesisThreadCount = synthesisThreadCount.coerceIn(1, 8).toString(),
         loginUrl = loginUrl.orEmpty(),
         loginUi = loginUi.orEmpty(),
         loginCheckJs = loginCheckJs.orEmpty(),
@@ -361,6 +367,7 @@ private fun HttpTtsEditScreen(
                 EditField(HttpTtsField.Url, draft.url, { onDraftChange(draft.copy(url = it)) }, onFocus, minLines = 4)
                 EditField(HttpTtsField.ContentType, draft.contentType, { onDraftChange(draft.copy(contentType = it)) }, onFocus, singleLine = true)
                 EditField(HttpTtsField.ConcurrentRate, draft.concurrentRate, { onDraftChange(draft.copy(concurrentRate = it)) }, onFocus, singleLine = true)
+                EditField(HttpTtsField.SynthesisThreadCount, draft.synthesisThreadCount, { onDraftChange(draft.copy(synthesisThreadCount = it)) }, onFocus, singleLine = true)
                 EditField(HttpTtsField.LoginUrl, draft.loginUrl, { onDraftChange(draft.copy(loginUrl = it)) }, onFocus, minLines = 2)
                 EditField(HttpTtsField.LoginUi, draft.loginUi, { onDraftChange(draft.copy(loginUi = it)) }, onFocus, minLines = 3)
                 EditField(HttpTtsField.LoginCheckJs, draft.loginCheckJs, { onDraftChange(draft.copy(loginCheckJs = it)) }, onFocus, minLines = 3)
