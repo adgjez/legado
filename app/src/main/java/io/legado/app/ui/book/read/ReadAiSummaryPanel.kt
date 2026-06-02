@@ -166,7 +166,11 @@ class ReadAiSummaryPanel @JvmOverloads constructor(
             context.toastOnUi("请等待当前总结完成")
             return
         }
-        val keepAliveId = AiTaskKeepAlive.retain("AI章节总结")
+        val keepAliveId = AiTaskKeepAlive.retain(
+            title = "AI章节总结",
+            content = currentInput.chapter.title,
+            kind = AiTaskKeepAlive.KIND_SUMMARY
+        )
         job = requestScope.launch {
             try {
                 post {
@@ -189,10 +193,16 @@ class ReadAiSummaryPanel @JvmOverloads constructor(
                             forceRefresh = forceRefresh,
                             onPartial = { partial ->
                                 if (partial.isNotBlank()) {
+                                    AiTaskKeepAlive.update(keepAliveId, content = partial)
                                     post { uiState = uiState.copy(summary = partial, cached = false) }
                                 }
                             },
                             onStatus = { status ->
+                                AiTaskKeepAlive.update(
+                                    keepAliveId,
+                                    progressText = status.optString("label")
+                                        .ifBlank { status.optString("name") }
+                                )
                                 post { appendStatus(status) }
                             }
                         )

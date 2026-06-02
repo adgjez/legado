@@ -74,7 +74,11 @@ class AiChatViewModel : ViewModel() {
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
         var updatedContextSummary = currentSessionSummary()
-        val keepAliveId = AiTaskKeepAlive.retain("AI回复生成中")
+        val keepAliveId = AiTaskKeepAlive.retain(
+            title = "AI回复生成中",
+            content = userContent,
+            kind = AiTaskKeepAlive.KIND_CHAT
+        )
         activeJob = requestScope.launch {
             try {
                 val result = runCatching {
@@ -82,12 +86,19 @@ class AiChatViewModel : ViewModel() {
                         messages = requestMessages,
                         onPartial = { partial ->
                             activePendingContent = partial
+                            AiTaskKeepAlive.update(keepAliveId, content = partial)
                             targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
                         },
                         onThinking = { thinking ->
+                            AiTaskKeepAlive.update(keepAliveId, progressText = thinking)
                             targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
                         },
                         onStatus = { status ->
+                            AiTaskKeepAlive.update(
+                                keepAliveId,
+                                progressText = status.optString("label")
+                                    .ifBlank { status.optString("name") }
+                            )
                             targetFor(requestSessionId).upsertStatus(status)
                         },
                         contextSummary = updatedContextSummary,

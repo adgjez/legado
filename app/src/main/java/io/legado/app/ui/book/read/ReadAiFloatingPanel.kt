@@ -266,7 +266,11 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         )
         val requestMessages = buildRequestMessages(context, question)
         streamingAssistantMessageId = pendingAssistantId
-        val keepAliveId = AiTaskKeepAlive.retain("阅读页问AI")
+        val keepAliveId = AiTaskKeepAlive.retain(
+            title = "阅读页问AI",
+            content = "${context.bookName} · $question",
+            kind = AiTaskKeepAlive.KIND_READ_AI
+        )
         answerJob = requestScope.launch {
             try {
                 post { updateRequestingState() }
@@ -276,6 +280,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                             messages = requestMessages,
                             onPartial = { partial ->
                                 if (partial.isNotBlank()) {
+                                    AiTaskKeepAlive.update(keepAliveId, content = partial)
                                     post {
                                         streamingAssistantContent = partial
                                         if (!showingHistory) renderCurrentSession()

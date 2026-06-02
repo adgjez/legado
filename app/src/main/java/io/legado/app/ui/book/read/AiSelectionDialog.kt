@@ -11,6 +11,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogDictBinding
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
@@ -66,30 +67,40 @@ class AiSelectionDialog() : BaseDialogFragment(R.layout.dialog_dict) {
         binding.tvDict.movementMethod = LinkMovementMethod()
         binding.tvDict.text = getString(R.string.dynamic_loading)
         binding.rotateLoading.visible()
+        val keepAliveId = AiTaskKeepAlive.retain(
+            title = getString(R.string.ai_reply),
+            content = prompt,
+            kind = AiTaskKeepAlive.KIND_READ_AI
+        )
         viewLifecycleOwner.lifecycleScope.launch {
-            val result = runCatching {
-                withContext(IO) {
-                    AiChatService.chatStream(
-                        messages = listOf(
-                            AiChatMessage(
-                                role = AiChatMessage.Role.USER,
-                                content = prompt
-                            )
-                        ),
-                        onPartial = { partial ->
-                            if (partial.isNotBlank()) {
-                                binding.tvDict.post {
-                                    binding.tvDict.text = partial
+            try {
+                val result = runCatching {
+                    withContext(IO) {
+                        AiChatService.chatStream(
+                            messages = listOf(
+                                AiChatMessage(
+                                    role = AiChatMessage.Role.USER,
+                                    content = prompt
+                                )
+                            ),
+                            onPartial = { partial ->
+                                if (partial.isNotBlank()) {
+                                    AiTaskKeepAlive.update(keepAliveId, content = partial)
+                                    binding.tvDict.post {
+                                        binding.tvDict.text = partial
+                                    }
                                 }
-                            }
-                        },
-                        toolOverride = AiToolRegistry.resolveReadTools(),
-                        modelConfigOverride = modelConfig
-                    )
-                }
-            }.getOrElse { it.localizedMessage ?: it.toString() }
-            binding.rotateLoading.inVisible()
-            renderMarkdown(result)
+                            },
+                            toolOverride = AiToolRegistry.resolveReadTools(),
+                            modelConfigOverride = modelConfig
+                        )
+                    }
+                }.getOrElse { it.localizedMessage ?: it.toString() }
+                binding.rotateLoading.inVisible()
+                renderMarkdown(result)
+            } finally {
+                AiTaskKeepAlive.release(keepAliveId)
+            }
         }
     }
 
