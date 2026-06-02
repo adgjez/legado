@@ -53,9 +53,10 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private val selectedIds = linkedSetOf<Long>()
     private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
     private var pendingPackageAssetType: String = ReadAloudBgmTrack.TYPE_SFX
+    private lateinit var batchActionBar: LinearLayout
 
     private val currentAssetLabel: String
-        get() = if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) "音效" else "配乐"
+        get() = assetLabel(currentAssetType)
 
     private val importAudio = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
@@ -110,7 +111,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     selectedIds.clear()
                     updateAssetTabs()
                     load()
-                    toastOnUi("已重新导入 $count 个${currentAssetLabel}")
+                    toastOnUi("已导入 $count 个${currentAssetLabel}")
                 }.onFailure {
                     load()
                     toastOnUi(it.localizedMessage ?: "音频包导入失败")
@@ -135,13 +136,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         btnNight.text = "音效"
         btnDay.setOnClickListener { switchAssetType(ReadAloudBgmTrack.TYPE_BGM) }
         btnNight.setOnClickListener { switchAssetType(ReadAloudBgmTrack.TYPE_SFX) }
-        btnAdd.text = "导入配乐"
-        btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
-            ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_menu),
-            UiCorner.actionRadius(this@ReadAloudBgmManageActivity)
-        )
-        btnAdd.setOnClickListener { showImportActions() }
+        btnAdd.visibility = View.GONE
+        initBatchActionBar(root)
         tvSummary.setTextColor(secondaryTextColor)
         recyclerView.layoutManager = LinearLayoutManager(this@ReadAloudBgmManageActivity)
         recyclerView.adapter = adapter
@@ -151,25 +147,79 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, MENU_ADD_GROUP, 0, "新增分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_MANAGE_GROUPS, 1, "管理分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_MOVE_SELECTED, 2, "批量分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_DELETE_SELECTED, 3, "批量删除").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_IMPORT, 0, "导入").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_ADD_GROUP, 1, "新增分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_MANAGE_GROUPS, 2, "管理分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            MENU_IMPORT -> showImportActions()
             MENU_ADD_GROUP -> showGroupEditor()
             MENU_MANAGE_GROUPS -> showGroupManage()
-            MENU_MOVE_SELECTED -> moveSelected()
-            MENU_DELETE_SELECTED -> deleteSelected()
         }
         return true
     }
 
+    private fun initBatchActionBar(root: View) {
+        val parent = root as? LinearLayout ?: return
+        batchActionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            addView(batchActionButton("批量分组") { moveSelected() })
+            addView(batchActionButton("删除") { deleteSelected() })
+            addView(batchActionButton("取消选择") {
+                selectedIds.clear()
+                load()
+            })
+        }
+        parent.addView(
+            batchActionBar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                56.dpToPx()
+            ).apply {
+                leftMargin = 16.dpToPx()
+                rightMargin = 16.dpToPx()
+                bottomMargin = 16.dpToPx()
+            }
+        )
+    }
+
+    private fun batchActionButton(text: String, action: () -> Unit): TextView {
+        return TextView(this).apply {
+            this.text = text
+            gravity = Gravity.CENTER
+            textSize = 14f
+            typeface = uiTypeface()
+            setTextColor(primaryTextColor)
+            background = UiCorner.actionSelector(
+                ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_card),
+                ContextCompat.getColor(this@ReadAloudBgmManageActivity, R.color.background_menu),
+                UiCorner.actionRadius(this@ReadAloudBgmManageActivity)
+            )
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                leftMargin = 4.dpToPx()
+                rightMargin = 4.dpToPx()
+            }
+        }
+    }
+
     private fun showImportActions() {
-        selector("智能音频", listOf("批量导入${currentAssetLabel}", "导入单个${currentAssetLabel}", "导入音效包（删旧再导新）", "新增分组", "管理分组")) { _, index ->
+        selector(
+            "导入智能音频",
+            listOf(
+                "批量导入${currentAssetLabel}",
+                "导入单个${currentAssetLabel}",
+                "导入配乐 ZIP",
+                "导入音效 ZIP",
+                "新增分组",
+                "管理分组"
+            )
+        ) { _, index ->
             when (index) {
                 0 -> importAudios.launch("audio/*")
                 1 -> importAudio.launch {
@@ -177,25 +227,20 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     title = "导入${currentAssetLabel}"
                     allowExtensions = arrayOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
                 }
-                2 -> confirmImportSoundEffectPackage()
-                3 -> showGroupEditor()
-                4 -> showGroupManage()
+                2 -> openAudioPackageImport(ReadAloudBgmTrack.TYPE_BGM)
+                3 -> openAudioPackageImport(ReadAloudBgmTrack.TYPE_SFX)
+                4 -> showGroupEditor()
+                5 -> showGroupManage()
             }
         }
     }
 
-    private fun confirmImportSoundEffectPackage() {
-        alert("导入音效包") {
-            setMessage("会先删除旧音效和对应本地文件，再导入 zip 包内的新音效。配乐不会被删除。")
-            okButton {
-                pendingPackageAssetType = ReadAloudBgmTrack.TYPE_SFX
-                importAudioPackage.launch {
-                    mode = HandleFileContract.FILE
-                    title = "导入音效包"
-                    allowExtensions = arrayOf("zip")
-                }
-            }
-            cancelButton()
+    private fun openAudioPackageImport(assetType: String) {
+        pendingPackageAssetType = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        importAudioPackage.launch {
+            mode = HandleFileContract.FILE
+            title = "导入${assetLabel(pendingPackageAssetType)} ZIP"
+            allowExtensions = arrayOf("zip")
         }
     }
 
@@ -207,7 +252,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             groups = data.first
             tracks = data.second
             adapter.submit(tracks)
-            binding.btnAdd.text = "导入${currentAssetLabel}"
+            updateBatchActionBar()
             binding.tvSummary.text = if (tracks.isEmpty()) {
                 if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) {
                     "暂无音效。导入短音频并添加标签后，AI 可以为开门、脚步、撞击等候选事件选择音效。"
@@ -235,6 +280,20 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         btnNight.isSelected = !bgmSelected
         btnDay.setTextColor(if (bgmSelected) primaryTextColor else secondaryTextColor)
         btnNight.setTextColor(if (!bgmSelected) primaryTextColor else secondaryTextColor)
+    }
+
+    private fun updateBatchActionBar() {
+        if (::batchActionBar.isInitialized) {
+            batchActionBar.visibility = if (selectedIds.isEmpty()) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun assetLabel(assetType: String): String {
+        return if (ReadAloudBgmTrack.normalizeAssetType(assetType) == ReadAloudBgmTrack.TYPE_SFX) {
+            "音效"
+        } else {
+            "配乐"
+        }
     }
 
     private fun showGroupEditor(group: ReadAloudBgmGroup? = null) {
@@ -577,7 +636,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun moveSelected() {
         val ids = selectedIds.toList()
         if (ids.isEmpty()) {
-            toastOnUi("请先长按选择音乐")
+            toastOnUi("请先长按选择${currentAssetLabel}")
             return
         }
         moveTracks(ids)
@@ -598,7 +657,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun deleteSelected() {
         val ids = selectedIds.toList()
         if (ids.isEmpty()) {
-            toastOnUi("请先长按选择音乐")
+            toastOnUi("请先长按选择${currentAssetLabel}")
             return
         }
         confirmDelete(ids)
@@ -730,10 +789,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     companion object {
-        private const val MENU_ADD_GROUP = 1
-        private const val MENU_MOVE_SELECTED = 2
-        private const val MENU_DELETE_SELECTED = 3
-        private const val MENU_MANAGE_GROUPS = 4
+        private const val MENU_IMPORT = 1
+        private const val MENU_ADD_GROUP = 2
+        private const val MENU_MANAGE_GROUPS = 3
         private val supportedAudioExtensions = setOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
     }
 
