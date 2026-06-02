@@ -53,7 +53,7 @@ class CrashHandler(val context: Context) : Thread.UncaughtExceptionHandler {
             AppLog.put("发生未捕获的异常\n${ex.localizedMessage}", ex)
             Looper.loop()
         } else {
-            ReadAloud.stop(context)
+            runCatching { ReadAloud.stop(context) }
             handleException(ex)
             mDefaultHandler?.uncaughtException(thread, ex)
         }

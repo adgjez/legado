@@ -109,9 +109,24 @@ object DatabaseMigrations {
     }
 
     private fun repairAiReadAloudUsageTable(db: SupportSQLiteDatabase) {
+        val tempTable = "ai_read_aloud_usage_records_migration_tmp"
+        val hadOldTable = tableExists(db, "ai_read_aloud_usage_records")
+        if (hadOldTable) {
+            db.execSQL("DROP TABLE IF EXISTS `$tempTable`")
+            db.execSQL("ALTER TABLE `ai_read_aloud_usage_records` RENAME TO `$tempTable`")
+        }
+        createAiReadAloudUsageTable(db, "ai_read_aloud_usage_records")
+        if (hadOldTable) {
+            copyAiReadAloudUsageRows(db, tempTable)
+            db.execSQL("DROP TABLE IF EXISTS `$tempTable`")
+        }
+        createAiReadAloudUsageIndexes(db)
+    }
+
+    private fun createAiReadAloudUsageTable(db: SupportSQLiteDatabase, tableName: String) {
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (
+            CREATE TABLE IF NOT EXISTS `$tableName` (
                 `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 `type` TEXT NOT NULL DEFAULT '',
                 `status` TEXT NOT NULL DEFAULT '',
@@ -124,7 +139,7 @@ object DatabaseMigrations {
                 `providerName` TEXT NOT NULL DEFAULT '',
                 `modelId` TEXT NOT NULL DEFAULT '',
                 `elapsedMillis` INTEGER NOT NULL DEFAULT 0,
-                `requestCount` INTEGER NOT NULL DEFAULT 1,
+                `requestCount` INTEGER NOT NULL DEFAULT 0,
                 `inputTokens` INTEGER NOT NULL DEFAULT 0,
                 `cachedInputTokens` INTEGER NOT NULL DEFAULT 0,
                 `outputTokens` INTEGER NOT NULL DEFAULT 0,
@@ -135,9 +150,31 @@ object DatabaseMigrations {
             )
             """.trimIndent()
         )
+    }
+
+    private fun copyAiReadAloudUsageRows(db: SupportSQLiteDatabase, oldTableName: String) {
+        val oldColumns = columnNames(db, oldTableName)
+        val copyColumns = aiReadAloudUsageColumns.filter { it in oldColumns }
+        if (copyColumns.isEmpty()) return
+        val columnsSql = copyColumns.joinToString(", ") { "`$it`" }
+        db.execSQL(
+            """
+            INSERT INTO `ai_read_aloud_usage_records` ($columnsSql)
+            SELECT $columnsSql FROM `$oldTableName`
+            """.trimIndent()
+        )
+    }
+
+    private fun createAiReadAloudUsageIndexes(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_type_createdAt` ON `ai_read_aloud_usage_records` (`type`, `createdAt`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl_chapterIndex` ON `ai_read_aloud_usage_records` (`bookUrl`, `chapterIndex`)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_cacheKey` ON `ai_read_aloud_usage_records` (`cacheKey`)")
+    }
+
+    private fun tableExists(db: SupportSQLiteDatabase, tableName: String): Boolean {
+        db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='$tableName' LIMIT 1").use { cursor ->
+            return cursor.moveToFirst()
+        }
     }
 
     private fun columnNames(db: SupportSQLiteDatabase, tableName: String): Set<String> {
@@ -152,6 +189,29 @@ object DatabaseMigrations {
         }
         return columns
     }
+
+    private val aiReadAloudUsageColumns = listOf(
+        "id",
+        "type",
+        "status",
+        "bookUrl",
+        "bookName",
+        "chapterTitle",
+        "chapterIndex",
+        "cacheKey",
+        "batchName",
+        "providerName",
+        "modelId",
+        "elapsedMillis",
+        "requestCount",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "totalTokens",
+        "summary",
+        "error",
+        "createdAt"
+    )
 
     private val migration_101_102 = object : Migration(101, 102) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -170,7 +230,7 @@ object DatabaseMigrations {
                     `providerName` TEXT NOT NULL DEFAULT '',
                     `modelId` TEXT NOT NULL DEFAULT '',
                     `elapsedMillis` INTEGER NOT NULL DEFAULT 0,
-                    `requestCount` INTEGER NOT NULL DEFAULT 1,
+                    `requestCount` INTEGER NOT NULL DEFAULT 0,
                     `inputTokens` INTEGER NOT NULL DEFAULT 0,
                     `cachedInputTokens` INTEGER NOT NULL DEFAULT 0,
                     `outputTokens` INTEGER NOT NULL DEFAULT 0,
