@@ -253,7 +253,8 @@ object SpeechVoiceAssigner {
         character: BookCharacter,
         httpTtsList: List<HttpTTS>
     ): SpeechRoute {
-        val candidates = SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList)
+        val candidates = SpeechVoiceGroupRepository.assignableRoutes(httpTtsList)
+            .ifEmpty { SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList) }
         if (candidates.isEmpty()) return SpeechRoute()
         val stableKey = "${character.bookUrl}|${character.id}|${character.name}"
         val index = Math.floorMod(stableKey.hashCode(), candidates.size)

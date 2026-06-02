@@ -5,11 +5,14 @@ import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.data.entities.ReadAloudSpeakerGroup
+import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogParser
+import io.legado.app.help.readaloud.speech.SpeechVoiceGroupRepository
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -27,6 +30,9 @@ object AiBookCharacterTool {
     private const val TOOL_SET_CHARACTER_AVATAR_FROM_GALLERY = "set_book_character_avatar_from_gallery"
     private const val TOOL_GENERATE_CHARACTER_AVATAR = "generate_book_character_avatar"
     private const val TOOL_LIST_SPEECH_CATALOGS = "list_speech_catalogs"
+    private const val TOOL_LIST_SPEECH_VOICE_GROUPS = "list_speech_voice_groups"
+    private const val TOOL_UPSERT_SPEECH_VOICE_GROUP = "upsert_speech_voice_group"
+    private const val TOOL_DELETE_SPEECH_VOICE_GROUP = "delete_speech_voice_group"
     private const val TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE = "assign_character_speech_route"
     private const val TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES = "batch_assign_character_speech_routes"
     private const val TOOL_CLEAR_CHARACTER_SPEECH_ROUTES = "clear_character_speech_routes"
@@ -47,6 +53,15 @@ object AiBookCharacterTool {
                 generateCharacterAvatar(args)
             },
             AiResolvedTool(TOOL_LIST_SPEECH_CATALOGS, listSpeechCatalogsDefinition()) { args -> listSpeechCatalogs(args) },
+            AiResolvedTool(TOOL_LIST_SPEECH_VOICE_GROUPS, listSpeechVoiceGroupsDefinition()) { args ->
+                listSpeechVoiceGroups(args)
+            },
+            AiResolvedTool(TOOL_UPSERT_SPEECH_VOICE_GROUP, upsertSpeechVoiceGroupDefinition()) { args ->
+                upsertSpeechVoiceGroup(args)
+            },
+            AiResolvedTool(TOOL_DELETE_SPEECH_VOICE_GROUP, deleteSpeechVoiceGroupDefinition()) { args ->
+                deleteSpeechVoiceGroup(args)
+            },
             AiResolvedTool(TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE, assignCharacterSpeechRouteDefinition()) { args ->
                 assignCharacterSpeechRoute(args)
             },
@@ -158,9 +173,34 @@ object AiBookCharacterTool {
 
     private fun listSpeechCatalogsDefinition() = function(
         TOOL_LIST_SPEECH_CATALOGS,
-        "读取所有 HTTP TTS 的发言人和情绪目录，供角色配音或多角色朗读分配使用。"
+        "读取所有 HTTP TTS 的发言人和情绪目录，以及用户维护的发言人分组，供角色配音或多角色朗读分配使用。"
     ) {
         put("includeEmpty", booleanProp("可选，是否返回没有发言人目录的引擎。默认 false。"))
+    }
+
+    private fun listSpeechVoiceGroupsDefinition() = function(
+        TOOL_LIST_SPEECH_VOICE_GROUPS,
+        "读取用户维护的发言人分组。多角色自动分配会优先从这些分组里选择发言人。"
+    ) {
+        put("includeDisabled", booleanProp("可选，是否包含已停用分组。默认 true。"))
+    }
+
+    private fun upsertSpeechVoiceGroupDefinition() = function(
+        TOOL_UPSERT_SPEECH_VOICE_GROUP,
+        "新增或更新一个发言人分组，并可批量替换组内发言人。itemsJson 是发言人数组 JSON，每项包含 engineType、engineValue、engineName、speakerName、toneID、sourceGroupId、sourceGroupName。"
+    ) {
+        put("groupId", intProp("可选，已有分组 ID。为空时创建新分组。"))
+        put("name", stringProp("分组名称。新建时必填。"))
+        put("enabled", booleanProp("可选，是否启用。默认 true。"))
+        put("replaceItems", booleanProp("可选，是否替换组内所有发言人。默认 true。"))
+        put("itemsJson", stringProp("可选，发言人数组 JSON。每个条目会校验当前 TTS 是否存在。"))
+    }
+
+    private fun deleteSpeechVoiceGroupDefinition() = function(
+        TOOL_DELETE_SPEECH_VOICE_GROUP,
+        "删除一个用户维护的发言人分组。只删除分组配置，不删除 TTS 引擎。"
+    ) {
+        put("groupId", intProp("发言人分组 ID。"))
     }
 
     private fun assignCharacterSpeechRouteDefinition() = function(
@@ -337,6 +377,70 @@ object AiBookCharacterTool {
                 })
                 engines.forEach { put(it) }
             })
+            put("managedGroups", speechVoiceGroupsJson(includeDisabled = true))
+        }.toString()
+    }
+
+    private suspend fun listSpeechVoiceGroups(args: JSONObject?): String = withContext(IO) {
+        val includeDisabled = args?.optBoolean("includeDisabled", true) ?: true
+        JSONObject().apply {
+            put("ok", true)
+            put("groups", speechVoiceGroupsJson(includeDisabled = includeDisabled))
+        }.toString()
+    }
+
+    private suspend fun upsertSpeechVoiceGroup(args: JSONObject?): String = withContext(IO) {
+        val now = System.currentTimeMillis()
+        val groupId = args?.optLong("groupId", 0L) ?: 0L
+        val old = groupId.takeIf { it > 0L }
+            ?.let { id -> appDb.readAloudSpeakerGroupDao.groups().firstOrNull { it.id == id } }
+        val name = optText(args, "name") ?: old?.name.orEmpty()
+        if (name.isBlank()) return@withContext errorJson("name 不能为空")
+        val group = (old ?: ReadAloudSpeakerGroup()).copy(
+            name = name,
+            enabled = args?.takeIf { it.has("enabled") }?.optBoolean("enabled")
+                ?: old?.enabled
+                ?: true,
+            sortOrder = old?.sortOrder ?: ((appDb.readAloudSpeakerGroupDao.maxGroupOrder() ?: -1) + 1),
+            createdAt = old?.createdAt?.takeIf { it > 0L } ?: now,
+            updatedAt = now
+        )
+        val savedId = if (group.id > 0L) {
+            appDb.readAloudSpeakerGroupDao.updateGroup(group)
+            group.id
+        } else {
+            appDb.readAloudSpeakerGroupDao.insertGroup(group)
+        }
+        val replaceItems = args?.optBoolean("replaceItems", true) ?: true
+        if (replaceItems) {
+            appDb.readAloudSpeakerGroupDao.deleteItemsByGroup(savedId)
+        }
+        val startOrder = (appDb.readAloudSpeakerGroupDao.maxItemOrder(savedId) ?: -1) + 1
+        val httpTtsList = appDb.httpTTSDao.all
+        val items = parseSpeechVoiceGroupItems(args, savedId, startOrder, now)
+            .asSequence()
+            .filter { SpeechVoiceGroupRepository.isValidItem(it, httpTtsList) }
+            .distinctBy { "${it.engineType}|${it.engineValue}|${it.toneID}|${it.speakerName}" }
+            .toList()
+        if (items.isNotEmpty()) {
+            appDb.readAloudSpeakerGroupDao.insertItems(items)
+        }
+        JSONObject().apply {
+            put("ok", true)
+            put("group", speechVoiceGroupJson(group.copy(id = savedId), includeItems = true))
+            put("insertedItems", items.size)
+            put("skippedInvalidItems", parseSpeechVoiceGroupItems(args, savedId, startOrder, now).size - items.size)
+        }.toString()
+    }
+
+    private suspend fun deleteSpeechVoiceGroup(args: JSONObject?): String = withContext(IO) {
+        val groupId = args?.optLong("groupId", 0L) ?: 0L
+        if (groupId <= 0L) return@withContext errorJson("groupId 不能为空")
+        appDb.readAloudSpeakerGroupDao.deleteItemsByGroup(groupId)
+        appDb.readAloudSpeakerGroupDao.deleteGroup(groupId)
+        JSONObject().apply {
+            put("ok", true)
+            put("deletedGroupId", groupId)
         }.toString()
     }
 
@@ -674,6 +778,101 @@ object AiBookCharacterTool {
             put("source", character.source)
             put("lastDetectedAt", character.lastDetectedAt)
             put("updatedAt", character.updatedAt)
+        }
+    }
+
+    private fun speechVoiceGroupsJson(includeDisabled: Boolean): JSONArray {
+        val groups = appDb.readAloudSpeakerGroupDao.groups()
+            .filter { includeDisabled || it.enabled }
+        return JSONArray().apply {
+            groups.forEach { group ->
+                put(speechVoiceGroupJson(group, includeItems = true))
+            }
+        }
+    }
+
+    private fun speechVoiceGroupJson(
+        group: ReadAloudSpeakerGroup,
+        includeItems: Boolean
+    ): JSONObject {
+        return JSONObject().apply {
+            put("id", group.id)
+            put("name", group.name)
+            put("enabled", group.enabled)
+            put("sortOrder", group.sortOrder)
+            put("updatedAt", group.updatedAt)
+            if (includeItems) {
+                val httpTtsList = appDb.httpTTSDao.all
+                put("items", JSONArray().apply {
+                    appDb.readAloudSpeakerGroupDao.itemsByGroup(group.id).forEach { item ->
+                        put(speechVoiceGroupItemJson(item, SpeechVoiceGroupRepository.isValidItem(item, httpTtsList)))
+                    }
+                })
+            }
+        }
+    }
+
+    private fun speechVoiceGroupItemJson(
+        item: ReadAloudSpeakerGroupItem,
+        valid: Boolean
+    ): JSONObject {
+        return JSONObject().apply {
+            put("id", item.id)
+            put("groupId", item.groupId)
+            put("engineType", item.engineType)
+            put("engineValue", item.engineValue)
+            put("engineName", item.engineName)
+            put("speakerName", item.speakerName)
+            put("toneID", item.toneID)
+            put("sourceGroupId", item.sourceGroupId)
+            put("sourceGroupName", item.sourceGroupName)
+            put("sortOrder", item.sortOrder)
+            put("valid", valid)
+        }
+    }
+
+    private fun parseSpeechVoiceGroupItems(
+        args: JSONObject?,
+        groupId: Long,
+        startOrder: Int,
+        now: Long
+    ): List<ReadAloudSpeakerGroupItem> {
+        val array = args?.optJSONArray("items")
+            ?: args?.optString("itemsJson")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { JSONArray(it) }.getOrNull() }
+            ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val obj = array.optJSONObject(index) ?: continue
+                val engineValue = obj.optString("engineValue").trim()
+                val engineType = obj.optString("engineType").trim().ifBlank {
+                    if (engineValue.toLongOrNull() != null) {
+                        SpeechRoute.ENGINE_HTTP
+                    } else {
+                        SpeechRoute.ENGINE_SYSTEM
+                    }
+                }
+                val engineName = obj.optString("engineName").trim()
+                val speakerName = obj.optString("speakerName").trim()
+                    .ifBlank { engineName }
+                    .ifBlank { if (engineType == SpeechRoute.ENGINE_SYSTEM) "系统默认" else "HTTP TTS" }
+                add(
+                    ReadAloudSpeakerGroupItem(
+                        groupId = groupId,
+                        engineType = engineType,
+                        engineValue = engineValue,
+                        engineName = engineName,
+                        speakerName = speakerName,
+                        toneID = obj.optString("toneID").ifBlank { obj.optString("toneId") }.trim(),
+                        sourceGroupId = obj.optString("sourceGroupId").trim(),
+                        sourceGroupName = obj.optString("sourceGroupName").trim(),
+                        sortOrder = startOrder + index,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
+            }
         }
     }
 

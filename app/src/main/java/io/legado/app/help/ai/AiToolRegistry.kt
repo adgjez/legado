@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 3
+    private const val TOOL_SETTINGS_VERSION = 4
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -21,6 +21,11 @@ object AiToolRegistry {
     private val version3AddedDefaultTools = setOf(
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges"
+    )
+    private val version4AddedDefaultTools = setOf(
+        "list_speech_voice_groups",
+        "upsert_speech_voice_group",
+        "delete_speech_voice_group"
     )
 
     val readSafeToolNames = setOf(
@@ -40,6 +45,7 @@ object AiToolRegistry {
         "list_speech_catalogs",
         "assign_character_speech_route",
         "batch_assign_character_speech_routes",
+        "list_speech_voice_groups",
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
         "get_app_settings"
@@ -86,6 +92,9 @@ object AiToolRegistry {
         "assign_character_speech_route",
         "batch_assign_character_speech_routes",
         "clear_character_speech_routes",
+        "list_speech_voice_groups",
+        "upsert_speech_voice_group",
+        "delete_speech_voice_group",
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
         "get_app_settings",
@@ -128,6 +137,9 @@ object AiToolRegistry {
         "assign_character_speech_route" to "设置角色配音",
         "batch_assign_character_speech_routes" to "批量分配角色配音",
         "clear_character_speech_routes" to "清空角色配音",
+        "list_speech_voice_groups" to "读取发言人分组",
+        "upsert_speech_voice_group" to "新增或更新发言人分组",
+        "delete_speech_voice_group" to "删除发言人分组",
         "list_read_aloud_bgm_catalog" to "读取朗读配乐曲库",
         "assign_read_aloud_bgm_ranges" to "分配朗读配乐范围",
         "get_app_settings" to "读取应用设置",
@@ -170,6 +182,9 @@ object AiToolRegistry {
         "assign_character_speech_route" to "角色配音",
         "batch_assign_character_speech_routes" to "角色配音",
         "clear_character_speech_routes" to "角色配音",
+        "list_speech_voice_groups" to "角色配音",
+        "upsert_speech_voice_group" to "角色配音",
+        "delete_speech_voice_group" to "角色配音",
         "list_read_aloud_bgm_catalog" to "智能配乐",
         "assign_read_aloud_bgm_ranges" to "智能配乐",
         "get_app_settings" to "设置",
@@ -236,6 +251,7 @@ object AiToolRegistry {
             val additions = buildSet {
                 if (AppConfig.aiEnabledToolNamesVersion < 2) addAll(version2AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 3) addAll(version3AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 4) addAll(version4AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }

@@ -2197,7 +2197,13 @@ object AiReadAloudRoleService {
             .joinToString("|") { "${it.id}:${it.speechRouteJson}" }
         val engines = appDb.httpTTSDao.all
             .joinToString("|") { "${it.id}:${it.speakersJson}:${it.emotionsJson}" }
-        return MD5Utils.md5Encode("$characters\n$engines")
+        val speakerGroups = appDb.readAloudSpeakerGroupDao.groups()
+            .joinToString("|") { "${it.id}:${it.name}:${it.enabled}:${it.updatedAt}" }
+        val speakerItems = appDb.readAloudSpeakerGroupDao.items()
+            .joinToString("|") {
+                "${it.groupId}:${it.engineType}:${it.engineValue}:${it.speakerName}:${it.toneID}:${it.updatedAt}"
+            }
+        return MD5Utils.md5Encode("$characters\n$engines\n$speakerGroups\n$speakerItems")
     }
 
     private fun confirmUnitsDefinition(): JSONObject {

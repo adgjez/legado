@@ -10,10 +10,11 @@ object SpeechRouteSanitizer {
     data class CleanupResult(
         val characterCount: Int = 0,
         val bookCount: Int = 0,
+        val speakerGroupItemCount: Int = 0,
         val globalCleared: Boolean = false
     ) {
         val changed: Boolean
-            get() = characterCount > 0 || bookCount > 0 || globalCleared
+            get() = characterCount > 0 || bookCount > 0 || speakerGroupItemCount > 0 || globalCleared
     }
 
     fun validOrNull(
@@ -61,10 +62,20 @@ object SpeechRouteSanitizer {
             AppConfig.ttsEngine = null
         }
         ReadBook.book?.takeIf { routeReferencesHttpTts(it.getTtsEngine(), deletedId) }?.setTtsEngine(null)
+        val speakerItemIds = appDb.readAloudSpeakerGroupDao.items()
+            .filter {
+                it.engineType == SpeechRoute.ENGINE_HTTP &&
+                    it.engineValue == deletedId
+            }
+            .map { it.id }
+        if (speakerItemIds.isNotEmpty()) {
+            appDb.readAloudSpeakerGroupDao.deleteItems(speakerItemIds)
+        }
 
         return CleanupResult(
             characterCount = characterCount,
             bookCount = bookCount,
+            speakerGroupItemCount = speakerItemIds.size,
             globalCleared = globalCleared
         )
     }

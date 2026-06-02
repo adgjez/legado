@@ -213,9 +213,13 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
                     appDb.httpTTSDao.delete(httpTTS)
                     val result = SpeechRouteSanitizer.cleanDeletedHttpTts(httpTTS)
                     if (result.changed) {
-                        appContext.toastOnUi(
-                            "已重置 ${result.characterCount} 个角色、${result.bookCount} 本书的失效朗读配置"
-                        )
+                        val message = buildList {
+                            if (result.characterCount > 0) add("${result.characterCount} 个角色")
+                            if (result.bookCount > 0) add("${result.bookCount} 本书")
+                            if (result.speakerGroupItemCount > 0) add("${result.speakerGroupItemCount} 个发言人分组条目")
+                            if (result.globalCleared) add("通用朗读引擎")
+                        }.joinToString("、")
+                        appContext.toastOnUi("已清理 $message 的失效朗读配置")
                     }
                     notifyReadAloudEngineChanged()
                 }
