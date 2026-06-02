@@ -514,11 +514,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                 restoreLastBookProcess()
                 return@addCallback
             }
-            if (BaseReadAloudService.isPlay()) {
-                ReadAloud.pause(this@ReadBookActivity)
-                toastOnUi(R.string.read_aloud_pause)
-                return@addCallback
-            }
             if (isAutoPage) {
                 autoPageStop()
                 return@addCallback
@@ -629,6 +624,14 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra("openReadAloudPanel", false) &&
+            BaseReadAloudService.isRun &&
+            intent.getStringExtra("bookUrl") == ReadBook.book?.bookUrl
+        ) {
+            consumeOpenReadAloudPanelIntent(intent)
+            return
+        }
         viewModel.initData(intent)
     }
 
@@ -1617,14 +1620,19 @@ class ReadBookActivity : BaseReadBookActivity(),
             intent.removeExtra("readAloud")
             ReadBook.readAloud()
         }
-        if (intent.getBooleanExtra("openReadAloudPanel", false)) {
-            intent.removeExtra("openReadAloudPanel")
-            binding.readAloudPlayerPanel.post {
-                binding.readAloudPlayerPanel.openFromBottom(force = true)
-                binding.readAloudPlayerPanel.refresh()
-            }
-        }
+        consumeOpenReadAloudPanelIntent(intent)
         loadStates = true
+    }
+
+    private fun consumeOpenReadAloudPanelIntent(intent: Intent = this.intent): Boolean {
+        if (!intent.getBooleanExtra("openReadAloudPanel", false)) return false
+        intent.removeExtra("openReadAloudPanel")
+        pendingReadAloudPlayerOpen = false
+        binding.readAloudPlayerPanel.post {
+            binding.readAloudPlayerPanel.openFromBottom(force = true)
+            binding.readAloudPlayerPanel.refresh()
+        }
+        return true
     }
 
     /**

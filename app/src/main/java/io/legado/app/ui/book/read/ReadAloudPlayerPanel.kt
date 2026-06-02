@@ -2022,6 +2022,8 @@ internal fun ReadAloudCapsule(
             animationSpec = tween(if (dragging) 1 else 260, easing = FastOutSlowInEasing),
             label = "readAloudCapsuleY"
         )
+        val renderedX = if (dragging) clampedBaseX else animatedX
+        val renderedY = if (dragging) displayOffsetY else animatedY
         val latestClampedBaseX by rememberUpdatedState(clampedBaseX)
         val latestDisplayOffsetY by rememberUpdatedState(displayOffsetY)
         LaunchedEffect(widthPx, heightPx, minX, maxX, minY, maxY) {
@@ -2049,7 +2051,7 @@ internal fun ReadAloudCapsule(
         }
         Surface(
             modifier = Modifier
-                .offset { IntOffset(animatedX.roundToInt(), animatedY.roundToInt()) }
+                .offset { IntOffset(renderedX.roundToInt(), renderedY.roundToInt()) }
                 .width(capsuleWidth)
                 .height(capsuleHeight)
                 .onGloballyPositioned {

@@ -177,6 +177,7 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
         private val composeView = ComposeView(activity)
         private var uiState by mutableStateOf(ReadAloudPlayerPanel.PlayerUiState())
+        private var touchCaptured = false
 
         init {
             isClickable = false
@@ -220,13 +221,30 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         }
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            if (capsuleBounds.isEmpty) return false
+            if (capsuleBounds.isEmpty) {
+                touchCaptured = false
+                return false
+            }
             val extra = 16.dpToPx().toFloat()
             val inside = ev.x >= capsuleBounds.left - extra &&
                     ev.x <= capsuleBounds.right + extra &&
                     ev.y >= capsuleBounds.top - extra &&
                     ev.y <= capsuleBounds.bottom + extra
-            return inside && super.dispatchTouchEvent(ev)
+            return when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchCaptured = inside
+                    touchCaptured && super.dispatchTouchEvent(ev)
+                }
+
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    val captured = touchCaptured
+                    touchCaptured = false
+                    captured && super.dispatchTouchEvent(ev)
+                }
+
+                else -> touchCaptured && super.dispatchTouchEvent(ev)
+            }
         }
     }
 }
