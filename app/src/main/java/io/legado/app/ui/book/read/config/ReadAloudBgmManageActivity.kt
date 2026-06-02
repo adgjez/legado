@@ -51,6 +51,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private var groups: List<ReadAloudBgmGroup> = emptyList()
     private var tracks: List<ReadAloudBgmTrack> = emptyList()
     private val selectedIds = linkedSetOf<Long>()
+    private val expandedGroupIds = linkedSetOf<Long>()
+    private var expandedGroupsInitialized = false
     private var currentAssetType: String = ReadAloudBgmTrack.TYPE_BGM
     private var pendingPackageAssetType: String = ReadAloudBgmTrack.TYPE_SFX
     private lateinit var batchActionBar: LinearLayout
@@ -251,7 +253,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             }
             groups = data.first
             tracks = data.second
-            adapter.submit(tracks)
+            selectedIds.retainAll(tracks.map { it.id }.toSet())
+            adapter.submit(buildRows())
             updateBatchActionBar()
             binding.tvSummary.text = if (tracks.isEmpty()) {
                 if (currentAssetType == ReadAloudBgmTrack.TYPE_SFX) {
@@ -270,6 +273,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         if (currentAssetType == normalized) return
         currentAssetType = normalized
         selectedIds.clear()
+        expandedGroupIds.clear()
+        expandedGroupsInitialized = false
         updateAssetTabs()
         load()
     }
@@ -705,18 +710,117 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return groups.firstOrNull { it.id == groupId }?.displayName() ?: "默认分组"
     }
 
-    private inner class BgmAdapter : RecyclerView.Adapter<BgmHolder>() {
-        private var items: List<ReadAloudBgmTrack> = emptyList()
+    private fun buildRows(): List<AudioRow> {
+        val tracksByGroup = tracks.groupBy { it.groupId }
+        val rowGroups = (listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", sortOrder = Int.MIN_VALUE)) + groups)
+            .distinctBy { it.id }
+            .filter { group -> group.id != 0L || tracksByGroup.containsKey(0L) || tracks.isEmpty() }
+            .sortedWith(compareBy<ReadAloudBgmGroup> { it.sortOrder }.thenBy { it.id })
+        if (!expandedGroupsInitialized) {
+            expandedGroupIds.clear()
+            expandedGroupIds.addAll(rowGroups.map { it.id })
+            expandedGroupsInitialized = true
+        }
+        return buildList {
+            rowGroups.forEach { group ->
+                val groupTracks = tracksByGroup[group.id].orEmpty()
+                val expanded = group.id in expandedGroupIds
+                add(
+                    AudioRow.GroupHeader(
+                        group = group,
+                        count = groupTracks.size,
+                        selectedCount = groupTracks.count { it.id in selectedIds },
+                        expanded = expanded
+                    )
+                )
+                if (expanded) {
+                    groupTracks.forEach { track ->
+                        add(AudioRow.TrackItem(track))
+                    }
+                }
+            }
+        }
+    }
 
-        fun submit(value: List<ReadAloudBgmTrack>) {
+    private fun toggleGroup(groupId: Long) {
+        if (!expandedGroupIds.add(groupId)) {
+            expandedGroupIds.remove(groupId)
+        }
+        adapter.submit(buildRows())
+    }
+
+    private fun toggleGroupSelection(groupId: Long) {
+        val ids = tracks.filter { it.groupId == groupId }.map { it.id }
+        if (ids.isEmpty()) return
+        if (ids.all { it in selectedIds }) {
+            selectedIds.removeAll(ids.toSet())
+        } else {
+            selectedIds.addAll(ids)
+        }
+        load()
+    }
+
+    private sealed class AudioRow {
+        data class GroupHeader(
+            val group: ReadAloudBgmGroup,
+            val count: Int,
+            val selectedCount: Int,
+            val expanded: Boolean
+        ) : AudioRow()
+
+        data class TrackItem(val track: ReadAloudBgmTrack) : AudioRow()
+    }
+
+    private inner class BgmAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        private var items: List<AudioRow> = emptyList()
+
+        fun submit(value: List<AudioRow>) {
             items = value
             notifyDataSetChanged()
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BgmHolder {
+        override fun getItemViewType(position: Int): Int {
+            return when (items[position]) {
+                is AudioRow.GroupHeader -> VIEW_TYPE_GROUP
+                is AudioRow.TrackItem -> VIEW_TYPE_TRACK
+            }
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            if (viewType == VIEW_TYPE_GROUP) {
+                val root = LinearLayout(parent.context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(10.dpToPx(), 10.dpToPx(), 10.dpToPx(), 10.dpToPx())
+                    background = UiCorner.actionSelector(
+                        ContextCompat.getColor(parent.context, R.color.background_menu),
+                        ContextCompat.getColor(parent.context, R.color.background_card),
+                        UiCorner.actionRadius(parent.context)
+                    )
+                }
+                val title = TextView(parent.context).apply {
+                    textSize = 14f
+                    setTextColor(primaryTextColor)
+                    typeface = uiTypeface()
+                }
+                val sub = TextView(parent.context).apply {
+                    textSize = 12f
+                    setTextColor(secondaryTextColor)
+                }
+                root.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                root.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = 3.dpToPx()
+                })
+                root.layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 8.dpToPx()
+                }
+                return GroupHolder(root, title, sub)
+            }
             val root = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(14.dpToPx(), 12.dpToPx(), 14.dpToPx(), 12.dpToPx())
+                setPadding(18.dpToPx(), 12.dpToPx(), 14.dpToPx(), 12.dpToPx())
                 background = UiCorner.actionSelector(
                     ContextCompat.getColor(parent.context, R.color.background_card),
                     ContextCompat.getColor(parent.context, R.color.background_menu),
@@ -741,19 +845,44 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
+                leftMargin = 16.dpToPx()
                 bottomMargin = 10.dpToPx()
             }
-            return BgmHolder(root, title, sub)
+            return TrackHolder(root, title, sub)
         }
 
         override fun getItemCount(): Int = items.size
 
-        override fun onBindViewHolder(holder: BgmHolder, position: Int) {
-            holder.bind(items[position])
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val row = items[position]) {
+                is AudioRow.GroupHeader -> (holder as GroupHolder).bind(row)
+                is AudioRow.TrackItem -> (holder as TrackHolder).bind(row.track)
+            }
         }
     }
 
-    private inner class BgmHolder(
+    private inner class GroupHolder(
+        itemView: View,
+        private val title: TextView,
+        private val sub: TextView
+    ) : RecyclerView.ViewHolder(itemView) {
+
+        fun bind(row: AudioRow.GroupHeader) {
+            val arrow = if (row.expanded) "▼" else "▶"
+            title.text = "$arrow ${row.group.displayName()}"
+            sub.text = buildList {
+                add("${row.count} 个${currentAssetLabel}")
+                if (row.selectedCount > 0) add("已选 ${row.selectedCount}")
+            }.joinToString(" · ")
+            itemView.setOnClickListener { toggleGroup(row.group.id) }
+            itemView.setOnLongClickListener {
+                toggleGroupSelection(row.group.id)
+                true
+            }
+        }
+    }
+
+    private inner class TrackHolder(
         itemView: View,
         private val title: TextView,
         private val sub: TextView
@@ -792,6 +921,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         private const val MENU_IMPORT = 1
         private const val MENU_ADD_GROUP = 2
         private const val MENU_MANAGE_GROUPS = 3
+        private const val VIEW_TYPE_GROUP = 1
+        private const val VIEW_TYPE_TRACK = 2
         private val supportedAudioExtensions = setOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
     }
 
