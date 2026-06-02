@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiReadAloudRoleCache
+import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.help.config.AppConfig
@@ -1196,29 +1197,62 @@ object AiReadAloudRoleService {
                 put("newCharacters", candidates.size)
             }.toString()
         }
+        val requestUsage = AiReadAloudUsageRecorder.Tracker()
         usageTracker.onRequest()
-        val response = AiChatService.requestSingleToolCall(
-            messages = listOf(
-                AiChatMessage(
-                    role = AiChatMessage.Role.USER,
-                    content = buildBatchUnitPrompt(
-                        book = book,
-                        textChapter = textChapter,
-                        paragraphs = paragraphs,
-                        allUnits = allUnits,
-                        batch = batch,
-                        fullChapterMode = fullChapterMode,
-                        prompt = prompt,
-                        attempt = attempt,
-                        knownResolutions = knownResolutions
+        requestUsage.onRequest()
+        val response = try {
+            AiChatService.requestSingleToolCall(
+                messages = listOf(
+                    AiChatMessage(
+                        role = AiChatMessage.Role.USER,
+                        content = buildBatchUnitPrompt(
+                            book = book,
+                            textChapter = textChapter,
+                            paragraphs = paragraphs,
+                            allUnits = allUnits,
+                            batch = batch,
+                            fullChapterMode = fullChapterMode,
+                            prompt = prompt,
+                            attempt = attempt,
+                            knownResolutions = knownResolutions
+                        )
                     )
+                ),
+                tool = tool,
+                modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
+                promptCacheKeyOverride = promptCacheKey,
+                onUsage = {
+                    usageTracker.onUsage(it)
+                    requestUsage.onUsage(it)
+                }
+            ).also {
+                AiReadAloudUsageRecorder.record(
+                    type = AiReadAloudUsageRecord.TYPE_ROLE,
+                    status = AiReadAloudUsageRecord.STATUS_SUCCESS,
+                    book = book,
+                    chapter = textChapter,
+                    cacheKey = promptCacheKey,
+                    batchName = if (fullChapterMode) "全文批处理" else "并发查找批次 ${batch.index + 1}",
+                    modelConfig = AppConfig.aiReadAloudRoleModelConfig,
+                    snapshot = requestUsage.snapshot(),
+                    summary = "targetUnits=${batch.units.size}, attempt=$attempt"
                 )
-            ),
-            tool = tool,
-            modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
-            promptCacheKeyOverride = promptCacheKey,
-            onUsage = usageTracker::onUsage
-        )
+            }
+        } catch (throwable: Throwable) {
+            AiReadAloudUsageRecorder.record(
+                type = AiReadAloudUsageRecord.TYPE_ROLE,
+                status = AiReadAloudUsageRecord.STATUS_FAILED,
+                book = book,
+                chapter = textChapter,
+                cacheKey = promptCacheKey,
+                batchName = if (fullChapterMode) "全文批处理" else "并发查找批次 ${batch.index + 1}",
+                modelConfig = AppConfig.aiReadAloudRoleModelConfig,
+                snapshot = requestUsage.snapshot(),
+                summary = "targetUnits=${batch.units.size}, attempt=$attempt",
+                error = throwable.localizedMessage ?: throwable.javaClass.simpleName
+            )
+            throw throwable
+        }
         if (response.hasToolCall) {
             val args = runCatching { JSONObject(response.arguments) }.getOrNull()
             collectedResolutions += parseUnitResolutions(args, requestedUnitIds)

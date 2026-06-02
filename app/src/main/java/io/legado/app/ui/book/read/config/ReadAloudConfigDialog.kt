@@ -43,6 +43,7 @@ import io.legado.app.utils.toastOnUi
 import org.json.JSONObject
 
 private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
+private const val KEY_AI_READ_ALOUD_USAGE_RECORDS = "aiReadAloudUsageRecords"
 
 enum class ReadAloudConfigGroup(
     val title: String,
@@ -78,6 +79,7 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleContextParagraphs,
             PreferKey.aiReadAloudRoleMergeGapParagraphs,
             PreferKey.aiReadAloudRolePrompt,
+            KEY_AI_READ_ALOUD_USAGE_RECORDS,
             PreferKey.aiReadAloudBgmEnabled,
             KEY_AI_READ_ALOUD_BGM_MANAGE
         )
@@ -284,6 +286,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 KEY_AI_READ_ALOUD_BGM_MANAGE -> startActivity(
                     android.content.Intent(requireContext(), ReadAloudBgmManageActivity::class.java)
                 )
+                KEY_AI_READ_ALOUD_USAGE_RECORDS -> startActivity(
+                    android.content.Intent(requireContext(), AiReadAloudUsageRecordActivity::class.java)
+                )
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -439,6 +444,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     ?.take(40)
                     ?.ifBlank { null }
                     .orEmpty()
+            }
+            findPreference<Preference>(KEY_AI_READ_ALOUD_USAGE_RECORDS)?.let {
+                val count = appDb.aiReadAloudUsageRecordDao.list(limit = 1000).size
+                it.summary = if (count > 0) "$count 条记录，可筛选和批量删除" else "暂无消耗记录"
             }
             findPreference<SwitchPreference>(PreferKey.aiReadAloudBgmEnabled)?.let {
                 it.isEnabled = enabled

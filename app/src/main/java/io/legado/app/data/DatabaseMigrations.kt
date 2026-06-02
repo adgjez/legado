@@ -22,8 +22,42 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_99_100, migration_100_101,
+            migration_99_100, migration_100_101, migration_101_102,
         )
+    }
+
+    private val migration_101_102 = object : Migration(101, 102) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `type` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT '',
+                    `bookUrl` TEXT NOT NULL DEFAULT '',
+                    `bookName` TEXT NOT NULL DEFAULT '',
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT 0,
+                    `cacheKey` TEXT NOT NULL DEFAULT '',
+                    `batchName` TEXT NOT NULL DEFAULT '',
+                    `providerName` TEXT NOT NULL DEFAULT '',
+                    `modelId` TEXT NOT NULL DEFAULT '',
+                    `elapsedMillis` INTEGER NOT NULL DEFAULT 0,
+                    `requestCount` INTEGER NOT NULL DEFAULT 1,
+                    `inputTokens` INTEGER NOT NULL DEFAULT 0,
+                    `cachedInputTokens` INTEGER NOT NULL DEFAULT 0,
+                    `outputTokens` INTEGER NOT NULL DEFAULT 0,
+                    `totalTokens` INTEGER NOT NULL DEFAULT 0,
+                    `summary` TEXT NOT NULL DEFAULT '',
+                    `error` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_type_createdAt` ON `ai_read_aloud_usage_records` (`type`, `createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl_chapterIndex` ON `ai_read_aloud_usage_records` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_cacheKey` ON `ai_read_aloud_usage_records` (`cacheKey`)")
+        }
     }
 
     private val migration_100_101 = object : Migration(100, 101) {

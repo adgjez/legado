@@ -12,6 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.data.dao.AiReadAloudRoleCacheDao
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiImageGroupDao
+import io.legado.app.data.dao.AiReadAloudUsageRecordDao
 import io.legado.app.data.dao.BookAiChapterSummaryDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
@@ -43,6 +44,7 @@ import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiImageGroup
 import io.legado.app.data.entities.AiReadAloudRoleCache
+import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
@@ -92,7 +94,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 101,
+    version = 102,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -105,7 +107,8 @@ val appDb by lazy {
         AiImageGroup::class, AiGeneratedImage::class,
         BookCharacter::class, BookCharacterRelation::class,
         BookAiChapterSummary::class, AiReadAloudRoleCache::class,
-        ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class],
+        ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class,
+        AiReadAloudUsageRecord::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -191,6 +194,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
     abstract val aiReadAloudRoleCacheDao: AiReadAloudRoleCacheDao
     abstract val readAloudBgmDao: ReadAloudBgmDao
+    abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
 
     companion object {
 

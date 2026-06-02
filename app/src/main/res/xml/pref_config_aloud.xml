@@ -125,6 +125,12 @@
             android:title="预注入分角色提示词"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudUsageRecords"
+            android:summary="查看多角色、配乐、音效的 AI Token 消耗"
+            android:title="消耗记录"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SwitchPreference
             android:defaultValue="false"
             android:key="aiReadAloudBgmEnabled"
