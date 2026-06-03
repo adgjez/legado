@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.graphics.RectF
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -39,9 +41,13 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         val requestedAt: Long
     )
 
+    private const val ACTIVITY_SWITCH_DETACH_DELAY_MILLIS = 260L
+
     private val observedActivities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var currentActivity: Activity? = null
     private var overlay: ComposeCapsuleOverlay? = null
+    private var pendingDetach: Runnable? = null
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private var readBookPanelActive by mutableStateOf(false)
@@ -55,6 +61,7 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityResumed(activity: Activity) {
+        cancelPendingDetach()
         currentActivity = activity
         if (activity !is ReadBookActivity) {
             readBookPanelActive = false
@@ -70,16 +77,16 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityPaused(activity: Activity) {
         if (currentActivity === activity) {
-            detach()
             currentActivity = null
+            scheduleDetach(activity)
         }
     }
 
     override fun onActivityDestroyed(activity: Activity) {
         if (currentActivity === activity) {
-            detach()
             currentActivity = null
         }
+        detach(activity)
         observedActivities.remove(activity)
     }
 
@@ -116,8 +123,18 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         val view = if (current?.activity === activity) {
             current
         } else {
-            detach()
-            ComposeCapsuleOverlay(activity).also { overlay = it }
+            capsuleBounds.setEmpty()
+            ComposeCapsuleOverlay(activity).also { newView ->
+                overlay = newView
+                parent.addView(
+                    newView,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                current?.let(::removeOverlay)
+            }
         }
         if (view.parent !== parent) {
             (view.parent as? ViewGroup)?.removeView(view)
@@ -173,6 +190,37 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         }
         overlay = null
         capsuleBounds.setEmpty()
+    }
+
+    private fun detach(activity: Activity) {
+        if (overlay?.activity === activity) {
+            detach()
+        }
+    }
+
+    private fun removeOverlay(view: ComposeCapsuleOverlay) {
+        (view.parent as? ViewGroup)?.removeView(view)
+        if (overlay === view) {
+            overlay = null
+            capsuleBounds.setEmpty()
+        }
+    }
+
+    private fun scheduleDetach(activity: Activity) {
+        cancelPendingDetach()
+        pendingDetach = Runnable {
+            pendingDetach = null
+            if (currentActivity == null || currentActivity === activity) {
+                detach(activity)
+            }
+        }.also {
+            mainHandler.postDelayed(it, ACTIVITY_SWITCH_DETACH_DELAY_MILLIS)
+        }
+    }
+
+    private fun cancelPendingDetach() {
+        pendingDetach?.let(mainHandler::removeCallbacks)
+        pendingDetach = null
     }
 
     private fun updateCapsulePosition(x: Float, y: Float) {
