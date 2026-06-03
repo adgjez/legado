@@ -1,12 +1,14 @@
 package io.legado.app.ui.book.read
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.view.ViewCompat
@@ -33,6 +35,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -74,23 +77,28 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ComposeView
@@ -108,16 +116,19 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.ai.AiReadAloudBgmService
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
@@ -144,9 +155,12 @@ import io.legado.app.ui.book.read.page.entities.indexForChapterPosition
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 class ReadAloudPlayerPanel @JvmOverloads constructor(
@@ -308,7 +322,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val roleBlockingCurrentContent: Boolean = false,
         val roleBlockingText: String = "",
         val roleState: AiReadAloudRoleState? = null,
-        val multiRoleEnabled: Boolean = AppConfig.aiReadAloudRoleEnabled
+        val multiRoleEnabled: Boolean = AppConfig.aiReadAloudRoleEnabled,
+        val speakerLoudnessEnabled: Boolean = AppConfig.readAloudSpeakerLoudnessEnabled,
+        val speakerLoudnessGainPercent: Int = 100,
+        val speakerLoudnessLearned: Boolean = false,
+        val speakerLoudnessLearnedCount: Int = 0
     )
 
     private val composeView = ComposeView(context)
@@ -375,6 +393,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onOpenSettings = ::openReadAloudSetting,
                 onTimerChange = ::setTimer,
                 onEngineSelect = ::selectTtsEngine,
+                onEngineSheetOpen = ::refreshTtsEngineOptions,
                 onProgressSeek = ::seekToParagraphProgress,
                 onCueSelect = ::seekToChapterPosition,
                 capsulePosition = capsulePosition,
@@ -719,6 +738,24 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         uiState = buildState(uiState.mode)
     }
 
+    fun onReadAloudConfigChanged(scope: String?) {
+        when (scope) {
+            EventBus.READ_ALOUD_CONFIG_SCOPE_ENGINE,
+            EventBus.READ_ALOUD_CONFIG_SCOPE_SPEECH -> {
+                invalidateTtsEngineOptions()
+                chapterModelCache = null
+            }
+            EventBus.READ_ALOUD_CONFIG_SCOPE_AUDIO -> {
+                chapterModelCache = null
+            }
+            else -> {
+                invalidateTtsEngineOptions()
+                chapterModelCache = null
+            }
+        }
+        refresh()
+    }
+
     private fun showPanel(expand: Boolean = true, animateFromBottom: Boolean = true) {
         post {
             val wasVisible = visibility == VISIBLE
@@ -952,13 +989,24 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val pageIndex = chapter.getPageIndexByCharIndex(targetPos)
         if (pageIndex < 0) return
         val startPos = (targetPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
+        val model = buildChapterModel()
+        val targetCueIndex = model?.indexForChapterPosition(targetPos) ?: -1
         ReadBook.durChapterPos = targetPos
-        ReadAloud.play(
-            context = context,
-            play = BaseReadAloudService.isPlay(),
-            pageIndex = pageIndex,
-            startPos = startPos
-        )
+        if (BaseReadAloudService.isRun && targetCueIndex >= 0) {
+            ReadAloud.moveToCue(
+                context = context,
+                cueIndex = targetCueIndex,
+                chapterPosition = targetPos,
+                play = true
+            )
+        } else {
+            ReadAloud.play(
+                context = context,
+                play = true,
+                pageIndex = pageIndex,
+                startPos = startPos
+            )
+        }
         lastChapterStart = targetPos
         uiState = buildState(uiState.mode)
     }
@@ -1146,6 +1194,22 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val nearby = emptyList<ParagraphUi>()
         val textCues = model?.textCues.orEmpty()
         val sceneSegments = if (multiRoleEnabled) model?.sceneSegments.orEmpty() else emptyList()
+        if (multiRoleEnabled &&
+            model?.roleCacheReady == true &&
+            roleStatusRunning &&
+            (roleState == null ||
+                    roleState?.bookUrl == ReadBook.book?.bookUrl &&
+                    roleState?.chapterIndex == chapterSequence &&
+                    roleState?.stage == AiReadAloudRoleState.STAGE_CURRENT)
+        ) {
+            roleStatusText = ""
+            roleStatusRunning = false
+            roleStatusError = false
+            roleStatusUntil = 0L
+            if (roleState?.running == true) {
+                roleState = null
+            }
+        }
         val currentRoleState = roleState?.takeIf {
             multiRoleEnabled &&
                     it.stage == AiReadAloudRoleState.STAGE_CURRENT &&
@@ -1158,6 +1222,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 currentRoleRunning &&
                 !model.roleCacheReady
         val speechRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
+        val currentSpeechItem = model?.speechItems?.getOrNull(displayCueIndex)
+        val loudnessInfo = ReadAloudSpeakerLoudnessManager.infoFor(
+            currentSpeechItem,
+            currentSpeechItem?.route ?: speechRoute
+        )
         val timerMinute = BaseReadAloudService.timeMinute
         val servicePlaying = playbackActualPlaying ?: BaseReadAloudService.isPlay()
         val roleEventVisible = multiRoleEnabled &&
@@ -1219,7 +1288,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 ?.ifBlank { "当前章节角色分配中" }
                 ?: "当前章节角色分配中",
             roleState = roleState.takeIf { multiRoleEnabled },
-            multiRoleEnabled = multiRoleEnabled
+            multiRoleEnabled = multiRoleEnabled,
+            speakerLoudnessEnabled = AppConfig.readAloudSpeakerLoudnessEnabled,
+            speakerLoudnessGainPercent = (loudnessInfo.gain * 100f).roundToInt(),
+            speakerLoudnessLearned = loudnessInfo.learned,
+            speakerLoudnessLearnedCount = ReadAloudSpeakerLoudnessManager.learnedSpeakerCount()
         )
     }
 
@@ -1338,13 +1411,14 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun buildTtsEngineOptions(): List<TtsEngineUi> {
-        val cacheKey = ReadAloud.ttsEngine.orEmpty()
+        val httpTtsList = runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList())
+        val cacheKey = buildTtsEngineOptionsCacheKey(httpTtsList)
         if (ttsEngineOptionsCacheKey == cacheKey && ttsEngineOptionsCache.isNotEmpty()) {
             return ttsEngineOptionsCache
         }
         val currentRoute = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
         return SpeechVoiceCatalogRepository
-            .allGroups(context, runCatching { appDb.httpTTSDao.all }.getOrDefault(emptyList()))
+            .allGroups(context, httpTtsList)
             .map { group ->
             TtsEngineUi(
                     title = group.title,
@@ -1363,6 +1437,41 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private fun invalidateTtsEngineOptions() {
         ttsEngineOptionsCacheKey = ""
         ttsEngineOptionsCache = emptyList()
+    }
+
+    private fun buildTtsEngineOptionsCacheKey(httpTtsList: List<HttpTTS>): String {
+        return buildString {
+            append(ReadAloud.ttsEngine.orEmpty())
+            httpTtsList.forEach { httpTts ->
+                append('|')
+                append(httpTts.id)
+                append(':')
+                append(httpTts.lastUpdateTime)
+                append(':')
+                append(httpTts.name.hashCode())
+                append(':')
+                append(httpTts.url.hashCode())
+                append(':')
+                append(MD5Utils.md5Encode(httpTts.speakersJson))
+                append(':')
+                append(MD5Utils.md5Encode(httpTts.emotionsJson))
+            }
+            append("|speakerGroups=")
+            append(runCatching {
+                val groups = appDb.readAloudSpeakerGroupDao.groups()
+                    .joinToString(";") { "${it.id}:${it.name}:${it.enabled}:${it.updatedAt}" }
+                val items = appDb.readAloudSpeakerGroupDao.items()
+                    .joinToString(";") {
+                        "${it.groupId}:${it.engineType}:${it.engineValue}:${it.speakerName}:${it.toneID}:${it.updatedAt}"
+                    }
+                MD5Utils.md5Encode("$groups\n$items")
+            }.getOrDefault(""))
+        }
+    }
+
+    private fun refreshTtsEngineOptions() {
+        invalidateTtsEngineOptions()
+        uiState = buildState(uiState.mode)
     }
 
     private fun buildCharacterPreview(bookUrl: String?): List<CharacterPreviewUi> {
@@ -1600,6 +1709,7 @@ private fun ReadAloudPlayerContent(
     onOpenSettings: () -> Unit,
     onTimerChange: (Int) -> Unit,
     onEngineSelect: (String) -> Unit,
+    onEngineSheetOpen: () -> Unit,
     onProgressSeek: (Float) -> Unit,
     onCueSelect: (Int) -> Unit,
     capsulePosition: CapsulePositionState,
@@ -1613,10 +1723,38 @@ private fun ReadAloudPlayerContent(
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
+    val density = LocalDensity.current
     var activeSheet by remember { mutableStateOf(PlayerSheet.None) }
     var sheetVisible by remember { mutableStateOf(false) }
     val animateTextChanges = !AppConfig.isEInkMode && state.foregroundActive
     val animatePanelChanges = !AppConfig.isEInkMode && state.foregroundActive
+    var sceneFullscreen by remember { mutableStateOf(false) }
+    var sceneFullscreenTopBarHeight by remember { mutableStateOf(0.dp) }
+    val sceneFullscreenActive = sceneFullscreen &&
+            state.mode == ReadAloudPlayerPanel.DisplayMode.Scene &&
+            state.panelPhase == ReadAloudPlayerPanel.PanelPhase.Expanded &&
+            !state.roleBlockingCurrentContent
+    val sceneFullscreenTopInset = if (sceneFullscreenActive) {
+        (sceneFullscreenTopBarHeight + 8.dp).coerceAtLeast(58.dp)
+    } else {
+        0.dp
+    }
+    LaunchedEffect(state.mode, state.panelPhase, state.roleBlockingCurrentContent) {
+        if (state.mode != ReadAloudPlayerPanel.DisplayMode.Scene ||
+            state.panelPhase != ReadAloudPlayerPanel.PanelPhase.Expanded ||
+            state.roleBlockingCurrentContent
+        ) {
+            sceneFullscreen = false
+        }
+    }
+    LaunchedEffect(sceneFullscreenActive) {
+        if (sceneFullscreenActive) {
+            sheetVisible = false
+        }
+    }
+    PlayerBackHandler(enabled = sceneFullscreenActive) {
+        sceneFullscreen = false
+    }
     val sheetEnter = if (animatePanelChanges) {
         fadeIn(tween(180, easing = FastOutSlowInEasing)) +
                 slideInVertically(tween(240, easing = FastOutSlowInEasing)) { height -> height / 6 } +
@@ -1646,7 +1784,11 @@ private fun ReadAloudPlayerContent(
                     fadeOut(tween(180, easing = FastOutSlowInEasing))
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                CoverAtmosphereBackdrop(state, colors)
+                CoverAtmosphereBackdrop(
+                    state = state,
+                    colors = colors,
+                    animateFluid = !sceneFullscreenActive
+                )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val landscape = maxWidth > maxHeight
             val short = maxHeight < 660.dp
@@ -1666,24 +1808,41 @@ private fun ReadAloudPlayerContent(
                     .padding(start = sidePadding, end = sidePadding, top = topPadding, bottom = bottomPadding),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MinimalHeader(
-                    mode = state.mode,
-                    multiRoleEnabled = state.multiRoleEnabled,
-                    colors = colors,
-                    onClose = onClose,
-                    onOpenSettings = onOpenSettings,
-                    onModeChange = {
-                        sheetVisible = false
-                        onModeChange(it)
+                AnimatedVisibility(
+                    visible = !sceneFullscreenActive,
+                    enter = fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                            expandVertically(tween(180, easing = FastOutSlowInEasing)),
+                    exit = shrinkVertically(tween(160, easing = FastOutSlowInEasing)) +
+                            fadeOut(tween(140, easing = FastOutSlowInEasing))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        MinimalHeader(
+                            mode = state.mode,
+                            multiRoleEnabled = state.multiRoleEnabled,
+                            colors = colors,
+                            onClose = onClose,
+                            onOpenSettings = onOpenSettings,
+                            onModeChange = {
+                                sheetVisible = false
+                                if (it == state.mode && it == ReadAloudPlayerPanel.DisplayMode.Scene) {
+                                    sceneFullscreen = true
+                                } else {
+                                    sceneFullscreen = false
+                                    onModeChange(it)
+                                }
+                            }
+                        )
+                        RoleAssignmentStatus(state = state, colors = colors, onOpen = onOpenRoleDetail)
+                        Spacer(modifier = Modifier.height(if (veryShort) 4.dp else 10.dp))
                     }
-                )
-                RoleAssignmentStatus(state = state, colors = colors, onOpen = onOpenRoleDetail)
-                Spacer(modifier = Modifier.height(if (veryShort) 4.dp else 10.dp))
+                }
                 if (landscape) {
                     LandscapePlayerBody(
                         state = state,
                         colors = colors,
                         short = short,
+                        sceneFullscreen = sceneFullscreenActive,
+                        sceneFullscreenTopInset = sceneFullscreenTopInset,
                         animateTextChanges = animateTextChanges,
                         onCueSelect = onCueSelect,
                         modifier = Modifier
@@ -1696,6 +1855,8 @@ private fun ReadAloudPlayerContent(
                         colors = colors,
                         short = short,
                         veryShort = veryShort,
+                        sceneFullscreen = sceneFullscreenActive,
+                        sceneFullscreenTopInset = sceneFullscreenTopInset,
                         animateTextChanges = animateTextChanges,
                         onCueSelect = onCueSelect,
                         modifier = Modifier
@@ -1703,26 +1864,39 @@ private fun ReadAloudPlayerContent(
                             .weight(1f)
                     )
                 }
-                Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 14.dp))
-                MinimalProgress(state, colors, onProgressSeek)
-                Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 12.dp))
-                PlayerControlDock(
-                    state = state,
-                    colors = colors,
-                    activeSheet = if (sheetVisible) activeSheet else PlayerSheet.None,
-                    onSheetChange = { sheet ->
-                        if (sheetVisible && activeSheet == sheet) {
-                            sheetVisible = false
-                        } else {
-                            activeSheet = sheet
-                            sheetVisible = true
-                        }
-                    },
-                    onPlayPause = onPlayPause,
-                    onPreviousChapter = onPreviousChapter,
-                    onNextChapter = onNextChapter,
-                    onOpenChapterList = onOpenChapterList
-                )
+                AnimatedVisibility(
+                    visible = !sceneFullscreenActive,
+                    enter = fadeIn(tween(180, easing = FastOutSlowInEasing)) +
+                            expandVertically(tween(180, easing = FastOutSlowInEasing)),
+                    exit = shrinkVertically(tween(160, easing = FastOutSlowInEasing)) +
+                            fadeOut(tween(140, easing = FastOutSlowInEasing))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 14.dp))
+                        MinimalProgress(state, colors, onProgressSeek)
+                        Spacer(modifier = Modifier.height(if (veryShort) 8.dp else 12.dp))
+                        PlayerControlDock(
+                            state = state,
+                            colors = colors,
+                            activeSheet = if (sheetVisible) activeSheet else PlayerSheet.None,
+                            onSheetChange = { sheet ->
+                                if (sheetVisible && activeSheet == sheet) {
+                                    sheetVisible = false
+                                } else {
+                                    if (sheet == PlayerSheet.Engine) {
+                                        onEngineSheetOpen()
+                                    }
+                                    activeSheet = sheet
+                                    sheetVisible = true
+                                }
+                            },
+                            onPlayPause = onPlayPause,
+                            onPreviousChapter = onPreviousChapter,
+                            onNextChapter = onNextChapter,
+                            onOpenChapterList = onOpenChapterList
+                        )
+                    }
+                }
             }
             if (sheetVisible && activeSheet != PlayerSheet.None) {
                 Box(
@@ -1764,6 +1938,26 @@ private fun ReadAloudPlayerContent(
                         onOpenCharacters = onOpenCharacters
                     )
                 }
+            }
+            AnimatedVisibility(
+                visible = sceneFullscreenActive,
+                enter = fadeIn(tween(160, easing = FastOutSlowInEasing)),
+                exit = fadeOut(tween(130, easing = FastOutSlowInEasing))
+            ) {
+                SceneFullscreenTopBar(
+                    title = state.chapterTitle,
+                    colors = colors,
+                    onExit = { sceneFullscreen = false },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .systemBarsPadding()
+                        .padding(start = sidePadding, end = sidePadding, top = topPadding)
+                        .onGloballyPositioned { coordinates ->
+                            sceneFullscreenTopBarHeight = with(density) {
+                                coordinates.size.height.toDp()
+                            }
+                        }
+                )
             }
         }
     }
@@ -1882,7 +2076,8 @@ internal fun rememberPlayerColors(palette: ReaderSheetStyle.Palette): PlayerColo
 @Composable
 private fun CoverAtmosphereBackdrop(
     state: ReadAloudPlayerPanel.PlayerUiState,
-    colors: PlayerColors
+    colors: PlayerColors,
+    animateFluid: Boolean
 ) {
     Box(
         modifier = Modifier
@@ -1894,7 +2089,9 @@ private fun CoverAtmosphereBackdrop(
             alpha = 0.30f,
             modifier = Modifier.fillMaxSize()
         )
-        FluidBackdropLayer(state, colors)
+        if (animateFluid) {
+            FluidBackdropLayer(state, colors)
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -2182,7 +2379,7 @@ internal fun ReadAloudCapsule(
             }
         }
     }
-}
+        }
 
 @Composable
 private fun FluidBackdropLayer(
@@ -2262,21 +2459,91 @@ private fun MinimalHeader(
             .height(46.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            HeaderIconButton(
+                icon = R.drawable.ic_expand_more,
+                contentDescription = "收起",
+                colors = colors,
+                onClick = onClose
+            )
+        }
+        Box(contentAlignment = Alignment.Center) {
+            ModeSwitch(mode, multiRoleEnabled, colors, onModeChange)
+        }
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HeaderIconButton(
+                icon = R.drawable.ic_settings,
+                contentDescription = "设置",
+                colors = colors,
+                onClick = onOpenSettings
+            )
+        }
+    }
+}
+
+@Composable
+private fun SceneFullscreenTopBar(
+    title: String,
+    colors: PlayerColors,
+    onExit: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(44.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         HeaderIconButton(
             icon = R.drawable.ic_expand_more,
-            contentDescription = "收起",
+            contentDescription = "退出全屏",
             colors = colors,
-            onClick = onClose
+            onClick = onExit
         )
-        Spacer(modifier = Modifier.weight(1f))
-        ModeSwitch(mode, multiRoleEnabled, colors, onModeChange)
-        Spacer(modifier = Modifier.weight(1f))
-        HeaderIconButton(
-            icon = R.drawable.ic_settings,
-            contentDescription = "设置",
-            colors = colors,
-            onClick = onOpenSettings
-        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = title.ifBlank { "当前章节" },
+                color = colors.primaryText.copy(alpha = 0.92f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+        Spacer(modifier = Modifier.size(42.dp))
+    }
+}
+
+@Composable
+private fun PlayerBackHandler(
+    enabled: Boolean,
+    onBack: () -> Unit
+) {
+    val activity = LocalContext.current as? AppCompatActivity ?: return
+    val currentOnBack by rememberUpdatedState(onBack)
+    DisposableEffect(activity, enabled) {
+        val callback = object : OnBackPressedCallback(enabled) {
+            override fun handleOnBackPressed() {
+                currentOnBack()
+            }
+        }
+        activity.onBackPressedDispatcher.addCallback(callback)
+        onDispose {
+            callback.remove()
+        }
     }
 }
 
@@ -2332,6 +2599,7 @@ private fun RoleAssignmentProgressDialog(
     onRetry: () -> Unit
 ) {
     val roleState = state.roleState ?: return
+    PlayerBackHandler(enabled = state.roleDetailVisible, onBack = onHide)
     AnimatedVisibility(
         visible = state.roleDetailVisible,
         enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
@@ -2552,6 +2820,14 @@ private fun RoleAssignmentSummary(
         }
         if (roleState.createdCharacterCount > 0) {
             RoleSummaryChip("新增 ${roleState.createdCharacterCount} 角色", colors)
+        }
+        if (playerState.speakerLoudnessEnabled) {
+            RoleSummaryChip("响度 ${playerState.speakerLoudnessGainPercent}%", colors)
+            if (playerState.speakerLoudnessLearnedCount > 0) {
+                RoleSummaryChip("已学习 ${playerState.speakerLoudnessLearnedCount} 发言人", colors)
+            } else if (!playerState.speakerLoudnessLearned) {
+                RoleSummaryChip("响度学习中", colors)
+            }
         }
         if (unmatchedCount > 0) {
             RoleSummaryChip("$unmatchedCount 未匹配", colors, danger = true)
@@ -2872,6 +3148,8 @@ private fun ModeSwitch(
             ModeChip(
                 text = text,
                 selected = mode == displayMode,
+                fullscreenHint = mode == ReadAloudPlayerPanel.DisplayMode.Scene &&
+                        displayMode == ReadAloudPlayerPanel.DisplayMode.Scene,
                 colors = colors,
                 shape = actionShape,
                 modifier = Modifier.weight(1f)
@@ -2886,6 +3164,7 @@ private fun ModeSwitch(
 private fun ModeChip(
     text: String,
     selected: Boolean,
+    fullscreenHint: Boolean,
     colors: PlayerColors,
     shape: Shape,
     modifier: Modifier = Modifier,
@@ -2899,13 +3178,27 @@ private fun ModeChip(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = if (selected) colors.accentText else colors.secondaryText,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            maxLines = 1
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = text,
+                color = if (selected) colors.accentText else colors.secondaryText,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1
+            )
+            if (fullscreenHint) {
+                Text(
+                    text = "全屏",
+                    color = colors.accentText.copy(alpha = 0.78f),
+                    fontSize = 8.sp,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 3.dp)
+                )
+            }
+        }
     }
 }
 
@@ -2915,6 +3208,8 @@ private fun PortraitPlayerBody(
     colors: PlayerColors,
     short: Boolean,
     veryShort: Boolean,
+    sceneFullscreen: Boolean,
+    sceneFullscreenTopInset: Dp,
     animateTextChanges: Boolean,
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -2937,6 +3232,8 @@ private fun PortraitPlayerBody(
             state = state,
             colors = colors,
             compact = short,
+            fullscreen = sceneFullscreen,
+            fullscreenTopInset = sceneFullscreenTopInset,
             onCueSelect = onCueSelect,
             modifier = modifier
         )
@@ -2959,6 +3256,8 @@ private fun LandscapePlayerBody(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     short: Boolean,
+    sceneFullscreen: Boolean,
+    sceneFullscreenTopInset: Dp,
     animateTextChanges: Boolean,
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -3006,6 +3305,8 @@ private fun LandscapePlayerBody(
                     state = state,
                     colors = colors,
                     compact = short,
+                    fullscreen = sceneFullscreen,
+                    fullscreenTopInset = sceneFullscreenTopInset,
                     onCueSelect = onCueSelect,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3157,6 +3458,8 @@ private fun ScenePlayerStage(
     state: ReadAloudPlayerPanel.PlayerUiState,
     colors: PlayerColors,
     compact: Boolean,
+    fullscreen: Boolean = false,
+    fullscreenTopInset: Dp = 0.dp,
     onCueSelect: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -3164,70 +3467,114 @@ private fun ScenePlayerStage(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        BookIdentity(
-            state = state,
-            colors = colors,
-            centered = true,
-            compact = compact
-        )
-        Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
-        val listState = rememberLazyListState()
-        val currentIndex = state.currentCueIndex.coerceIn(
-            0,
-            state.sceneSegments.lastIndex.coerceAtLeast(0)
-        )
-        var userBrowsing by remember(state.chapterKey) { mutableStateOf(false) }
-        var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
-        var lastSceneTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
-        LaunchedEffect(state.chapterKey) {
-            userBrowsing = false
-            lastSceneTarget = null
-        }
-        LaunchedEffect(state.chapterKey, currentIndex) {
-            if (state.sceneSegments.isNotEmpty() && !userBrowsing) {
-                val firstTarget = lastSceneTarget == null
-                val targetDistance = lastSceneTarget
-                    ?.let { kotlin.math.abs(it - currentIndex) }
-                    ?: 0
-                programmaticScroll = true
-                if (firstTarget) {
-                    listState.scrollToItem(currentIndex)
-                } else if (lastSceneTarget != currentIndex && !listState.isScrollInProgress) {
-                    if (AppConfig.isEInkMode || !state.foregroundActive || targetDistance > 8) {
-                        listState.scrollToItem(currentIndex)
-                    } else {
-                        listState.animateScrollToItem(currentIndex)
-                    }
-                }
-                programmaticScroll = false
-                lastSceneTarget = currentIndex
+        AnimatedVisibility(
+            visible = !fullscreen,
+            enter = fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+                    expandVertically(tween(180, easing = FastOutSlowInEasing)),
+            exit = shrinkVertically(tween(150, easing = FastOutSlowInEasing)) +
+                    fadeOut(tween(120, easing = FastOutSlowInEasing))
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                BookIdentity(
+                    state = state,
+                    colors = colors,
+                    centered = true,
+                    compact = compact
+                )
+                Spacer(modifier = Modifier.height(if (compact) 10.dp else 16.dp))
             }
         }
-        LaunchedEffect(listState.isScrollInProgress) {
-            if (listState.isScrollInProgress && !programmaticScroll) {
-                userBrowsing = true
-            }
-        }
-        LazyColumn(
-            state = listState,
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .widthIn(max = 760.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 9.dp else 12.dp)
+                .weight(1f),
+            contentAlignment = Alignment.TopCenter
         ) {
-            items(state.sceneSegments, key = { it.key }) { segment ->
-                SceneSegmentRow(
-                    segment = segment,
-                    current = segment.index == currentIndex,
-                    colors = colors,
-                    compact = compact,
-                    onClick = {
-                        userBrowsing = false
-                        onCueSelect(segment.chapterPosition)
+            val listState = rememberLazyListState()
+            val density = LocalDensity.current
+            val currentIndex = state.currentCueIndex.coerceIn(
+                0,
+                state.sceneSegments.lastIndex.coerceAtLeast(0)
+            )
+            val viewportTopInset = if (fullscreen) fullscreenTopInset.coerceAtLeast(58.dp) else 0.dp
+            val visibleHeight = (maxHeight - viewportTopInset).coerceAtLeast(1.dp)
+            val listTopPadding = 12.dp
+            val listBottomPadding = if (fullscreen) 96.dp else 12.dp
+            val currentScrollOffset = if (fullscreen) {
+                with(density) {
+                    -((visibleHeight * 0.5f) - if (compact) 30.dp else 36.dp)
+                        .coerceAtLeast(0.dp)
+                        .roundToPx()
+                }
+            } else {
+                0
+            }
+            var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
+            var lastSceneTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
+            LaunchedEffect(state.chapterKey, fullscreen) {
+                lastSceneTarget = null
+            }
+            LaunchedEffect(state.chapterKey, currentIndex, fullscreen) {
+                val userScrolling = listState.isScrollInProgress && !programmaticScroll
+                if (state.sceneSegments.isNotEmpty() && !userScrolling) {
+                    val firstTarget = lastSceneTarget == null
+                    val targetDistance = lastSceneTarget
+                        ?.let { kotlin.math.abs(it - currentIndex) }
+                        ?: 0
+                    try {
+                        programmaticScroll = true
+                        if (firstTarget) {
+                            listState.scrollToItem(currentIndex, scrollOffset = currentScrollOffset)
+                        } else if (lastSceneTarget != currentIndex) {
+                            if (AppConfig.isEInkMode || !state.foregroundActive || targetDistance > 8) {
+                                listState.scrollToItem(currentIndex, scrollOffset = currentScrollOffset)
+                            } else {
+                                listState.animateScrollToItem(currentIndex, scrollOffset = currentScrollOffset)
+                            }
+                        }
+                    } finally {
+                        programmaticScroll = false
                     }
-                )
+                    lastSceneTarget = currentIndex
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = viewportTopInset)
+                    .clipToBounds(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = if (fullscreen) 780.dp else 760.dp),
+                    contentPadding = PaddingValues(
+                        top = listTopPadding,
+                        bottom = listBottomPadding
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(
+                        when {
+                            fullscreen -> 14.dp
+                            compact -> 9.dp
+                            else -> 12.dp
+                        }
+                    )
+                ) {
+                    items(state.sceneSegments, key = { it.key }) { segment ->
+                        SceneSegmentRow(
+                            segment = segment,
+                            current = segment.index == currentIndex,
+                            colors = colors,
+                            compact = compact,
+                            fullscreen = fullscreen,
+                            onClick = {
+                                onCueSelect(segment.chapterPosition)
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -3239,23 +3586,48 @@ private fun SceneSegmentRow(
     current: Boolean,
     colors: PlayerColors,
     compact: Boolean,
+    fullscreen: Boolean,
     onClick: () -> Unit
 ) {
     if (segment.narrator) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val maxWidth = if (fullscreen) 560.dp else 430.dp
+        val textColor = when {
+            current && fullscreen -> colors.primaryText.copy(alpha = 0.78f)
+            current -> colors.secondaryText.copy(alpha = 0.86f)
+            fullscreen -> colors.subtleText.copy(alpha = 0.74f)
+            else -> colors.subtleText
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
             Text(
                 text = segment.text,
-                color = if (current) colors.secondaryText else colors.subtleText,
-                fontSize = if (compact) 12.sp else 13.sp,
-                lineHeight = if (compact) 18.sp else 20.sp,
+                color = textColor,
+                fontSize = when {
+                    compact -> 12.sp
+                    fullscreen -> 14.sp
+                    else -> 13.sp
+                },
+                lineHeight = when {
+                    compact -> 18.sp
+                    fullscreen -> 23.sp
+                    else -> 20.sp
+                },
+                fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .widthIn(max = 420.dp)
-                    .clickable(onClick = onClick)
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .widthIn(max = maxWidth)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
+                    .padding(
+                        horizontal = if (fullscreen) 20.dp else 14.dp,
+                        vertical = if (fullscreen) 9.dp else 6.dp
+                    )
             )
         }
         return
@@ -3263,19 +3635,21 @@ private fun SceneSegmentRow(
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth(0.86f)
+                .fillMaxWidth(if (fullscreen) 0.88f else 0.86f)
                 .align(if (segment.leftSide) Alignment.CenterStart else Alignment.CenterEnd),
             horizontalArrangement = if (segment.leftSide) Arrangement.Start else Arrangement.End,
             verticalAlignment = Alignment.Top
         ) {
             if (segment.leftSide) {
                 SceneAvatar(segment, colors, compact)
+                Spacer(modifier = Modifier.width(6.dp))
                 SceneBubbleArrow(leftSide = true, colors = colors)
                 SceneBubble(
                     segment = segment,
                     current = current,
                     colors = colors,
                     compact = compact,
+                    fullscreen = fullscreen,
                     onClick = onClick,
                     modifier = Modifier.weight(1f, fill = false)
                 )
@@ -3285,10 +3659,12 @@ private fun SceneSegmentRow(
                     current = current,
                     colors = colors,
                     compact = compact,
+                    fullscreen = fullscreen,
                     onClick = onClick,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 SceneBubbleArrow(leftSide = false, colors = colors)
+                Spacer(modifier = Modifier.width(6.dp))
                 SceneAvatar(segment, colors, compact)
             }
         }
@@ -3328,19 +3704,23 @@ private fun SceneBubble(
     current: Boolean,
     colors: PlayerColors,
     compact: Boolean,
+    fullscreen: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
+    val baseBubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
+    val bubbleColor = baseBubbleColor.copy(alpha = baseBubbleColor.alpha * if (current) 1f else 0.88f)
     val textColor = if (segment.leftSide) colors.primaryText else colors.accentText
     val actionShape = LocalContext.current.composeActionShape()
+    val maxWidth = when {
+        fullscreen -> 540.dp
+        compact -> 460.dp
+        else -> 520.dp
+    }
     Surface(
         onClick = onClick,
         modifier = modifier
-            .widthIn(max = if (compact) 460.dp else 520.dp)
-            .graphicsLayer {
-                alpha = if (current) 1f else 0.88f
-            },
+            .widthIn(max = maxWidth),
         shape = actionShape,
         color = bubbleColor,
         border = BorderStroke(
@@ -3349,7 +3729,10 @@ private fun SceneBubble(
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            modifier = Modifier.padding(
+                horizontal = if (fullscreen) 15.dp else 13.dp,
+                vertical = if (fullscreen) 11.dp else 10.dp
+            ),
             horizontalAlignment = if (segment.leftSide) Alignment.Start else Alignment.End
         ) {
             val emotion = segment.emotionName.takeIf { it.isNotBlank() }
@@ -3396,8 +3779,16 @@ private fun SceneBubble(
             Text(
                 text = segment.text,
                 color = textColor,
-                fontSize = if (compact) 14.sp else 15.sp,
-                lineHeight = if (compact) 21.sp else 23.sp,
+                fontSize = when {
+                    compact -> 14.sp
+                    fullscreen -> 16.sp
+                    else -> 15.sp
+                },
+                lineHeight = when {
+                    compact -> 21.sp
+                    fullscreen -> 24.sp
+                    else -> 23.sp
+                },
                 modifier = Modifier.padding(top = 5.dp)
             )
         }
@@ -3412,28 +3803,61 @@ private fun SceneAvatar(
 ) {
     val context = LocalContext.current
     val size = if (compact) 34.dp else 38.dp
-    AndroidView(
+    val avatarPath = segment.avatar.ifBlank { null }
+    val bitmap by produceState<Bitmap?>(initialValue = null, avatarPath, size) {
+        value = null
+        if (avatarPath.isNullOrBlank()) return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val px = (size.value * context.resources.displayMetrics.density)
+                    .roundToInt()
+                    .coerceAtLeast(1)
+                ImageLoader.loadBitmap(context.applicationContext, avatarPath)
+                    .centerCrop()
+                    .submit(px, px)
+                    .get()
+            }.getOrNull()
+        }
+    }
+    Box(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
             .background(colors.panel),
-        factory = {
-            ImageView(it).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                contentDescription = segment.characterName
-            }
-        },
-        update = { imageView ->
-            val loadKey = segment.avatar.ifBlank { "__read_aloud_default_avatar__" }
-            if (imageView.tag != loadKey) {
-                imageView.tag = loadKey
-                ImageLoader.load(context, segment.avatar.ifBlank { null })
-                    .placeholder(R.drawable.ic_bottom_person)
-                    .error(R.drawable.ic_bottom_person)
-                    .into(imageView)
+        contentAlignment = Alignment.Center
+    ) {
+        val loadedBitmap = bitmap
+        if (loadedBitmap != null) {
+            Image(
+                bitmap = loadedBitmap.asImageBitmap(),
+                contentDescription = segment.characterName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            val initial = segment.characterName
+                .trim()
+                .firstOrNull()
+                ?.toString()
+                .orEmpty()
+            if (initial.isNotBlank()) {
+                Text(
+                    text = initial,
+                    color = colors.primaryText.copy(alpha = 0.82f),
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            } else {
+                Icon(
+                    painter = painterResource(R.drawable.ic_bottom_person),
+                    contentDescription = segment.characterName,
+                    tint = colors.subtleText,
+                    modifier = Modifier.size(if (compact) 19.dp else 21.dp)
+                )
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -3595,10 +4019,11 @@ private fun LyricCueBody(
         )
     }
     val listState = rememberLazyListState()
-    var userSeeking by remember(state.chapterKey) { mutableStateOf(false) }
+    var userTouching by remember(state.chapterKey) { mutableStateOf(false) }
     var programmaticScroll by remember(state.chapterKey) { mutableStateOf(false) }
     var lastCenteredTarget by remember(state.chapterKey) { mutableStateOf<Int?>(null) }
     val currentIndex = state.currentCueIndex.coerceIn(0, cues.lastIndex)
+    val density = LocalDensity.current
     BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
@@ -3610,44 +4035,50 @@ private fun LyricCueBody(
         suspend fun centerCue(index: Int, animated: Boolean) {
             if (cues.isEmpty()) return
             val targetIndex = index.coerceIn(0, cues.lastIndex)
-            if (animated) {
-                listState.animateScrollToItem(targetIndex)
-            } else {
-                listState.scrollToItem(targetIndex)
+            val targetOffset = with(density) {
+                val centerOffset = ((maxHeight / 2) - if (compact) 18.dp else 22.dp)
+                    .coerceAtLeast(0.dp)
+                -centerOffset.roundToPx()
             }
-            val layoutInfo = listState.layoutInfo
-            val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex } ?: return
-            val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
-            val targetTop = viewportCenter - item.size / 2
-            val scrollOffset = -targetTop
             if (animated) {
-                listState.animateScrollToItem(targetIndex, scrollOffset = scrollOffset)
+                listState.animateScrollToItem(targetIndex, scrollOffset = targetOffset)
             } else {
-                listState.scrollToItem(targetIndex, scrollOffset = scrollOffset)
+                listState.scrollToItem(targetIndex, scrollOffset = targetOffset)
             }
         }
 
         LaunchedEffect(state.chapterKey) {
-            userSeeking = false
+            userTouching = false
             lastCenteredTarget = null
         }
         LaunchedEffect(state.chapterKey, currentIndex) {
-            if (!userSeeking && cues.isNotEmpty()) {
-                programmaticScroll = true
+            val userScrolling = listState.isScrollInProgress && !programmaticScroll
+            if (!userTouching && !userScrolling && cues.isNotEmpty()) {
                 val firstTarget = lastCenteredTarget == null
-                centerCue(currentIndex, animated = !firstTarget)
+                try {
+                    programmaticScroll = true
+                    centerCue(
+                        index = currentIndex,
+                        animated = !firstTarget && !AppConfig.isEInkMode && state.foregroundActive
+                    )
+                } finally {
+                    programmaticScroll = false
+                }
                 lastCenteredTarget = currentIndex
-                programmaticScroll = false
-            }
-        }
-        LaunchedEffect(listState.isScrollInProgress) {
-            if (listState.isScrollInProgress && !programmaticScroll) {
-                userSeeking = true
             }
         }
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(state.chapterKey) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            userTouching = event.changes.any { it.pressed }
+                        }
+                    }
+                },
             contentPadding = PaddingValues(vertical = centerPadding),
             verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
             horizontalAlignment = when (textAlign) {
@@ -3666,7 +4097,7 @@ private fun LyricCueBody(
                     textAlign = textAlign,
                     animate = animateTextChanges,
                     onClick = {
-                        userSeeking = false
+                        userTouching = false
                         onCueSelect(cue.chapterPosition)
                     }
                 )
@@ -3833,11 +4264,17 @@ private fun MinimalProgress(
 ) {
     val actionShape = LocalContext.current.composeActionShape()
     var draggingProgress by remember(state.chapterKey) { mutableStateOf<Float?>(null) }
+    fun snapProgress(value: Float): Float {
+        val maxIndex = state.paragraphCount - 1
+        if (maxIndex <= 0) return 0f
+        return ((value.coerceIn(0f, 1f) * maxIndex).roundToInt() / maxIndex.toFloat())
+            .coerceIn(0f, 1f)
+    }
     val progress = draggingProgress ?: state.progress
     Column(modifier = Modifier.fillMaxWidth()) {
         Slider(
             value = progress.coerceIn(0f, 1f),
-            onValueChange = { draggingProgress = it },
+            onValueChange = { draggingProgress = snapProgress(it) },
             onValueChangeFinished = {
                 draggingProgress?.let(onProgressSeek)
                 draggingProgress = null
