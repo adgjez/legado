@@ -44,7 +44,6 @@ import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import org.json.JSONObject
 
 private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
 private const val KEY_AI_READ_ALOUD_USAGE_RECORDS = "aiReadAloudUsageRecords"
@@ -594,7 +593,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "判断阈值 · 台词 ${config.dialogueMinLength} / 强调 ${config.emphasisMaxLength}",
                 "音效候选规则 · ${config.soundEffectCuePatterns.size} 个候选词",
                 "试运行预处理",
-                "高级 JSON",
                 "恢复默认"
             )
             requireContext().selector("预处理规则", items) { _, _, index ->
@@ -609,8 +607,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     2 -> showPreprocessThresholdDialog(config)
                     3 -> showSoundEffectRuleDialog(config)
                     4 -> showPreprocessTrialDialog()
-                    5 -> showPreprocessJsonDialog()
-                    6 -> {
+                    5 -> {
                         AppConfig.aiReadAloudRolePreprocessRules = ""
                         updateAiRolePreferences()
                         toastOnUi("已恢复内置预处理规则")
@@ -825,38 +822,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
         }
 
-        private fun showPreprocessJsonDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "高级 JSON。普通编辑建议使用前面的分组入口。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 10
-                editView.setText(AppConfig.aiReadAloudRolePreprocessRules)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("高级 JSON") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 8000) {
-                        toastOnUi("预处理规则最多 8000 字")
-                        return@okButton
-                    }
-                    if (value.isNotBlank()) {
-                        runCatching { JSONObject(value) }.onFailure {
-                            toastOnUi("预处理规则不是有效 JSON")
-                            return@okButton
-                        }
-                    }
-                    AppConfig.aiReadAloudRolePreprocessRules = value
-                    updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
-                    AppConfig.aiReadAloudRolePreprocessRules = ""
-                    updateAiRolePreferences()
-                }
-                cancelButton()
-            }
-        }
 
         private fun savePreprocessConfig(config: ReadAloudPreprocessRuleConfig) {
             val json = config.toJsonString()
