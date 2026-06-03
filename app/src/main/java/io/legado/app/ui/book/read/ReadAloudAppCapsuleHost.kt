@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
@@ -41,13 +42,14 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         val requestedAt: Long
     )
 
-    private const val ACTIVITY_SWITCH_DETACH_DELAY_MILLIS = 260L
+    private const val ACTIVITY_SWITCH_REVEAL_DELAY_MILLIS = 260L
 
     private val observedActivities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentActivity: Activity? = null
     private var overlay: ComposeCapsuleOverlay? = null
-    private var pendingDetach: Runnable? = null
+    private var pendingReveal: Runnable? = null
+    private var revealAfterActivitySwitch = false
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private var readBookPanelActive by mutableStateOf(false)
@@ -60,9 +62,20 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         application.registerActivityLifecycleCallbacks(this)
     }
 
-    override fun onActivityResumed(activity: Activity) {
-        cancelPendingDetach()
+    override fun onActivityStarted(activity: Activity) {
+        if (!revealAfterActivitySwitch) return
         currentActivity = activity
+        installObservers(activity)
+        activity.window?.decorView?.post {
+            if (currentActivity === activity && revealAfterActivitySwitch) {
+                sync(activity, revealAfterTransition = true)
+            }
+        }
+    }
+
+    override fun onActivityResumed(activity: Activity) {
+        currentActivity = activity
+        val revealAfterTransition = revealAfterActivitySwitch
         if (activity !is ReadBookActivity) {
             readBookPanelActive = false
             readMenuAvoidBounds = null
@@ -70,15 +83,20 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         installObservers(activity)
         activity.window?.decorView?.post {
             if (currentActivity === activity) {
-                sync(activity)
+                sync(
+                    activity,
+                    revealAfterTransition = revealAfterTransition,
+                    keepPendingReveal = true
+                )
             }
         }
     }
 
     override fun onActivityPaused(activity: Activity) {
         if (currentActivity === activity) {
+            revealAfterActivitySwitch = true
+            detach(activity)
             currentActivity = null
-            scheduleDetach(activity)
         }
     }
 
@@ -91,7 +109,6 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-    override fun onActivityStarted(activity: Activity) = Unit
     override fun onActivityStopped(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
@@ -103,17 +120,21 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
                 lastPlaybackState = ReadAloudPlaybackState()
                 detach()
             } else {
-                currentActivity?.let { sync(it) }
+                currentActivity?.let { sync(it, keepPendingReveal = true) }
             }
         })
         LiveEventBus.get(EventBus.READ_ALOUD_PLAYBACK_STATE, ReadAloudPlaybackState::class.java)
             .observe(owner, Observer { state ->
                 lastPlaybackState = state
-                currentActivity?.let { sync(it) }
+                currentActivity?.let { sync(it, keepPendingReveal = true) }
             })
     }
 
-    private fun sync(activity: Activity) {
+    private fun sync(
+        activity: Activity,
+        revealAfterTransition: Boolean = false,
+        keepPendingReveal: Boolean = false
+    ) {
         if (!shouldShow(activity)) {
             detach()
             return
@@ -125,6 +146,10 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         } else {
             capsuleBounds.setEmpty()
             ComposeCapsuleOverlay(activity).also { newView ->
+                if (revealAfterTransition) {
+                    newView.alpha = 0f
+                    newView.visibility = View.INVISIBLE
+                }
                 overlay = newView
                 parent.addView(
                     newView,
@@ -147,6 +172,11 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
             )
         }
         view.bind(buildPlayerState(activity))
+        when {
+            revealAfterTransition -> scheduleReveal(activity, view)
+            keepPendingReveal && pendingReveal != null -> Unit
+            else -> showOverlayImmediately(view)
+        }
     }
 
     private fun buildPlayerState(activity: Activity): ReadAloudPlayerPanel.PlayerUiState {
@@ -185,6 +215,7 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
     }
 
     private fun detach() {
+        cancelPendingReveal()
         overlay?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
         }
@@ -199,6 +230,9 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
     }
 
     private fun removeOverlay(view: ComposeCapsuleOverlay) {
+        if (overlay === view) {
+            cancelPendingReveal()
+        }
         (view.parent as? ViewGroup)?.removeView(view)
         if (overlay === view) {
             overlay = null
@@ -206,21 +240,36 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         }
     }
 
-    private fun scheduleDetach(activity: Activity) {
-        cancelPendingDetach()
-        pendingDetach = Runnable {
-            pendingDetach = null
-            if (currentActivity == null || currentActivity === activity) {
-                detach(activity)
+    private fun scheduleReveal(activity: Activity, view: ComposeCapsuleOverlay) {
+        cancelPendingReveal()
+        revealAfterActivitySwitch = false
+        view.animate().cancel()
+        view.alpha = 0f
+        view.visibility = View.INVISIBLE
+        pendingReveal = Runnable {
+            pendingReveal = null
+            if (currentActivity === activity && overlay === view && shouldShow(activity)) {
+                view.visibility = View.VISIBLE
+                view.animate()
+                    .alpha(1f)
+                    .setDuration(90L)
+                    .start()
             }
         }.also {
-            mainHandler.postDelayed(it, ACTIVITY_SWITCH_DETACH_DELAY_MILLIS)
+            mainHandler.postDelayed(it, ACTIVITY_SWITCH_REVEAL_DELAY_MILLIS)
         }
     }
 
-    private fun cancelPendingDetach() {
-        pendingDetach?.let(mainHandler::removeCallbacks)
-        pendingDetach = null
+    private fun showOverlayImmediately(view: ComposeCapsuleOverlay) {
+        revealAfterActivitySwitch = false
+        view.animate().cancel()
+        view.alpha = 1f
+        view.visibility = View.VISIBLE
+    }
+
+    private fun cancelPendingReveal() {
+        pendingReveal?.let(mainHandler::removeCallbacks)
+        pendingReveal = null
     }
 
     private fun updateCapsulePosition(x: Float, y: Float) {
