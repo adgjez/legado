@@ -45,12 +45,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
-import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.ReadAloudSpeakerGroup
 import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.readaloud.speech.SpeechVoiceGroupRepository
@@ -58,9 +58,7 @@ import io.legado.app.help.readaloud.speech.SpeechVoiceOption
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
-import io.legado.app.service.BaseReadAloudService
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -241,13 +239,7 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
     }
 
     private fun notifyConfigChanged() {
-        if (!BaseReadAloudService.isRun) return
-        postEvent(
-            EventBus.READ_ALOUD_CONFIG_CHANGED,
-            Bundle().apply {
-                putString(EventBus.READ_ALOUD_CONFIG_SCOPE, EventBus.READ_ALOUD_CONFIG_SCOPE_SPEECH)
-            }
-        )
+        ReadAloudConfigChangeNotifier.notifySpeech()
     }
 }
 

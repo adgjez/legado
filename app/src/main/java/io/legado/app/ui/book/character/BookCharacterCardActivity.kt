@@ -11,7 +11,10 @@ import androidx.viewbinding.ViewBinding
 import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.ui.book.character.compose.CharacterCardScreen
+import io.legado.app.ui.book.character.compose.CharacterSpeechEngineUi
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -32,6 +35,7 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>(
     private var bookUrl: String = ""
     private var characterId: Long = 0L
     private var character by mutableStateOf<BookCharacter?>(null)
+    private var speechEngines by mutableStateOf<List<CharacterSpeechEngineUi>>(emptyList())
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         bookUrl = intent.getStringExtra(BookCharacterManageActivity.EXTRA_BOOK_URL).orEmpty()
@@ -41,7 +45,9 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>(
             CharacterCardScreen(
                 character = character,
                 onBack = ::finish,
-                onEdit = ::openEdit
+                onEdit = ::openEdit,
+                speechEngines = speechEngines,
+                onSpeechRouteChange = ::updateSpeechRoute
             )
         }
         load()
@@ -59,13 +65,36 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>(
             return
         }
         lifecycleScope.launch {
-            val item = withContext(IO) { appDb.bookCharacterDao.getCharacter(characterId) }
+            val data = withContext(IO) {
+                appDb.bookCharacterDao.getCharacter(characterId) to
+                    SpeechVoiceCatalogRepository
+                        .allGroups(applicationContext, appDb.httpTTSDao.all)
+                        .map { CharacterSpeechEngineUi(it) }
+            }
+            val item = data.first
             if (item == null) {
                 toastOnUi("角色不存在")
                 finish()
                 return@launch
             }
             character = item
+            speechEngines = data.second
+        }
+    }
+
+    private fun updateSpeechRoute(routeJson: String) {
+        val item = character ?: return
+        lifecycleScope.launch {
+            val updated = item.copy(
+                speechRouteJson = routeJson.trim(),
+                updatedAt = System.currentTimeMillis()
+            )
+            withContext(IO) {
+                appDb.bookCharacterDao.updateCharacter(updated)
+            }
+            ReadAloudConfigChangeNotifier.notifySpeech()
+            character = updated
+            toastOnUi("已更新角色配音")
         }
     }
 

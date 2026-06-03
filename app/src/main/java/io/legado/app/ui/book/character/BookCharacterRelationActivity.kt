@@ -80,14 +80,23 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
             }
             val validCharacters = data.first
             val validIds = validCharacters.map { it.id }.toSet()
-            characters = validCharacters
-            relations = data.second.filter {
+            val validRelations = data.second.filter {
                 it.fromCharacterId in validIds && it.toCharacterId in validIds
             }
-            if (selectedCenterId !in validIds) {
-                selectedCenterId = validCharacters.firstOrNull { it.roleLevel == BookCharacter.ROLE_MAIN }?.id
-                    ?: validCharacters.firstOrNull { it.roleLevel == BookCharacter.ROLE_IMPORTANT }?.id
-                    ?: validCharacters.firstOrNull()?.id
+            val relatedIds = validRelations
+                .flatMap { listOf(it.fromCharacterId, it.toCharacterId) }
+                .toSet()
+            characters = validCharacters
+            relations = validRelations
+            val centerCandidates = if (relatedIds.isNotEmpty()) {
+                validCharacters.filter { it.id in relatedIds }
+            } else {
+                emptyList()
+            }
+            if (selectedCenterId !in relatedIds) {
+                selectedCenterId = centerCandidates.firstOrNull { it.roleLevel == BookCharacter.ROLE_MAIN }?.id
+                    ?: centerCandidates.firstOrNull { it.roleLevel == BookCharacter.ROLE_IMPORTANT }?.id
+                    ?: centerCandidates.firstOrNull()?.id
                     ?: 0L
             }
         }

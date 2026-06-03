@@ -13,6 +13,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.character.compose.CharacterManageScreen
@@ -115,6 +116,7 @@ class BookCharacterManageActivity : BaseActivity<ViewBinding>(
                     withContext(IO) {
                         appDb.bookCharacterDao.deleteCharacterWithRelations(character)
                     }
+                    ReadAloudConfigChangeNotifier.notifySpeech()
                     load()
                     setResult(Activity.RESULT_OK)
                 }

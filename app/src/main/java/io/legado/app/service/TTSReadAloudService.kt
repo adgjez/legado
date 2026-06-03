@@ -1,6 +1,7 @@
 package io.legado.app.service
 
 import android.app.PendingIntent
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import io.legado.app.R
@@ -118,7 +119,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
                 }
                 if (!isAddedText) {
                     val result = tts.runCatching {
-                        speak(text, TextToSpeech.QUEUE_FLUSH, null, AppConst.APP_TAG + i)
+                        speak(text, TextToSpeech.QUEUE_FLUSH, ttsParamsForCue(i), AppConst.APP_TAG + i)
                     }.getOrElse {
                         AppLog.put("tts出错\n${it.localizedMessage}", it, true)
                         TextToSpeech.ERROR
@@ -131,7 +132,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
                     }
                 } else {
                     val result = tts.runCatching {
-                        speak(text, TextToSpeech.QUEUE_ADD, null, AppConst.APP_TAG + i)
+                        speak(text, TextToSpeech.QUEUE_ADD, ttsParamsForCue(i), AppConst.APP_TAG + i)
                     }.getOrElse {
                         AppLog.put("tts出错\n${it.localizedMessage}", it, true)
                         TextToSpeech.ERROR
@@ -150,6 +151,12 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
             }
         }.onError {
             AppLog.put("tts朗读出错\n${it.localizedMessage}", it, true)
+        }
+    }
+
+    private fun ttsParamsForCue(cueIndex: Int): Bundle {
+        return Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, speakerLoudnessInfo(cueIndex).gain)
         }
     }
 
@@ -189,6 +196,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
      * 恢复朗读
      */
     override fun resumeReadAloud() {
+        if (resumeBlockedReadAloudIfNeeded()) return
         super.resumeReadAloud()
         play()
     }
@@ -200,11 +208,25 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
         private val TAG = "TTSUtteranceListener"
 
+        private fun cueIndexForUtterance(utteranceId: String?): Int? {
+            return utteranceId
+                ?.removePrefix(AppConst.APP_TAG)
+                ?.toIntOrNull()
+                ?.takeIf { it in contentList.indices }
+        }
+
         override fun onStart(s: String) {
-            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PLAYING)
+            val cueIndex = cueIndexForUtterance(s)
+            if (cueIndex != null) {
+                syncToCueIndex(cueIndex)
+            }
+            postReadAloudPlaybackPhase(
+                ReadAloudPlaybackState.PHASE_PLAYING,
+                cueIndex = cueIndex ?: nowSpeak
+            )
             LogUtils.d(TAG, "onStart nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$s")
             textChapter?.let {
-                if (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex)) {
+                if (contentList.getOrNull(nowSpeak)?.matches(AppPattern.notReadAloudRegex) == true) {
                     nextParagraph()
                 }
                 if (pageIndex + 1 < it.pageSize
@@ -219,11 +241,19 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
         override fun onDone(s: String) {
             LogUtils.d(TAG, "onDone utteranceId:$s")
-            nextParagraph()
+            val cueIndex = cueIndexForUtterance(s)
+            if (cueIndex == null || cueIndex == nowSpeak) {
+                nextParagraph()
+            }
         }
 
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
             super.onRangeStart(utteranceId, start, end, frame)
+            cueIndexForUtterance(utteranceId)?.let { cueIndex ->
+                if (cueIndex != nowSpeak) {
+                    syncToCueIndex(cueIndex)
+                }
+            }
             val msg =
                 "onRangeStart nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$utteranceId start:$start end:$end frame:$frame"
             LogUtils.d(TAG, msg)
@@ -239,12 +269,19 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {
-            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_ERROR, message = "TTS错误 $errorCode")
+            val cueIndex = cueIndexForUtterance(utteranceId)
+            postReadAloudPlaybackPhase(
+                ReadAloudPlaybackState.PHASE_ERROR,
+                cueIndex = cueIndex ?: nowSpeak,
+                message = "TTS错误 $errorCode"
+            )
             LogUtils.d(
                 TAG,
                 "onError nowSpeak:$nowSpeak pageIndex:$pageIndex utteranceId:$utteranceId errorCode:$errorCode"
             )
-            nextParagraph()
+            if (cueIndex == null || cueIndex == nowSpeak) {
+                nextParagraph()
+            }
         }
 
         private fun nextParagraph() {
@@ -256,9 +293,16 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
         @Deprecated("Deprecated in Java")
         override fun onError(s: String) {
-            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_ERROR, message = "TTS错误")
+            val cueIndex = cueIndexForUtterance(s)
+            postReadAloudPlaybackPhase(
+                ReadAloudPlaybackState.PHASE_ERROR,
+                cueIndex = cueIndex ?: nowSpeak,
+                message = "TTS错误"
+            )
             LogUtils.d(TAG, "onError nowSpeak:$nowSpeak pageIndex:$pageIndex s:$s")
-            nextParagraph()
+            if (cueIndex == null || cueIndex == nowSpeak) {
+                nextParagraph()
+            }
         }
 
     }

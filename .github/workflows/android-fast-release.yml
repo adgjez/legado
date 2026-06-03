@@ -38,10 +38,9 @@ jobs:
       - name: Prepare release version
         id: version
         run: |
-          RELEASE_DAY="$(TZ=Asia/Shanghai date +%y.%m%d)"
           VERSION_NAME="3.$(TZ=Asia/Shanghai date +%y.%m%d%H)"
           VERSION_CODE=$(($(date -u +%s) / 60))
-          TAG_NAME="archive-v3-3.${RELEASE_DAY}"
+          TAG_NAME="archive-v3-${VERSION_NAME}"
           {
             echo "name=${VERSION_NAME}"
             echo "code=${VERSION_CODE}"
@@ -49,30 +48,42 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           cat > release-notes.md <<'EOF'
-          阅读Archive 第八版补充更新
+          阅读Archive 第九版补充更新
 
           新增：
-          - 正文长按菜单新增 AI 生图入口，可对选中文本直接发起生图。
-          - 角色头像支持从 AI 图库中选择，AI 角色头像工具也可写入图库。
-          - 正文“问 AI”弹窗重构为 Compose 界面，整体样式更接近 AI 页，并支持在弹窗左上角切换模型。
-          - 角色关系图支持按当前选中角色过滤关系，只显示与当前角色直接相关的关系线。
-          - 角色关系线恢复直线连接，并支持箭头方向展示。
+          - 新增独立朗读页，支持沉浸、原文、情景演绎三种显示模式。
+          - 新增多角色朗读，可按章节分析旁白和角色台词，并按角色切换不同发言人朗读。
+          - 新增 HTTP TTS 发言人、情绪配置，支持按引擎复用发言人，并可在角色卡中选择配音。
+          - 新增发言人分组管理，可把不同 TTS 引擎里的发言人统一分组，供多角色自动分配使用。
+          - 新增情景演绎模式，按聊天框形式展示角色对话，旁白单独显示。
+          - 新增智能配乐和音效标注，可按段落范围自动分配背景音乐和音效。
+          - 新增配乐、音效资源管理，支持分组、导入、导出和批量管理。
+          - 新增多角色、配乐、音效的 AI Token 用量记录。
+          - 新增 AI 任务通知，多角色分配和 AI 回复可在后台保活，并显示当前任务内容。
+          - 新增正文 AI 总结浮窗，支持缓存章节总结和切换模型。
+          - 新增 AI 设置页实时刷新，模型、生图提供商变更后不用重启应用。
+          - 新增段落规则脚本函数 java.refreshParagraph()，可在规则 action 中刷新当前章节段落规则结果。
+          - 默认阅读菜单第二排新增角色、段落规则、AI 助手、AI 总结入口。
 
           修复：
-          - 修复 AI 回复中表格和图片显示异常的问题。
-          - 修复 AI Markdown 在滑动或重组时重复渲染导致闪烁、卡顿的问题。
-          - 修复悬浮底栏在三键导航下的避让问题。
-          - 修复角色关系网在关系较多时关系线与角色头像、角色之间关系线交叉严重的问题。
-          - 修复目录预览信息不足的问题，补充是否缓存、卷名等信息展示。
-          - 修复正文“问 AI”弹窗顶部标题被模型选择和操作按钮挤压后位置不自然的问题。
-          - 修复大量 SVG / base64 图片章节打开后退出正文可能触发 OOM 崩溃的问题。
-          - 修复退出正文保存阅读进度时可能触发整本书大字段读取，导致低内存设备更容易崩溃的问题。
-          - 修复部分书架身份判断场景读取完整书籍列表，造成内存占用过高的问题。
+          - 修复上游底栏 shader 在低分辨率设备上可能出现黑线、白线的问题。
+          - 修复朗读页播放状态和真实音频状态不同步的问题。
+          - 修复切换 TTS 引擎后朗读页被关闭的问题。
+          - 修复多角色缓存、播放兜底、空结果缓存和章节切换后重新分配的问题。
+          - 修复朗读章节切换后目录、进度、当前台词可能不同步的问题。
+          - 修复情景模式右侧头像不显示、气泡宽度不自然、当前句跟随不稳定的问题。
+          - 修复 OpenAI 兼容接口生图返回格式不兼容的问题。
+          - 修复 AI 工具流式调用中工具名丢失的问题。
+          - 修复阅读背景 Bitmap 生命周期导致的崩溃。
+          - 修复朗读角色按钮资源异常导致的崩溃。
+          - 修复数据库迁移和朗读音频分组迁移中的若干问题。
+          - 移除失效 Firebase 配置。
 
           优化：
-          - 优化角色关系图交互，只展示当前角色的直接关系，降低复杂关系网的视觉干扰。
-          - 优化角色关系线绘制方式，直线加箭头比曲线关系更清晰。
-          - 优化图片缓存策略，限制单次 bitmap 缓存占用，低内存时主动清理图片缓存。
+          - 优化朗读引擎、HTTP TTS 编辑、发言人选择等弹窗为更统一的 Compose 交互。
+          - 优化问 AI 输入法避让、圆形按钮点击阴影和浮层样式。
+          - 优化智能音频管理，配乐和音效分组独立显示。
+          - 调整 AI 总结菜单图标，避免和 AI 助手入口显示成同一个符号。
           EOF
 
       - name: Build arm64 release APK
@@ -121,7 +132,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: 阅读Archive 第八版补充更新 ${{ steps.version.outputs.name }}
+          name: 阅读Archive 第九版补充更新 ${{ steps.version.outputs.name }}
           prerelease: false
           make_latest: true
           generate_release_notes: false
@@ -162,7 +173,7 @@ jobs:
           set +e
           API="https://gitee.com/api/v5/repos/zziji/legado"
           TAG_NAME="${{ steps.version.outputs.tag }}"
-          RELEASE_NAME="阅读Archive 第八版补充更新 ${{ steps.version.outputs.name }}"
+          RELEASE_NAME="阅读Archive 第九版补充更新 ${{ steps.version.outputs.name }}"
           CHANNEL_TAG="latest-arm64-release"
           TOKEN_QUERY="$(python3 -c 'import os, urllib.parse; print(urllib.parse.urlencode({"access_token": os.environ["GITEE_TOKEN"]}))')"
 

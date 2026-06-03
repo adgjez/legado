@@ -87,6 +87,19 @@
             android:title="自动创建角色并分配发言人"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudAutoCreateCharacterPrompt"
+            android:summary="设置自动创建角色时的判断规则"
+            android:title="自动建卡提示词"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="aiReadAloudAutoCreateAvatar"
+            android:summary="有可用生图提供商时，为自动创建的新角色后台生成头像"
+            android:title="自动生成角色头像"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.NameListPreference
             android:defaultValue="chunk_context"
             android:entries="@array/ai_read_aloud_role_mode_title"
@@ -160,6 +173,46 @@
             android:title="音效音量"
             app:MaxValue="100"
             app:MinValue="0"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:key="readAloudSpeakerLoudnessEnabled"
+            android:summary="按发言人自动平衡旁白和角色响度"
+            android:title="发言人响度均衡"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SeekBarPreference
+            android:defaultValue="100"
+            android:key="readAloudTargetVoiceVolume"
+            android:summary="人声目标响度"
+            android:title="目标人声音量"
+            app:MaxValue="160"
+            app:MinValue="60"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SeekBarPreference
+            android:defaultValue="135"
+            android:key="readAloudMaxSpeakerGain"
+            android:summary="限制自动增益，避免爆音"
+            android:title="最大自动增益"
+            app:MaxValue="200"
+            app:MinValue="100"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SeekBarPreference
+            android:defaultValue="110"
+            android:key="readAloudNarratorBaseGain"
+            android:summary="旁白默认基础增益"
+            android:title="旁白基础增益"
+            app:MaxValue="160"
+            app:MinValue="60"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="readAloudSpeakerLoudnessReset"
+            android:summary="暂无学习数据"
+            android:title="重置响度学习"
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference

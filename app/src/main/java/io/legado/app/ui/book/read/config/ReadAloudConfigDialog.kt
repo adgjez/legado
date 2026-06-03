@@ -22,6 +22,8 @@ import io.legado.app.data.appDb
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
+import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.role.ReadAloudPreprocessRuleConfig
 import io.legado.app.help.readaloud.role.ReadAloudQuotePair
 import io.legado.app.help.readaloud.role.ReadAloudRolePreprocessor
@@ -48,6 +50,7 @@ import io.legado.app.utils.toastOnUi
 private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
 private const val KEY_AI_READ_ALOUD_USAGE_RECORDS = "aiReadAloudUsageRecords"
 private const val KEY_READ_ALOUD_SPEAKER_MANAGE = "readAloudSpeakerManage"
+private const val KEY_READ_ALOUD_LOUDNESS_RESET = "readAloudSpeakerLoudnessReset"
 
 enum class ReadAloudConfigGroup(
     val title: String,
@@ -77,6 +80,8 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudRoleEnabled,
             PreferKey.aiReadAloudRoleModelId,
             PreferKey.aiReadAloudAutoCreateCharacters,
+            PreferKey.aiReadAloudAutoCreateCharacterPrompt,
+            PreferKey.aiReadAloudAutoCreateAvatar,
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRolePreprocess,
             PreferKey.aiReadAloudRoleThreadCount,
@@ -87,7 +92,9 @@ enum class ReadAloudConfigGroup(
             PreferKey.aiReadAloudBgmEnabled,
             KEY_AI_READ_ALOUD_BGM_MANAGE,
             PreferKey.aiReadAloudBgmVolume,
-            PreferKey.aiReadAloudSfxVolume
+            PreferKey.aiReadAloudSfxVolume,
+            PreferKey.readAloudSpeakerLoudnessEnabled,
+            KEY_READ_ALOUD_LOUDNESS_RESET
         )
     ),
     Engine(
@@ -100,7 +107,13 @@ enum class ReadAloudConfigGroup(
     );
 
     companion object {
-        val allPreferenceKeys: Set<String> = values().flatMap { it.preferenceKeys }.toSet()
+        private val hiddenPreferenceKeys = setOf(
+            PreferKey.readAloudTargetVoiceVolume,
+            PreferKey.readAloudMaxSpeakerGain,
+            PreferKey.readAloudNarratorBaseGain
+        )
+        val allPreferenceKeys: Set<String> =
+            values().flatMap { it.preferenceKeys }.toSet() + hiddenPreferenceKeys
     }
 }
 
@@ -266,7 +279,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     title = "并发请求数",
                     value = AppConfig.aiReadAloudRoleThreadCount,
                     min = 1,
-                    max = 4
+                    max = 10
                 ) {
                     AppConfig.aiReadAloudRoleThreadCount = it
                     updateAiRolePreferences()
@@ -291,12 +304,19 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 PreferKey.aiReadAloudRolePreprocess -> showMultiRolePreprocessRulesDialog()
                 PreferKey.aiReadAloudRolePrompt -> showMultiRolePromptDialog()
+                PreferKey.aiReadAloudAutoCreateCharacterPrompt -> showAutoCreateCharacterPromptDialog()
                 KEY_AI_READ_ALOUD_BGM_MANAGE -> startActivity(
                     android.content.Intent(requireContext(), ReadAloudBgmManageActivity::class.java)
                 )
                 KEY_AI_READ_ALOUD_USAGE_RECORDS -> startActivity(
                     android.content.Intent(requireContext(), AiReadAloudUsageRecordActivity::class.java)
                 )
+                KEY_READ_ALOUD_LOUDNESS_RESET -> {
+                    ReadAloudSpeakerLoudnessManager.reset()
+                    updateAiRolePreferences()
+                    postReadAloudConfigChanged(EventBus.READ_ALOUD_CONFIG_SCOPE_AUDIO)
+                    toastOnUi("已重置发言人响度学习数据")
+                }
             }
             return super.onPreferenceTreeClick(preference)
         }
@@ -328,6 +348,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 PreferKey.aiReadAloudRoleEnabled,
                 PreferKey.aiReadAloudRoleModelId,
                 PreferKey.aiReadAloudAutoCreateCharacters,
+                PreferKey.aiReadAloudAutoCreateCharacterPrompt,
+                PreferKey.aiReadAloudAutoCreateAvatar,
                 PreferKey.aiReadAloudRoleMode,
                 PreferKey.aiReadAloudRolePreprocess,
                 PreferKey.aiReadAloudRoleThreadCount,
@@ -346,7 +368,11 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 PreferKey.aiReadAloudBgmEnabled,
                 PreferKey.aiReadAloudBgmVolume,
-                PreferKey.aiReadAloudSfxVolume -> {
+                PreferKey.aiReadAloudSfxVolume,
+                PreferKey.readAloudSpeakerLoudnessEnabled,
+                PreferKey.readAloudTargetVoiceVolume,
+                PreferKey.readAloudMaxSpeakerGain,
+                PreferKey.readAloudNarratorBaseGain -> {
                     updateAiRolePreferences()
                     selectGroup(selectedGroup)
                     postReadAloudConfigChanged(EventBus.READ_ALOUD_CONFIG_SCOPE_AUDIO)
@@ -355,13 +381,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         }
 
         private fun postReadAloudConfigChanged(scope: String) {
-            if (!BaseReadAloudService.isRun) return
-            postEvent(
-                EventBus.READ_ALOUD_CONFIG_CHANGED,
-                Bundle().apply {
-                    putString(EventBus.READ_ALOUD_CONFIG_SCOPE, scope)
-                }
-            )
+            ReadAloudConfigChangeNotifier.notify(scope)
         }
 
         private fun upPreferenceSummary(preference: Preference?, value: String) {
@@ -439,6 +459,26 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     "只使用已有角色卡，不自动创建或分配发言人"
                 }
             }
+            findPreference<Preference>(PreferKey.aiReadAloudAutoCreateCharacterPrompt)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudAutoCreateCharacters
+                val prefix = if (AppConfig.aiReadAloudUsingDefaultAutoCreateCharacterPrompt) "内置默认 · " else ""
+                it.summary = prefix + AppConfig.aiReadAloudAutoCreateCharacterPrompt
+                    .lineSequence()
+                    .firstOrNull()
+                    ?.take(40)
+                    ?.ifBlank { null }
+                    .orEmpty()
+            }
+            findPreference<SwitchPreference>(PreferKey.aiReadAloudAutoCreateAvatar)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudAutoCreateCharacters
+                it.isChecked = AppConfig.aiReadAloudAutoCreateAvatar
+                val providerCount = AppConfig.aiEnabledImageProviders.size
+                it.summary = when {
+                    !AppConfig.aiReadAloudAutoCreateAvatar -> "关闭后不会为自动创建角色生成头像"
+                    providerCount <= 0 -> "没有可用生图提供商，自动跳过"
+                    else -> "使用当前生图提供商后台生成头像"
+                }
+            }
             findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
                 it.isEnabled = enabled
                 upPreferenceSummary(it, AppConfig.aiReadAloudRoleMode)
@@ -502,6 +542,28 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 it.value = AppConfig.aiReadAloudSfxVolume
                 it.summary = "当前 ${AppConfig.aiReadAloudSfxVolume}%"
             }
+            findPreference<SwitchPreference>(PreferKey.readAloudSpeakerLoudnessEnabled)?.let {
+                it.isChecked = AppConfig.readAloudSpeakerLoudnessEnabled
+                it.summary = if (AppConfig.readAloudSpeakerLoudnessEnabled) {
+                    "自动平衡旁白和角色响度"
+                } else {
+                    "关闭后所有朗读音频按原始音量播放"
+                }
+            }
+            findPreference<SeekBarPreference>(PreferKey.readAloudTargetVoiceVolume)?.let {
+                it.isVisible = false
+            }
+            findPreference<SeekBarPreference>(PreferKey.readAloudMaxSpeakerGain)?.let {
+                it.isVisible = false
+            }
+            findPreference<SeekBarPreference>(PreferKey.readAloudNarratorBaseGain)?.let {
+                it.isVisible = false
+            }
+            findPreference<Preference>(KEY_READ_ALOUD_LOUDNESS_RESET)?.let {
+                val count = ReadAloudSpeakerLoudnessManager.learnedSpeakerCount()
+                it.isEnabled = count > 0
+                it.summary = if (count > 0) "已学习 $count 个发言人" else "暂无学习数据"
+            }
         }
 
         private fun showAiRoleModelDialog() {
@@ -546,7 +608,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             onValue: (Int) -> Unit
         ) {
             val displayTitle = when (max) {
-                8 -> "多角色线程数"
+                10 -> "多角色线程数"
                 40 -> "每批段落数"
                 else -> title
             }
@@ -579,6 +641,33 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 }
                 neutralButton("恢复默认") {
                     AppConfig.aiReadAloudRolePrompt = ""
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showAutoCreateCharacterPromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "内置默认会自动生效。这里用于约束什么时候新增角色，以及如何判断性别、年龄、角色等级。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudAutoCreateCharacterPrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("自动建卡提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最多 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudAutoCreateCharacterPrompt = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudAutoCreateCharacterPrompt = ""
                     updateAiRolePreferences()
                 }
                 cancelButton()
@@ -821,7 +910,6 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 okButton()
             }
         }
-
 
         private fun savePreprocessConfig(config: ReadAloudPreprocessRuleConfig) {
             val json = config.toJsonString()

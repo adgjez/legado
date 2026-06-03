@@ -24,7 +24,17 @@ object DatabaseMigrations {
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
             migration_103_104, migration_104_105, migration_105_106,
+            migration_106_107,
         )
+    }
+
+    private val migration_106_107 = object : Migration(106, 107) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val characterColumns = columnNames(db, "book_characters")
+            if ("gender" !in characterColumns) {
+                db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `gender` TEXT NOT NULL DEFAULT ''")
+            }
+        }
     }
 
     private val migration_105_106 = object : Migration(105, 106) {

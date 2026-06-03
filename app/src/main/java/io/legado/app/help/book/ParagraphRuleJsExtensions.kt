@@ -12,6 +12,7 @@ import io.legado.app.help.CacheManager
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.Debug
+import io.legado.app.model.ReadBook
 import io.legado.app.model.SharedJsScope
 
 class ParagraphRuleJsExtensions(
@@ -67,6 +68,11 @@ class ParagraphRuleJsExtensions(
     fun putVariable(key: String, value: String?): Boolean {
         appDb.paragraphRuleDao.putVar(ParagraphRuleVar(rule.id, key, value ?: ""))
         return true
+    }
+
+    @JavascriptInterface
+    fun refreshParagraph(): Boolean {
+        return ReadBook.refreshCurrentParagraphRuleResult()
     }
 
     @JavascriptInterface

@@ -7,7 +7,9 @@ import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.role.ReadAloudRolePreprocessor
 import io.legado.app.help.readaloud.role.ReadAloudRoleUnit
 import io.legado.app.help.readaloud.speech.SpeechRoute
@@ -17,10 +19,14 @@ import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
@@ -38,7 +44,9 @@ object AiReadAloudRoleService {
     private const val UNKNOWN_RETRY_ATTEMPTS = 1
     private const val RUNNING_WAIT_STEP_MILLIS = 600L
     private const val RUNNING_WAIT_TIMEOUT_MILLIS = 120_000L
+    private const val PLAYBACK_CACHE_SCHEMA_VERSION = "playback-v1"
     private val runningCacheKeys = ConcurrentHashMap.newKeySet<String>()
+    private val avatarScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val speechVerbRegex = Regex(
         "([\\p{IsHan}A-Za-z0-9_·]{1,24})\\s*(?:说道|说|道|问道|问|答道|答|笑道|冷声道|沉声道|低声道|怒道|喝道|喊道|叫道|开口道|喃喃道)\\s*[，,、：:]?\\s*$"
     )
@@ -61,6 +69,9 @@ object AiReadAloudRoleService {
     private data class CharacterCandidate(
         val name: String,
         val identity: String,
+        val gender: String,
+        val age: String,
+        val appearance: String,
         val roleLevel: Int,
         val confidence: Double,
         val evidence: String
@@ -120,6 +131,7 @@ object AiReadAloudRoleService {
         val cacheKey: String,
         val promptCacheKey: String,
         val mode: String,
+        val legacyMode: String,
         val prompt: String,
         val contentHash: String,
         val contextParagraphs: Int,
@@ -189,23 +201,27 @@ object AiReadAloudRoleService {
     ): RoleCacheKey? {
         val modelConfig = AppConfig.aiReadAloudRoleModelConfig ?: return null
         val prompt = AppConfig.aiReadAloudRolePrompt.trim()
+        val autoCreatePrompt = AppConfig.aiReadAloudAutoCreateCharacterPrompt.trim()
         val baseMode = AppConfig.aiReadAloudRoleMode
         val preprocessRuleHash = MD5Utils.md5Encode(AppConfig.aiReadAloudRolePreprocessRules)
-        val mode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}|rules=$preprocessRuleHash"
         val contentHash = MD5Utils.md5Encode(cleanParagraphs.joinToString("\n"))
         val promptHash = MD5Utils.md5Encode(prompt)
+        val autoCreatePromptHash = MD5Utils.md5Encode(autoCreatePrompt)
         val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
         val mergeGapParagraphs = AppConfig.aiReadAloudRoleMergeGapParagraphs
+        val legacyMode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}|rules=$preprocessRuleHash"
+        val mode = "$legacyMode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|prompt=$promptHash|auto=$autoCreatePromptHash"
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|${modelConfig.id}"
+            "read-aloud-role-playback|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$PLAYBACK_CACHE_SCHEMA_VERSION"
         )
         val promptCacheKey = MD5Utils.md5Encode(
-            "read-aloud-role-prompt|${book.bookUrl}|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|${modelConfig.id}"
+            "read-aloud-role-prompt|${book.bookUrl}|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|auto=$autoCreatePromptHash|${modelConfig.id}"
         )
         return RoleCacheKey(
             cacheKey = cacheKey,
             promptCacheKey = "read_aloud_role_$promptCacheKey",
             mode = mode,
+            legacyMode = legacyMode,
             prompt = prompt,
             contentHash = contentHash,
             contextParagraphs = contextParagraphs,
@@ -218,12 +234,20 @@ object AiReadAloudRoleService {
         textChapter: TextChapter,
         roleKey: RoleCacheKey
     ): AiReadAloudRoleCache? {
-        return appDb.aiReadAloudRoleCacheDao.latestSuccessByChapterContent(
+        val candidates = appDb.aiReadAloudRoleCacheDao.successCandidatesByChapterContent(
             bookUrl = book.bookUrl,
             chapterIndex = textChapter.chapter.index,
             contentHash = roleKey.contentHash,
             preprocessVersion = ReadAloudRolePreprocessor.VERSION
-        )
+        ).filter { cache ->
+            cache.status == AiReadAloudRoleCache.STATUS_SUCCESS &&
+                    cache.segmentsJson.isNotBlank() &&
+                    cache.contentHash == roleKey.contentHash
+        }
+        return candidates.firstOrNull { it.cacheKey == roleKey.cacheKey }
+            ?: candidates.firstOrNull { it.mode == roleKey.mode }
+            ?: candidates.firstOrNull { it.mode == roleKey.legacyMode }
+            ?: candidates.firstOrNull()
     }
 
     suspend fun ensurePlayableCache(
@@ -374,6 +398,19 @@ object AiReadAloudRoleService {
             ?.takeIf { it.cacheKey != cacheKey }
             ?.let { usableCache ->
                 val cachedSegments = segmentsFromJson(usableCache.segmentsJson)
+                val now = System.currentTimeMillis()
+                appDb.aiReadAloudRoleCacheDao.upsert(
+                    usableCache.copy(
+                        cacheKey = cacheKey,
+                        mode = mode,
+                        paragraphCount = cleanParagraphs.size,
+                        retryCount = 0,
+                        lastError = "",
+                        characterHash = characterHash(currentBook.bookUrl),
+                        voiceHash = voiceHash(currentBook.bookUrl),
+                        updatedAt = now
+                    )
+                )
                 val preview = buildPreviewSegments(
                     currentBook.bookUrl,
                     cachedSegments,
@@ -390,7 +427,7 @@ object AiReadAloudRoleService {
                     AiReadAloudRoleState.STATUS_SKIPPED,
                     cachedSegments.size,
                     message = "当前章节角色已分配",
-                    cacheKey = usableCache.cacheKey
+                    cacheKey = cacheKey
                 )
             }
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_RUNNING) {
@@ -398,17 +435,36 @@ object AiReadAloudRoleService {
                 postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_RUNNING, stageMessage(stage, "分配角色中"), cleanParagraphs.size)
                 return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中", cacheKey = cacheKey)
             }
-            val error = "上次多角色分配中断，请重新分配当前章节"
-            appDb.aiReadAloudRoleCacheDao.upsert(
-                oldCache.copy(
-                    status = AiReadAloudRoleCache.STATUS_FAILED,
-                    retryCount = PLAYBACK_ASSIGNMENT_ATTEMPTS,
-                    lastError = error,
-                    updatedAt = System.currentTimeMillis()
+            if (oldCache.segmentsJson.isNotBlank()) {
+                val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
+                val preview = buildPreviewSegments(
+                    currentBook.bookUrl,
+                    cachedSegments,
+                    cleanParagraphs,
+                    AiReadAloudRoleState.SOURCE_CACHE
                 )
-            )
-            postState(currentBook, currentChapter, stage, AiReadAloudRoleState.STATUS_FAILED, error, cleanParagraphs.size, error = error)
-            return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
+                appDb.aiReadAloudRoleCacheDao.upsert(
+                    oldCache.copy(
+                        status = AiReadAloudRoleCache.STATUS_SUCCESS,
+                        retryCount = 0,
+                        lastError = "",
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+                postPreview(
+                    AiReadAloudRoleState.STATUS_SKIPPED,
+                    "当前章节角色已分配",
+                    AiReadAloudRoleState.SOURCE_CACHE,
+                    preview
+                )
+                return EnsureResult(
+                    AiReadAloudRoleState.STATUS_SKIPPED,
+                    cachedSegments.size,
+                    message = "当前章节角色已分配",
+                    cacheKey = cacheKey
+                )
+            }
+            AppLog.putDebug("上次多角色分配中断，重新分配当前章节")
         }
         if ((oldCache?.retryCount ?: 0) >= 3 && oldCache?.segmentsJson?.isNotBlank() == true) {
             val fallbackSegments = segmentsFromJson(oldCache.segmentsJson)
@@ -757,13 +813,10 @@ object AiReadAloudRoleService {
         cacheKey: String? = null
     ): Map<Int, List<Segment>> {
         if (bookUrl.isNullOrBlank()) return emptyMap()
-        val cache = if (!cacheKey.isNullOrBlank()) {
-            appDb.aiReadAloudRoleCacheDao.get(cacheKey)
-                ?.takeIf { it.status == AiReadAloudRoleCache.STATUS_SUCCESS }
-        } else {
-            appDb.aiReadAloudRoleCacheDao.latestByChapter(bookUrl, chapterIndex)
-                ?.takeIf { it.mode.contains(ReadAloudRolePreprocessor.VERSION) }
-        } ?: return emptyMap()
+        if (cacheKey.isNullOrBlank()) return emptyMap()
+        val cache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
+            ?.takeIf { it.status == AiReadAloudRoleCache.STATUS_SUCCESS }
+            ?: return emptyMap()
         return segmentsFromJson(cache.segmentsJson)
             .groupBy { it.paragraphIndex }
             .mapValues { (_, segments) ->
@@ -1497,8 +1550,8 @@ object AiReadAloudRoleService {
         val characters = appDb.bookCharacterDao.characters(book.bookUrl)
             .sortedWith(compareBy<BookCharacter> { it.name }.thenBy { it.id })
             .joinToString("\n") {
-                val detail = listOf(it.identity, it.personality)
-                    .filter { value -> value.isNotBlank() }
+                val detail = listOf(it.genderLabel(), it.identity, it.personality)
+                    .filter { value -> value.isNotBlank() && value != "未知" }
                     .joinToString("/")
                 "${it.id}|${it.name}|${detail.ifBlank { "-" }}"
             }
@@ -1542,14 +1595,18 @@ object AiReadAloudRoleService {
             0 -> "首轮：覆盖全部 targetUnitIds。证据不足返回 status=unknown，characterName 空。"
             else -> "补救：只处理未解决 unit；仍无明确证据就 unknown，不猜。"
         }
+        val autoCreatePrompt = AppConfig.aiReadAloudAutoCreateCharacterPrompt
         return """
             任务：小说朗读分角色。客户端已切好 unit；只给 targetUnitIds 归因，不新增 unit，不改原文。
-            规则：必须调用 $TOOL_CONFIRM_UNITS；units 只含 targetUnitIds 且逐个覆盖。roleType=narrator/character/thought/other。证据不足 status=unknown、characterName 空。引号和句末符号跟随同一句台词。强调/称号/书名引用不是发言时归旁白。优先用角色卡 name；新角色必须有明确证据并写 newCharacters。不要把代词、称呼对象、动作、语气、副词当角色。情绪不明确留空。
+            规则：必须调用 $TOOL_CONFIRM_UNITS；units 只含 targetUnitIds 且逐个覆盖。不要标注未列入 targetUnitIds 的旁白，客户端会自动补齐旁白。roleType=narrator 只用于说明某个候选 unit 实际不是台词/心理活动。证据不足 status=unknown、characterName 空。引号和句末符号跟随同一句台词。强调/称号/书名引用不是发言时归旁白。优先用角色卡 name。不要把代词、称呼对象、动作、语气、副词当角色。情绪不明确留空。
             角色(id|name|info)：
             $characters
 
-            附加提示：
+            分角色附加提示：
             ${prompt.ifBlank { "无" }}
+
+            自动建卡提示：
+            ${autoCreatePrompt.ifBlank { "无" }}
 
             书：${book.name} / ${book.author}
             章：${textChapter.chapter.title}
@@ -1744,7 +1801,7 @@ object AiReadAloudRoleService {
     ): String {
         val characters = appDb.bookCharacterDao.characters(book.bookUrl)
             .joinToString("\n") {
-                "- ${it.name}：${listOf(it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() }.joinToString("；")}"
+                "- ${it.name}：${listOf(it.genderLabel(), it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() && value != "未知" }.joinToString("；")}"
             }
             .ifBlank { "暂无角色卡" }
         val indexed = paragraphs.mapIndexed { index, text ->
@@ -1768,7 +1825,7 @@ object AiReadAloudRoleService {
             4. 引号、句末标点、省略号属于同一句台词时，应跟随台词角色，不要把符号单独标为旁白。
             5. ““卧龙”军师”这类强调、称号、书名、外号引用，不是直接发言时应保持 narrator。
             6. 跨段引号如果是同一句直接发言，应使用同一个说话人；无法判断具体角色时 roleType 可为 character，但 characterName 留空。
-            7. 优先使用已有角色卡里的准确名称；稳定新角色或路人称谓可以写入 newCharacters。
+            7. 优先使用已有角色卡里的准确名称；稳定新角色或路人称谓可以写入 newCharacters，能明确判断性别时填写 gender=male/female，能判断年纪阶段时填写 ageStage=幼童/少年/青年/中年/老年，能从原文看出外貌服饰时填写 appearance；不能判断留空。
             8. 情绪明确时填写 emotionName 和 emotionTag，例如 高兴 / [高兴]；不明确时留空。
             9. 如果工具不可用，最终只输出 JSON：{"units":[...],"newCharacters":[...]}。
 
@@ -1924,7 +1981,7 @@ object AiReadAloudRoleService {
         paragraphOffset: Int
     ): String {
         val characters = appDb.bookCharacterDao.characters(book.bookUrl)
-            .joinToString("\n") { "- ${it.name}：${listOf(it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() }.joinToString("；")}" }
+            .joinToString("\n") { "- ${it.name}：${listOf(it.genderLabel(), it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() && value != "未知" }.joinToString("；")}" }
             .ifBlank { "暂无角色卡" }
         val indexed = paragraphs.mapIndexed { index, text ->
             val absolute = paragraphOffset + index
@@ -1943,7 +2000,7 @@ object AiReadAloudRoleService {
             6. roleType 只能使用 narrator、character、thought、other。
             7. characterName 不确定时留空；已有角色请优先使用角色卡中的准确名称。
             8. 情绪明确时可填写 emotionName 和 emotionTag，例如 高兴 / [高兴]；不明确时留空。
-            9. 如果发现明确新角色或稳定路人称谓，可在 newCharacters 中记录候选；不要把“我、你、他、众人、旁白”当成新角色。
+            9. 如果发现明确新角色或稳定路人称谓，可在 newCharacters 中记录候选；不要把“我、你、他、众人、旁白”当成新角色。能明确判断性别时填写 gender=male/female，能判断年纪阶段时填写 ageStage=幼童/少年/青年/中年/老年，能从原文看出外貌服饰时填写 appearance；不能判断留空。
             10. 如果工具不可用，最终只输出 JSON：{"segments":[...],"newCharacters":[...]}。
             11. 引号内文本优先判断为台词；角色台词片段必须尽量包含紧贴台词的开闭引号、句末标点和省略号，不要把“”“。”等符号单独拆成 narrator。
             12. “张三道/问/笑道/冷声道”等说话提示要反推 speaker，不要把整段标成旁白。
@@ -2058,13 +2115,28 @@ object AiReadAloudRoleService {
                 .trim()
                 .take(80)
             if (name.isBlank()) continue
+            val identity = item.optString("identity").trim().take(200)
+            val evidence = item.optString("evidence").trim().take(200)
+            val appearance = item.optString("appearance")
+                .ifBlank { item.optString("visual") }
+                .ifBlank { item.optString("description") }
+                .trim()
+                .take(240)
+            val gender = BookCharacter.normalizeGender(item.optString("gender").trim())
+                .ifBlank { BookCharacter.inferGender("$name $identity $appearance $evidence") }
+            val age = BookCharacterProfileMeta.sanitizeAge(
+                item.optString("ageStage").ifBlank { item.optString("age") }.trim()
+            )
             result += CharacterCandidate(
                 name = name,
-                identity = item.optString("identity").trim().take(200),
+                identity = identity,
+                gender = gender,
+                age = age,
+                appearance = appearance,
                 roleLevel = item.optInt("roleLevel", BookCharacter.ROLE_NORMAL)
                     .coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN),
                 confidence = item.optDouble("confidence", 0.72).coerceIn(0.0, 1.0),
-                evidence = item.optString("evidence").trim().take(200)
+                evidence = evidence
             )
         }
         return result
@@ -2173,6 +2245,7 @@ object AiReadAloudRoleService {
         val existing = appDb.bookCharacterDao.characters(bookUrl).toMutableList()
         val byName = existing.associateBy { it.name }.toMutableMap()
         val createdIds = mutableListOf<Long>()
+        var characterChanged = false
         val candidateMap = candidates
             .filter { it.confidence >= 0.75 && it.evidence.isNotBlank() && isCreatableCharacterName(it.name) }
             .associateBy { it.name }
@@ -2187,11 +2260,24 @@ object AiReadAloudRoleService {
                         bookUrl = bookUrl,
                         name = candidate.name,
                         identity = candidate.identity,
+                        gender = candidate.gender,
+                        attributes = BookCharacterProfileMeta.mergeAgeIntoAttributes(candidate.age, ""),
+                        appearance = candidate.appearance,
                         biography = candidate.evidence,
                         roleLevel = candidate.roleLevel,
                         sortOrder = (appDb.bookCharacterDao.maxCharacterOrder(bookUrl) ?: -1) + 1,
                         speechRouteJson = SpeechVoiceAssigner
-                            .assignRoute(BookCharacter(bookUrl = bookUrl, name = candidate.name), httpTtsList)
+                            .assignRoute(
+                                BookCharacter(
+                                    bookUrl = bookUrl,
+                                    name = candidate.name,
+                                    identity = candidate.identity,
+                                    gender = candidate.gender,
+                                    attributes = BookCharacterProfileMeta.mergeAgeIntoAttributes(candidate.age, ""),
+                                    appearance = candidate.appearance
+                                ),
+                                httpTtsList
+                            )
                             .toJson(),
                         autoCreated = true,
                         source = "ai_read_aloud",
@@ -2204,16 +2290,49 @@ object AiReadAloudRoleService {
                     byName[saved.name] = saved
                     existing += saved
                     createdIds += id
+                    characterChanged = true
                 } else if (old.speechRouteJson.isBlank()) {
-                    val route = SpeechVoiceAssigner.assignRoute(old, httpTtsList)
+                    val characterForRoute = old.copy(
+                        gender = old.gender.ifBlank { candidate.gender },
+                        identity = old.identity.ifBlank { candidate.identity },
+                        appearance = old.appearance.ifBlank { candidate.appearance },
+                        attributes = if (BookCharacterProfileMeta.ageOf(old).isBlank()) {
+                            BookCharacterProfileMeta.mergeAgeIntoAttributes(candidate.age, old.attributes)
+                        } else {
+                            old.attributes
+                        }
+                    )
+                    val route = SpeechVoiceAssigner.assignRoute(characterForRoute, httpTtsList)
                     if (route.isConfigured) {
-                        val updated = old.copy(
+                        val updated = characterForRoute.copy(
+                            gender = old.gender.ifBlank { candidate.gender },
+                            identity = old.identity.ifBlank { candidate.identity },
+                            appearance = old.appearance.ifBlank { candidate.appearance },
                             speechRouteJson = route.toJson(),
                             lastDetectedAt = now,
                             updatedAt = now
                         )
                         appDb.bookCharacterDao.updateCharacter(updated)
                         byName[updated.name] = updated
+                        characterChanged = true
+                    }
+                } else {
+                    val updated = old.copy(
+                        gender = old.gender.ifBlank { candidate.gender },
+                        identity = old.identity.ifBlank { candidate.identity },
+                        appearance = old.appearance.ifBlank { candidate.appearance },
+                        attributes = if (BookCharacterProfileMeta.ageOf(old).isBlank()) {
+                            BookCharacterProfileMeta.mergeAgeIntoAttributes(candidate.age, old.attributes)
+                        } else {
+                            old.attributes
+                        },
+                        lastDetectedAt = now,
+                        updatedAt = now
+                    )
+                    if (updated != old) {
+                        appDb.bookCharacterDao.updateCharacter(updated)
+                        byName[updated.name] = updated
+                        characterChanged = true
                     }
                 }
             }
@@ -2232,9 +2351,71 @@ object AiReadAloudRoleService {
                     )
                     appDb.bookCharacterDao.updateCharacter(updated)
                     byName[updated.name] = updated
+                    characterChanged = true
                 }
             }
+        if (characterChanged) {
+            ReadAloudConfigChangeNotifier.notifySpeech()
+        }
+        queueAutoCharacterAvatars(bookUrl, createdIds)
         return resolveSegmentCharacters(segments, byName.values.toList()) to createdIds
+    }
+
+    private fun queueAutoCharacterAvatars(bookUrl: String, characterIds: List<Long>) {
+        if (!AppConfig.aiReadAloudAutoCreateAvatar) return
+        if (AiImageService.currentProviderOrNull() == null) return
+        val ids = characterIds.distinct().take(6)
+        if (ids.isEmpty()) return
+        avatarScope.launch {
+            ids.forEach { characterId ->
+                runCatching {
+                    if (!AppConfig.aiReadAloudAutoCreateAvatar || AiImageService.currentProviderOrNull() == null) {
+                        return@forEach
+                    }
+                    val character = appDb.bookCharacterDao.getCharacter(characterId)
+                        ?.takeIf { it.bookUrl == bookUrl && it.avatar.isBlank() }
+                        ?: return@forEach
+                    val book = appDb.bookDao.getBook(bookUrl)
+                    val image = AiImageService.generateAndStore(
+                        prompt = buildAutoCharacterAvatarPrompt(character),
+                        metadata = AiImageGalleryManager.ImageMetadata(
+                            bookName = book?.name.orEmpty(),
+                            bookAuthor = book?.author.orEmpty(),
+                            characterId = character.id,
+                            characterName = character.displayName(),
+                            sourceType = AiImageGalleryManager.SOURCE_TYPE_CHARACTER_AVATAR,
+                            sourceText = "auto_created_character"
+                        )
+                    )
+                    AiImageGalleryManager.setFavorite(image.id, true, null)
+                    val latest = appDb.bookCharacterDao.getCharacter(characterId)
+                        ?.takeIf { it.bookUrl == bookUrl && it.avatar.isBlank() }
+                        ?: return@forEach
+                    appDb.bookCharacterDao.updateCharacter(
+                        latest.copy(
+                            avatar = image.localPath,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    )
+                }.onFailure {
+                    AppLog.put("自动生成角色头像失败\n${it.localizedMessage}", it, false)
+                }
+            }
+        }
+    }
+
+    private fun buildAutoCharacterAvatarPrompt(character: BookCharacter): String {
+        return buildList {
+            add("小说角色头像，单人头像，清晰，适合角色卡，不要文字。")
+            add("优先表现可见形象、服饰、气质和年龄感；不要把角色名或证据文字画进图片。")
+            add("角色名：${character.displayName()}")
+            character.genderLabel().takeIf { it != "未知" }?.let { add("性别：$it") }
+            BookCharacterProfileMeta.ageOf(character).takeIf { it.isNotBlank() }?.let { add("年纪：$it") }
+            character.identity.takeIf { it.isNotBlank() }?.let { add("身份：$it") }
+            character.appearance.takeIf { it.isNotBlank() }?.let { add("形象：$it") }
+            character.personality.takeIf { it.isNotBlank() }?.let { add("性格：$it") }
+            character.biography.takeIf { it.isNotBlank() }?.let { add("章节证据：$it") }
+        }.joinToString("\n")
     }
 
     private fun resolveSegmentCharacters(
@@ -2265,7 +2446,7 @@ object AiReadAloudRoleService {
     private fun characterHash(bookUrl: String): String {
         return MD5Utils.md5Encode(
             appDb.bookCharacterDao.characters(bookUrl)
-                .joinToString("|") { "${it.id}:${it.name}:${it.updatedAt}:${it.speechRouteJson}" }
+                .joinToString("|") { "${it.id}:${it.name}:${it.gender}:${BookCharacterProfileMeta.ageOf(it)}:${it.updatedAt}:${it.speechRouteJson}" }
         )
     }
 
@@ -2318,6 +2499,9 @@ object AiReadAloudRoleService {
                                 put("properties", JSONObject().apply {
                                     put("name", stringProp("new character name"))
                                     put("identity", stringProp("short identity"))
+                                    put("gender", stringProp("male/female, blank if unknown"))
+                                    put("ageStage", stringProp("life stage such as 少年/青年/中年/老年, blank if unknown"))
+                                    put("appearance", stringProp("short visual appearance useful for avatar generation, blank if unknown"))
                                     put("roleLevel", intProp("0 normal, 1 important, 2 main"))
                                     put("confidence", numberProp("0..1"))
                                     put("evidence", stringProp("current chapter evidence"))
@@ -2369,6 +2553,9 @@ object AiReadAloudRoleService {
                                 put("properties", JSONObject().apply {
                                     put("name", stringProp("New character name."))
                                     put("identity", stringProp("Short identity or role hint."))
+                                    put("gender", stringProp("male/female, blank if unknown."))
+                                    put("ageStage", stringProp("Life stage such as 少年/青年/中年/老年, blank if unknown."))
+                                    put("appearance", stringProp("Short visual appearance useful for avatar generation, blank if unknown."))
                                     put("roleLevel", intProp("0 normal, 1 important, 2 main."))
                                     put("confidence", numberProp("Confidence from 0 to 1."))
                                     put("evidence", stringProp("Short evidence from current chapter."))

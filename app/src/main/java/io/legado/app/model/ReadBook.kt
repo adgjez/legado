@@ -85,6 +85,8 @@ object ReadBook : CoroutineScope by MainScope() {
     private val chapterLayoutKeys = ConcurrentHashMap<Int, String>()
     @Volatile
     private var paragraphRuleLayoutKey: String = ""
+    @Volatile
+    private var paragraphRuleRefreshJob: Job? = null
     private val prevChapterLoadingLock = Mutex()
     private val curChapterLoadingLock = Mutex()
     private val nextChapterLoadingLock = Mutex()
@@ -278,8 +280,34 @@ object ReadBook : CoroutineScope by MainScope() {
     }
 
     fun invalidateParagraphRuleLayout() {
+        ParagraphRuleProcessor.clearProcessCache(book?.bookUrl)
         refreshParagraphRuleLayoutKey()
         clearTextChapter()
+    }
+
+    fun refreshCurrentParagraphRuleResult(): Boolean {
+        val currentBook = book ?: return false
+        if (currentBook.isEpub) return false
+        val chapterIndex = durChapterIndex
+        if (chapterIndex !in 0 until chapterSize) return false
+        if (paragraphRuleRefreshJob?.isActive == true) return true
+        paragraphRuleRefreshJob = launch(Main) {
+            delay(80)
+            val activeBook = book ?: return@launch
+            if (activeBook.bookUrl != currentBook.bookUrl || durChapterIndex != chapterIndex) {
+                return@launch
+            }
+            ParagraphRuleProcessor.clearProcessCache(activeBook.bookUrl, chapterIndex)
+            refreshParagraphRuleLayoutKey()
+            chapterLoadingJobs[chapterIndex]?.cancel()
+            removeLoading(chapterIndex)
+            curTextChapter?.takeIf { it.chapter.index == chapterIndex }?.cancelLayout()
+            curTextChapter = null
+            chapterLayoutKeys.remove(chapterIndex)
+            callBack?.upContent(resetPageOffset = false)
+            loadContent(chapterIndex, upContent = true, resetPageOffset = false)
+        }
+        return true
     }
 
     fun clearSearchResult() {

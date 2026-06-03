@@ -1,5 +1,6 @@
 package io.legado.app.ui.login
 
+import android.webkit.JavascriptInterface
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -7,6 +8,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.model.ReadAloud
+import io.legado.app.model.ReadBook
 import io.legado.app.ui.rss.read.RssJsExtensions
 import io.legado.app.ui.widget.dialog.BottomWebViewDialog
 import io.legado.app.utils.FileUtils
@@ -76,6 +78,11 @@ class SourceLoginJsExtensions(
 
     fun refreshContent() {
         postEvent(EventBus.REFRESH_BOOK_CONTENT, true)
+    }
+
+    @JavascriptInterface
+    fun refreshParagraph(): Boolean {
+        return ReadBook.refreshCurrentParagraphRuleResult()
     }
 
     fun copyText(text: String) {

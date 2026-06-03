@@ -98,6 +98,21 @@ object ReadAloud {
         postEvent(EventBus.READ_ALOUD_PLAY, bundle)
     }
 
+    fun moveToCue(
+        context: Context,
+        cueIndex: Int,
+        chapterPosition: Int,
+        play: Boolean = BaseReadAloudService.isPlay()
+    ) {
+        if (!BaseReadAloudService.isRun) return
+        val intent = Intent(context, aloudClass)
+        intent.action = IntentAction.moveTo
+        intent.putExtra("cueIndex", cueIndex)
+        intent.putExtra("chapterPosition", chapterPosition)
+        intent.putExtra("play", play)
+        context.startForegroundServiceCompat(intent)
+    }
+
     fun pause(context: Context) {
         if (BaseReadAloudService.isRun) {
             val intent = Intent(context, aloudClass)

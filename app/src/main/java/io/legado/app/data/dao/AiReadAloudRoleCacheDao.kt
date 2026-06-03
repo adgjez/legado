@@ -65,6 +65,26 @@ interface AiReadAloudRoleCacheDao {
         preprocessVersion: String
     ): AiReadAloudRoleCache?
 
+    @Query(
+        """
+        SELECT * FROM ai_read_aloud_role_caches
+        WHERE bookUrl = :bookUrl
+          AND chapterIndex = :chapterIndex
+          AND contentHash = :contentHash
+          AND status = 'success'
+          AND segmentsJson != ''
+          AND mode LIKE '%' || :preprocessVersion || '%'
+        ORDER BY updatedAt DESC
+        LIMIT 20
+        """
+    )
+    fun successCandidatesByChapterContent(
+        bookUrl: String,
+        chapterIndex: Int,
+        contentHash: String,
+        preprocessVersion: String
+    ): List<AiReadAloudRoleCache>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(cache: AiReadAloudRoleCache)
 

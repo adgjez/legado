@@ -852,6 +852,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         6. 不要把代词、称呼对象、动作、语气、情绪、副词、短语当成新角色。
         7. 情绪明确时填写 emotionName/emotionTag；不明确留空，避免过度脑补。
     """.trimIndent()
+    val DEFAULT_AI_READ_ALOUD_AUTO_CREATE_CHARACTER_PROMPT = """
+        自动创建角色只用于补齐角色卡：
+        1. 只有已有角色卡中不存在，且当前章节有明确文本证据的新人物、稳定路人称谓，才写入 newCharacters。
+        2. 不要把“我、你、他、她、众人、有人、旁白”、称呼对象、动作、语气、情绪、副词或短语当作新角色。
+        3. 尽量填写 gender=male/female、ageStage、roleLevel、identity、appearance；无法明确判断时留空，不要硬猜。
+        4. ageStage 只写年纪阶段，例如“幼童、少年、青年、中年、老年”等适合小说资料卡的短文本，不要填写具体岁数。
+        5. appearance 只写文本能支持的可见形象，例如发型、服饰、体型、气质、明显特征；没有证据留空。
+        6. evidence 必须引用当前章节的简短证据。
+    """.trimIndent()
     val DEFAULT_AI_READ_ALOUD_PREPROCESS_RULES = """
         {
           "quotePairs": [
@@ -885,8 +894,8 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var aiReadAloudRoleThreadCount: Int
-        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleThreadCount, 2).coerceIn(1, 4)
-        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleThreadCount, value.coerceIn(1, 4))
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleThreadCount, 2).coerceIn(1, 10)
+        set(value) = appCtx.putPrefInt(PreferKey.aiReadAloudRoleThreadCount, value.coerceIn(1, 10))
 
     var aiReadAloudRoleContextParagraphs: Int
         get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleContextParagraphs, 2).coerceIn(0, 20)
@@ -942,6 +951,26 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, value)
 
+    var aiReadAloudAutoCreateCharacterPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt)
+            .orEmpty()
+            .ifBlank { DEFAULT_AI_READ_ALOUD_AUTO_CREATE_CHARACTER_PROMPT }
+        set(value) {
+            val prompt = value.trim()
+            if (prompt.isBlank() || prompt == DEFAULT_AI_READ_ALOUD_AUTO_CREATE_CHARACTER_PROMPT) {
+                appCtx.removePref(PreferKey.aiReadAloudAutoCreateCharacterPrompt)
+            } else {
+                appCtx.putPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt, prompt.take(4000))
+            }
+        }
+
+    val aiReadAloudUsingDefaultAutoCreateCharacterPrompt: Boolean
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt).isNullOrBlank()
+
+    var aiReadAloudAutoCreateAvatar: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, value)
+
     var aiReadAloudBgmEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudBgmEnabled, value)
@@ -959,6 +988,26 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     val aiReadAloudSfxVolumeScale: Float
         get() = aiReadAloudSfxVolume / 100f
+
+    var readAloudSpeakerLoudnessEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudSpeakerLoudnessEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.readAloudSpeakerLoudnessEnabled, value)
+
+    var readAloudTargetVoiceVolume: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudTargetVoiceVolume, 100).coerceIn(60, 160)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudTargetVoiceVolume, value.coerceIn(60, 160))
+
+    var readAloudMaxSpeakerGain: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudMaxSpeakerGain, 135).coerceIn(100, 200)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudMaxSpeakerGain, value.coerceIn(100, 200))
+
+    var readAloudNarratorBaseGain: Int
+        get() = appCtx.getPrefInt(PreferKey.readAloudNarratorBaseGain, 110).coerceIn(60, 160)
+        set(value) = appCtx.putPrefInt(PreferKey.readAloudNarratorBaseGain, value.coerceIn(60, 160))
+
+    var readAloudSpeakerLoudnessStats: String
+        get() = appCtx.getPrefString(PreferKey.readAloudSpeakerLoudnessStats).orEmpty()
+        set(value) = appCtx.putPrefString(PreferKey.readAloudSpeakerLoudnessStats, value.take(200_000))
 
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)

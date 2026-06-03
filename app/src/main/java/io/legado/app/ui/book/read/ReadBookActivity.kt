@@ -4562,6 +4562,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<ArrayList<Int>>(EventBus.UP_CONFIG) {
             handleReadConfigUpdate(it)
         }
+        observeEvent<Bundle>(EventBus.READ_ALOUD_CONFIG_CHANGED) {
+            readAloudPlayerPanel.onReadAloudConfigChanged(
+                it.getString(EventBus.READ_ALOUD_CONFIG_SCOPE)
+            )
+        }
         observeEvent<Int>(EventBus.ALOUD_STATE) {
             val shouldOpenPendingPanel = pendingReadAloudPlayerOpen && it == Status.PLAY
             readAloudPlayerPanel.onAloudState(it, autoExpand = !shouldOpenPendingPanel)

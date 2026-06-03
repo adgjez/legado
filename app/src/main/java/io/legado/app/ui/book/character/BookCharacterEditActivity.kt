@@ -34,8 +34,10 @@ import io.legado.app.databinding.ItemAiGeneratedImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
+import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
@@ -145,13 +147,17 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     bookUrl = bookUrl,
                     name = name,
                     avatar = draft.avatar.trim(),
+                    gender = BookCharacter.normalizeGender(draft.gender),
                     roleLevel = draft.roleLevel.coerceIn(
                         BookCharacter.ROLE_NORMAL,
                         BookCharacter.ROLE_MAIN
                     ),
                     identity = draft.identity.trim(),
                     skills = draft.skills.trim(),
-                    attributes = draft.attributes.trim(),
+                    attributes = BookCharacterProfileMeta.mergeAgeIntoAttributes(
+                        draft.age,
+                        draft.attributes
+                    ),
                     appearance = draft.appearance.trim(),
                     personality = draft.personality.trim(),
                     biography = draft.biography.trim(),
@@ -172,6 +178,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                 toastOnUi("已存在同名角色")
                 return@launch
             }
+            ReadAloudConfigChangeNotifier.notifySpeech()
             setResult(RESULT_OK)
             finish()
         }

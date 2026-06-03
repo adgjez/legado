@@ -24,6 +24,7 @@ import io.legado.app.data.entities.ReadAloudBgmGroup
 import io.legado.app.data.entities.ReadAloudBgmTrack
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.DialogEditTextBinding
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
@@ -39,9 +40,12 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Locale
+import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
@@ -71,12 +75,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     withContext(Dispatchers.IO) { importTrack(uri) }
                 }.onSuccess {
                     selectedIds.clear()
-                    load()
+                    notifyAudioChanged()
+                    finishImportingAndLoad()
                     toastOnUi("导入完成")
                 }.onFailure {
+                    finishImportingAndLoad()
                     toastOnUi(it.localizedMessage ?: "导入失败")
-                }.also {
-                    setImporting(false)
                 }
             }
         }
@@ -99,13 +103,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                 }
             }.onSuccess {
                 selectedIds.clear()
-                load()
-                    toastOnUi("已导入 $success 个${currentAssetLabel}")
+                if (success > 0) notifyAudioChanged()
+                finishImportingAndLoad()
+                toastOnUi("已导入 $success 个${currentAssetLabel}")
             }.onFailure {
-                load()
+                finishImportingAndLoad()
                 toastOnUi(it.localizedMessage ?: "批量导入失败")
-            }.also {
-                setImporting(false)
             }
         }
     }
@@ -114,6 +117,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         result.uri?.let { uri ->
             val assetType = pendingPackageAssetType
             confirmImportAudioPackage(uri, assetType)
+        }
+    }
+
+    private val exportAudioPackage = registerForActivityResult(HandleFileContract()) { result ->
+        result.uri?.let {
+            toastOnUi("已导出${currentAssetLabel} ZIP")
         }
     }
 
@@ -145,14 +154,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_IMPORT, 0, "导入").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_ADD_GROUP, 1, "新增分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_MANAGE_GROUPS, 2, "管理分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_EXPORT_PACKAGE, 1, "导出 ZIP").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_ADD_GROUP, 2, "新增分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_MANAGE_GROUPS, 3, "管理分组").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             MENU_IMPORT -> showImportActions()
+            MENU_EXPORT_PACKAGE -> exportCurrentAudioPackage()
             MENU_ADD_GROUP -> showGroupEditor()
             MENU_MANAGE_GROUPS -> showGroupManage()
         }
@@ -269,14 +280,42 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     expandedGroupIds.clear()
                     expandedGroupsInitialized = false
                     updateAssetTabs()
-                    load()
+                    notifyAudioChanged()
+                    finishImportingAndLoad()
                     toastOnUi("已导入 $count 个${label}")
                 }.onFailure {
-                    load()
+                    finishImportingAndLoad()
                     toastOnUi(it.localizedMessage ?: "音频包导入失败")
-                }.also {
-                    setImporting(false)
                 }
+            }
+        }
+    }
+
+    private fun exportCurrentAudioPackage() {
+        if (importing) {
+            toastOnUi(importingText.ifBlank { "正在处理，请稍候" })
+            return
+        }
+        val assetType = currentAssetType
+        val label = assetLabel(assetType)
+        lifecycleScope.launch {
+            setImporting(true, "正在整理${label} ZIP…")
+            val result = kotlin.runCatching {
+                withContext(Dispatchers.IO) { buildAudioPackageZip(assetType) }
+            }
+            finishImportingAndLoad()
+            result.onSuccess { data ->
+                exportAudioPackage.launch {
+                    mode = HandleFileContract.EXPORT
+                    title = "导出${label} ZIP"
+                    fileData = HandleFileContract.FileData(
+                        "${label}包_${System.currentTimeMillis()}.zip",
+                        data,
+                        "application/zip"
+                    )
+                }
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: "${label} ZIP 导出失败")
             }
         }
     }
@@ -338,12 +377,21 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         updateBatchActionBar()
     }
 
+    private fun finishImportingAndLoad() {
+        setImporting(false)
+        load()
+    }
+
     private fun assetLabel(assetType: String): String {
         return if (ReadAloudBgmTrack.normalizeAssetType(assetType) == ReadAloudBgmTrack.TYPE_SFX) {
             "音效"
         } else {
             "配乐"
         }
+    }
+
+    private fun notifyAudioChanged() {
+        ReadAloudConfigChangeNotifier.notifyAudio()
     }
 
     private fun showGroupEditor(group: ReadAloudBgmGroup? = null) {
@@ -375,6 +423,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     } else {
                         appDb.readAloudBgmDao.updateGroup(group.copy(name = name, updatedAt = now))
                     }
+                    notifyAudioChanged()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -383,12 +432,13 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun showGroupManage() {
-        if (groups.isEmpty()) {
+        val managedGroups = groups.filterNot { it.isDefaultGroup() }
+        if (managedGroups.isEmpty()) {
             toastOnUi("暂无分组")
             return
         }
-        selector("管理分组", groups.map { it.displayName() }) { _, index ->
-            val group = groups[index]
+        selector("管理分组", managedGroups.map { it.displayName() }) { _, index ->
+            val group = managedGroups[index]
             selector(group.displayName(), listOf("编辑分组", "删除分组")) { _, action ->
                 when (action) {
                     0 -> showGroupEditor(group)
@@ -399,7 +449,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun confirmDeleteGroup(group: ReadAloudBgmGroup) {
-        if (group.name == "默认分组") {
+        if (group.isDefaultGroup()) {
             toastOnUi("默认分组不能删除")
             return
         }
@@ -410,6 +460,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     appDb.readAloudBgmDao.resetTrackGroup(group.id, currentAssetType)
                     appDb.readAloudBgmDao.deleteGroup(group.id, currentAssetType)
                     selectedIds.clear()
+                    notifyAudioChanged()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -516,6 +567,83 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         } ?: error("无法读取音频包")
         if (imported == 0) error("音频包内没有可导入的音频")
         return imported
+    }
+
+    private fun buildAudioPackageZip(assetType: String): ByteArray {
+        val normalizedType = ReadAloudBgmTrack.normalizeAssetType(assetType)
+        val exportTracks = appDb.readAloudBgmDao.enabledTracksByType(normalizedType)
+        if (exportTracks.isEmpty()) error("暂无可导出的${assetLabel(normalizedType)}")
+        val exportGroups = appDb.readAloudBgmDao.groupsByType(normalizedType).associateBy { it.id }
+        val entries = buildPackageExportEntries(exportTracks, exportGroups)
+        if (entries.isEmpty()) error("没有可导出的本地音频文件")
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            zip.putNextEntry(ZipEntry("config.yaml"))
+            zip.write(buildPackageConfigYaml(entries).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            entries.forEach { entry ->
+                zip.putNextEntry(ZipEntry(entry.entryName))
+                entry.file.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        return output.toByteArray()
+    }
+
+    private fun buildPackageExportEntries(
+        exportTracks: List<ReadAloudBgmTrack>,
+        exportGroups: Map<Long, ReadAloudBgmGroup>
+    ): List<PackageExportEntry> {
+        val usedNames = linkedSetOf<String>()
+        return exportTracks.mapNotNull { track ->
+            val file = File(track.filePath)
+            if (!file.exists() || file.length() <= 0L) return@mapNotNull null
+            val groupName = exportGroups[track.groupId]?.name
+                ?.takeUnless { it == "默认分组" }
+                ?: "默认分组"
+            val extension = track.fileName.substringAfterLast('.', "mp3").lowercase(Locale.ROOT)
+            val safeFileName = track.fileName
+                .ifBlank { "${track.displayName()}.$extension" }
+                .toSafeFileName(extension)
+            val folder = groupName.toZipPathSegment()
+            var entryName = "$folder/$safeFileName"
+            var index = 1
+            while (!usedNames.add(entryName.lowercase(Locale.ROOT))) {
+                val base = safeFileName.substringBeforeLast('.', safeFileName)
+                val ext = safeFileName.substringAfterLast('.', "")
+                entryName = if (ext.isBlank()) {
+                    "$folder/${base}_$index"
+                } else {
+                    "$folder/${base}_$index.$ext"
+                }
+                index += 1
+            }
+            PackageExportEntry(
+                track = track,
+                groupName = groupName,
+                entryName = entryName,
+                file = file
+            )
+        }
+    }
+
+    private fun buildPackageConfigYaml(entries: List<PackageExportEntry>): String {
+        return buildString {
+            entries.forEach { entry ->
+                val track = entry.track
+                val tags = track.tags.split(',', '，')
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                val desc = (listOf(entry.groupName) + tags)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString("｜")
+                appendLine("- name: ${track.displayName().toYamlScalar()}")
+                appendLine("  desc: ${desc.toYamlScalar()}")
+                appendLine("  param: ${entry.entryName.toYamlScalar()}")
+                appendLine("  volume: ${track.defaultVolume.coerceIn(0f, 1f)}")
+            }
+        }
     }
 
     private fun readAudioPackageMetadata(uri: Uri): Map<String, PackageAudioInfo> {
@@ -664,6 +792,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     .joinToString(",")
                 lifecycleScope.launch(Dispatchers.IO) {
                     appDb.readAloudBgmDao.updateTrack(track.copy(tags = tags, updatedAt = System.currentTimeMillis()))
+                    notifyAudioChanged()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -686,6 +815,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                             updatedAt = System.currentTimeMillis()
                         )
                     )
+                    notifyAudioChanged()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -701,12 +831,14 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     private fun moveTracks(ids: List<Long>) {
-        val options = listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", assetType = currentAssetType)) + groups
+        val options = listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", assetType = currentAssetType)) +
+            groups.filterNot { it.isDefaultGroup() }
         selector("选择分组", options.map { it.displayName() }) { _, index ->
             val groupId = options[index].id
             lifecycleScope.launch(Dispatchers.IO) {
                 appDb.readAloudBgmDao.moveTracks(ids, groupId)
                 selectedIds.clear()
+                notifyAudioChanged()
                 launch(Dispatchers.Main) { load() }
             }
         }
@@ -731,6 +863,7 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
                     }
                     appDb.readAloudBgmDao.deleteTracks(ids)
                     selectedIds.clear()
+                    notifyAudioChanged()
                     launch(Dispatchers.Main) { load() }
                 }
             }
@@ -741,6 +874,16 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
     private fun String.toSafeFileName(extension: String): String {
         val safe = replace(Regex("""[\\/:*?"<>|]"""), "_").ifBlank { "$currentAssetType.$extension" }
         return if (safe.contains('.')) safe else "$safe.$extension"
+    }
+
+    private fun String.toZipPathSegment(): String {
+        return replace(Regex("""[\\/:*?"<>|]"""), "_")
+            .trim()
+            .ifBlank { "默认分组" }
+    }
+
+    private fun String.toYamlScalar(): String {
+        return "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
     }
 
     private fun String.cleanYamlScalar(): String {
@@ -788,6 +931,10 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         return groups.firstOrNull { it.id == groupId }?.displayName() ?: "默认分组"
     }
 
+    private fun ReadAloudBgmGroup.isDefaultGroup(): Boolean {
+        return id == 0L || name == "默认分组"
+    }
+
     private fun buildRows(): List<AudioRow> {
         val tracksByGroup = tracks.groupBy { it.groupId }
         val rowGroups = (listOf(ReadAloudBgmGroup(id = 0L, name = "默认分组", assetType = currentAssetType, sortOrder = Int.MIN_VALUE)) + groups)
@@ -796,8 +943,10 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
             .sortedWith(compareBy<ReadAloudBgmGroup> { it.sortOrder }.thenBy { it.id })
         if (!expandedGroupsInitialized) {
             expandedGroupIds.clear()
-            expandedGroupIds.addAll(rowGroups.map { it.id })
+            expandedGroupIds.addAll(rowGroups.filterNot { it.isDefaultGroup() }.map { it.id })
             expandedGroupsInitialized = true
+        } else {
+            expandedGroupIds.retainAll(rowGroups.map { it.id }.toSet())
         }
         return buildList {
             rowGroups.forEach { group ->
@@ -997,8 +1146,9 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     companion object {
         private const val MENU_IMPORT = 1
-        private const val MENU_ADD_GROUP = 2
-        private const val MENU_MANAGE_GROUPS = 3
+        private const val MENU_EXPORT_PACKAGE = 2
+        private const val MENU_ADD_GROUP = 3
+        private const val MENU_MANAGE_GROUPS = 4
         private const val VIEW_TYPE_GROUP = 1
         private const val VIEW_TYPE_TRACK = 2
         private val supportedAudioExtensions = setOf("mp3", "wav", "m4a", "aac", "ogg", "flac")
@@ -1009,5 +1159,12 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         val groupName: String,
         val tags: String,
         val volume: Float
+    )
+
+    private data class PackageExportEntry(
+        val track: ReadAloudBgmTrack,
+        val groupName: String,
+        val entryName: String,
+        val file: File
     )
 }

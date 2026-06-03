@@ -662,6 +662,21 @@ object ParagraphRuleProcessor {
         return MD5Utils.md5Encode16("${rule.id}:${rule.updateTime}:${rule.timeoutMillisecond}:${rule.script}:${rule.jsLib}")
     }
 
+    fun clearProcessCache(bookUrl: String? = null, chapterIndex: Int? = null) {
+        synchronized(processCache) {
+            if (bookUrl.isNullOrBlank()) {
+                processCache.clear()
+                return
+            }
+            val prefix = if (chapterIndex == null) {
+                "$bookUrl|"
+            } else {
+                "$bookUrl|$chapterIndex|"
+            }
+            processCache.keys.removeAll { it.startsWith(prefix) }
+        }
+    }
+
     private fun processCacheKey(
         book: Book,
         chapter: BookChapter,

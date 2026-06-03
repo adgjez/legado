@@ -169,6 +169,10 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
     override fun selectRoute(route: SpeechRoute) {
         ttsEngine = route.toJson()
         pickerGroupKey = null
+        ReadBook.book?.setTtsEngine(null)
+        AppConfig.ttsEngine = ttsEngine
+        callBack?.upSpeakEngineSummary()
+        notifyReadAloudEngineChanged()
         route.engineValue.toLongOrNull()
             ?.let { appDb.httpTTSDao.get(it) }
             ?.takeIf { !it.loginUrl.isNullOrBlank() && it.getLoginInfo().isNullOrBlank() }
@@ -178,21 +182,6 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
                     putExtra("key", loginKey.id.toString())
                 }
             }
-    }
-
-    override fun setForBook() {
-        ReadBook.book?.setTtsEngine(ttsEngine)
-        callBack?.upSpeakEngineSummary()
-        notifyReadAloudEngineChanged()
-        dismissAllowingStateLoss()
-    }
-
-    override fun setForGlobal() {
-        ReadBook.book?.setTtsEngine(null)
-        AppConfig.ttsEngine = ttsEngine
-        callBack?.upSpeakEngineSummary()
-        notifyReadAloudEngineChanged()
-        dismissAllowingStateLoss()
     }
 
     override fun addHttpTts() {
@@ -344,8 +333,6 @@ private interface SpeakEngineDialogActions {
     fun openSpeakerPicker(group: SpeechVoiceEngineGroup)
     fun closeSpeakerPicker()
     fun selectRoute(route: SpeechRoute)
-    fun setForBook()
-    fun setForGlobal()
     fun addHttpTts()
     fun editHttpTts(id: Long)
     fun deleteHttpTts(httpTTS: HttpTTS)
@@ -427,13 +414,6 @@ private fun SpeakEngineScreen(
                         onDelete = httpTts?.let { { actions.deleteHttpTts(it) } }
                     )
                 }
-            }
-            Row(
-                modifier = Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                BottomEngineAction("设为本书", colors, modifier = Modifier.weight(1f), onClick = actions::setForBook)
-                BottomEngineAction("设为通用", colors, modifier = Modifier.weight(1f), onClick = actions::setForGlobal)
             }
         }
         pickerGroupKey?.let { key ->
@@ -866,24 +846,6 @@ private fun SmallEngineAction(text: String, onClick: () -> Unit, colors: SpeakEn
     ) {
         Box(modifier = Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
             Text(text, color = colors.text, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun BottomEngineAction(
-    text: String,
-    colors: SpeakEngineColors,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier.height(44.dp).clickable(onClick = onClick),
-        color = colors.accent,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp))
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(text, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

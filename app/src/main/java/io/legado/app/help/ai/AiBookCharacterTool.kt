@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.ReadAloudSpeakerGroup
 import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
+import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
@@ -89,6 +90,8 @@ object AiBookCharacterTool {
         put("characterId", intProp("可选，角色 ID。"))
         put("name", stringProp("角色名称，必填。"))
         put("avatar", stringProp("角色头像 URL 或本地路径。"))
+        put("gender", stringProp("角色性别：male 男，female 女，unknown/空 未知。"))
+        put("ageStage", stringProp("角色年纪，例如 少年、青年、中年、老年；不确定时留空，不要填精确年龄。"))
         put("identity", stringProp("角色身份。"))
         put("skills", stringProp("角色技能。"))
         put("attributes", stringProp("角色属性。"))
@@ -259,13 +262,20 @@ object AiBookCharacterTool {
         val id = args?.optLong("characterId", 0L) ?: 0L
         val old = id.takeIf { it > 0 }?.let { appDb.bookCharacterDao.getCharacter(it) }
             ?: appDb.bookCharacterDao.getCharacter(book.bookUrl, name)
+        val rawAttributes = optText(args, "attributes") ?: old?.attributes.orEmpty()
+        val age = (optText(args, "ageStage") ?: optText(args, "age"))
+            ?.let(BookCharacterProfileMeta::sanitizeAge)
+            ?: old?.let(BookCharacterProfileMeta::ageOf).orEmpty()
         val character = (old ?: BookCharacter(bookUrl = book.bookUrl)).copy(
             bookUrl = book.bookUrl,
             name = name,
             avatar = optText(args, "avatar") ?: old?.avatar.orEmpty(),
+            gender = optText(args, "gender")
+                ?.let(BookCharacter::normalizeGender)
+                ?: old?.gender.orEmpty(),
             identity = optText(args, "identity") ?: old?.identity.orEmpty(),
             skills = optText(args, "skills") ?: old?.skills.orEmpty(),
-            attributes = optText(args, "attributes") ?: old?.attributes.orEmpty(),
+            attributes = BookCharacterProfileMeta.mergeAgeIntoAttributes(age, rawAttributes),
             appearance = optText(args, "appearance") ?: old?.appearance.orEmpty(),
             personality = optText(args, "personality") ?: old?.personality.orEmpty(),
             biography = optText(args, "biography") ?: old?.biography.orEmpty(),
@@ -757,6 +767,9 @@ object AiBookCharacterTool {
             put("bookUrl", character.bookUrl)
             put("name", character.name)
             put("avatar", character.avatar)
+            put("gender", BookCharacter.normalizeGender(character.gender))
+            put("genderLabel", character.genderLabel())
+            put("ageStage", BookCharacterProfileMeta.ageOf(character))
             if (character.avatar.isNotBlank()) {
                 put("avatarImage", JSONObject().apply {
                     put("type", "character_avatar")
@@ -766,7 +779,7 @@ object AiBookCharacterTool {
             }
             put("identity", character.identity)
             put("skills", character.skills)
-            put("attributes", character.attributes)
+            put("attributes", BookCharacterProfileMeta.attributesWithoutAge(character.attributes))
             put("appearance", character.appearance)
             put("personality", character.personality)
             put("biography", character.biography)
@@ -927,9 +940,13 @@ object AiBookCharacterTool {
         return buildList {
             add("为小说角色生成一张角色头像，头像构图，清晰，适合角色资料卡。")
             add("角色名：${character.displayName()}")
+            character.genderLabel().takeIf { it != "未知" }?.let { add("性别：$it") }
+            BookCharacterProfileMeta.ageOf(character).takeIf { it.isNotBlank() }?.let { add("年纪：$it") }
             character.identity.takeIf { it.isNotBlank() }?.let { add("身份：$it") }
             character.skills.takeIf { it.isNotBlank() }?.let { add("技能：$it") }
-            character.attributes.takeIf { it.isNotBlank() }?.let { add("属性：$it") }
+            BookCharacterProfileMeta.attributesWithoutAge(character.attributes)
+                .takeIf { it.isNotBlank() }
+                ?.let { add("属性：$it") }
             character.appearance.takeIf { it.isNotBlank() }?.let { add("形象：$it") }
             character.personality.takeIf { it.isNotBlank() }?.let { add("性格：$it") }
             character.biography.takeIf { it.isNotBlank() }?.let { add("生平：$it") }

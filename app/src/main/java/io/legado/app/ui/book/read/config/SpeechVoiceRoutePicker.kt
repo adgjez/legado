@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,23 +68,20 @@ fun SpeechVoiceRoutePickerDialog(
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = selectedGroup?.title ?: title,
-                        color = colors.text,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (selectedGroup != null && initialKey == null) {
-                        TextButton(onClick = { selectedGroupKey = null }) {
-                            Text("返回", color = colors.subText)
+                if (selectedGroup == null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = title,
+                            color = colors.text,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onDismiss) {
+                            Text("关闭", color = colors.subText)
                         }
-                    }
-                    TextButton(onClick = onDismiss) {
-                        Text("关闭", color = colors.subText)
                     }
                 }
                 if (selectedGroup == null) {
@@ -195,7 +193,35 @@ private fun SpeakerPickerList(
     onRouteSelected: (SpeechRoute) -> Unit,
     onLogin: ((SpeechVoiceEngineGroup) -> Unit)?
 ) {
+    var query by remember(group.key) { mutableStateOf("") }
+    val filteredOptions = remember(group, query) {
+        val keyword = query.trim()
+        if (keyword.isBlank()) {
+            group.options
+        } else {
+            group.options.filter { option ->
+                option.matchesKeyword(keyword) ||
+                        group.title.contains(keyword, ignoreCase = true) ||
+                        group.subtitle.contains(keyword, ignoreCase = true) ||
+                        group.emotions.any {
+                            it.emotionName.contains(keyword, ignoreCase = true) ||
+                                    it.emotionTag.contains(keyword, ignoreCase = true)
+                        }
+            }
+        }
+    }
     Column(modifier = Modifier.padding(top = 10.dp)) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            singleLine = true,
+            placeholder = {
+                Text("搜索发言人 / toneID / 情绪", color = colors.subText, fontSize = 13.sp)
+            }
+        )
         if (group.warning.isNotBlank()) {
             Text(
                 text = group.warning,
@@ -234,7 +260,7 @@ private fun SpeakerPickerList(
                 .heightIn(min = 150.dp, max = 420.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(group.options, key = { it.key }) { option ->
+            items(filteredOptions, key = { it.key }) { option ->
                 PickerRow(
                     title = option.speakerName,
                     subtitle = listOf(option.groupName, option.toneID)
@@ -268,6 +294,13 @@ private fun SpeakerPickerList(
             }
         }
     }
+}
+
+private fun SpeechVoiceOption.matchesKeyword(keyword: String): Boolean {
+    return speakerName.contains(keyword, ignoreCase = true) ||
+            groupName.contains(keyword, ignoreCase = true) ||
+            toneID.contains(keyword, ignoreCase = true) ||
+            engineName.contains(keyword, ignoreCase = true)
 }
 
 @Composable

@@ -143,3 +143,22 @@ java.put("key", "value");
 ```
 
 `ctx.vars` 是执行开始时的变量快照。如果需要修改变量，使用 `source.put` 或 `java.put`。
+
+## 刷新当前章节
+
+段落规则脚本、点击脚本、登录 UI 脚本都可以调用：
+
+```js
+java.refreshParagraph();
+```
+
+该函数会清除当前章节的段落规则处理缓存，并重新加载当前章节正文，阅读位置不会重置。常见用法是在登录成功、变量更新、点击按钮获取到新数据后刷新显示。
+
+```js
+java.put("token", token);
+java.refreshParagraph();
+```
+
+返回 `true` 表示已提交刷新请求，返回 `false` 表示当前没有可刷新的阅读章节，或当前书籍不支持段落规则刷新。
+
+不要在 `process(ctx)` 中无条件调用 `java.refreshParagraph()`，否则每次处理章节都会继续触发刷新。

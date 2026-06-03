@@ -80,6 +80,7 @@ import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.readaloud.speech.SpeechEmotion
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
@@ -149,6 +150,8 @@ fun rememberCharacterStyle(): CharacterStyle {
 data class CharacterEditDraft(
     val name: String = "",
     val avatar: String = "",
+    val gender: String = BookCharacter.GENDER_UNKNOWN,
+    val age: String = "",
     val roleLevel: Int = BookCharacter.ROLE_NORMAL,
     val identity: String = "",
     val skills: String = "",
@@ -185,17 +188,23 @@ data class RelationEditDraft(
 fun BookCharacter.toDraft(): CharacterEditDraft = CharacterEditDraft(
     name = name,
     avatar = avatar,
+    gender = gender,
+    age = BookCharacterProfileMeta.ageOf(this),
     roleLevel = roleLevel,
     identity = identity,
     skills = skills,
-    attributes = attributes,
+    attributes = BookCharacterProfileMeta.attributesWithoutAge(attributes),
     appearance = appearance,
     personality = personality,
     biography = biography,
     speechRouteJson = speechRouteJson
 )
 
-fun BookCharacter.summaryText(): String = listOf(identity, skills, attributes)
+fun BookCharacter.summaryText(): String = listOf(
+    identity,
+    skills,
+    BookCharacterProfileMeta.attributesWithoutAge(attributes)
+)
     .map { it.trim() }
     .filter { it.isNotBlank() }
     .joinToString(" · ")
@@ -262,6 +271,15 @@ fun CharacterManageScreen(
     onOpenRelations: () -> Unit
 ) {
     val style = rememberCharacterStyle()
+    val roleSections = remember(characters) { characterRoleSections(characters) }
+    var selectedRoleLevel by remember(characters) {
+        mutableStateOf(
+            roleSections.firstOrNull { it.items.isNotEmpty() }?.roleLevel
+                ?: BookCharacter.ROLE_MAIN
+        )
+    }
+    val selectedSection = roleSections.firstOrNull { it.roleLevel == selectedRoleLevel }
+        ?: roleSections.first()
     CharacterScaffold(
         title = "角色资料",
         subtitle = bookName,
@@ -270,32 +288,150 @@ fun CharacterManageScreen(
             TextButton(onClick = onOpenRelations) { Text("关系网", color = style.colors.accent) }
         }
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .navigationBarsPadding(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp, 10.dp, 18.dp, 20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            item {
-                CharacterSummaryHeader(
-                    count = characters.size,
-                    onAdd = onAdd
-                )
-            }
-            if (characters.isEmpty()) {
-                item { EmptyCharacterCard("还没有角色，先添加主角或重要角色。") }
-            } else {
-                items(characters, key = { it.id }) { character ->
-                    CharacterListCard(
-                        character = character,
-                        onClick = { onOpenCard(character) },
-                        onEdit = { onEdit(character) },
-                        onDelete = { onDelete(character) }
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp, 10.dp, 18.dp, 112.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item {
+                    CharacterSummaryHeader(
+                        count = characters.size,
+                        onAdd = onAdd
                     )
+                }
+                if (characters.isEmpty()) {
+                    item { EmptyCharacterCard("还没有角色，先添加主角或重要角色。") }
+                } else if (selectedSection.items.isEmpty()) {
+                    item(key = "section_${selectedSection.roleLevel}") {
+                        CharacterRoleSectionHeader(selectedSection.title, 0)
+                    }
+                    item { EmptyCharacterCard("这个分类还没有角色。") }
+                } else {
+                    item(key = "section_${selectedSection.roleLevel}") {
+                        CharacterRoleSectionHeader(selectedSection.title, selectedSection.items.size)
+                    }
+                    items(selectedSection.items, key = { it.id }) { character ->
+                        CharacterListCard(
+                            character = character,
+                            onClick = { onOpenCard(character) },
+                            onEdit = { onEdit(character) },
+                            onDelete = { onDelete(character) }
+                        )
+                    }
+                }
+            }
+            CharacterRoleBottomTabs(
+                sections = roleSections,
+                selectedRoleLevel = selectedRoleLevel,
+                onSelect = { selectedRoleLevel = it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+private data class CharacterRoleSection(
+    val roleLevel: Int,
+    val title: String,
+    val items: List<BookCharacter>
+)
+
+private fun characterRoleSections(characters: List<BookCharacter>): List<CharacterRoleSection> {
+    return listOf(
+        CharacterRoleSection(
+            BookCharacter.ROLE_MAIN,
+            "主角",
+            characters.filter { it.roleLevel == BookCharacter.ROLE_MAIN }
+        ),
+        CharacterRoleSection(
+            BookCharacter.ROLE_IMPORTANT,
+            "重要角色",
+            characters.filter { it.roleLevel == BookCharacter.ROLE_IMPORTANT }
+        ),
+        CharacterRoleSection(
+            BookCharacter.ROLE_NORMAL,
+            "普通角色",
+            characters.filter { it.roleLevel != BookCharacter.ROLE_MAIN && it.roleLevel != BookCharacter.ROLE_IMPORTANT }
+        )
+    )
+}
+
+@Composable
+private fun CharacterRoleBottomTabs(
+    sections: List<CharacterRoleSection>,
+    selectedRoleLevel: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val style = rememberCharacterStyle()
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .shadow(12.dp, RoundedCornerShape(style.radius), clip = false),
+        color = style.colors.card,
+        shape = RoundedCornerShape(style.radius)
+    ) {
+        Row(
+            modifier = Modifier.padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            sections.forEach { section ->
+                val selected = section.roleLevel == selectedRoleLevel
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(style.smallRadius))
+                        .clickable { onSelect(section.roleLevel) },
+                    color = if (selected) style.colors.accent.copy(alpha = 0.16f) else Color.Transparent,
+                    shape = RoundedCornerShape(style.smallRadius)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = section.title,
+                            color = if (selected) style.colors.accent else style.colors.text,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${section.items.size}",
+                            color = style.colors.subText,
+                            fontSize = 10.sp,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CharacterRoleSectionHeader(title: String, count: Int) {
+    val style = rememberCharacterStyle()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = style.colors.text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Text("$count 个", color = style.colors.subText, fontSize = 12.sp)
     }
 }
 
@@ -379,6 +515,20 @@ fun CharacterListCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 7.dp)
                 )
+                val age = BookCharacterProfileMeta.ageOf(character)
+                val meta = listOf(character.genderLabel(), age, character.roleLabel())
+                    .filter { it.isNotBlank() && it != "未知" }
+                    .joinToString(" · ")
+                if (meta.isNotBlank()) {
+                    Text(
+                        text = meta,
+                        color = style.colors.subText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 5.dp)
+                    )
+                }
             }
             var expanded by remember { mutableStateOf(false) }
             TextButton(onClick = { expanded = true }) {
@@ -451,7 +601,9 @@ private fun MoreActionRow(
 fun CharacterCardScreen(
     character: BookCharacter?,
     onBack: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    speechEngines: List<CharacterSpeechEngineUi> = emptyList(),
+    onSpeechRouteChange: (String) -> Unit = {}
 ) {
     val style = rememberCharacterStyle()
     CharacterScaffold(
@@ -475,10 +627,10 @@ fun CharacterCardScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(18.dp, 10.dp, 18.dp, 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item { CharacterHeroCard(character) }
+            item { CharacterHeroCard(character, speechEngines, onSpeechRouteChange) }
             item { CharacterSection("身份", character.identity) }
-            item { CharacterSection("技能", character.skills) }
-            item { CharacterSection("属性", character.attributes) }
+            item { CharacterSection("技能", character.skills, minHeight = 112.dp) }
+            item { CharacterSection("属性", character.attributes, minHeight = 112.dp) }
             item { CharacterSection("形象描述", character.appearance) }
             item { CharacterSection("性格描述", character.personality) }
             item { CharacterSection("角色生平", character.biography) }
@@ -487,7 +639,11 @@ fun CharacterCardScreen(
 }
 
 @Composable
-private fun CharacterHeroCard(character: BookCharacter) {
+private fun CharacterHeroCard(
+    character: BookCharacter,
+    speechEngines: List<CharacterSpeechEngineUi>,
+    onSpeechRouteChange: (String) -> Unit
+) {
     val style = rememberCharacterStyle()
     Box(
         modifier = Modifier
@@ -532,6 +688,10 @@ private fun CharacterHeroCard(character: BookCharacter) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RolePill(character.roleLabel(), compact = false)
+                        InfoPill(character.genderLabel(), maxWidth = 72.dp)
+                        BookCharacterProfileMeta.ageOf(character).takeIf { it.isNotBlank() }?.let {
+                            InfoPill(it, maxWidth = 88.dp)
+                        }
                         character.identity.takeIf { it.isNotBlank() }?.let {
                             InfoPill(it, maxWidth = 150.dp)
                         }
@@ -540,13 +700,20 @@ private fun CharacterHeroCard(character: BookCharacter) {
             }
             val highlights = listOf(
                 "技能" to character.skills,
-                "属性" to character.attributes
+                "属性" to BookCharacterProfileMeta.attributesWithoutAge(character.attributes)
             ).filter { it.second.isNotBlank() }
             if (highlights.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     highlights.forEach { (label, value) ->
                         Surface(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                             color = style.colors.page.copy(alpha = 0.58f),
                             shape = RoundedCornerShape(style.smallRadius),
                             border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
@@ -566,7 +733,61 @@ private fun CharacterHeroCard(character: BookCharacter) {
                     }
                 }
             }
+            CharacterSpeechRouteQuickSwitch(
+                speechRouteJson = character.speechRouteJson,
+                speechEngines = speechEngines,
+                onChange = onSpeechRouteChange
+            )
         }
+    }
+}
+
+@Composable
+private fun CharacterSpeechRouteQuickSwitch(
+    speechRouteJson: String,
+    speechEngines: List<CharacterSpeechEngineUi>,
+    onChange: (String) -> Unit
+) {
+    val style = rememberCharacterStyle()
+    val route = remember(speechRouteJson) { SpeechRoute.fromJson(speechRouteJson) }
+    val groups = remember(speechEngines) { speechEngines.map { it.group } }
+    var pickerVisible by remember { mutableStateOf(false) }
+    Surface(
+        color = style.colors.page.copy(alpha = 0.58f),
+        shape = RoundedCornerShape(style.smallRadius),
+        border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("角色配音", color = style.colors.subText, fontSize = 12.sp)
+                Text(
+                    text = speechRouteSummary(route, groups, defaultText = "使用默认朗读引擎"),
+                    color = style.colors.text,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+            SmallAction("切换", { pickerVisible = true })
+        }
+    }
+    if (pickerVisible) {
+        SpeechVoiceRoutePickerDialog(
+            title = "角色配音",
+            groups = groups,
+            currentRoute = route,
+            onDismiss = { pickerVisible = false },
+            onRouteSelected = { selectedRoute ->
+                pickerVisible = false
+                onChange(selectedRoute.toJson())
+            }
+        )
     }
 }
 
@@ -591,10 +812,16 @@ private fun InfoPill(text: String, maxWidth: androidx.compose.ui.unit.Dp) {
 }
 
 @Composable
-private fun CharacterSection(label: String, value: String) {
+private fun CharacterSection(
+    label: String,
+    value: String,
+    minHeight: androidx.compose.ui.unit.Dp = 0.dp
+) {
     val style = rememberCharacterStyle()
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight),
         color = style.colors.card,
         shape = RoundedCornerShape(style.radius)
     ) {
@@ -668,6 +895,8 @@ fun CharacterEditScreen(
             }
             item { CharacterTextField("角色名称", draft.name, { onDraftChange(draft.copy(name = it)) }, singleLine = true) }
             item { RoleSelector(draft.roleLevel) { onDraftChange(draft.copy(roleLevel = it)) } }
+            item { GenderSelector(draft.gender) { onDraftChange(draft.copy(gender = it)) } }
+            item { CharacterTextField("角色年纪", draft.age, { onDraftChange(draft.copy(age = it)) }, singleLine = true) }
             item { CharacterTextField("角色身份", draft.identity, { onDraftChange(draft.copy(identity = it)) }, singleLine = true) }
             item { CharacterTextField("角色技能", draft.skills, { onDraftChange(draft.copy(skills = it)) }) }
             item { CharacterTextField("角色属性", draft.attributes, { onDraftChange(draft.copy(attributes = it)) }) }
@@ -735,6 +964,54 @@ private fun CharacterSpeechRouteEditor(
                 onChange(selectedRoute.toJson())
             }
         )
+    }
+}
+
+@Composable
+private fun GenderSelector(gender: String, onGenderChange: (String) -> Unit) {
+    val style = rememberCharacterStyle()
+    val current = BookCharacter.normalizeGender(gender)
+    Surface(color = style.colors.card, shape = RoundedCornerShape(style.radius)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("角色性别", color = style.colors.subText, fontSize = 13.sp)
+            Row(
+                modifier = Modifier.padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    BookCharacter.GENDER_UNKNOWN to "未知",
+                    BookCharacter.GENDER_MALE to "男",
+                    BookCharacter.GENDER_FEMALE to "女"
+                ).forEach { (value, label) ->
+                    val selected = current == value
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(style.smallRadius))
+                            .clickable { onGenderChange(value) },
+                        color = if (selected) style.colors.accent.copy(alpha = 0.16f) else style.colors.page,
+                        shape = RoundedCornerShape(style.smallRadius),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) style.colors.accent else style.colors.stroke)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(38.dp)
+                                .padding(horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (selected) style.colors.accent else style.colors.text,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -825,12 +1102,30 @@ fun CharacterRelationScreen(
     onSelectRelation: (BookCharacterRelation?) -> Unit
 ) {
     val style = rememberCharacterStyle()
-    val centerRelations = remember(relations, selectedCenterId) {
-        directRelationsForCenter(relations, selectedCenterId)
+    val relationCharacterIds = remember(relations) {
+        relations.flatMap { listOf(it.fromCharacterId, it.toCharacterId) }.toSet()
+    }
+    val graphCharacters = remember(characters, relationCharacterIds) {
+        characters.filter { it.id in relationCharacterIds }
+    }
+    val graphCenterId = remember(graphCharacters, selectedCenterId) {
+        selectedCenterId.takeIf { id -> graphCharacters.any { it.id == id } }
+            ?: graphCharacters.firstOrNull { it.roleLevel == BookCharacter.ROLE_MAIN }?.id
+            ?: graphCharacters.firstOrNull { it.roleLevel == BookCharacter.ROLE_IMPORTANT }?.id
+            ?: graphCharacters.firstOrNull()?.id
+            ?: 0L
+    }
+    LaunchedEffect(graphCenterId, selectedCenterId) {
+        if (graphCenterId > 0L && graphCenterId != selectedCenterId) {
+            onSelectCenter(graphCenterId)
+        }
+    }
+    val centerRelations = remember(relations, graphCenterId) {
+        directRelationsForCenter(relations, graphCenterId)
     }
     CharacterScaffold(
         title = "角色关系网",
-        subtitle = "主角视角 · ${characters.size} 个角色 · ${relations.size} 条关系",
+        subtitle = "主角视角 · ${graphCharacters.size} 个角色 · ${relations.size} 条关系",
         onBack = onBack,
         actions = {
             TextButton(onClick = onAddRelation) { Text("添加关系", color = style.colors.accent) }
@@ -841,18 +1136,23 @@ fun CharacterRelationScreen(
                 .fillMaxSize()
                 .navigationBarsPadding()
         ) {
-            CharacterCenterSelector(characters, selectedCenterId, onSelectCenter)
-            CharacterGraph(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(start = 14.dp, end = 14.dp),
-                characters = characters,
-                relations = centerRelations,
-                selectedCenterId = selectedCenterId,
-                onCharacterClick = onOpenCard,
-                onRelationClick = onSelectRelation
-            )
+            if (graphCharacters.isEmpty()) {
+                EmptyCharacterCard("暂无关系，点击右上角添加角色关系。")
+                Spacer(modifier = Modifier.weight(1f))
+            } else {
+                CharacterCenterSelector(graphCharacters, graphCenterId, onSelectCenter)
+                CharacterGraph(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(start = 14.dp, end = 14.dp),
+                    characters = graphCharacters,
+                    relations = centerRelations,
+                    selectedCenterId = graphCenterId,
+                    onCharacterClick = onOpenCard,
+                    onRelationClick = onSelectRelation
+                )
+            }
             RelationListPanel(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1068,15 +1368,6 @@ private fun CharacterGraph(
                                 )
                             }
                             .width(nodeWidth)
-                    )
-                }
-                if (characters.size > visibleCharacters.size) {
-                    UnlinkedCharactersStrip(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(12.dp),
-                        characters = characters.filter { it.id !in visibleIds },
-                        onCharacterClick = onCharacterClick
                     )
                 }
             }
@@ -1464,31 +1755,6 @@ private fun constrainGraphPan(
         pan.x.coerceIn(-maxX, maxX),
         pan.y.coerceIn(-maxY, maxY)
     )
-}
-
-@Composable
-private fun UnlinkedCharactersStrip(
-    modifier: Modifier,
-    characters: List<BookCharacter>,
-    onCharacterClick: (BookCharacter) -> Unit
-) {
-    val style = rememberCharacterStyle()
-    Row(
-        modifier = modifier
-            .background(style.colors.page.copy(alpha = 0.78f), RoundedCornerShape(style.radius))
-            .horizontalScroll(rememberScrollState())
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        characters.forEach { character ->
-            CharacterAvatar(
-                path = character.avatar,
-                contentDescription = character.displayName(),
-                sizeDp = 38,
-                modifier = Modifier.clickable { onCharacterClick(character) }
-            )
-        }
-    }
 }
 
 @Composable

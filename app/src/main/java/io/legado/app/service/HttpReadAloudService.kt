@@ -19,10 +19,13 @@ import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.offline.DefaultDownloaderFactory
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.Downloader
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -39,15 +42,21 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.readaloud.ReadAloudLoudnessAudioProcessor
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
+import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlan
+import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
 import io.legado.app.help.readaloud.speech.SpeechRoute
+import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
+import io.legado.app.help.readaloud.speech.SpeechVoiceGroupRepository
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.entities.buildReadAloudCues
+import io.legado.app.ui.book.read.page.entities.indexForChapterPosition
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.printOnDebug
@@ -55,6 +64,7 @@ import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -87,8 +97,26 @@ import java.net.SocketTimeoutException
 @SuppressLint("UnsafeOptInUsageError")
 class HttpReadAloudService : BaseReadAloudService(),
     Player.Listener {
+    private val loudnessAudioProcessor by lazy {
+        ReadAloudLoudnessAudioProcessor()
+    }
+    private val renderersFactory by lazy {
+        object : DefaultRenderersFactory(this@HttpReadAloudService) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                return DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(loudnessAudioProcessor))
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+            }
+        }
+    }
     private val exoPlayer: ExoPlayer by lazy {
-        ExoPlayer.Builder(this).build()
+        ExoPlayer.Builder(this, renderersFactory).build()
     }
     private val ttsFolderPath: String by lazy {
         cacheDir.absolutePath + File.separator + "httpTTS" + File.separator
@@ -125,7 +153,13 @@ class HttpReadAloudService : BaseReadAloudService(),
         val speakText: String,
         val fileName: String,
         val route: SpeechRoute?,
+        val speechItem: ReadAloudSpeechPlanItem?,
         val httpTts: HttpTTS?
+    )
+
+    private data class SynthesisResult(
+        val success: Boolean,
+        val error: Throwable? = null
     )
 
     override fun onCreate() {
@@ -162,6 +196,8 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     override fun playStop() {
         exoPlayer.stop()
+        exoPlayer.volume = 1f
+        loudnessAudioProcessor.setGain(1f)
         playIndexJob?.cancel()
     }
 
@@ -169,6 +205,78 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (!moveToNextCue()) {
             nextChapter()
         }
+    }
+
+    protected override fun moveToCue(
+        cueIndex: Int,
+        chapterPosition: Int,
+        play: Boolean
+    ) {
+        val targetIndex = when {
+            cueIndex in contentList.indices -> cueIndex
+            chapterPosition >= 0 -> readAloudCues.indexForChapterPosition(chapterPosition)
+            else -> -1
+        }
+        if (targetIndex !in contentList.indices) return
+        val mediaIndex = (0 until exoPlayer.mediaItemCount).firstOrNull { index ->
+            mediaItemCueIndex(exoPlayer.getMediaItemAt(index)) == targetIndex
+        }
+        if (mediaIndex == null) {
+            playStop()
+            syncToCueIndex(targetIndex)
+            upTtsProgress(readAloudNumber + 1)
+            if (play) {
+                play()
+            } else {
+                pageChanged = true
+                postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PAUSED, playing = false)
+            }
+            return
+        }
+        playIndexJob?.cancel()
+        syncToCueIndex(targetIndex)
+        applySpeakerVolume(targetIndex)
+        upTtsProgress(readAloudNumber + 1)
+        exoPlayer.seekTo(mediaIndex, 0L)
+        if (exoPlayer.playbackState == Player.STATE_IDLE) {
+            exoPlayer.prepare()
+        }
+        if (play) {
+            if (pause) {
+                super.resumeReadAloud()
+            }
+            exoPlayer.play()
+            postExoPlaybackPhase()
+        } else {
+            exoPlayer.pause()
+            super.pauseReadAloud(abandonFocus = false)
+            postReadAloudPlaybackPhase(ReadAloudPlaybackState.PHASE_PAUSED, playing = false)
+        }
+        upPlayPos()
+    }
+
+    private fun mediaItemCueIndex(mediaItem: MediaItem?): Int? {
+        return (mediaItem?.localConfiguration?.tag as? Int)
+            ?.takeIf { it in contentList.indices }
+    }
+
+    private fun syncToMediaItemCue(mediaItem: MediaItem? = exoPlayer.currentMediaItem): Int {
+        val cueIndex = mediaItemCueIndex(mediaItem)
+        if (cueIndex != null) {
+            syncToCueIndex(cueIndex)
+            applySpeakerVolume(cueIndex)
+            return cueIndex
+        }
+        return nowSpeak
+    }
+
+    private fun applySpeakerVolume(cueIndex: Int = nowSpeak) {
+        exoPlayer.volume = 1f
+        loudnessAudioProcessor.setGain(speakerLoudnessInfo(cueIndex).gain)
+    }
+
+    override fun onReadAloudAudioConfigChanged() {
+        applySpeakerVolume()
     }
 
     private fun downloadAndPlayAudios() {
@@ -186,19 +294,20 @@ class HttpReadAloudService : BaseReadAloudService(),
                     launch(Main) {
                         chunk.forEach { request ->
                             val file = getSpeakFileAsMd5(request.fileName)
-                            exoPlayer.addMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                            exoPlayer.addMediaItem(mediaItemForRequest(request, Uri.fromFile(file)))
                         }
                     }
                 }
                 preDownloadAudios(httpTts)
             }
         }.onError {
+            if (it is CancellationException) return@onError
             AppLog.put("朗读下载出错\n${it.localizedMessage}", it, true)
         }
     }
 
     private suspend fun preDownloadAudios(httpTts: HttpTTS?) {
-        val requests = buildNextChapterAudioRequests(httpTts).take(10)
+        val requests = waitForNextChapterAudioRequests(httpTts)
         prepareAudioRequests(requests, pauseOnFailure = false)
     }
 
@@ -229,7 +338,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                         )
                         val downloader = createDownloader(dataSourceFactory, request.fileName)
                         downloaderChannel.send(downloader)
-                        val mediaSource = createMediaSource(dataSourceFactory, request.fileName)
+                        val mediaSource = createMediaSource(dataSourceFactory, request)
                         launch(Main) {
                             exoPlayer.addMediaSource(mediaSource)
                         }
@@ -240,6 +349,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 }
             }
         }.onError {
+            if (it is CancellationException) return@onError
             AppLog.put("朗读下载出错\n${it.localizedMessage}", it, true)
         }
     }
@@ -248,7 +358,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         httpTts: HttpTTS?,
         downloaderChannel: Channel<Downloader>
     ) {
-        buildNextChapterAudioRequests(httpTts).take(10).forEach { request ->
+        waitForNextChapterAudioRequests(httpTts).forEach { request ->
             currentCoroutineContext().ensureActive()
             val dataSourceFactory = createDataSourceFactory(
                 request.httpTts,
@@ -259,6 +369,21 @@ class HttpReadAloudService : BaseReadAloudService(),
             val downloader = createDownloader(dataSourceFactory, request.fileName)
             downloaderChannel.send(downloader)
         }
+    }
+
+    private suspend fun waitForNextChapterAudioRequests(httpTts: HttpTTS?): List<SpeakAudioRequest> {
+        val bookUrl = ReadBook.book?.bookUrl ?: return emptyList()
+        val currentChapterIndex = ReadBook.durChapterIndex
+        repeat(120) { attempt ->
+            currentCoroutineContext().ensureActive()
+            if (ReadBook.book?.bookUrl != bookUrl || ReadBook.durChapterIndex != currentChapterIndex) {
+                return emptyList()
+            }
+            val requests = buildNextChapterAudioRequests(httpTts)
+            if (requests.isNotEmpty()) return requests
+            if (attempt < 119) delay(5_000)
+        }
+        return emptyList()
     }
 
     private fun buildCurrentAudioRequests(httpTts: HttpTTS?): List<SpeakAudioRequest> {
@@ -275,6 +400,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 text = text,
                 chapter = textChapter,
                 route = route,
+                speechItem = speechItems.getOrNull(index),
                 httpTts = routeHttpTts
             )
         }
@@ -289,6 +415,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 text = cue.text,
                 chapter = nextPlan.chapter,
                 route = route,
+                speechItem = nextPlan.plan.items.getOrNull(index),
                 httpTts = httpTtsForRoute(httpTts, route)
             )
         }
@@ -299,6 +426,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         text: String,
         chapter: TextChapter?,
         route: SpeechRoute?,
+        speechItem: ReadAloudSpeechPlanItem?,
         httpTts: HttpTTS?
     ): SpeakAudioRequest {
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
@@ -311,6 +439,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             speakText = speakText,
             fileName = md5SpeakFileName(text, chapter, route),
             route = route,
+            speechItem = speechItem,
             httpTts = httpTts
         )
     }
@@ -347,20 +476,16 @@ class HttpReadAloudService : BaseReadAloudService(),
             return true
         }
         if (hasSpeakFile(request.fileName)) {
+            learnSpeakerLoudness(request)
             return true
         }
         return runCatching {
-            if (request.route?.engineType == SpeechRoute.ENGINE_SYSTEM || request.httpTts == null) {
-                if (!synthesizeSystemSpeakFile(request.fileName, request.speakText, request.route ?: defaultSystemRoute())) {
-                    createSilentSound(request.fileName)
-                }
+            val result = synthesizeRequestWithFallback(request)
+            if (!result.success) {
+                result.error?.let { throw it }
+                createSilentSound(request.fileName)
             } else {
-                val inputStream = getSpeakStream(request.httpTts, request.speakText, request.route)
-                if (inputStream != null) {
-                    createSpeakFile(request.fileName, inputStream)
-                } else {
-                    createSilentSound(request.fileName)
-                }
+                learnSpeakerLoudness(request)
             }
             true
         }.getOrElse { throwable ->
@@ -368,6 +493,73 @@ class HttpReadAloudService : BaseReadAloudService(),
             if (pauseOnFailure) pauseReadAloud()
             false
         }
+    }
+
+    private fun learnSpeakerLoudness(request: SpeakAudioRequest) {
+        if (request.speakText.isBlank()) return
+        if (!ReadAloudSpeakerLoudnessManager.needsAnalysis(request.speechItem, request.route)) return
+        lifecycleScope.launch(IO) {
+            ReadAloudSpeakerLoudnessManager.analyzeAndRecord(
+                file = getSpeakFileAsMd5(request.fileName),
+                item = request.speechItem,
+                route = request.route
+            )
+        }
+    }
+
+    private suspend fun synthesizeRequestWithFallback(request: SpeakAudioRequest): SynthesisResult {
+        val primary = synthesizeToSpeakFile(
+            fileName = request.fileName,
+            speakText = request.speakText,
+            route = request.route,
+            httpTts = request.httpTts
+        )
+        if (primary.success || !AppConfig.aiReadAloudRoleEnabled) return primary
+        val fallbackRoutes = fallbackRoutesFor(request.route)
+        var lastError = primary.error
+        fallbackRoutes.forEach { route ->
+            currentCoroutineContext().ensureActive()
+            val result = synthesizeToSpeakFile(
+                fileName = request.fileName,
+                speakText = request.speakText,
+                route = route,
+                httpTts = httpTtsForRoute(ReadAloud.httpTTS, route)
+            )
+            if (result.success) {
+                AppLog.putDebug("多角色 TTS 路由失败，已临时改用：${route.speakerName.ifBlank { route.engineType }}")
+                return result
+            }
+            lastError = result.error ?: lastError
+        }
+        return SynthesisResult(false, lastError)
+    }
+
+    private suspend fun synthesizeToSpeakFile(
+        fileName: String,
+        speakText: String,
+        route: SpeechRoute?,
+        httpTts: HttpTTS?
+    ): SynthesisResult {
+        return runCatching {
+            downloadErrorNo = 0
+            if (route?.engineType == SpeechRoute.ENGINE_SYSTEM || httpTts == null) {
+                synthesizeSystemSpeakFile(fileName, speakText, route ?: defaultSystemRoute())
+            } else {
+                val inputStream = getSpeakStream(httpTts, speakText, route)
+                if (inputStream != null) {
+                    createSpeakFile(fileName, inputStream)
+                    true
+                } else {
+                    false
+                }
+            }
+        }.fold(
+            onSuccess = { SynthesisResult(it) },
+            onFailure = { throwable ->
+                if (throwable is CancellationException) throw throwable
+                SynthesisResult(false, throwable)
+            }
+        )
     }
 
     private fun maxSynthesisThreadCount(requests: List<SpeakAudioRequest>): Int {
@@ -396,7 +588,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 ReadBook.book,
                 chapter,
                 baseCues.map { it.text }
-            )?.cacheKey
+            )?.cacheKey ?: return null
         } else {
             null
         }
@@ -433,7 +625,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     kotlin.runCatching {
                         runBlocking(lifecycleScope.coroutineContext[Job]!!) {
                             val sourceHttpTts = httpTts ?: return@runBlocking resources.openRawResource(R.raw.silent_sound)
-                            getSpeakStream(sourceHttpTts, speakText, route)
+                            getSpeakStreamWithFallback(sourceHttpTts, speakText, route, fileName)
                         }
                     }.onFailure {
                         when (it) {
@@ -453,6 +645,49 @@ class HttpReadAloudService : BaseReadAloudService(),
         return factory
     }
 
+    private suspend fun getSpeakStreamWithFallback(
+        httpTts: HttpTTS,
+        speakText: String,
+        route: SpeechRoute?,
+        fileName: String?
+    ): InputStream? {
+        val primary = runCatching {
+            downloadErrorNo = 0
+            getSpeakStream(httpTts, speakText, route)
+        }
+        primary.getOrNull()?.let { return it }
+        if (!AppConfig.aiReadAloudRoleEnabled) {
+            primary.exceptionOrNull()?.let { throw it }
+            return null
+        }
+        var lastError = primary.exceptionOrNull()
+        fallbackRoutesFor(route).forEach { fallbackRoute ->
+            currentCoroutineContext().ensureActive()
+            val result = runCatching {
+                downloadErrorNo = 0
+                if (fallbackRoute.engineType == SpeechRoute.ENGINE_SYSTEM) {
+                    val targetFileName = fileName ?: return@runCatching null
+                    if (synthesizeSystemSpeakFile(targetFileName, speakText, fallbackRoute)) {
+                        getSpeakFileAsMd5(targetFileName).inputStream()
+                    } else {
+                        null
+                    }
+                } else {
+                    val fallbackHttpTts = httpTtsForRoute(ReadAloud.httpTTS, fallbackRoute)
+                        ?: return@runCatching null
+                    getSpeakStream(fallbackHttpTts, speakText, fallbackRoute)
+                }
+            }
+            result.getOrNull()?.let { stream ->
+                AppLog.putDebug("多角色 TTS 路由失败，已临时改用：${fallbackRoute.speakerName.ifBlank { fallbackRoute.engineType }}")
+                return stream
+            }
+            lastError = result.exceptionOrNull() ?: lastError
+        }
+        lastError?.let { throw it }
+        return null
+    }
+
     private fun createDownloader(factory: CacheDataSource.Factory, fileName: String): Downloader {
         val uri = fileName.toUri()
         val request = DownloadRequest.Builder(fileName, uri).build()
@@ -460,11 +695,18 @@ class HttpReadAloudService : BaseReadAloudService(),
             .createDownloader(request)
     }
 
-    private fun createMediaSource(factory: DataSource.Factory, fileName: String): MediaSource {
+    private fun mediaItemForRequest(request: SpeakAudioRequest, uri: Uri): MediaItem {
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setTag(request.index)
+            .build()
+    }
+
+    private fun createMediaSource(factory: DataSource.Factory, request: SpeakAudioRequest): MediaSource {
         return DefaultMediaSourceFactory(this)
             .setDataSourceFactory(factory)
             .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-            .createMediaSource(MediaItem.fromUri(fileName))
+            .createMediaSource(mediaItemForRequest(request, request.fileName.toUri()))
     }
 
     private suspend fun getSpeakStream(
@@ -604,6 +846,25 @@ class HttpReadAloudService : BaseReadAloudService(),
         )
     }
 
+    private fun fallbackRoutesFor(route: SpeechRoute?): List<SpeechRoute> {
+        val httpTtsList = appDb.httpTTSDao.all
+        val originalKey = route?.fallbackKey().orEmpty()
+        val candidates = if (route?.isConfigured == true) {
+            SpeechVoiceGroupRepository.assignableRoutes(httpTtsList)
+                .ifEmpty { SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList) }
+        } else {
+            emptyList()
+        }
+        return (candidates + defaultSystemRoute())
+            .filter { it.isConfigured }
+            .distinctBy { it.fallbackKey() }
+            .filter { it.fallbackKey() != originalKey }
+    }
+
+    private fun SpeechRoute.fallbackKey(): String {
+        return "$engineType|$engineValue|$toneID|$speakerName"
+    }
+
     private suspend fun synthesizeSystemSpeakFile(
         fileName: String,
         speakText: String,
@@ -740,6 +1001,7 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     override fun resumeReadAloud() {
+        if (resumeBlockedReadAloudIfNeeded()) return
         super.resumeReadAloud()
         kotlin.runCatching {
             if (pageChanged) {
@@ -755,18 +1017,26 @@ class HttpReadAloudService : BaseReadAloudService(),
     private fun upPlayPos() {
         playIndexJob?.cancel()
         val textChapter = textChapter ?: return
+        val cueIndex = syncToMediaItemCue()
+        val cueText = contentList.getOrNull(cueIndex) ?: return
         playIndexJob = lifecycleScope.launch {
             upTtsProgress(readAloudNumber + 1)
             if (exoPlayer.duration <= 0) {
                 return@launch
             }
-            val speakTextLength = contentList[nowSpeak].length
+            if (cueIndex != nowSpeak || contentList.getOrNull(cueIndex) != cueText) {
+                return@launch
+            }
+            val speakTextLength = cueText.length
             if (speakTextLength <= 0) {
                 return@launch
             }
             val sleep = exoPlayer.duration / speakTextLength
             val start = speakTextLength * exoPlayer.currentPosition / exoPlayer.duration
-            for (i in start..contentList[nowSpeak].length) {
+            for (i in start..speakTextLength) {
+                if (cueIndex != nowSpeak || contentList.getOrNull(cueIndex) != cueText) {
+                    return@launch
+                }
                 if (pageIndex + 1 < textChapter.pageSize
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
@@ -840,14 +1110,18 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             playErrorNo = 0
         }
-        updateNextPos()
+        if (mediaItemCueIndex(mediaItem) != null) {
+            syncToMediaItemCue(mediaItem)
+        } else {
+            updateNextPos()
+        }
         postExoPlaybackPhase()
         upPlayPos()
     }
 
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
-        AppLog.put("朗读错误\n${contentList[nowSpeak]}", error)
+        AppLog.put("朗读错误\n${contentList.getOrNull(nowSpeak).orEmpty()}", error)
         deleteCurrentSpeakFile()
         playErrorNo++
         if (playErrorNo >= 5) {
@@ -900,6 +1174,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
         postReadAloudPlaybackPhase(
             phase = phase,
+            cueIndex = syncToMediaItemCue(),
             message = message,
             playing = actualPlaying,
             buffering = buffering

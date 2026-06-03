@@ -2,6 +2,7 @@ package io.legado.app.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -11,16 +12,24 @@ import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
 import splitties.systemservices.notificationManager
+import splitties.systemservices.powerManager
 
 class AiTaskKeepAliveService : BaseService() {
+
+    private val wakeLock: PowerManager.WakeLock by lazy {
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legado:AiTaskKeepAliveService")
+            .apply { setReferenceCounted(false) }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                releaseWakeLock()
                 stopSelf()
                 return super.onStartCommand(intent, flags, startId)
             }
             ACTION_REFRESH -> {
+                syncWakeLock()
                 upNotification()
             }
         }
@@ -28,11 +37,29 @@ class AiTaskKeepAliveService : BaseService() {
     }
 
     override fun startForegroundNotification() {
+        syncWakeLock()
         startForeground(NotificationId.AiTaskService, createNotification().build())
     }
 
     private fun upNotification() {
+        syncWakeLock()
         notificationManager.notify(NotificationId.AiTaskService, createNotification().build())
+    }
+
+    private fun syncWakeLock() {
+        if (AiTaskKeepAlive.activeCount > 0) {
+            if (!wakeLock.isHeld) {
+                wakeLock.acquire()
+            }
+        } else {
+            releaseWakeLock()
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
     }
 
     private fun createNotification(): NotificationCompat.Builder {
@@ -59,6 +86,7 @@ class AiTaskKeepAliveService : BaseService() {
     }
 
     override fun onDestroy() {
+        releaseWakeLock()
         super.onDestroy()
         notificationManager.cancel(NotificationId.AiTaskService)
     }

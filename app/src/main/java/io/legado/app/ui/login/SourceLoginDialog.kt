@@ -22,6 +22,7 @@ import io.legado.app.databinding.DialogLoginBinding
 import io.legado.app.databinding.ItemFilletTextBinding
 import io.legado.app.databinding.ItemSourceEditBinding
 import io.legado.app.databinding.ItemSelectorSingleBinding
+import io.legado.app.help.book.ParagraphRuleJsExtensions
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.filletTopBackground
 import io.legado.app.ui.about.AppLogDialog
@@ -698,7 +699,16 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
     }
 
     private fun handleButtonClick(source: BaseSource, action: String?, name: String, isLongClick: Boolean) {
+        val loginData = getLoginData(rowUis)
         lifecycleScope.launch(IO) {
+            val paragraphRuleSource = source as? ParagraphRuleJsExtensions
+            if (paragraphRuleSource != null) {
+                saveParagraphRuleLoginData(source, loginData)
+                if (action == null) {
+                    paragraphRuleSource.refreshParagraph()
+                    return@launch
+                }
+            }
             if (action.isAbsUrl()) {
                 context?.openUrl(action!!)
             } else if (action != null) {
@@ -709,7 +719,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
                     runScriptWithContext {
                         source.evalJS("$loginJS\n$buttonFunctionJS") {
                             put("java", sourceLoginJsExtensions)
-                            put("result", getLoginData(rowUis))
+                            put("result", loginData)
                             put("book", viewModel.book)
                             put("chapter", viewModel.chapter)
                             put("isLongClick", isLongClick)
@@ -720,6 +730,15 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true),
                     AppLog.put("LoginUI Button $name JavaScript error", e)
                 }
             }
+        }
+    }
+
+    private fun saveParagraphRuleLoginData(source: BaseSource, loginData: Map<String, String>) {
+        if (source !is ParagraphRuleJsExtensions) return
+        if (loginData.isEmpty()) {
+            source.removeLoginInfo()
+        } else {
+            source.putLoginInfo(GSON.toJson(loginData))
         }
     }
 

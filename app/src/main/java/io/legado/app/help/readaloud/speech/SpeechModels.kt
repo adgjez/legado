@@ -2,6 +2,7 @@ package io.legado.app.help.readaloud.speech
 
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.character.BookCharacterProfileMeta
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -249,15 +250,153 @@ object SpeechVoiceCatalogParser {
 
 object SpeechVoiceAssigner {
 
+    private data class RouteCandidate(
+        val route: SpeechRoute,
+        val searchableText: String
+    )
+
     fun assignRoute(
         character: BookCharacter,
         httpTtsList: List<HttpTTS>
     ): SpeechRoute {
-        val candidates = SpeechVoiceGroupRepository.assignableRoutes(httpTtsList)
-            .ifEmpty { SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList) }
+        val gender = BookCharacter.normalizeGender(character.gender)
+        val ageKeywords = ageKeywords(character)
+        val candidates = routesForCharacter(character, httpTtsList, gender, ageKeywords)
+            .ifEmpty {
+                SpeechVoiceGroupRepository.assignableRoutes(httpTtsList)
+                    .ifEmpty { SpeechVoiceCatalogRepository.assignableRoutes(httpTtsList) }
+            }
         if (candidates.isEmpty()) return SpeechRoute()
+        return stablePick(character, candidates).copy(source = SpeechRoute.SOURCE_AUTO)
+    }
+
+    private fun routesForCharacter(
+        character: BookCharacter,
+        httpTtsList: List<HttpTTS>,
+        gender: String,
+        ageKeywords: List<String>
+    ): List<SpeechRoute> {
+        val managedCandidates = SpeechVoiceGroupRepository.managedGroups(httpTtsList)
+            .flatMap { group ->
+                group.items.mapNotNull { item ->
+                    RouteCandidate(
+                        route = item.toSpeechRoute(),
+                        searchableText = listOf(
+                            group.group.name,
+                            item.speakerName,
+                            item.engineName,
+                            item.sourceGroupName
+                        ).joinToString(" ")
+                    )
+                }
+            }
+        rankedRoutes(managedCandidates, gender, ageKeywords)?.let { return it }
+
+        val catalogCandidates = SpeechVoiceCatalogRepository.httpGroups(httpTtsList)
+            .flatMap { group ->
+                group.options.map { option ->
+                    RouteCandidate(
+                        route = option.toRoute(group.emotions.firstOrNull(), SpeechRoute.SOURCE_AUTO),
+                        searchableText = listOf(
+                            group.title,
+                            option.speakerName,
+                            option.engineName,
+                            option.groupName,
+                            option.groupId
+                        ).joinToString(" ")
+                    )
+                }
+            }
+        rankedRoutes(catalogCandidates, gender, ageKeywords)?.let { return it }
+
+        val inferredGender = BookCharacter.inferGender(
+            listOf(character.name, character.identity, character.biography).joinToString(" ")
+        )
+        return if (inferredGender.isNotBlank() && inferredGender != gender) {
+            routesForCharacter(character.copy(gender = inferredGender), httpTtsList, inferredGender, ageKeywords)
+        } else {
+            emptyList()
+        }
+    }
+
+    private fun rankedRoutes(
+        candidates: List<RouteCandidate>,
+        gender: String,
+        ageKeywords: List<String>
+    ): List<SpeechRoute>? {
+        if (candidates.isEmpty()) return null
+        val genderMatched = if (gender.isBlank()) {
+            emptyList()
+        } else {
+            candidates.filter { matchesGender(gender, it.searchableText) }
+        }
+        val ageMatched = if (ageKeywords.isEmpty()) {
+            emptyList()
+        } else {
+            candidates.filter { matchesAge(ageKeywords, it.searchableText) }
+        }
+        val genderAgeMatched = if (genderMatched.isNotEmpty() && ageKeywords.isNotEmpty()) {
+            genderMatched.filter { matchesAge(ageKeywords, it.searchableText) }
+        } else {
+            emptyList()
+        }
+        val picked = when {
+            genderAgeMatched.isNotEmpty() -> genderAgeMatched
+            genderMatched.isNotEmpty() -> genderMatched
+            ageMatched.isNotEmpty() -> ageMatched
+            else -> return null
+        }
+        return picked.map { it.route }.distinctBy { it.routeKey() }
+    }
+
+    private fun stablePick(character: BookCharacter, candidates: List<SpeechRoute>): SpeechRoute {
         val stableKey = "${character.bookUrl}|${character.id}|${character.name}"
         val index = Math.floorMod(stableKey.hashCode(), candidates.size)
-        return candidates[index].copy(source = SpeechRoute.SOURCE_AUTO)
+        return candidates[index]
     }
+
+    private fun matchesGender(gender: String, vararg texts: String): Boolean {
+        val text = texts.joinToString(" ").lowercase()
+        return when (gender) {
+            BookCharacter.GENDER_MALE -> maleVoiceKeywords.any { text.contains(it) } &&
+                femaleVoiceKeywords.none { text.contains(it) }
+            BookCharacter.GENDER_FEMALE -> femaleVoiceKeywords.any { text.contains(it) }
+            else -> false
+        }
+    }
+
+    private fun matchesAge(ageKeywords: List<String>, vararg texts: String): Boolean {
+        if (ageKeywords.isEmpty()) return false
+        val text = texts.joinToString(" ").lowercase()
+        return ageKeywords.any { text.contains(it) }
+    }
+
+    private fun ageKeywords(character: BookCharacter): List<String> {
+        val text = listOf(
+            BookCharacterProfileMeta.ageOf(character),
+            character.identity,
+            character.attributes,
+            character.biography
+        ).joinToString(" ").lowercase()
+        return when {
+            listOf("幼", "童", "儿童", "小孩", "孩子", "萝莉", "正太").any { text.contains(it) } ->
+                listOf("幼", "童", "儿童", "小孩", "孩子", "萝莉", "正太", "child", "kid")
+            listOf("少年", "少女", "青少年").any { text.contains(it) } ->
+                listOf("少年", "少女", "青少年", "boy", "girl", "young")
+            listOf("青年", "年轻").any { text.contains(it) } ->
+                listOf("青年", "年轻", "young")
+            listOf("中年", "大叔", "大妈", "叔", "阿姨").any { text.contains(it) } ->
+                listOf("中年", "大叔", "大妈", "叔", "阿姨", "middle")
+            listOf("老人", "老年", "老者", "老头", "老太", "婆婆", "爷爷", "奶奶").any { text.contains(it) } ->
+                listOf("老人", "老年", "老者", "老头", "老太", "婆婆", "爷爷", "奶奶", "old")
+            else -> emptyList()
+        }
+    }
+
+    private fun SpeechRoute.routeKey(): String {
+        return "$engineType|$engineValue|$toneID|$speakerName"
+    }
+
+    private val maleVoiceKeywords = listOf("男", "男声", "男性", "male", "man", "boy", "少年", "青年", "大叔", "叔")
+    private val femaleVoiceKeywords = listOf("女", "女声", "女性", "female", "woman", "girl", "少女", "姐姐", "妹妹", "萝莉")
 }
