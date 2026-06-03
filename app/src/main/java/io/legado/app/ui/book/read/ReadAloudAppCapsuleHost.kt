@@ -44,6 +44,8 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
     private var overlay: ComposeCapsuleOverlay? = null
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
     private var capsulePosition by mutableStateOf(CapsulePositionState())
+    private var readBookPanelActive by mutableStateOf(false)
+    private var readMenuAvoidBounds by mutableStateOf<RectF?>(null)
     private val capsuleBounds = RectF()
     private var pendingPanelOpenRequest: PendingPanelOpenRequest? = null
     private var pendingPanelOpenToken = 0L
@@ -54,6 +56,10 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityResumed(activity: Activity) {
         currentActivity = activity
+        if (activity !is ReadBookActivity) {
+            readBookPanelActive = false
+            readMenuAvoidBounds = null
+        }
         installObservers(activity)
         activity.window?.decorView?.post {
             if (currentActivity === activity) {
@@ -142,13 +148,22 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
             foregroundActive = true,
             expanded = false,
             readMenuVisible = false,
-            readMenuAvoidBounds = null
+            readMenuAvoidBounds = if (activity is ReadBookActivity) {
+                readMenuAvoidBounds?.let(::RectF)
+            } else {
+                null
+            }
         )
     }
 
     private fun shouldShow(activity: Activity): Boolean {
-        if (activity is ReadBookActivity) return false
         if (!BaseReadAloudService.isRun) return false
+        if (activity is ReadBookActivity && readBookPanelActive) return false
+        if (activity is ReadBookActivity &&
+            pendingPanelOpenRequest?.bookUrl == ReadBook.book?.bookUrl
+        ) {
+            return false
+        }
         return ReadBook.book != null
     }
 
@@ -173,9 +188,41 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
 
     private fun openReadAloudPanel(activity: Activity) {
         ReadBook.book?.let { book ->
+            if (activity is ReadBookActivity && activity.openReadAloudPanelFromGlobalCapsule()) {
+                readBookPanelActive = true
+                detach()
+                return
+            }
             requestReadAloudPanelOpen(book.bookUrl)
             activity.startActivityForBook(book) {
                 putExtra("openReadAloudPanel", true)
+            }
+        }
+    }
+
+    fun updateReadBookPanelActive(active: Boolean) {
+        if (readBookPanelActive == active) return
+        readBookPanelActive = active
+        currentActivity?.let { activity ->
+            activity.window?.decorView?.post {
+                if (currentActivity === activity) {
+                    sync(activity)
+                }
+            }
+        }
+    }
+
+    fun updateReadMenuAvoidBounds(bounds: RectF?) {
+        val next = bounds?.let(::RectF)
+        if (readMenuAvoidBounds == next) return
+        readMenuAvoidBounds = next
+        currentActivity?.let { activity ->
+            if (activity is ReadBookActivity) {
+                activity.window?.decorView?.post {
+                    if (currentActivity === activity) {
+                        sync(activity)
+                    }
+                }
             }
         }
     }

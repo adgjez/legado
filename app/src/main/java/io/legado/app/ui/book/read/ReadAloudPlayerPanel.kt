@@ -843,19 +843,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     private fun closeByUser() {
         if (BaseReadAloudService.isRun) {
             dismissedForCurrentRun = true
-            expanded = false
-            opening = false
-            panelPhase = PanelPhase.Collapsed
-            uiState = buildState(uiState.mode).copy(
-                foregroundActive = foregroundActive,
-                expanded = false,
-                opening = false,
-                panelPhase = PanelPhase.Collapsed,
-                readMenuVisible = readMenuVisible,
-                readMenuAvoidBounds = readMenuAvoidBounds?.let(::RectF),
-                openToken = openToken
-            )
-            callBack?.onReadAloudPlayerVisibilityChanged(false)
+            hidePanel()
         } else {
             hidePanel()
         }
@@ -1961,18 +1949,6 @@ private fun ReadAloudPlayerContent(
             }
         }
     }
-        }
-        if (state.panelPhase == ReadAloudPlayerPanel.PanelPhase.Collapsed && state.serviceRunning) {
-            ReadAloudCapsule(
-                state = state,
-                colors = colors,
-                onPlayPause = onPlayPause,
-                onExpand = onExpand,
-                onClose = onStop,
-                capsulePosition = capsulePosition,
-                onPositionChange = onCapsulePositionChange,
-                onBounds = onCapsuleBounds
-            )
         }
         RoleAssignmentProgressDialog(
             state = state,
