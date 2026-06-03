@@ -59,7 +59,8 @@ object ReadMenuButtonConfig {
         val parsed = if (raw.isBlank()) null else runCatching {
             GSON.fromJson(raw, ButtonLayout::class.java)
         }.getOrNull()
-        return sanitize(parsed ?: defaultLayout())
+        val layout = sanitize(parsed ?: defaultLayout())
+        return if (layout.isMisplacedAiDefault()) defaultLayout() else layout
     }
 
     fun save(context: Context, layout: ButtonLayout) {
@@ -75,16 +76,20 @@ object ReadMenuButtonConfig {
             builtin(Builtin.SEARCH),
             builtin(Builtin.AUTO_PAGE),
             builtin(Builtin.REPLACE_RULE),
-            builtin(Builtin.NIGHT_THEME)
+            builtin(Builtin.NIGHT_THEME),
+            builtin(Builtin.CHARACTERS),
+            builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.READ_ASSISTANT),
+            builtin(Builtin.AI_SUMMARY)
         )
     }
 
     private fun defaultSecondRow(): List<ButtonRef> {
         return listOf(
-            builtin(Builtin.CHARACTERS),
-            builtin(Builtin.PARAGRAPH_RULES),
-            builtin(Builtin.READ_ASSISTANT),
-            builtin(Builtin.AI_SUMMARY)
+            builtin(Builtin.CATALOG),
+            builtin(Builtin.READ_ALOUD),
+            builtin(Builtin.READ_STYLE),
+            builtin(Builtin.SETTING)
         )
     }
 
@@ -106,5 +111,28 @@ object ReadMenuButtonConfig {
                 else -> false
             }
         }
+    }
+
+    private fun ButtonLayout.isMisplacedAiDefault(): Boolean {
+        return firstRow.map { it.type to it.id } == defaultLegacyFirstRow().map { it.type to it.id } &&
+                secondRow.map { it.type to it.id } == defaultAiShortcutRow().map { it.type to it.id }
+    }
+
+    private fun defaultLegacyFirstRow(): List<ButtonRef> {
+        return listOf(
+            builtin(Builtin.SEARCH),
+            builtin(Builtin.AUTO_PAGE),
+            builtin(Builtin.REPLACE_RULE),
+            builtin(Builtin.NIGHT_THEME)
+        )
+    }
+
+    private fun defaultAiShortcutRow(): List<ButtonRef> {
+        return listOf(
+            builtin(Builtin.CHARACTERS),
+            builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.READ_ASSISTANT),
+            builtin(Builtin.AI_SUMMARY)
+        )
     }
 }
