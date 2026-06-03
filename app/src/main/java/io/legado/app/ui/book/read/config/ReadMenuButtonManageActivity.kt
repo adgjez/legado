@@ -608,7 +608,7 @@ class ReadMenuButtonManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             ReadMenuButtonConfig.Builtin.READ_STYLE -> R.drawable.ic_interface_setting
             ReadMenuButtonConfig.Builtin.SETTING -> R.drawable.ic_settings
             ReadMenuButtonConfig.Builtin.READ_ASSISTANT -> R.drawable.ic_bottom_ai_assistant
-            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai_assistant
+            ReadMenuButtonConfig.Builtin.AI_SUMMARY -> R.drawable.ic_bottom_ai
             ReadMenuButtonConfig.Builtin.PARAGRAPH_RULES -> R.drawable.ic_code
             ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
             else -> R.drawable.ic_custom

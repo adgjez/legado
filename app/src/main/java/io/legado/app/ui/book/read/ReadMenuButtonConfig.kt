@@ -81,10 +81,10 @@ object ReadMenuButtonConfig {
 
     private fun defaultSecondRow(): List<ButtonRef> {
         return listOf(
-            builtin(Builtin.CATALOG),
-            builtin(Builtin.READ_ALOUD),
-            builtin(Builtin.READ_STYLE),
-            builtin(Builtin.SETTING)
+            builtin(Builtin.CHARACTERS),
+            builtin(Builtin.PARAGRAPH_RULES),
+            builtin(Builtin.READ_ASSISTANT),
+            builtin(Builtin.AI_SUMMARY)
         )
     }
 
