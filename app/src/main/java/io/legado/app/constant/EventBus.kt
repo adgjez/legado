@@ -43,6 +43,7 @@ object EventBus {
     const val READ_ALOUD_CONFIG_SCOPE_SPEECH = "speech"
     const val READ_ALOUD_CONFIG_SCOPE_ENGINE = "engine"
     const val AI_READ_ALOUD_ROLE_STATE = "aiReadAloudRoleState"
+    const val AI_CONFIG_CHANGED = "aiConfigChanged"
     const val EXPORT_BOOK = "exportBook"
     const val UP_MANGA_CONFIG = "upMangaConfig"
     const val PLAY_MODE_CHANGED = "playModeChanged"

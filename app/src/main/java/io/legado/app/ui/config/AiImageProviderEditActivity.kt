@@ -9,12 +9,14 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiImageProviderEditBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -157,6 +159,7 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         if (needDefaultProvider) {
             AppConfig.ensureCurrentImageProvider(updated.id)
         }
+        postEvent(EventBus.AI_CONFIG_CHANGED, true)
         finish()
     }
 

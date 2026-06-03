@@ -14,6 +14,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
@@ -29,6 +30,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import io.legado.app.utils.GSON
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.readText
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
@@ -157,6 +159,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                         toastOnUi("请先启用该生图模型")
                     } else {
                         AppConfig.aiCurrentImageProviderId = provider.id
+                        notifyAiConfigChanged()
                         reload()
                         toastOnUi("已设为当前生图模型")
                     }
@@ -165,6 +168,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                     AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.map {
                         if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
                     }
+                    notifyAiConfigChanged()
                     reload()
                 }
                 getString(R.string.edit) ->
@@ -293,6 +297,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
         if (needDefaultProvider) {
             AppConfig.ensureCurrentImageProvider(importedRules.firstOrNull()?.id)
         }
+        notifyAiConfigChanged()
         reload()
         toastOnUi("已导入 ${validRules.size} 个生图规则")
     }
@@ -335,6 +340,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             setMessage(R.string.delete)
             okButton {
                 AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.filterNot { it.id == provider.id }
+                notifyAiConfigChanged()
                 reload()
                 toastOnUi(R.string.delete)
             }
@@ -347,6 +353,10 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
         ContextCompat.getColor(this, R.color.background_menu),
         UiCorner.actionRadius(this)
     )
+
+    private fun notifyAiConfigChanged() {
+        postEvent(EventBus.AI_CONFIG_CHANGED, true)
+    }
 
     private inner class Adapter :
         RecyclerAdapter<AiImageProviderConfig, ItemS3ContainerBinding>(this@AiImageProviderManageActivity) {

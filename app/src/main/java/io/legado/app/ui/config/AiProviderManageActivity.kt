@@ -11,6 +11,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.config.AppConfig
@@ -21,6 +22,7 @@ import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.main.ai.AiProviderConfig
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -76,6 +78,7 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
         ) {
             okButton {
                 AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
+                notifyAiConfigChanged()
                 reload()
                 toastOnUi(R.string.ai_provider_removed)
             }
@@ -88,6 +91,10 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
         ContextCompat.getColor(this, R.color.background_menu),
         UiCorner.actionRadius(this)
     )
+
+    private fun notifyAiConfigChanged() {
+        postEvent(EventBus.AI_CONFIG_CHANGED, true)
+    }
 
     private inner class Adapter :
         RecyclerAdapter<AiProviderConfig, ItemS3ContainerBinding>(this@AiProviderManageActivity) {

@@ -30,6 +30,7 @@ import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.toastOnUi
@@ -56,6 +57,14 @@ class AiConfigFragment : PreferenceFragment(),
         activity?.setTitle(R.string.ai_setting)
         preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
         listView.setEdgeEffectColor(primaryColor)
+        observeEvent<Boolean>(EventBus.AI_CONFIG_CHANGED) {
+            refreshUi()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshUi()
     }
 
     override fun onDestroy() {

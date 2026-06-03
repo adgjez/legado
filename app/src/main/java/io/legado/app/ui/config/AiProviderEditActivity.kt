@@ -13,6 +13,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
+import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiProviderEditBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
@@ -32,6 +33,7 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -164,6 +166,7 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
         if (index >= 0) providers[index] = updated else providers.add(updated)
         AppConfig.aiProviderList = providers
         providerId = updated.id
+        notifyAiConfigChanged()
         if (showToast) toastOnUi(R.string.ai_provider_saved)
         reloadModels()
         return updated
@@ -219,6 +222,7 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
         if (index >= 0) models[index] = updated else models.add(updated)
         AppConfig.aiModelConfigList = models
         AppConfig.aiCurrentModelId = updated.id
+        notifyAiConfigChanged()
         reloadModels()
         toastOnUi(if (oldModel == null) R.string.ai_model_added else R.string.ai_model_saved)
     }
@@ -228,6 +232,7 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
             when (index) {
                 0 -> {
                     AppConfig.aiCurrentModelId = model.id
+                    notifyAiConfigChanged()
                     reloadModels()
                 }
                 1 -> showEditModelDialog(model)
@@ -240,6 +245,7 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
         alert(title = model.modelId, message = getString(R.string.ai_remove_model_confirm)) {
             okButton {
                 AppConfig.aiModelConfigList = AppConfig.aiModelConfigList.filterNot { it.id == model.id }
+                notifyAiConfigChanged()
                 reloadModels()
                 toastOnUi(R.string.ai_model_removed)
             }
@@ -298,8 +304,13 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
         if (AppConfig.aiCurrentModelId.isNullOrBlank()) {
             AppConfig.aiCurrentModelId = newModels.first().id
         }
+        notifyAiConfigChanged()
         reloadModels()
         toastOnUi(getString(R.string.ai_fetch_models_success, newModels.size))
+    }
+
+    private fun notifyAiConfigChanged() {
+        postEvent(EventBus.AI_CONFIG_CHANGED, true)
     }
 
     private fun normalizeApiMode(value: String?): String {
