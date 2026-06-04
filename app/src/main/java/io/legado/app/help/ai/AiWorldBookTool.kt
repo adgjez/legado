@@ -155,7 +155,7 @@ object AiWorldBookTool {
 
     private fun listWorldBookBindingsDefinition() = functionDefinition(
         name = TOOL_LIST_WORLD_BOOK_BINDINGS,
-        description = "列出世界书启用绑定。targetType 支持 global/chat/read_ai/book/session。",
+        description = "列出世界书启用绑定。targetType 支持 global/companion，companion 需要 targetKey=助手或角色 ID。",
         properties = JSONObject()
             .put("worldBookId", JSONObject().put("type", "string"))
             .put("targetType", targetTypeSchema())
@@ -164,7 +164,7 @@ object AiWorldBookTool {
 
     private fun upsertWorldBookBindingDefinition() = functionDefinition(
         name = TOOL_UPSERT_WORLD_BOOK_BINDING,
-        description = "启用或更新世界书到指定场景。global=全局，chat=正文问AI默认，read_ai=阅读页问AI默认，book/session 需要 targetKey。",
+        description = "启用或更新世界书到指定场景。global=全局，companion=指定助手或角色，需要 targetKey=助手或角色 ID。",
         properties = JSONObject()
             .put("worldBookId", JSONObject().put("type", "string"))
             .put("bindingId", JSONObject().put("type", "string"))
@@ -231,7 +231,7 @@ object AiWorldBookTool {
     private fun targetTypeSchema(): JSONObject {
         return JSONObject()
             .put("type", "string")
-            .put("enum", JSONArray(listOf("global", "chat", "read_ai", "book", "session")))
+            .put("enum", JSONArray(listOf("global", "companion")))
     }
 
     private fun bindingSchema(): JSONObject {

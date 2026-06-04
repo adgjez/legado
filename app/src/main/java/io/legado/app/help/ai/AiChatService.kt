@@ -11,6 +11,7 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
+import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
@@ -75,6 +76,8 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        val chatCompanion = resolveChatCompanion(memoryContext)
+        val systemPrompt = chatCompanion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
         val promptCacheKey = promptCacheKeyOverride
             ?.takeIf { provider?.promptCache == true }
             ?.let(::normalizePromptCacheKey)
@@ -91,12 +94,22 @@ object AiChatService {
             append("provider=${provider?.name.orEmpty()}").append('\n')
             append("singleTool=${tool.name}").append('\n')
         }
-        val reserveTokens = estimateStaticRequestTokens(messages, listOf(tool), activeSkills)
+        val systemPrompt = AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        val personaPrompt = AppConfig.aiCurrentPersona?.prompt.orEmpty()
+        val reserveTokens = estimateStaticRequestTokens(
+            messages = messages,
+            tools = listOf(tool),
+            activeSkills = activeSkills,
+            systemPrompt = systemPrompt,
+            personaPrompt = personaPrompt
+        )
         val preparedContext = AiContextManager.prepare(messages, null, reserveTokens)
         val conversation = buildConversation(
             messages = preparedContext.messages,
             contextSummary = preparedContext.summary,
-            activeSkills = activeSkills
+            activeSkills = activeSkills,
+            systemPrompt = systemPrompt,
+            personaPrompt = personaPrompt
         )
         return runCatching {
             val assistantTurn = requestCompletionStreamWithRetry(
@@ -215,9 +228,15 @@ object AiChatService {
             append("model=$model").append('\n')
             append("apiMode=$apiMode").append('\n')
             append("provider=${provider?.name.orEmpty()}").append('\n')
+            append("companion=${chatCompanion.name}:${chatCompanion.id}").append('\n')
             append("tools=${tools.joinToString { it.name }}").append('\n')
         }
-        val reserveTokens = estimateStaticRequestTokens(messages, tools, activeSkills)
+        val reserveTokens = estimateStaticRequestTokens(
+            messages = messages,
+            tools = tools,
+            activeSkills = activeSkills,
+            systemPrompt = systemPrompt
+        )
         val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
         val estimatedTotalTokens = reserveTokens + preparedContext.inputTokens
         preparedContext.summary
@@ -271,7 +290,8 @@ object AiChatService {
             retrievedMemory = retrievedMemory,
             worldBookContext = worldBookContext,
             agentPlan = agentPlan,
-            activeSkills = activeSkills
+            activeSkills = activeSkills,
+            systemPrompt = systemPrompt
         )
         if (totalTokensWithDynamicContext > preparedContext.limitTokens) {
             throw AiChatException(
@@ -997,22 +1017,24 @@ object AiChatService {
         retrievedMemory: AiRetrievedMemory = AiRetrievedMemory(),
         worldBookContext: AiWorldBookContext = AiWorldBookContext(),
         agentPlan: AiAgentPlan = AiAgentPlan("", emptyList()),
-        activeSkills: List<AiSkillConfig> = emptyList()
+        activeSkills: List<AiSkillConfig> = emptyList(),
+        systemPrompt: String = AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT },
+        personaPrompt: String = AppConfig.aiCurrentPersona?.prompt.orEmpty()
     ): MutableList<JSONObject> {
         val conversation = mutableListOf<JSONObject>()
         conversation += JSONObject().apply {
             put("role", "system")
-            put("content", AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
+            put("content", systemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
         }
         appendWorldBookInjections(
             conversation = conversation,
             worldBookContext = worldBookContext,
             position = AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT
         )
-        AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { personaPrompt ->
+        personaPrompt.takeIf { it.isNotBlank() }?.let { prompt ->
             conversation += JSONObject().apply {
                 put("role", "system")
-                put("content", personaPrompt)
+                put("content", prompt)
             }
         }
         contextSummary?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
@@ -1148,13 +1170,25 @@ object AiChatService {
         }
     }
 
+    private fun resolveChatCompanion(memoryContext: AiMemoryContext?): AiChatCompanionConfig {
+        val companionId = memoryContext?.companionId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: AppConfig.aiCurrentChatCompanionId
+        return AppConfig.aiChatCompanionList.firstOrNull { config ->
+            config.id == companionId && config.enabled
+        } ?: AppConfig.aiCurrentChatCompanion
+    }
+
     private fun estimateStaticRequestTokens(
         messages: List<AiChatMessage>,
         tools: List<AiResolvedTool>,
-        activeSkills: List<AiSkillConfig> = emptyList()
+        activeSkills: List<AiSkillConfig> = emptyList(),
+        systemPrompt: String = AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT },
+        personaPrompt: String = AppConfig.aiCurrentPersona?.prompt.orEmpty()
     ): Int {
-        val systemTokens = AiContextManager.estimateTokens(AppConfig.aiSystemPrompt)
-        val personaTokens = AiContextManager.estimateTokens(AppConfig.aiCurrentPersona?.prompt.orEmpty())
+        val systemTokens = AiContextManager.estimateTokens(systemPrompt)
+        val personaTokens = AiContextManager.estimateTokens(personaPrompt)
         val skillTokens = activeSkills.sumOf {
             AiContextManager.estimateTokens(it.name) +
                 AiContextManager.estimateTokens(it.description) +

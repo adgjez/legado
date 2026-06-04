@@ -488,6 +488,18 @@ object AiWorldBookManager {
     }
 
     private fun AiWorldBookConfig.activeBinding(context: AiMemoryContext?): AiWorldBookBinding? {
+        val companionId = context?.companionId?.trim().orEmpty()
+        if (companionId.isNotBlank()) {
+            val companion = AppConfig.aiChatCompanionList.firstOrNull {
+                it.id == companionId && it.enabled
+            }
+            if (companion?.worldBookIds?.contains(id) == true) {
+                return AiWorldBookBinding(
+                    targetType = AiWorldBookBinding.TARGET_COMPANION,
+                    targetKey = companionId
+                )
+            }
+        }
         return bindings
             .filter { it.enabled }
             .firstOrNull { it.matches(context) }

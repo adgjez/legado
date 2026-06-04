@@ -33,6 +33,7 @@ class AiChatViewModel : ViewModel() {
         private set
 
     private val messages = mutableListOf<AiChatMessage>()
+    private var currentCompanionId: String = AppConfig.aiCurrentChatCompanionId
     private var currentSessionId: String = AppConfig.aiCurrentChatSessionId ?: UUID.randomUUID().toString()
     private var windowSkillIds: Set<String> = emptySet()
     private var windowMcpServerIds: Set<String> = emptySet()
@@ -40,6 +41,7 @@ class AiChatViewModel : ViewModel() {
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
         private var activeJob: Job? = null
+        private var activeCompanionId: String? = null
         private var activeSessionId: String? = null
         private var activeViewModel: AiChatViewModel? = null
         private var activePendingContent: String = ""
@@ -72,7 +74,9 @@ class AiChatViewModel : ViewModel() {
     ) {
         if (isRequesting || activeJob?.isActive == true) return
         setRequesting(true)
+        activeCompanionId = currentCompanionId
         activeSessionId = currentSessionId
+        val requestCompanionId = currentCompanionId
         val requestSessionId = currentSessionId
         activeViewModel = this
         activeThinkingMessageId = null
@@ -94,6 +98,7 @@ class AiChatViewModel : ViewModel() {
             inputJson = JSONObject()
                 .put("messageCount", requestMessages.size)
                 .put("userContent", userContent.take(2_000))
+                .put("companionId", requestCompanionId)
                 .toString()
         )
         activeAgentRun = agentRun
@@ -111,11 +116,11 @@ class AiChatViewModel : ViewModel() {
                         onPartial = { partial ->
                             activePendingContent = partial
                             AiTaskKeepAlive.update(keepAliveId, content = partial)
-                            targetFor(requestSessionId).upsertPendingAssistant(partial.ifBlank { "" })
+                            targetFor(requestSessionId, requestCompanionId).upsertPendingAssistant(partial.ifBlank { "" })
                         },
                         onThinking = { thinking ->
                             AiTaskKeepAlive.update(keepAliveId, progressText = thinking)
-                            targetFor(requestSessionId).upsertThinkingStatus(thinkingText, thinking)
+                            targetFor(requestSessionId, requestCompanionId).upsertThinkingStatus(thinkingText, thinking)
                         },
                         onStatus = { status ->
                             AiTaskKeepAlive.update(
@@ -123,7 +128,7 @@ class AiChatViewModel : ViewModel() {
                                 progressText = status.optString("label")
                                     .ifBlank { status.optString("name") }
                             )
-                            targetFor(requestSessionId).upsertStatus(status)
+                            targetFor(requestSessionId, requestCompanionId).upsertStatus(status)
                         },
                         contextSummary = updatedContextSummary,
                         onContextSummary = { summary ->
@@ -133,17 +138,19 @@ class AiChatViewModel : ViewModel() {
                         memoryContext = AiMemoryContext(
                             scope = AiMemoryItem.SCOPE_GLOBAL,
                             sessionId = requestSessionId,
+                            companionId = requestCompanionId,
                             title = "AI Chat"
                         ),
                         activeSkills = activeSkills,
                         extraTools = AiToolRegistry.resolveMcpTools(activeMcpServerIds)
                     )
                 }
-                targetFor(requestSessionId).setRequesting(false)
+                targetFor(requestSessionId, requestCompanionId).setRequesting(false)
                 activeJob = null
+                activeCompanionId = null
                 activeSessionId = null
                 result.onSuccess { content ->
-                    targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
+                    targetFor(requestSessionId, requestCompanionId).finishActiveThinking(removeIfBlank = true)
                     activePendingContent = ""
                     activeToolMessageIds.clear()
                     activeAgentRun = null
@@ -152,17 +159,19 @@ class AiChatViewModel : ViewModel() {
                         success = true,
                         outputJson = JSONObject().put("contentChars", content.length).toString()
                     )
-                    updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
-                    targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
+                    updatedContextSummary?.let {
+                        targetFor(requestSessionId, requestCompanionId).saveContextSummary(requestSessionId, it)
+                    }
+                    targetFor(requestSessionId, requestCompanionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
                 }.onFailure { throwable ->
-                    targetFor(requestSessionId).finishActiveThinking(fallback = throwable.localizedMessage)
-                    targetFor(requestSessionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
+                    targetFor(requestSessionId, requestCompanionId).finishActiveThinking(fallback = throwable.localizedMessage)
+                    targetFor(requestSessionId, requestCompanionId).finishActiveTools(false, throwable.localizedMessage ?: throwable.javaClass.simpleName)
                     activePendingContent = ""
                     activeToolMessageIds.clear()
                     if (throwable is CancellationException) {
                         activeAgentRun = null
                         AiAgentStateStore.cancel(agentRun, "User stopped generation")
-                        targetFor(requestSessionId).replacePendingAssistant(cancelledText)
+                        targetFor(requestSessionId, requestCompanionId).replacePendingAssistant(cancelledText)
                         return@onFailure
                     }
                     val chatError = throwable as? AiChatException ?: AiChatException(
@@ -173,7 +182,7 @@ class AiChatViewModel : ViewModel() {
                     AppLog.put("AI 请求失败\n${chatError.debugLog}", chatError)
                     activeAgentRun = null
                     AiAgentStateStore.finish(agentRun, success = false, error = chatError.message)
-                    targetFor(requestSessionId).failPendingAssistant(failureMessage(chatError.message))
+                    targetFor(requestSessionId, requestCompanionId).failPendingAssistant(failureMessage(chatError.message))
                 }
             } finally {
                 AiTaskKeepAlive.release(keepAliveId)
@@ -185,6 +194,7 @@ class AiChatViewModel : ViewModel() {
         val job = activeJob ?: return
         job.cancel(CancellationException("User stopped generation"))
         activeJob = null
+        activeCompanionId = null
         activeSessionId = null
         activePendingContent = ""
         AiAgentStateStore.cancel(activeAgentRun, "User stopped generation")
@@ -418,7 +428,9 @@ class AiChatViewModel : ViewModel() {
     fun clearCurrentSession() {
         messages.clear()
         AppConfig.aiChatSessionList =
-            AppConfig.aiChatSessionList.filterNot { it.id == currentSessionId }
+            AppConfig.aiChatSessionList.filterNot {
+                it.id == currentSessionId && it.companionId == currentCompanionId
+            }
         currentSessionId = UUID.randomUUID().toString()
         AppConfig.aiCurrentChatSessionId = currentSessionId
         publish(saveHistory = false)
@@ -433,21 +445,25 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun historySessions(): List<AiChatSession> {
-        return AppConfig.aiChatSessionList.sortedByDescending { it.updatedAt }
+        return sessionsForCurrentCompanion().sortedByDescending { it.updatedAt }
     }
 
     fun loadSession(sessionId: String) {
-        val session = AppConfig.aiChatSessionList.firstOrNull { it.id == sessionId } ?: return
+        val session = sessionsForCurrentCompanion().firstOrNull { it.id == sessionId } ?: return
         currentSessionId = session.id
         AppConfig.aiCurrentChatSessionId = session.id
         messages.clear()
         messages.addAll(session.messages.map { it.copy(pending = false) })
-        setRequesting(activeJob?.isActive == true && activeSessionId == currentSessionId)
+        setRequesting(activeJob?.isActive == true &&
+                activeSessionId == currentSessionId &&
+                activeCompanionId == currentCompanionId)
         publish(saveHistory = false)
     }
 
     fun deleteSession(sessionId: String) {
-        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.filterNot { it.id == sessionId }
+        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.filterNot {
+            it.id == sessionId && it.companionId == currentCompanionId
+        }
         if (currentSessionId == sessionId) {
             currentSessionId = UUID.randomUUID().toString()
             AppConfig.aiCurrentChatSessionId = currentSessionId
@@ -458,7 +474,8 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun clearAllSessions() {
-        AppConfig.aiChatSessionList = emptyList()
+        AppConfig.aiChatSessionList = AppConfig.aiChatSessionList
+            .filterNot { it.companionId == currentCompanionId }
         currentSessionId = UUID.randomUUID().toString()
         AppConfig.aiCurrentChatSessionId = currentSessionId
         messages.clear()
@@ -490,19 +507,47 @@ class AiChatViewModel : ViewModel() {
 
     fun activeSessionId(): String = currentSessionId
 
+    fun activeCompanionId(): String = currentCompanionId
+
+    fun currentCompanion(): AiChatCompanionConfig =
+        AppConfig.aiChatCompanionList.firstOrNull { it.id == currentCompanionId }
+            ?: AppConfig.aiCurrentChatCompanion
+
+    fun companions(): List<AiChatCompanionConfig> = AppConfig.aiChatCompanionList
+
+    fun switchCompanion(companionId: String): Boolean {
+        if (isRequesting || activeJob?.isActive == true) return false
+        val target = AppConfig.aiChatCompanionList.firstOrNull {
+            it.id == companionId && it.enabled
+        } ?: return false
+        currentCompanionId = target.id
+        AppConfig.aiCurrentChatCompanionId = target.id
+        currentSessionId = AppConfig.aiCurrentChatSessionId ?: UUID.randomUUID().toString()
+        restoreCurrentSession()
+        return true
+    }
+
     fun currentContextSummary() = currentSessionSummary()
 
     fun restoreCurrentSession() {
-        val sessions = AppConfig.aiChatSessionList
-        val session = sessions.firstOrNull { it.id == currentSessionId } ?: sessions.firstOrNull()
+        currentCompanionId = AppConfig.aiCurrentChatCompanionId
+        messages.clear()
+        val sessions = sessionsForCurrentCompanion()
+        val storedSessionId = AppConfig.aiCurrentChatSessionId
+        val session = sessions.firstOrNull { it.id == storedSessionId }
+            ?: sessions.firstOrNull { it.id == currentSessionId }
+            ?: sessions.firstOrNull()
         if (session != null) {
             currentSessionId = session.id
             AppConfig.aiCurrentChatSessionId = session.id
             messages.addAll(session.messages.map { it.copy(pending = false) })
         } else {
+            currentSessionId = UUID.randomUUID().toString()
             AppConfig.aiCurrentChatSessionId = currentSessionId
         }
-        val requesting = activeJob?.isActive == true && activeSessionId == currentSessionId
+        val requesting = activeJob?.isActive == true &&
+                activeSessionId == currentSessionId &&
+                activeCompanionId == currentCompanionId
         if (requesting && messages.none { it.role == AiChatMessage.Role.ASSISTANT && it.pending }) {
             val restored = AiChatMessage(
                 role = AiChatMessage.Role.ASSISTANT,
@@ -528,8 +573,10 @@ class AiChatViewModel : ViewModel() {
         requestingLiveData.postValue(value)
     }
 
-    private fun targetFor(sessionId: String): AiChatViewModel {
-        return activeViewModel?.takeIf { it.currentSessionId == sessionId } ?: this
+    private fun targetFor(sessionId: String, companionId: String): AiChatViewModel {
+        return activeViewModel?.takeIf {
+            it.currentSessionId == sessionId && it.currentCompanionId == companionId
+        } ?: this
     }
 
     private fun publish(saveHistory: Boolean = true) {
@@ -544,7 +591,9 @@ class AiChatViewModel : ViewModel() {
             .map { sanitizeMessageForStorage(it) }
             .filter { it.content.isNotBlank() }
         val history = AppConfig.aiChatSessionList.toMutableList()
-        val index = history.indexOfFirst { it.id == currentSessionId }
+        val index = history.indexOfFirst {
+            it.id == currentSessionId && it.companionId == currentCompanionId
+        }
         if (snapshot.isEmpty()) {
             if (index >= 0) {
                 history.removeAt(index)
@@ -555,6 +604,7 @@ class AiChatViewModel : ViewModel() {
         val session = AiChatSession(
             id = currentSessionId,
             title = resolveSessionTitle(snapshot),
+            companionId = currentCompanionId,
             updatedAt = System.currentTimeMillis(),
             messages = snapshot,
             contextSummary = currentSessionSummary()
@@ -606,7 +656,16 @@ class AiChatViewModel : ViewModel() {
     }
 
     private fun currentSessionSummary() =
-        AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }?.contextSummary
+        AppConfig.aiChatSessionList.firstOrNull {
+            it.id == currentSessionId && it.companionId == currentCompanionId
+        }?.contextSummary
+
+    private fun sessionsForCurrentCompanion(): List<AiChatSession> {
+        val companionId = currentCompanionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+        return AppConfig.aiChatSessionList.filter { session ->
+            session.companionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID } == companionId
+        }
+    }
 
     private fun activeWindowSkills(): List<AiSkillConfig> {
         if (windowSkillIds.isEmpty()) return emptyList()
@@ -616,7 +675,11 @@ class AiChatViewModel : ViewModel() {
     fun saveContextSummary(sessionId: String, summary: io.legado.app.ui.main.ai.AiContextSummary) {
         if (!AppConfig.aiContextCompressionEnabled || !summary.isValid) return
         AppConfig.aiChatSessionList = AppConfig.aiChatSessionList.map { session ->
-            if (session.id == sessionId) session.copy(contextSummary = summary) else session
+            if (session.id == sessionId && session.companionId == currentCompanionId) {
+                session.copy(contextSummary = summary)
+            } else {
+                session
+            }
         }
     }
 
