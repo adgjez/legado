@@ -16,10 +16,9 @@ object ReadAloudTextCleaner {
             match.groupValues.getOrNull(1).orEmpty()
         }
         result = useHtmlTagRegex.replace(result, "")
-        result = imageTagRegex.replace(result, "")
-        result = breakTagRegex.replace(result, "\n")
-        result = htmlTagRegex.replace(result, "")
+        result = stripReadAloudMarkup(result)
         result = Parser.unescapeEntities(result, false)
+        result = stripReadAloudMarkup(result)
         result = result
             .replace(ChapterProvider.srcReplaceChar.toString(), "")
             .replace(ChapterProvider.srcReplacementChar.toString(), "")
@@ -69,4 +68,11 @@ object ReadAloudTextCleaner {
     private val lineBreakSpaceRegex = Regex(" *\\n+ *")
     private val multiLineBreakRegex = Regex("\\n{3,}")
     private val allSpaceRegex = Regex("\\s+")
+
+    private fun stripReadAloudMarkup(text: String): String {
+        return text
+            .let { imageTagRegex.replace(it, "") }
+            .let { breakTagRegex.replace(it, "\n") }
+            .let { htmlTagRegex.replace(it, "") }
+    }
 }
