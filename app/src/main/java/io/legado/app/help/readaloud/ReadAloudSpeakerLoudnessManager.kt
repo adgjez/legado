@@ -9,22 +9,22 @@ import io.legado.app.help.readaloud.speech.SpeechRoute
 import org.json.JSONObject
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 object ReadAloudSpeakerLoudnessManager {
 
-    private const val NARRATOR_KEY = "narrator/default"
-    private const val TARGET_RMS = 0.10f
-    private const val NARRATOR_TARGET_RMS = 0.125f
-    private const val MIN_GAIN = 0.70f
     private const val PEAK_LIMIT = 0.96f
     private const val MIN_RMS = 0.001f
     private const val VOICE_GATE = 0.012f
     private const val MIN_ANALYSIS_SAMPLES = 4_000
     private const val MAX_ANALYSIS_SAMPLES = 960_000
-    private const val MAX_LEARNED_SAMPLES_PER_SPEAKER = 8
+    private const val MAX_LEARNED_SAMPLES_PER_SPEAKER = 32
     private const val MAX_STATS = 240
+    private const val MIN_MEDIAN_SPEAKERS = 2
+    private const val MAX_ATTENUATION_DB = 9f
 
     private val lock = Any()
     private var cachedRaw = ""
@@ -39,11 +39,12 @@ object ReadAloudSpeakerLoudnessManager {
 
     private data class LoudnessStat(
         val count: Int,
-        val activeRms: Float,
-        val fullRms: Float,
+        val activeRmsDb: Float,
+        val fullRmsDb: Float,
         val peak: Float,
         val voicedRatio: Float,
-        val updatedAt: Long
+        val updatedAt: Long,
+        val narrator: Boolean
     )
 
     private data class AudioAnalysis(
@@ -70,23 +71,24 @@ object ReadAloudSpeakerLoudnessManager {
             return LoudnessInfo(speakerKey(item, route), 1f, false)
         }
         val key = speakerKey(item, route)
-        val stats = stats()[key]
-        val narrator = item?.narrator != false
-        val maxGain = if (narrator) 1.85f else 1.65f
-        val target = if (narrator) NARRATOR_TARGET_RMS else TARGET_RMS
-        val learnedGain = stats?.takeIf { it.activeRms > MIN_RMS || it.fullRms > MIN_RMS }?.let {
-            val rawGain = target / it.rmsForGain()
-            val peakGuard = if (it.peak > MIN_RMS) PEAK_LIMIT / it.peak else maxGain
-            val voicedBoost = if (narrator && it.voicedRatio in 0.05f..0.45f) {
-                1f + ((0.45f - it.voicedRatio) * 0.28f).coerceIn(0f, 0.12f)
-            } else {
-                1f
-            }
-            (rawGain * voicedBoost).coerceAtMost(peakGuard)
-        } ?: 1f
-        val gain = learnedGain
-            .coerceIn(MIN_GAIN, maxGain)
-        return LoudnessInfo(key, gain, stats != null)
+        val snapshot = stats()
+        val stat = snapshot[key]
+        val maxGain = (AppConfig.readAloudMaxSpeakerGain / 100f).coerceIn(1.05f, 2.4f)
+        val minGain = (1f / maxGain).coerceIn(0.35f, 1f)
+        val targetDb = medianDb(snapshot.values)
+        val learnedGain = if (stat != null && targetDb != null) {
+            val speakerDb = stat.dbForGain()
+            val sampleConfidence = stat.count.toFloat() / (stat.count + 4f)
+            val populationConfidence = ((snapshot.size - 1).toFloat() / 5f).coerceIn(0.35f, 1f)
+            val correctionDb = ((targetDb - speakerDb) * sampleConfidence * populationConfidence)
+                .coerceIn(-MAX_ATTENUATION_DB, dbForGain(maxGain))
+            val peakGuard = if (stat.peak > MIN_RMS) PEAK_LIMIT / stat.peak else maxGain
+            dbToGain(correctionDb).coerceAtMost(peakGuard)
+        } else {
+            1f
+        }
+        val gain = learnedGain.coerceIn(minGain, maxGain)
+        return LoudnessInfo(key, gain, stat != null)
     }
 
     fun gainFor(
@@ -141,17 +143,17 @@ object ReadAloudSpeakerLoudnessManager {
             synchronized(lock) {
                 val map = stats().toMutableMap()
                 val old = map[key]
-                val oldWeight = old?.count?.coerceAtMost(12) ?: 0
+                val oldWeight = old?.count?.coerceAtMost(48) ?: 0
                 val newCount = ((old?.count ?: 0) + 1).coerceAtMost(999)
-                val activeRms = if (old == null) {
-                    analysis.activeRms
+                val activeRmsDb = if (old == null) {
+                    rmsToDb(analysis.activeRms)
                 } else {
-                    ((old.activeRms * oldWeight) + analysis.activeRms) / (oldWeight + 1)
+                    ((old.activeRmsDb * oldWeight) + rmsToDb(analysis.activeRms)) / (oldWeight + 1)
                 }
-                val fullRms = if (old == null) {
-                    analysis.fullRms
+                val fullRmsDb = if (old == null) {
+                    rmsToDb(analysis.fullRms)
                 } else {
-                    ((old.fullRms * oldWeight) + analysis.fullRms) / (oldWeight + 1)
+                    ((old.fullRmsDb * oldWeight) + rmsToDb(analysis.fullRms)) / (oldWeight + 1)
                 }
                 val peak = if (old == null) {
                     analysis.peak
@@ -165,11 +167,12 @@ object ReadAloudSpeakerLoudnessManager {
                 }
                 map[key] = LoudnessStat(
                     count = newCount,
-                    activeRms = activeRms.coerceIn(0f, 1f),
-                    fullRms = fullRms.coerceIn(0f, 1f),
+                    activeRmsDb = activeRmsDb,
+                    fullRmsDb = fullRmsDb,
                     peak = peak.coerceIn(0f, 1f),
                     voicedRatio = voicedRatio.coerceIn(0f, 1f),
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    narrator = item?.narrator != false
                 )
                 cachedStats = map.entries
                     .sortedByDescending { it.value.updatedAt }
@@ -200,8 +203,6 @@ object ReadAloudSpeakerLoudnessManager {
         item: ReadAloudSpeechPlanItem?,
         route: SpeechRoute?
     ): String {
-        if (item?.narrator != false) return NARRATOR_KEY
-        if ((item?.characterId ?: 0L) > 0L) return "character:${item?.characterId}"
         val resolvedRoute = route ?: item?.route
         resolvedRoute?.takeIf { it.isConfigured }?.let {
             return listOf(
@@ -212,6 +213,8 @@ object ReadAloudSpeakerLoudnessManager {
                 it.speakerName
             ).joinToString("|")
         }
+        if (item?.narrator != false) return "narrator|default"
+        if ((item?.characterId ?: 0L) > 0L) return "character:${item?.characterId}"
         return listOf(
             "role",
             item?.roleType.orEmpty(),
@@ -240,11 +243,28 @@ object ReadAloudSpeakerLoudnessManager {
                 val legacyRms = obj.optDouble("rms", 0.0).toFloat()
                 val activeRms = obj.optDouble("activeRms", legacyRms.toDouble()).toFloat()
                 val fullRms = obj.optDouble("fullRms", legacyRms.toDouble()).toFloat()
+                val activeRmsDb = obj.optDouble(
+                    "activeRmsDb",
+                    rmsToDb(activeRms).toDouble()
+                ).toFloat()
+                val fullRmsDb = obj.optDouble(
+                    "fullRmsDb",
+                    rmsToDb(fullRms).toDouble()
+                ).toFloat()
                 val peak = obj.optDouble("peak", 0.0).toFloat()
                 val voicedRatio = obj.optDouble("voicedRatio", 1.0).toFloat()
                 val updatedAt = obj.optLong("updatedAt", 0L)
-                if (count > 0 && (activeRms > MIN_RMS || fullRms > MIN_RMS)) {
-                    result[key] = LoudnessStat(count, activeRms, fullRms, peak, voicedRatio, updatedAt)
+                val narrator = obj.optBoolean("narrator", key.startsWith("narrator"))
+                if (count > 0 && activeRmsDb.isFinite() && fullRmsDb.isFinite()) {
+                    result[key] = LoudnessStat(
+                        count,
+                        activeRmsDb,
+                        fullRmsDb,
+                        peak,
+                        voicedRatio,
+                        updatedAt,
+                        narrator
+                    )
                 }
             }
             result
@@ -256,12 +276,15 @@ object ReadAloudSpeakerLoudnessManager {
         cachedStats.forEach { (key, stat) ->
             root.put(key, JSONObject().apply {
                 put("count", stat.count)
-                put("rms", stat.fullRms)
-                put("activeRms", stat.activeRms)
-                put("fullRms", stat.fullRms)
+                put("rms", dbToRms(stat.fullRmsDb))
+                put("activeRms", dbToRms(stat.activeRmsDb))
+                put("fullRms", dbToRms(stat.fullRmsDb))
+                put("activeRmsDb", stat.activeRmsDb)
+                put("fullRmsDb", stat.fullRmsDb)
                 put("peak", stat.peak)
                 put("voicedRatio", stat.voicedRatio)
                 put("updatedAt", stat.updatedAt)
+                put("narrator", stat.narrator)
             })
         }
         cachedRaw = root.toString()
@@ -394,7 +417,36 @@ object ReadAloudSpeakerLoudnessManager {
         return PcmStats(fullSumSquares, activeSumSquares, peak, samples, activeSamples)
     }
 
-    private fun LoudnessStat.rmsForGain(): Float {
-        return activeRms.takeIf { it > MIN_RMS } ?: fullRms
+    private fun LoudnessStat.dbForGain(): Float {
+        return activeRmsDb.takeIf { it.isFinite() } ?: fullRmsDb
+    }
+
+    private fun medianDb(values: Collection<LoudnessStat>): Float? {
+        val learned = values
+            .mapNotNull { it.dbForGain().takeIf(Float::isFinite) }
+            .sorted()
+        if (learned.size < MIN_MEDIAN_SPEAKERS) return null
+        val mid = learned.size / 2
+        return if (learned.size % 2 == 0) {
+            (learned[mid - 1] + learned[mid]) / 2f
+        } else {
+            learned[mid]
+        }
+    }
+
+    private fun rmsToDb(rms: Float): Float {
+        return 20f * log10(rms.coerceAtLeast(MIN_RMS))
+    }
+
+    private fun dbToRms(db: Float): Float {
+        return 10f.pow(db / 20f).coerceIn(0f, 1f)
+    }
+
+    private fun dbToGain(db: Float): Float {
+        return 10f.pow(db / 20f)
+    }
+
+    private fun dbForGain(gain: Float): Float {
+        return 20f * log10(gain.coerceAtLeast(0.01f))
     }
 }

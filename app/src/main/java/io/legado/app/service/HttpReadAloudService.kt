@@ -158,6 +158,11 @@ class HttpReadAloudService : BaseReadAloudService(),
         val httpTts: HttpTTS?
     )
 
+    private data class AudioDownloadTask(
+        val request: SpeakAudioRequest,
+        val downloader: Downloader
+    )
+
     private data class SynthesisResult(
         val success: Boolean,
         val error: Throwable? = null
@@ -320,11 +325,12 @@ class HttpReadAloudService : BaseReadAloudService(),
                 ensureActive()
                 val httpTts = ReadAloud.httpTTS
                 val requests = buildCurrentAudioRequests(httpTts)
-                val downloaderChannel = Channel<Downloader>(Channel.UNLIMITED)
+                val downloaderChannel = Channel<AudioDownloadTask>(Channel.UNLIMITED)
                 repeat(maxSynthesisThreadCount(requests)) {
                     launch {
-                        for (downloader in downloaderChannel) {
-                            downloader.download(null)
+                        for (task in downloaderChannel) {
+                            task.downloader.download(null)
+                            learnSpeakerLoudness(task.request)
                         }
                     }
                 }
@@ -338,7 +344,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                             request.fileName
                         )
                         val downloader = createDownloader(dataSourceFactory, request.fileName)
-                        downloaderChannel.send(downloader)
+                        downloaderChannel.send(AudioDownloadTask(request, downloader))
                         val mediaSource = createMediaSource(dataSourceFactory, request)
                         launch(Main) {
                             exoPlayer.addMediaSource(mediaSource)
@@ -357,7 +363,7 @@ class HttpReadAloudService : BaseReadAloudService(),
 
     private suspend fun preDownloadAudiosStream(
         httpTts: HttpTTS?,
-        downloaderChannel: Channel<Downloader>
+        downloaderChannel: Channel<AudioDownloadTask>
     ) {
         waitForNextChapterAudioRequests(httpTts).forEach { request ->
             currentCoroutineContext().ensureActive()
@@ -368,7 +374,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 request.fileName
             )
             val downloader = createDownloader(dataSourceFactory, request.fileName)
-            downloaderChannel.send(downloader)
+            downloaderChannel.send(AudioDownloadTask(request, downloader))
         }
     }
 

@@ -156,7 +156,10 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
     private fun ttsParamsForCue(cueIndex: Int): Bundle {
         return Bundle().apply {
-            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, speakerLoudnessInfo(cueIndex).gain)
+            putFloat(
+                TextToSpeech.Engine.KEY_PARAM_VOLUME,
+                speakerLoudnessInfo(cueIndex).gain.coerceIn(0f, 1f)
+            )
         }
     }
 
