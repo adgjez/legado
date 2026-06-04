@@ -65,7 +65,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = ::showCompanionWorldBookDialog,
                     onToggleAutoSpeak = ::toggleAutoSpeak,
-                    onSpeakMessage = AiChatSpeechPlayer::speak,
+                    onSpeakMessage = { text, companion ->
+                        AiChatSpeechPlayer.speak(text, companion.ttsRouteJson)
+                    },
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
                     onEditCompanion = ::showEditCompanionDialog,

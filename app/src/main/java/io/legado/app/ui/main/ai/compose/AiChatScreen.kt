@@ -118,7 +118,7 @@ data class AiChatScreenActions(
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
-    val onSpeakMessage: ((String) -> Unit)? = null,
+    val onSpeakMessage: ((String, AiChatCompanionConfig) -> Unit)? = null,
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
     val onEditCompanion: ((AiChatCompanionConfig) -> Unit)? = null,
@@ -261,7 +261,7 @@ fun AiChatScreen(
             System.currentTimeMillis() - last.updatedAt <= 60_000
         ) {
             lastAutoSpokenMessageId = last.id
-            actions.onSpeakMessage?.invoke(last.content)
+            actions.onSpeakMessage?.invoke(last.content, currentCompanion)
         }
     }
     Box(
@@ -317,6 +317,7 @@ fun AiChatScreen(
                         ) { item ->
                             AiMessageRow(
                                 item = item,
+                                currentCompanion = currentCompanion,
                                 style = style,
                                 onSpeak = actions.onSpeakMessage,
                                 onToolPreview = { toolPreviewPayload = it },
@@ -799,14 +800,22 @@ private fun AiEmptyState(style: AiComposeStyle) {
 @Composable
 private fun AiMessageRow(
     item: AiChatUiItem,
+    currentCompanion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String) -> Unit)?,
+    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
     when (item) {
         is AiChatUiItem.User -> AiUserMessageRow(item, style)
-        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onSpeak, onToolPreview, onProcessExpanded)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(
+            message = item,
+            companion = currentCompanion,
+            style = style,
+            onSpeak = onSpeak,
+            onToolPreview = onToolPreview,
+            onProcessExpanded = onProcessExpanded
+        )
     }
 }
 
@@ -814,7 +823,8 @@ private fun AiMessageRow(
 private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.Top
     ) {
         Surface(
             shape = RoundedCornerShape(
@@ -828,7 +838,7 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
                 1.dp,
                 style.colors.userBubbleStroke
             ),
-            modifier = Modifier.fillMaxWidth(0.82f)
+            modifier = Modifier.fillMaxWidth(0.76f)
         ) {
             AiPlainSelectableText(
                 content = message.content,
@@ -836,29 +846,40 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
                 modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
             )
         }
+        Spacer(modifier = Modifier.width(8.dp))
+        AiFallbackAvatar(
+            iconRes = R.drawable.ic_bottom_person,
+            style = style,
+            sizeDp = 34,
+            accent = false
+        )
     }
 }
 
 @Composable
 private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
+    companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String) -> Unit)?,
+    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top
     ) {
+        AiCompanionAvatar(companion, style, 36)
+        Spacer(modifier = Modifier.width(8.dp))
         Column(
-            modifier = Modifier.fillMaxWidth(0.94f),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             message.parts.forEach { part ->
                 key(part.id) {
                     when (part) {
-                        is AiMessagePartUi.Text -> AiAssistantTextPart(part, style, onSpeak)
+                        is AiMessagePartUi.Text -> AiAssistantTextPart(part, companion, style, onSpeak)
                         is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                         is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
                         is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
@@ -872,8 +893,9 @@ private fun AiAssistantMessageRow(
 @Composable
 private fun AiAssistantTextPart(
     part: AiMessagePartUi.Text,
+    companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String) -> Unit)?
+    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?
 ) {
     Surface(
         shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -904,7 +926,7 @@ private fun AiAssistantTextPart(
                     horizontalArrangement = Arrangement.End
                 ) {
                     Surface(
-                        onClick = { onSpeak(part.content) },
+                        onClick = { onSpeak(part.content, companion) },
                         shape = CircleShape,
                         color = style.colors.accent.copy(alpha = 0.10f)
                     ) {
@@ -920,6 +942,29 @@ private fun AiAssistantTextPart(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AiFallbackAvatar(
+    iconRes: Int,
+    style: AiComposeStyle,
+    sizeDp: Int,
+    accent: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(if (accent) style.colors.accent.copy(alpha = 0.12f) else style.colors.toolSurface),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = if (accent) style.colors.accent else style.colors.secondaryText,
+            modifier = Modifier.size((sizeDp * 0.56f).dp)
+        )
     }
 }
 
