@@ -69,6 +69,7 @@ object PreferKey {
     const val aiSystemPrompt = "aiSystemPrompt"
     const val aiSkillPrompt = "aiSkillPrompt"
     const val aiSkillList = "aiSkillList"
+    const val aiWorldBookList = "aiWorldBookList"
     const val aiPersonaList = "aiPersonaList"
     const val aiCurrentPersonaId = "aiCurrentPersonaId"
     const val aiImageProviderList = "aiImageProviderList"

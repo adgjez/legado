@@ -753,6 +753,7 @@ object Restore {
             PreferKey.aiSystemPrompt,
             PreferKey.aiSkillPrompt,
             PreferKey.aiSkillList,
+            PreferKey.aiWorldBookList,
             PreferKey.aiTavilyApiKey,
             PreferKey.aiTavilyBaseUrl,
             PreferKey.aiTavilySearchDepth,

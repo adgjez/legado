@@ -34,6 +34,8 @@ import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AiWorldBookConfig
+import io.legado.app.ui.main.ai.AiWorldBookEntry
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.book.read.ReadAiBookHistory
@@ -760,6 +762,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             persistAiSkills(normalizeAiSkills(value))
         }
 
+    var aiWorldBookList: List<AiWorldBookConfig>
+        get() = normalizeAiWorldBooks(
+            GSON.fromJsonArray<AiWorldBookConfig>(appCtx.getPrefString(PreferKey.aiWorldBookList))
+                .getOrDefault(emptyList())
+        )
+        set(value) {
+            persistAiWorldBooks(normalizeAiWorldBooks(value))
+        }
+
     var aiPersonaList: List<AiPersonaConfig>
         get() = normalizeAiPersonas(
             GSON.fromJsonArray<AiPersonaConfig>(appCtx.getPrefString(PreferKey.aiPersonaList))
@@ -1250,6 +1261,64 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }.distinctBy { it.id }
     }
 
+    private fun normalizeAiWorldBooks(value: List<AiWorldBookConfig>): List<AiWorldBookConfig> {
+        return value.mapNotNull { book ->
+            val id = safeString { book.id }.trim()
+            val name = safeString { book.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val scope = safeString { book.scope }.trim()
+                    .takeIf {
+                        it == AiWorldBookConfig.SCOPE_GLOBAL ||
+                                it == AiWorldBookConfig.SCOPE_BOOK ||
+                                it == AiWorldBookConfig.SCOPE_SESSION
+                    }
+                    ?: AiWorldBookConfig.SCOPE_GLOBAL
+                AiWorldBookConfig(
+                    id = id,
+                    name = name,
+                    description = safeString { book.description }.trim(),
+                    scope = scope,
+                    bookKey = safeString { book.bookKey }.trim(),
+                    enabled = safeBoolean(true) { book.enabled },
+                    order = safeInt(0) { book.order },
+                    entries = normalizeAiWorldBookEntries(book.entries)
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedBy { it.order }
+            .mapIndexed { index, book -> book.copy(order = index) }
+    }
+
+    private fun normalizeAiWorldBookEntries(value: List<AiWorldBookEntry>): List<AiWorldBookEntry> {
+        return value.mapNotNull { entry ->
+            val id = safeString { entry.id }.trim()
+            val title = safeString { entry.title }.trim()
+            val content = safeString { entry.content }.trim()
+            if (id.isEmpty() || title.isEmpty() || content.isEmpty()) {
+                null
+            } else {
+                AiWorldBookEntry(
+                    id = id,
+                    title = title,
+                    content = content.take(8_000),
+                    keys = safeStringList { entry.keys },
+                    secondaryKeys = safeStringList { entry.secondaryKeys },
+                    excludeKeys = safeStringList { entry.excludeKeys },
+                    enabled = safeBoolean(true) { entry.enabled },
+                    constant = safeBoolean(false) { entry.constant },
+                    priority = safeInt(50) { entry.priority }.coerceIn(0, 100),
+                    order = safeInt(0) { entry.order }
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedWith(compareByDescending<AiWorldBookEntry> { it.priority }.thenBy { it.order })
+            .mapIndexed { index, entry -> entry.copy(order = index) }
+    }
+
     private fun normalizeAiPersonas(value: List<AiPersonaConfig>): List<AiPersonaConfig> {
         return value.mapNotNull { persona ->
             val id = safeString { persona.id }.trim()
@@ -1329,11 +1398,28 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         return runCatching { block() }.getOrDefault(default)
     }
 
+    private inline fun safeStringList(block: () -> List<String>): List<String> {
+        return runCatching { block() }
+            .getOrDefault(emptyList())
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(40)
+    }
+
     private fun persistAiSkills(skills: List<AiSkillConfig>) {
         if (skills.isEmpty()) {
             appCtx.removePref(PreferKey.aiSkillList)
         } else {
             appCtx.putPrefString(PreferKey.aiSkillList, GSON.toJson(skills))
+        }
+    }
+
+    private fun persistAiWorldBooks(worldBooks: List<AiWorldBookConfig>) {
+        if (worldBooks.isEmpty()) {
+            appCtx.removePref(PreferKey.aiWorldBookList)
+        } else {
+            appCtx.putPrefString(PreferKey.aiWorldBookList, GSON.toJson(worldBooks))
         }
     }
 

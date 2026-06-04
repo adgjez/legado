@@ -44,6 +44,38 @@ data class AiSkillConfig(
 )
 
 @Keep
+data class AiWorldBookConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val description: String = "",
+    val scope: String = SCOPE_GLOBAL,
+    val bookKey: String = "",
+    val enabled: Boolean = true,
+    val order: Int = 0,
+    val entries: List<AiWorldBookEntry> = emptyList()
+) {
+    companion object {
+        const val SCOPE_GLOBAL = "global"
+        const val SCOPE_BOOK = "book"
+        const val SCOPE_SESSION = "session"
+    }
+}
+
+@Keep
+data class AiWorldBookEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val content: String,
+    val keys: List<String> = emptyList(),
+    val secondaryKeys: List<String> = emptyList(),
+    val excludeKeys: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val constant: Boolean = false,
+    val priority: Int = 50,
+    val order: Int = 0
+)
+
+@Keep
 data class AiContextSummary(
     val summary: String = "",
     val sourceMessageCount: Int = 0,
