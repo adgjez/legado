@@ -1075,6 +1075,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             } ?: AI_READ_TOOL_MODE_ENABLED
         )
 
+    var aiAgentToolMaxAttempts: Int
+        get() = appCtx.getPrefInt(PreferKey.aiAgentToolMaxAttempts, 3).coerceIn(1, 5)
+        set(value) = appCtx.putPrefInt(PreferKey.aiAgentToolMaxAttempts, value.coerceIn(1, 5))
+
+    var aiAgentToolRetryBackoffMillis: Int
+        get() = appCtx.getPrefInt(PreferKey.aiAgentToolRetryBackoffMillis, 600).coerceIn(0, 5_000)
+        set(value) = appCtx.putPrefInt(PreferKey.aiAgentToolRetryBackoffMillis, value.coerceIn(0, 5_000))
+
     var aiTavilyApiKey: String
         get() = appCtx.getPrefString(PreferKey.aiTavilyApiKey).orEmpty()
         set(value) {

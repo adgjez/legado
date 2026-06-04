@@ -100,6 +100,8 @@ object PreferKey {
     const val aiEnabledToolNames = "aiEnabledToolNames"
     const val aiEnabledToolNamesVersion = "aiEnabledToolNamesVersion"
     const val aiReadToolMode = "aiReadToolMode"
+    const val aiAgentToolMaxAttempts = "aiAgentToolMaxAttempts"
+    const val aiAgentToolRetryBackoffMillis = "aiAgentToolRetryBackoffMillis"
     const val aiTavilyEnabled = "aiTavilyEnabled"
     const val aiTavilyApiKey = "aiTavilyApiKey"
     const val aiTavilyBaseUrl = "aiTavilyBaseUrl"

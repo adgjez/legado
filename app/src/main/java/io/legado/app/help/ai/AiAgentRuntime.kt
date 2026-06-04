@@ -2,8 +2,10 @@ package io.legado.app.help.ai
 
 import io.legado.app.R
 import io.legado.app.data.entities.AiAgentTrace
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiChatException
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 import splitties.init.appCtx
@@ -146,7 +148,16 @@ internal object AiAgentRuntime {
                     round = roundNo,
                     success = true
                 )
-                val result = AiToolExecutor.execute(toolCall, toolMap, toolOptions)
+                val execution = executeValidatedTool(
+                    toolCall = toolCall,
+                    toolMap = toolMap,
+                    toolOptions = toolOptions,
+                    agentRun = agentRun,
+                    roundNo = roundNo,
+                    onStatus = onStatus,
+                    toolEvents = toolEvents
+                )
+                val result = execution.result
                 collectSearchResultCards(toolCall, result, searchResultCards)
                 val resultSuccess = parseToolResultSuccess(result)
                 AiAgentStateStore.trace(
@@ -156,7 +167,7 @@ internal object AiAgentRuntime {
                         .put("name", toolCall.name)
                         .put("result", result.take(8_000)),
                     round = roundNo,
-                    success = resultSuccess
+                    success = resultSuccess && execution.validation.ok
                 )
                 toolEvents.put(
                     JSONObject().apply {
@@ -220,6 +231,85 @@ internal object AiAgentRuntime {
         } else {
             finalTurn.content
         }
+    }
+
+    private data class ValidatedToolExecution(
+        val result: String,
+        val validation: AiToolValidationResult
+    )
+
+    private suspend fun executeValidatedTool(
+        toolCall: AiAgentToolCall,
+        toolMap: Map<String, AiResolvedTool>,
+        toolOptions: AiToolExecutionOptions,
+        agentRun: AiAgentStateStore.Run?,
+        roundNo: Int,
+        onStatus: (JSONObject) -> Unit,
+        toolEvents: JSONArray
+    ): ValidatedToolExecution {
+        var lastResult = ""
+        var lastValidation = AiToolValidationResult(
+            ok = false,
+            category = "not_executed",
+            message = "工具未执行",
+            retryable = true
+        )
+        var finalAttempt = 0
+        val maxAttempts = AppConfig.aiAgentToolMaxAttempts
+        for (attempt in 1..maxAttempts) {
+            finalAttempt = attempt
+            lastResult = AiToolExecutor.execute(toolCall, toolMap, toolOptions)
+            lastValidation = AiAgentValidator.validateToolResult(toolCall, lastResult)
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_VALIDATION,
+                payload = JSONObject()
+                    .put("name", toolCall.name)
+                    .put("attempt", attempt)
+                    .put("maxAttempts", maxAttempts)
+                    .put("validation", lastValidation.toJson()),
+                round = roundNo,
+                success = lastValidation.ok
+            )
+            if (lastValidation.ok || !lastValidation.retryable || attempt >= maxAttempts) {
+                break
+            }
+            val retryLabel = "工具校验失败，正在重试 $attempt/$maxAttempts"
+            onStatus(
+                JSONObject().apply {
+                    put("key", "${toolCall.id.ifBlank { toolCall.name }}_retry_$attempt")
+                    put("kind", "tool")
+                    put("name", toolCall.name)
+                    put("stage", "retry")
+                    put("label", retryLabel)
+                    put("content", lastValidation.message)
+                    put("success", false)
+                }
+            )
+            toolEvents.put(
+                JSONObject().apply {
+                    put("name", toolCall.name)
+                    put("stage", "retry")
+                    put("content", lastValidation.message)
+                    put("success", false)
+                }
+            )
+            val backoffMillis = AppConfig.aiAgentToolRetryBackoffMillis.toLong()
+            if (backoffMillis > 0L) {
+                delay((backoffMillis * attempt).coerceAtMost(5_000L))
+            }
+        }
+        val finalResult = if (lastValidation.ok) {
+            lastResult
+        } else {
+            AiAgentValidator.wrapFailedResult(
+                rawResult = lastResult,
+                validation = lastValidation,
+                attempt = finalAttempt,
+                maxAttempts = maxAttempts
+            )
+        }
+        return ValidatedToolExecution(finalResult, lastValidation)
     }
 
     private fun collectSearchResultCards(
