@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read
 
+import android.content.Intent
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -74,8 +75,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.config.AiWorldBookManageActivity
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiMarkdownRender
+import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.legado.app.utils.dpToPx
@@ -701,16 +704,42 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             listOf(
                 "Skill：${windowSkillIds.size} 个",
                 "MCP：${windowMcpServerIds.size} 个",
-                "清空当前窗口能力"
+                "世界书：${activeBookWorldBookCount()} 个",
+                "清空 Skill/MCP"
             )
         ) { _, _, index ->
             when (index) {
                 0 -> showWindowSkillDialog()
                 1 -> showWindowMcpDialog()
-                2 -> {
+                2 -> openBookWorldBookManage()
+                3 -> {
                     windowSkillIds = emptySet()
                     windowMcpServerIds = emptySet()
                 }
+            }
+        }
+    }
+
+    private fun openBookWorldBookManage() {
+        val contextData = readContext ?: return
+        context.startActivity(
+            Intent(context, AiWorldBookManageActivity::class.java)
+                .putExtra(AiWorldBookManageActivity.EXTRA_TARGET_TYPE, AiWorldBookBinding.TARGET_BOOK)
+                .putExtra(
+                    AiWorldBookManageActivity.EXTRA_TARGET_KEY,
+                    AiMemoryStore.bookKey(contextData.bookName, contextData.author)
+                )
+        )
+    }
+
+    private fun activeBookWorldBookCount(): Int {
+        val contextData = readContext ?: return 0
+        val bookKey = AiMemoryStore.bookKey(contextData.bookName, contextData.author)
+        return AppConfig.aiWorldBookList.count { worldBook ->
+            worldBook.enabled && worldBook.bindings.any { binding ->
+                binding.enabled &&
+                        binding.targetType == AiWorldBookBinding.TARGET_BOOK &&
+                        binding.targetKey == bookKey
             }
         }
     }
