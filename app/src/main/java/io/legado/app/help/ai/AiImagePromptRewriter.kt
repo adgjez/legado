@@ -1,6 +1,8 @@
 package io.legado.app.help.ai
 
 import io.legado.app.data.appDb
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.main.ai.AiChatMessage
 
@@ -10,7 +12,8 @@ object AiImagePromptRewriter {
         val book = ReadBook.book
         val chapter = ReadBook.curTextChapter?.chapter
         val characters = book?.let {
-            appDb.bookCharacterDao.characters(it.bookUrl).take(12)
+            val key = BookCharacterIdentityMigrator.migrate(it).ifBlank { it.characterBookKey() }
+            appDb.bookCharacterDao.characters(key).take(12)
         }.orEmpty()
         val context = buildString {
             appendLine("当前书籍：${book?.name.orEmpty()}")

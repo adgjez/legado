@@ -12,6 +12,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.book.character.compose.CharacterRelationScreen
 import io.legado.app.ui.book.character.compose.RelationEditDraft
@@ -33,6 +34,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
     }
 
     private var bookUrl: String = ""
+    private var characterBookKey: String = ""
     private var characters by mutableStateOf<List<BookCharacter>>(emptyList())
     private var relations by mutableStateOf<List<BookCharacterRelation>>(emptyList())
     private var selectedCenterId by mutableStateOf(0L)
@@ -41,6 +43,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         bookUrl = intent.getStringExtra(BookCharacterManageActivity.EXTRA_BOOK_URL).orEmpty()
+        characterBookKey = intent.getStringExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY).orEmpty()
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         composeView.setContent {
             CharacterRelationScreen(
@@ -69,14 +72,18 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
     }
 
     private fun load() {
-        if (bookUrl.isBlank()) {
+        if (bookUrl.isBlank() && characterBookKey.isBlank()) {
             characters = emptyList()
             relations = emptyList()
             return
         }
         lifecycleScope.launch {
             val data = withContext(IO) {
-                appDb.bookCharacterDao.characters(bookUrl) to appDb.bookCharacterDao.relations(bookUrl)
+                val key = characterBookKey.ifBlank {
+                    BookCharacterIdentityMigrator.migrate(appDb.bookDao.getBook(bookUrl))
+                }
+                characterBookKey = key
+                appDb.bookCharacterDao.characters(key) to appDb.bookCharacterDao.relations(key)
             }
             val validCharacters = data.first
             val validIds = validCharacters.map { it.id }.toSet()
@@ -128,8 +135,8 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
             withContext(IO) {
                 val old = draft.id.takeIf { it > 0L }?.let { appDb.bookCharacterDao.getRelation(it) }
                 val now = System.currentTimeMillis()
-                val saving = (old ?: BookCharacterRelation(bookUrl = bookUrl)).copy(
-                    bookUrl = bookUrl,
+                val saving = (old ?: BookCharacterRelation(bookUrl = characterBookKey)).copy(
+                    bookUrl = characterBookKey,
                     fromCharacterId = from,
                     toCharacterId = to,
                     relationName = draft.relationName.trim().ifBlank { "关系" },
@@ -138,7 +145,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
                     strength = draft.strength.coerceIn(0, 100),
                     sortOrder = draft.sortOrder.takeIf { it > 0 }
                         ?: old?.sortOrder?.takeIf { it > 0 }
-                        ?: ((appDb.bookCharacterDao.maxRelationOrder(bookUrl) ?: -1) + 1),
+                        ?: ((appDb.bookCharacterDao.maxRelationOrder(characterBookKey) ?: -1) + 1),
                     updatedAt = now
                 )
                 if (saving.id > 0) {
@@ -171,6 +178,7 @@ class BookCharacterRelationActivity : BaseActivity<ViewBinding>(
     private fun openCharacterCard(character: BookCharacter) {
         startActivity<BookCharacterCardActivity> {
             putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, bookUrl)
+            putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY, characterBookKey)
             putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, character.id)
         }
     }

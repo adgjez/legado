@@ -8,6 +8,8 @@ import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.ReadAloudSpeakerGroup
 import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
@@ -37,6 +39,10 @@ object AiBookCharacterTool {
     private const val TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE = "assign_character_speech_route"
     private const val TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES = "batch_assign_character_speech_routes"
     private const val TOOL_CLEAR_CHARACTER_SPEECH_ROUTES = "clear_character_speech_routes"
+
+    private fun characterKey(book: Book): String {
+        return BookCharacterIdentityMigrator.migrate(book).ifBlank { book.characterBookKey() }
+    }
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -244,7 +250,8 @@ object AiBookCharacterTool {
 
     private suspend fun listCharacters(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+        val bookKey = characterKey(book)
+        val characters = appDb.bookCharacterDao.characters(bookKey)
         JSONObject().apply {
             put("ok", true)
             put("book", bookJson(book))
@@ -256,18 +263,20 @@ object AiBookCharacterTool {
 
     private suspend fun upsertCharacter(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val bookKey = characterKey(book)
         val name = args?.optString("name")?.trim().orEmpty()
         if (name.isBlank()) return@withContext errorJson("name 不能为空")
         val now = System.currentTimeMillis()
         val id = args?.optLong("characterId", 0L) ?: 0L
         val old = id.takeIf { it > 0 }?.let { appDb.bookCharacterDao.getCharacter(it) }
-            ?: appDb.bookCharacterDao.getCharacter(book.bookUrl, name)
+            ?.takeIf { it.bookUrl == bookKey }
+            ?: appDb.bookCharacterDao.getCharacter(bookKey, name)
         val rawAttributes = optText(args, "attributes") ?: old?.attributes.orEmpty()
         val age = (optText(args, "ageStage") ?: optText(args, "age"))
             ?.let(BookCharacterProfileMeta::sanitizeAge)
             ?: old?.let(BookCharacterProfileMeta::ageOf).orEmpty()
-        val character = (old ?: BookCharacter(bookUrl = book.bookUrl)).copy(
-            bookUrl = book.bookUrl,
+        val character = (old ?: BookCharacter(bookUrl = bookKey)).copy(
+            bookUrl = bookKey,
             name = name,
             avatar = optText(args, "avatar") ?: old?.avatar.orEmpty(),
             gender = optText(args, "gender")
@@ -287,7 +296,7 @@ object AiBookCharacterTool {
             lastDetectedAt = old?.lastDetectedAt ?: 0L,
             roleLevel = (args?.takeIf { it.has("roleLevel") }?.optInt("roleLevel") ?: old?.roleLevel ?: BookCharacter.ROLE_NORMAL)
                 .coerceIn(BookCharacter.ROLE_NORMAL, BookCharacter.ROLE_MAIN),
-            sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxCharacterOrder(book.bookUrl) ?: -1) + 1),
+            sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxCharacterOrder(bookKey) ?: -1) + 1),
             createdAt = old?.createdAt?.takeIf { it > 0 } ?: now,
             updatedAt = now
         )
@@ -456,7 +465,7 @@ object AiBookCharacterTool {
 
     private suspend fun assignCharacterSpeechRoute(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val character = resolveCharacter(book.bookUrl, args)
+        val character = resolveCharacter(characterKey(book), args)
             ?: return@withContext errorJson("未找到角色")
         val overwrite = args?.optBoolean("overwrite", false) ?: false
         if (!overwrite && character.speechRouteJson.isNotBlank()) {
@@ -486,13 +495,14 @@ object AiBookCharacterTool {
 
     private suspend fun batchAssignCharacterSpeechRoutes(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val bookKey = characterKey(book)
         val autoCreatedOnly = args?.optBoolean("autoCreatedOnly", false) ?: false
         val unassignedOnly = args?.optBoolean("unassignedOnly", true) ?: true
         val overwrite = args?.optBoolean("overwrite", false) ?: false
         val limit = (args?.optInt("limit", 200) ?: 200).coerceIn(1, 500)
         val httpTtsList = appDb.httpTTSDao.all
         val updatedCharacters = mutableListOf<BookCharacter>()
-        appDb.bookCharacterDao.characters(book.bookUrl)
+        appDb.bookCharacterDao.characters(bookKey)
             .asSequence()
             .filter { !autoCreatedOnly || it.autoCreated }
             .filter { overwrite || !unassignedOnly || it.speechRouteJson.isBlank() }
@@ -519,10 +529,11 @@ object AiBookCharacterTool {
 
     private suspend fun clearCharacterSpeechRoutes(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val bookKey = characterKey(book)
         val autoCreatedOnly = args?.optBoolean("autoCreatedOnly", true) ?: true
         val idFilter = parseLongSet(args?.optString("characterIdsJson"))
         val updatedCharacters = mutableListOf<BookCharacter>()
-        appDb.bookCharacterDao.characters(book.bookUrl)
+        appDb.bookCharacterDao.characters(bookKey)
             .asSequence()
             .filter { idFilter.isEmpty() || it.id in idFilter }
             .filter { !autoCreatedOnly || it.autoCreated }
@@ -546,7 +557,7 @@ object AiBookCharacterTool {
 
     private suspend fun deleteCharacter(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val character = resolveCharacter(book.bookUrl, args)
+        val character = resolveCharacter(characterKey(book), args)
             ?: return@withContext errorJson("未找到角色")
         appDb.bookCharacterDao.deleteCharacterWithRelations(character)
         JSONObject().apply {
@@ -557,8 +568,9 @@ object AiBookCharacterTool {
 
     private suspend fun listRelations(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
-        val relations = appDb.bookCharacterDao.relations(book.bookUrl)
+        val bookKey = characterKey(book)
+        val characters = appDb.bookCharacterDao.characters(bookKey)
+        val relations = appDb.bookCharacterDao.relations(bookKey)
         JSONObject().apply {
             put("ok", true)
             put("book", bookJson(book))
@@ -573,7 +585,8 @@ object AiBookCharacterTool {
 
     private suspend fun upsertRelation(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+        val bookKey = characterKey(book)
+        val characters = appDb.bookCharacterDao.characters(bookKey)
         val fromId = resolveCharacterId(args, "fromCharacterId", "fromName", characters)
         val toId = resolveCharacterId(args, "toCharacterId", "toName", characters)
         if (fromId == null || toId == null || fromId == toId) {
@@ -581,9 +594,10 @@ object AiBookCharacterTool {
         }
         val relationId = args?.optLong("relationId", 0L) ?: 0L
         val old = relationId.takeIf { it > 0 }?.let { appDb.bookCharacterDao.getRelation(it) }
+            ?.takeIf { it.bookUrl == bookKey }
         val now = System.currentTimeMillis()
-        val relation = (old ?: BookCharacterRelation(bookUrl = book.bookUrl)).copy(
-            bookUrl = book.bookUrl,
+        val relation = (old ?: BookCharacterRelation(bookUrl = bookKey)).copy(
+            bookUrl = bookKey,
             fromCharacterId = fromId,
             toCharacterId = toId,
             relationName = args?.optString("relationName")?.trim()?.ifBlank { null }
@@ -593,7 +607,7 @@ object AiBookCharacterTool {
             description = optText(args, "description") ?: old?.description.orEmpty(),
             strength = (args?.takeIf { it.has("strength") }?.optInt("strength") ?: old?.strength ?: 50)
                 .coerceIn(0, 100),
-            sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxRelationOrder(book.bookUrl) ?: -1) + 1),
+            sortOrder = old?.sortOrder ?: ((appDb.bookCharacterDao.maxRelationOrder(bookKey) ?: -1) + 1),
             updatedAt = now
         )
         val savedId = if (relation.id > 0) {
@@ -609,10 +623,14 @@ object AiBookCharacterTool {
     }
 
     private suspend fun deleteRelation(args: JSONObject?): String = withContext(IO) {
-        resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val bookKey = characterKey(book)
         val relationId = args?.optLong("relationId", 0L) ?: 0L
         if (relationId <= 0L) return@withContext errorJson("relationId 不能为空")
-        appDb.bookCharacterDao.deleteRelationById(relationId)
+        val relation = appDb.bookCharacterDao.getRelation(relationId)
+            ?.takeIf { it.bookUrl == bookKey }
+            ?: return@withContext errorJson("未找到关系")
+        appDb.bookCharacterDao.deleteRelation(relation)
         JSONObject().apply {
             put("ok", true)
             put("deletedRelationId", relationId)
@@ -645,7 +663,7 @@ object AiBookCharacterTool {
 
     private suspend fun setCharacterAvatarFromGallery(args: JSONObject?): String = withContext(IO) {
         val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
-        val character = resolveCharacter(book.bookUrl, args)
+        val character = resolveCharacter(characterKey(book), args)
             ?: return@withContext errorJson("未找到角色")
         val imageId = args?.optString("imageId")?.trim().orEmpty()
         if (imageId.isBlank()) return@withContext errorJson("imageId 不能为空")
@@ -672,7 +690,7 @@ object AiBookCharacterTool {
     private suspend fun generateCharacterAvatar(args: JSONObject?): String {
         val resolved = withContext(IO) {
             val book = resolveBook(args) ?: return@withContext null
-            val character = resolveCharacter(book.bookUrl, args) ?: return@withContext null
+            val character = resolveCharacter(characterKey(book), args) ?: return@withContext null
             book to character
         } ?: return errorJson("未找到书籍或角色")
         val book = resolved.first

@@ -38,6 +38,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.ai.AiReadAloudRoleService
+import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.InputStreamDataSource
@@ -593,7 +594,7 @@ class HttpReadAloudService : BaseReadAloudService(),
             null
         }
         val plan = ReadAloudSpeechPlanner.build(
-            bookUrl = ReadBook.book?.bookUrl,
+            bookUrl = ReadBook.book?.characterBookKey(),
             chapter = chapter,
             baseCues = baseCues,
             multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
@@ -822,7 +823,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         val book = ReadBook.book ?: return null
         val chapter = textChapter ?: return null
         return AiReadAloudRoleService.routeForCue(
-            bookUrl = book.bookUrl,
+            bookUrl = book.characterBookKey(),
             chapterIndex = chapter.chapter.index,
             cueIndex = index,
             cueText = contentList.getOrNull(index)

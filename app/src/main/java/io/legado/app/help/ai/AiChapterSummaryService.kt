@@ -4,6 +4,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.utils.MD5Utils
@@ -153,7 +155,9 @@ object AiChapterSummaryService {
         chunkIndex: Int,
         chunkCount: Int
     ): String {
-        val existingCharacters = appDb.bookCharacterDao.characters(input.bookUrl)
+        val existingCharacters = appDb.bookCharacterDao.characters(
+            BookCharacterIdentityMigrator.migrate(input.book).ifBlank { input.book.characterBookKey() }
+        )
             .take(80)
             .joinToString("\n") { character ->
                 "- ${character.name}: ${listOf(character.identity, character.skills, character.attributes, character.biography).filter { it.isNotBlank() }.joinToString("；").take(500)}"

@@ -38,6 +38,7 @@ import io.legado.app.help.MediaHelp
 import io.legado.app.help.ai.AiReadAloudBgmService
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRoleState
+import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
@@ -394,7 +395,9 @@ abstract class BaseReadAloudService : BaseService(),
             if (!textChapter.isCompleted) {
                 return@execute
             }
-            val bookUrl = ReadBook.book?.bookUrl
+            val book = ReadBook.book
+            val bookUrl = book?.bookUrl
+            val characterBookKey = book?.characterBookKey()
             readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
             val baseCues = textChapter.buildReadAloudCues(readAloudByPage)
             postReadAloudPlaybackPhase(
@@ -422,7 +425,7 @@ abstract class BaseReadAloudService : BaseService(),
                 queueNextChapterRoleCache()
             }
             val speechPlan = ReadAloudSpeechPlanner.build(
-                bookUrl = ReadBook.book?.bookUrl,
+                bookUrl = characterBookKey,
                 chapter = textChapter,
                 baseCues = baseCues,
                 multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
@@ -436,7 +439,7 @@ abstract class BaseReadAloudService : BaseService(),
             speechRoutes = speechPlan.routes
             speechItems = speechPlan.items
             readAloudPlanKey = ReadAloudSpeechPlanner.planKey(
-                bookUrl = ReadBook.book?.bookUrl,
+                bookUrl = characterBookKey,
                 chapter = textChapter,
                 cues = speechPlan.cues,
                 roleCacheKey = roleCacheKey

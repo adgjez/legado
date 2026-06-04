@@ -12,6 +12,9 @@ interface AiReadAloudRoleCacheDao {
     @Query("SELECT * FROM ai_read_aloud_role_caches WHERE cacheKey = :cacheKey LIMIT 1")
     fun get(cacheKey: String): AiReadAloudRoleCache?
 
+    @Query("SELECT * FROM ai_read_aloud_role_caches WHERE bookUrl = :bookUrl")
+    fun listByBook(bookUrl: String): List<AiReadAloudRoleCache>
+
     @Query(
         """
         SELECT * FROM ai_read_aloud_role_caches

@@ -33,12 +33,14 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>(
     }
 
     private var bookUrl: String = ""
+    private var characterBookKey: String = ""
     private var characterId: Long = 0L
     private var character by mutableStateOf<BookCharacter?>(null)
     private var speechEngines by mutableStateOf<List<CharacterSpeechEngineUi>>(emptyList())
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         bookUrl = intent.getStringExtra(BookCharacterManageActivity.EXTRA_BOOK_URL).orEmpty()
+        characterBookKey = intent.getStringExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY).orEmpty()
         characterId = intent.getLongExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, 0L)
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         composeView.setContent {
@@ -102,6 +104,7 @@ class BookCharacterCardActivity : BaseActivity<ViewBinding>(
         val item = character ?: return
         startActivity<BookCharacterEditActivity> {
             putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, bookUrl.ifBlank { item.bookUrl })
+            putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY, characterBookKey.ifBlank { item.bookUrl })
             putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, item.id)
         }
     }

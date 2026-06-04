@@ -7,6 +7,8 @@ import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
@@ -130,6 +132,7 @@ object AiReadAloudRoleService {
     private data class RoleCacheKey(
         val cacheKey: String,
         val promptCacheKey: String,
+        val bookKey: String,
         val mode: String,
         val legacyMode: String,
         val prompt: String,
@@ -168,6 +171,7 @@ object AiReadAloudRoleService {
     ): String? {
         val currentBook = book ?: return null
         val currentChapter = textChapter ?: return null
+        BookCharacterIdentityMigrator.migrate(currentBook)
         val cleanParagraphs = paragraphs.map { it.trimEnd() }.filter { it.isNotBlank() }
         if (cleanParagraphs.isEmpty()) return null
         return buildRoleCacheKey(currentBook, currentChapter, cleanParagraphs)?.cacheKey
@@ -209,17 +213,19 @@ object AiReadAloudRoleService {
         val autoCreatePromptHash = MD5Utils.md5Encode(autoCreatePrompt)
         val contextParagraphs = AppConfig.aiReadAloudRoleContextParagraphs
         val mergeGapParagraphs = AppConfig.aiReadAloudRoleMergeGapParagraphs
+        val bookKey = book.characterBookKey()
         val legacyMode = "$baseMode|${ReadAloudRolePreprocessor.VERSION}|rules=$preprocessRuleHash"
         val mode = "$legacyMode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|prompt=$promptHash|auto=$autoCreatePromptHash"
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-role-playback|${book.bookUrl}|${textChapter.chapter.index}|${textChapter.chapter.url}|$contentHash|$PLAYBACK_CACHE_SCHEMA_VERSION"
+            "read-aloud-role-playback|$bookKey|${textChapter.chapter.index}|$contentHash|$PLAYBACK_CACHE_SCHEMA_VERSION"
         )
         val promptCacheKey = MD5Utils.md5Encode(
-            "read-aloud-role-prompt|${book.bookUrl}|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|auto=$autoCreatePromptHash|${modelConfig.id}"
+            "read-aloud-role-prompt|$bookKey|$mode|ctx=$contextParagraphs|gap=$mergeGapParagraphs|$promptHash|auto=$autoCreatePromptHash|${modelConfig.id}"
         )
         return RoleCacheKey(
             cacheKey = cacheKey,
             promptCacheKey = "read_aloud_role_$promptCacheKey",
+            bookKey = bookKey,
             mode = mode,
             legacyMode = legacyMode,
             prompt = prompt,
@@ -235,7 +241,7 @@ object AiReadAloudRoleService {
         roleKey: RoleCacheKey
     ): AiReadAloudRoleCache? {
         val candidates = appDb.aiReadAloudRoleCacheDao.successCandidatesByChapterContent(
-            bookUrl = book.bookUrl,
+            bookUrl = roleKey.bookKey,
             chapterIndex = textChapter.chapter.index,
             contentHash = roleKey.contentHash,
             preprocessVersion = ReadAloudRolePreprocessor.VERSION
@@ -302,6 +308,7 @@ object AiReadAloudRoleService {
             ?: return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, message = "书籍为空")
         val currentChapter = textChapter
             ?: return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, message = "章节为空")
+        BookCharacterIdentityMigrator.migrate(currentBook)
         val cleanParagraphs = paragraphs.map { it.trimEnd() }.filter { it.isNotBlank() }
         if (cleanParagraphs.isEmpty()) {
             return EnsureResult(AiReadAloudRoleState.STATUS_SKIPPED, message = "当前章节无可朗读段落")
@@ -314,6 +321,7 @@ object AiReadAloudRoleService {
         val contextParagraphs = roleKey.contextParagraphs
         val mergeGapParagraphs = roleKey.mergeGapParagraphs
         val cacheKey = roleKey.cacheKey
+        val characterBookKey = roleKey.bookKey
         val previewBuffer = mutableListOf<AiReadAloudRolePreviewSegment>()
         val usageTracker = RoleUsageTracker()
         var keepAliveId: String? = null
@@ -375,7 +383,7 @@ object AiReadAloudRoleService {
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS && oldCache.segmentsJson.isNotBlank()) {
             val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
             val preview = buildPreviewSegments(
-                currentBook.bookUrl,
+                characterBookKey,
                 cachedSegments,
                 cleanParagraphs,
                 AiReadAloudRoleState.SOURCE_CACHE
@@ -402,17 +410,18 @@ object AiReadAloudRoleService {
                 appDb.aiReadAloudRoleCacheDao.upsert(
                     usableCache.copy(
                         cacheKey = cacheKey,
+                        bookUrl = characterBookKey,
                         mode = mode,
                         paragraphCount = cleanParagraphs.size,
                         retryCount = 0,
                         lastError = "",
-                        characterHash = characterHash(currentBook.bookUrl),
-                        voiceHash = voiceHash(currentBook.bookUrl),
+                        characterHash = characterHash(characterBookKey),
+                        voiceHash = voiceHash(characterBookKey),
                         updatedAt = now
                     )
                 )
                 val preview = buildPreviewSegments(
-                    currentBook.bookUrl,
+                    characterBookKey,
                     cachedSegments,
                     cleanParagraphs,
                     AiReadAloudRoleState.SOURCE_CACHE
@@ -438,7 +447,7 @@ object AiReadAloudRoleService {
             if (oldCache.segmentsJson.isNotBlank()) {
                 val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
                 val preview = buildPreviewSegments(
-                    currentBook.bookUrl,
+                    characterBookKey,
                     cachedSegments,
                     cleanParagraphs,
                     AiReadAloudRoleState.SOURCE_CACHE
@@ -469,7 +478,7 @@ object AiReadAloudRoleService {
         if ((oldCache?.retryCount ?: 0) >= 3 && oldCache?.segmentsJson?.isNotBlank() == true) {
             val fallbackSegments = segmentsFromJson(oldCache.segmentsJson)
             val preview = buildPreviewSegments(
-                currentBook.bookUrl,
+                characterBookKey,
                 fallbackSegments,
                 cleanParagraphs,
                 AiReadAloudRoleState.SOURCE_FALLBACK
@@ -518,7 +527,7 @@ object AiReadAloudRoleService {
         appDb.aiReadAloudRoleCacheDao.upsert(
             AiReadAloudRoleCache(
                 cacheKey = cacheKey,
-                bookUrl = currentBook.bookUrl,
+                bookUrl = characterBookKey,
                 chapterKey = currentChapter.chapter.url?.ifBlank { currentChapter.chapter.title }.orEmpty(),
                 chapterIndex = currentChapter.chapter.index,
                 chapterTitle = currentChapter.chapter.title,
@@ -527,8 +536,8 @@ object AiReadAloudRoleService {
                 paragraphCount = cleanParagraphs.size,
                 status = AiReadAloudRoleCache.STATUS_RUNNING,
                 retryCount = oldCache?.retryCount ?: 0,
-                characterHash = characterHash(currentBook.bookUrl),
-                voiceHash = voiceHash(currentBook.bookUrl),
+                characterHash = characterHash(characterBookKey),
+                voiceHash = voiceHash(characterBookKey),
                 createdAt = oldCache?.createdAt?.takeIf { it > 0 } ?: now,
                 updatedAt = now
             )
@@ -563,7 +572,7 @@ object AiReadAloudRoleService {
             if (aiSegments.isEmpty() || result.aiRequired && !result.aiSatisfied) {
                 val fallback = resolveSegmentCharacters(
                     aiSegments.ifEmpty { buildDefaultSegments(cleanParagraphs) },
-                    appDb.bookCharacterDao.characters(currentBook.bookUrl)
+                    appDb.bookCharacterDao.characters(characterBookKey)
                 )
                 val error = if (aiSegments.isEmpty()) {
                     "AI未返回有效分角色片段，已使用默认分角色"
@@ -573,7 +582,7 @@ object AiReadAloudRoleService {
                 appDb.aiReadAloudRoleCacheDao.upsert(
                     AiReadAloudRoleCache(
                         cacheKey = cacheKey,
-                        bookUrl = currentBook.bookUrl,
+                        bookUrl = characterBookKey,
                         chapterKey = currentChapter.chapter.url?.ifBlank { currentChapter.chapter.title }.orEmpty(),
                         chapterIndex = currentChapter.chapter.index,
                         chapterTitle = currentChapter.chapter.title,
@@ -584,8 +593,8 @@ object AiReadAloudRoleService {
                         retryCount = ((oldCache?.retryCount ?: 0) + 1).coerceAtMost(3),
                         lastError = error,
                         segmentsJson = fallback.toJsonArray().toString(),
-                        characterHash = characterHash(currentBook.bookUrl),
-                        voiceHash = voiceHash(currentBook.bookUrl),
+                        characterHash = characterHash(characterBookKey),
+                        voiceHash = voiceHash(characterBookKey),
                         createdAt = oldCache?.createdAt?.takeIf { it > 0 } ?: successAt,
                         updatedAt = successAt
                     )
@@ -595,7 +604,7 @@ object AiReadAloudRoleService {
                     if (aiSegments.isEmpty()) "AI未返回有效分角色片段，请重新分配当前章节" else "AI未完整确认不确定角色片段，请重新分配当前章节",
                     AiReadAloudRoleState.SOURCE_FALLBACK,
                     buildPreviewSegments(
-                        currentBook.bookUrl,
+                        characterBookKey,
                         fallback,
                         cleanParagraphs,
                         AiReadAloudRoleState.SOURCE_FALLBACK
@@ -604,12 +613,12 @@ object AiReadAloudRoleService {
                 )
                 return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
             }
-            val resolved = persistDetectedCharacters(currentBook.bookUrl, aiSegments, result.candidates)
+            val resolved = persistDetectedCharacters(characterBookKey, currentBook.bookUrl, aiSegments, result.candidates)
             val finalUsage = usageTracker.snapshot()
             appDb.aiReadAloudRoleCacheDao.upsert(
                 AiReadAloudRoleCache(
                     cacheKey = cacheKey,
-                    bookUrl = currentBook.bookUrl,
+                    bookUrl = characterBookKey,
                     chapterKey = currentChapter.chapter.url?.ifBlank { currentChapter.chapter.title }.orEmpty(),
                     chapterIndex = currentChapter.chapter.index,
                     chapterTitle = currentChapter.chapter.title,
@@ -624,8 +633,8 @@ object AiReadAloudRoleService {
                         usageSnapshot = finalUsage
                     ),
                     createdCharacterIdsJson = JSONArray(resolved.second).toString(),
-                    characterHash = characterHash(currentBook.bookUrl),
-                    voiceHash = voiceHash(currentBook.bookUrl),
+                    characterHash = characterHash(characterBookKey),
+                    voiceHash = voiceHash(characterBookKey),
                     createdAt = oldCache?.createdAt?.takeIf { it > 0 } ?: successAt,
                     updatedAt = successAt
                 )
@@ -635,7 +644,7 @@ object AiReadAloudRoleService {
                 stageMessage(stage, "角色分配完成"),
                 AiReadAloudRoleState.SOURCE_RESOLVED,
                 buildPreviewSegments(
-                    currentBook.bookUrl,
+                    characterBookKey,
                     resolved.first,
                     cleanParagraphs,
                     AiReadAloudRoleState.SOURCE_RESOLVED
@@ -654,13 +663,13 @@ object AiReadAloudRoleService {
             val failedAt = System.currentTimeMillis()
             val fallback = resolveSegmentCharacters(
                 buildDefaultSegments(cleanParagraphs),
-                appDb.bookCharacterDao.characters(currentBook.bookUrl)
+                appDb.bookCharacterDao.characters(characterBookKey)
             )
             val error = throwable.localizedMessage ?: throwable.javaClass.simpleName
             appDb.aiReadAloudRoleCacheDao.upsert(
-                AiReadAloudRoleCache(
-                    cacheKey = cacheKey,
-                    bookUrl = currentBook.bookUrl,
+                    AiReadAloudRoleCache(
+                        cacheKey = cacheKey,
+                        bookUrl = characterBookKey,
                     chapterKey = currentChapter.chapter.url?.ifBlank { currentChapter.chapter.title }.orEmpty(),
                     chapterIndex = currentChapter.chapter.index,
                     chapterTitle = currentChapter.chapter.title,
@@ -671,8 +680,8 @@ object AiReadAloudRoleService {
                     retryCount = ((oldCache?.retryCount ?: 0) + 1).coerceAtMost(3),
                     lastError = error.take(400),
                     segmentsJson = fallback.toJsonArray().toString(),
-                    characterHash = characterHash(currentBook.bookUrl),
-                    voiceHash = voiceHash(currentBook.bookUrl),
+                        characterHash = characterHash(characterBookKey),
+                        voiceHash = voiceHash(characterBookKey),
                     createdAt = oldCache?.createdAt?.takeIf { it > 0 } ?: failedAt,
                     updatedAt = failedAt
                 )
@@ -682,7 +691,7 @@ object AiReadAloudRoleService {
                 "AI分角色失败，请重新分配当前章节",
                 AiReadAloudRoleState.SOURCE_FALLBACK,
                 buildPreviewSegments(
-                    currentBook.bookUrl,
+                    characterBookKey,
                     fallback,
                     cleanParagraphs,
                     AiReadAloudRoleState.SOURCE_FALLBACK
@@ -771,6 +780,7 @@ object AiReadAloudRoleService {
         if (bookUrl.isNullOrBlank()) return null
         val character = when {
             segment.characterId > 0L -> appDb.bookCharacterDao.getCharacter(segment.characterId)
+                ?.takeIf { it.bookUrl == bookUrl }
             segment.characterName.isNotBlank() -> appDb.bookCharacterDao.getCharacter(bookUrl, segment.characterName)
             else -> null
         } ?: return null
@@ -1547,7 +1557,7 @@ object AiReadAloudRoleService {
         attempt: Int,
         knownResolutions: List<UnitResolution>
     ): String {
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+        val characters = appDb.bookCharacterDao.characters(book.characterBookKey())
             .sortedWith(compareBy<BookCharacter> { it.name }.thenBy { it.id })
             .joinToString("\n") {
                 val detail = listOf(it.genderLabel(), it.identity, it.personality)
@@ -1799,7 +1809,7 @@ object AiReadAloudRoleService {
         units: List<ReadAloudRoleUnit>,
         uncertainUnits: List<ReadAloudRoleUnit>
     ): String {
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+        val characters = appDb.bookCharacterDao.characters(book.characterBookKey())
             .joinToString("\n") {
                 "- ${it.name}：${listOf(it.genderLabel(), it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() && value != "未知" }.joinToString("；")}"
             }
@@ -1980,7 +1990,7 @@ object AiReadAloudRoleService {
         prompt: String,
         paragraphOffset: Int
     ): String {
-        val characters = appDb.bookCharacterDao.characters(book.bookUrl)
+        val characters = appDb.bookCharacterDao.characters(book.characterBookKey())
             .joinToString("\n") { "- ${it.name}：${listOf(it.genderLabel(), it.identity, it.skills, it.attributes).filter { value -> value.isNotBlank() && value != "未知" }.joinToString("；")}" }
             .ifBlank { "暂无角色卡" }
         val indexed = paragraphs.mapIndexed { index, text ->
@@ -2232,17 +2242,18 @@ object AiReadAloudRoleService {
     }
 
     private fun persistDetectedCharacters(
-        bookUrl: String,
+        characterBookKey: String,
+        sourceBookUrl: String,
         segments: List<Segment>,
         candidates: List<CharacterCandidate>
     ): Pair<List<Segment>, List<Long>> {
         if (!AppConfig.aiReadAloudAutoCreateCharacters) {
-            val characters = appDb.bookCharacterDao.characters(bookUrl)
+            val characters = appDb.bookCharacterDao.characters(characterBookKey)
             return resolveSegmentCharacters(segments, characters) to emptyList()
         }
         val now = System.currentTimeMillis()
         val httpTtsList = appDb.httpTTSDao.all
-        val existing = appDb.bookCharacterDao.characters(bookUrl).toMutableList()
+        val existing = appDb.bookCharacterDao.characters(characterBookKey).toMutableList()
         val byName = existing.associateBy { it.name }.toMutableMap()
         val createdIds = mutableListOf<Long>()
         var characterChanged = false
@@ -2257,7 +2268,7 @@ object AiReadAloudRoleService {
                 val old = byName[candidate.name]
                 if (old == null) {
                     val draft = BookCharacter(
-                        bookUrl = bookUrl,
+                        bookUrl = characterBookKey,
                         name = candidate.name,
                         identity = candidate.identity,
                         gender = candidate.gender,
@@ -2265,11 +2276,11 @@ object AiReadAloudRoleService {
                         appearance = candidate.appearance,
                         biography = candidate.evidence,
                         roleLevel = candidate.roleLevel,
-                        sortOrder = (appDb.bookCharacterDao.maxCharacterOrder(bookUrl) ?: -1) + 1,
+                        sortOrder = (appDb.bookCharacterDao.maxCharacterOrder(characterBookKey) ?: -1) + 1,
                         speechRouteJson = SpeechVoiceAssigner
                             .assignRoute(
                                 BookCharacter(
-                                    bookUrl = bookUrl,
+                                    bookUrl = characterBookKey,
                                     name = candidate.name,
                                     identity = candidate.identity,
                                     gender = candidate.gender,
@@ -2357,11 +2368,15 @@ object AiReadAloudRoleService {
         if (characterChanged) {
             ReadAloudConfigChangeNotifier.notifySpeech()
         }
-        queueAutoCharacterAvatars(bookUrl, createdIds)
+        queueAutoCharacterAvatars(characterBookKey, sourceBookUrl, createdIds)
         return resolveSegmentCharacters(segments, byName.values.toList()) to createdIds
     }
 
-    private fun queueAutoCharacterAvatars(bookUrl: String, characterIds: List<Long>) {
+    private fun queueAutoCharacterAvatars(
+        characterBookKey: String,
+        sourceBookUrl: String,
+        characterIds: List<Long>
+    ) {
         if (!AppConfig.aiReadAloudAutoCreateAvatar) return
         if (AiImageService.currentProviderOrNull() == null) return
         val ids = characterIds.distinct().take(6)
@@ -2373,9 +2388,9 @@ object AiReadAloudRoleService {
                         return@forEach
                     }
                     val character = appDb.bookCharacterDao.getCharacter(characterId)
-                        ?.takeIf { it.bookUrl == bookUrl && it.avatar.isBlank() }
+                        ?.takeIf { it.bookUrl == characterBookKey && it.avatar.isBlank() }
                         ?: return@forEach
-                    val book = appDb.bookDao.getBook(bookUrl)
+                    val book = appDb.bookDao.getBook(sourceBookUrl)
                     val image = AiImageService.generateAndStore(
                         prompt = buildAutoCharacterAvatarPrompt(character),
                         metadata = AiImageGalleryManager.ImageMetadata(
@@ -2389,7 +2404,7 @@ object AiReadAloudRoleService {
                     )
                     AiImageGalleryManager.setFavorite(image.id, true, null)
                     val latest = appDb.bookCharacterDao.getCharacter(characterId)
-                        ?.takeIf { it.bookUrl == bookUrl && it.avatar.isBlank() }
+                        ?.takeIf { it.bookUrl == characterBookKey && it.avatar.isBlank() }
                         ?: return@forEach
                     appDb.bookCharacterDao.updateCharacter(
                         latest.copy(

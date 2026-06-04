@@ -127,6 +127,8 @@ import io.legado.app.help.ai.AiReadAloudBgmService
 import io.legado.app.help.ai.AiReadAloudRoleService
 import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
@@ -567,7 +569,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     private fun retryRoleAssignment() {
-        val bookUrl = ReadBook.book?.bookUrl ?: return
+        val book = ReadBook.book ?: return
+        val bookUrl = BookCharacterIdentityMigrator.migrate(book).ifBlank { book.characterBookKey() }
         val chapter = ReadBook.curTextChapter ?: return
         AiReadAloudRoleService.clearChapterCache(bookUrl, chapter.chapter.index)
         chapterModelCache = null
@@ -1062,15 +1065,16 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         ).joinToString("|")
         chapterModelCache?.takeIf { it.key == modelKey }?.let { return it }
         val chapterKey = "${book.bookUrl}:$chapterSequence"
+        val characterBookKey = book.characterBookKey()
         val speechPlan = ReadAloudSpeechPlanner.build(
-            bookUrl = book.bookUrl,
+            bookUrl = characterBookKey,
             chapter = chapter,
             baseCues = baseCues,
             multiRoleEnabled = multiRoleEnabled,
             roleCacheKey = roleCacheKey
         )
         val planKey = ReadAloudSpeechPlanner.planKey(
-            bookUrl = book.bookUrl,
+            bookUrl = characterBookKey,
             chapter = chapter,
             cues = speechPlan.cues,
             roleCacheKey = roleCacheKey
@@ -1103,7 +1107,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             roleCacheReady = roleCacheReady,
             roleCacheRunning = roleCacheRunning,
             chapterPreview = buildChapterPreview(book.bookUrl, chapterSequence, ReadBook.chapterSize),
-            characterPreview = buildCharacterPreview(book.bookUrl),
+            characterPreview = buildCharacterPreview(
+                BookCharacterIdentityMigrator.migrate(book).ifBlank { book.characterBookKey() }
+            ),
             audioInfo = audioInfo
         ).also {
             chapterModelCache = it

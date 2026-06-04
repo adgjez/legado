@@ -34,6 +34,7 @@ import io.legado.app.databinding.ItemAiGeneratedImageBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.ai.AiImageService
+import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
@@ -75,6 +76,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
     }
 
     private var bookUrl: String = ""
+    private var characterBookKey: String = ""
     private var characterId: Long = 0L
     private var character = BookCharacter()
     private var draft by mutableStateOf(CharacterEditDraft())
@@ -87,6 +89,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         bookUrl = intent.getStringExtra(BookCharacterManageActivity.EXTRA_BOOK_URL).orEmpty()
+        characterBookKey = intent.getStringExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY).orEmpty()
         characterId = intent.getLongExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, 0L)
         composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         composeView.setContent {
@@ -114,8 +117,13 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
     private fun load() {
         lifecycleScope.launch {
             character = withContext(IO) {
-                appDb.bookCharacterDao.getCharacter(characterId)
-            } ?: BookCharacter(bookUrl = bookUrl)
+                val loaded = appDb.bookCharacterDao.getCharacter(characterId)
+                val key = characterBookKey.ifBlank {
+                    loaded?.bookUrl ?: BookCharacterIdentityMigrator.migrate(appDb.bookDao.getBook(bookUrl))
+                }
+                characterBookKey = key
+                loaded ?: BookCharacter(bookUrl = key)
+            }
             speechEngines = withContext(IO) {
                 SpeechVoiceCatalogRepository
                     .allGroups(applicationContext, appDb.httpTTSDao.all)
@@ -127,7 +135,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
 
     private fun save() {
         val name = draft.name.trim()
-        if (bookUrl.isBlank()) {
+        if (characterBookKey.isBlank()) {
             toastOnUi("当前书籍不存在")
             return
         }
@@ -138,13 +146,13 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
         lifecycleScope.launch {
             val now = System.currentTimeMillis()
             val result = withContext(IO) {
-                val duplicated = appDb.bookCharacterDao.getCharacter(bookUrl, name)
+                val duplicated = appDb.bookCharacterDao.getCharacter(characterBookKey, name)
                     ?.takeIf { it.id != character.id }
                 if (duplicated != null) {
                     return@withContext false
                 }
                 val saving = character.copy(
-                    bookUrl = bookUrl,
+                    bookUrl = characterBookKey,
                     name = name,
                     avatar = draft.avatar.trim(),
                     gender = BookCharacter.normalizeGender(draft.gender),
@@ -163,7 +171,7 @@ class BookCharacterEditActivity : BaseActivity<ViewBinding>(
                     biography = draft.biography.trim(),
                     speechRouteJson = draft.speechRouteJson.trim(),
                     sortOrder = character.sortOrder.takeIf { it > 0 }
-                        ?: ((appDb.bookCharacterDao.maxCharacterOrder(bookUrl) ?: -1) + 1),
+                        ?: ((appDb.bookCharacterDao.maxCharacterOrder(characterBookKey) ?: -1) + 1),
                     createdAt = character.createdAt.takeIf { it > 0 } ?: now,
                     updatedAt = now
                 )
