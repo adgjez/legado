@@ -17,12 +17,6 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiSystemPrompt"
-            android:summary="@string/ai_system_prompt_summary"
-            android:title="@string/ai_system_prompt"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiImportDefaultSkill"
             android:summary="@string/ai_import_default_skill_summary"
             android:title="@string/ai_import_default_skill"
@@ -60,14 +54,8 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
-            android:key="aiPersonaManage"
-            android:summary="@string/ai_persona_manage_summary_empty"
-            android:title="@string/ai_persona_manage"
-            app:iconSpaceReserved="false" />
-
-        <io.legado.app.lib.prefs.Preference
             android:key="aiWorldBookManage"
-            android:summary="全局、书籍或会话长期设定"
+            android:summary="全局或角色助手长期设定"
             android:title="世界书管理"
             app:iconSpaceReserved="false" />
 
