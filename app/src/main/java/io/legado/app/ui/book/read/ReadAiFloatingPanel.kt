@@ -289,6 +289,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             scope = AiMemoryItem.SCOPE_BOOK,
             bookKey = AiMemoryStore.bookKey(context.bookName, context.author),
             sessionId = requestSessionId,
+            companionId = READ_AI_COMPANION_ID,
             title = context.bookName.ifBlank { "阅读页问AI" }
         )
         val agentRun = AiAgentStateStore.startRun(
@@ -702,17 +703,21 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         context.selector(
             "当前窗口能力",
             listOf(
+                "新建对话",
+                "历史记录",
                 "Skill：${windowSkillIds.size} 个",
                 "MCP：${windowMcpServerIds.size} 个",
-                "世界书：${activeBookWorldBookCount()} 个",
+                "世界书：${activeReadAiWorldBookCount()} 个",
                 "清空 Skill/MCP"
             )
         ) { _, _, index ->
             when (index) {
-                0 -> showWindowSkillDialog()
-                1 -> showWindowMcpDialog()
-                2 -> openBookWorldBookManage()
-                3 -> {
+                0 -> startNewChat()
+                1 -> toggleHistory()
+                2 -> showWindowSkillDialog()
+                3 -> showWindowMcpDialog()
+                4 -> showReadAiWorldBookDialog()
+                5 -> {
                     windowSkillIds = emptySet()
                     windowMcpServerIds = emptySet()
                 }
@@ -720,27 +725,67 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
-    private fun openBookWorldBookManage() {
-        val contextData = readContext ?: return
+    private fun openWorldBookManage() {
         context.startActivity(
             Intent(context, AiWorldBookManageActivity::class.java)
-                .putExtra(AiWorldBookManageActivity.EXTRA_TARGET_TYPE, AiWorldBookBinding.TARGET_BOOK)
-                .putExtra(
-                    AiWorldBookManageActivity.EXTRA_TARGET_KEY,
-                    AiMemoryStore.bookKey(contextData.bookName, contextData.author)
-                )
         )
     }
 
-    private fun activeBookWorldBookCount(): Int {
-        val contextData = readContext ?: return 0
-        val bookKey = AiMemoryStore.bookKey(contextData.bookName, contextData.author)
+    private fun activeReadAiWorldBookCount(): Int {
         return AppConfig.aiWorldBookList.count { worldBook ->
             worldBook.enabled && worldBook.bindings.any { binding ->
                 binding.enabled &&
-                        binding.targetType == AiWorldBookBinding.TARGET_BOOK &&
-                        binding.targetKey == bookKey
+                        binding.targetType == AiWorldBookBinding.TARGET_COMPANION &&
+                        binding.targetKey == READ_AI_COMPANION_ID
             }
+        }
+    }
+
+    private fun showReadAiWorldBookDialog() {
+        val worldBooks = AppConfig.aiWorldBookList
+        if (worldBooks.isEmpty()) {
+            context.selector("世界书", listOf("打开世界书管理")) { _, _, _ ->
+                openWorldBookManage()
+            }
+            return
+        }
+        val selected = worldBooks.filter { book ->
+            book.bindings.any {
+                it.enabled &&
+                        it.targetType == AiWorldBookBinding.TARGET_COMPANION &&
+                        it.targetKey == READ_AI_COMPANION_ID
+            }
+        }.mapTo(linkedSetOf()) { it.id }
+        context.alert(title = "阅读页问 AI · 世界书") {
+            multiChoiceItems(
+                items = worldBooks.map { book ->
+                    "${book.name}${if (book.enabled) "" else "（停用）"}"
+                }.toTypedArray(),
+                checkedItems = BooleanArray(worldBooks.size) { index -> worldBooks[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += worldBooks[which].id else selected -= worldBooks[which].id
+            }
+            okButton {
+                AppConfig.aiWorldBookList = worldBooks.map { book ->
+                    val withoutReadAi = book.bindings.filterNot {
+                        it.targetType == AiWorldBookBinding.TARGET_COMPANION &&
+                                it.targetKey == READ_AI_COMPANION_ID
+                    }
+                    if (book.id in selected) {
+                        book.copy(
+                            bindings = withoutReadAi + AiWorldBookBinding(
+                                targetType = AiWorldBookBinding.TARGET_COMPANION,
+                                targetKey = READ_AI_COMPANION_ID,
+                                order = withoutReadAi.size
+                            )
+                        )
+                    } else {
+                        book.copy(bindings = withoutReadAi)
+                    }
+                }
+            }
+            neutralButton("管理") { openWorldBookManage() }
+            cancelButton()
         }
     }
 
@@ -867,6 +912,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
+        private const val READ_AI_COMPANION_ID = "read_ai"
     }
 }
 
@@ -938,9 +984,7 @@ private fun ReadAiPanelContent(
                         .height(44.dp)
                         .pointerInteropFilter(onTouchEvent = onTopDrag)
                 )
-                ReadAiIconButton(R.drawable.ic_more_vert, R.string.menu, style, onOpenAbilities)
-                ReadAiIconButton(R.drawable.ic_add, R.string.ai_new_chat, style, onNewChat)
-                ReadAiIconButton(R.drawable.ic_history, R.string.history, style, onToggleHistory)
+                ReadAiIconButton(R.drawable.ic_settings, R.string.menu, style, onOpenAbilities)
                 ReadAiIconButton(R.drawable.ic_close_x, R.string.close, style, onClose)
             }
             Text(
