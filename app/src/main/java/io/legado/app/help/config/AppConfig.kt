@@ -34,6 +34,7 @@ import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
@@ -1290,6 +1291,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     scope = scope,
                     bookKey = safeString { book.bookKey }.trim(),
                     enabled = safeBoolean(true) { book.enabled },
+                    bindingVersion = 1,
+                    maxEntries = safeInt(12) { book.maxEntries }.coerceIn(1, 40),
+                    bindings = normalizeAiWorldBookBindings(book, scope),
                     order = safeInt(0) { book.order },
                     entries = normalizeAiWorldBookEntries(book.entries)
                 )
@@ -1315,9 +1319,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     keys = safeStringList { entry.keys },
                     secondaryKeys = safeStringList { entry.secondaryKeys },
                     excludeKeys = safeStringList { entry.excludeKeys },
+                    regexEnabled = safeBoolean(false) { entry.regexEnabled },
                     enabled = safeBoolean(true) { entry.enabled },
                     constant = safeBoolean(false) { entry.constant },
                     priority = safeInt(50) { entry.priority }.coerceIn(0, 100),
+                    scanDepth = safeInt(8) { entry.scanDepth }.coerceIn(1, 64),
+                    maxMatches = safeInt(1) { entry.maxMatches }.coerceIn(1, 20),
                     order = safeInt(0) { entry.order }
                 )
             }
@@ -1325,6 +1332,74 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             .distinctBy { it.id }
             .sortedWith(compareByDescending<AiWorldBookEntry> { it.priority }.thenBy { it.order })
             .mapIndexed { index, entry -> entry.copy(order = index) }
+    }
+
+    private fun normalizeAiWorldBookBindings(
+        book: AiWorldBookConfig,
+        legacyScope: String
+    ): List<AiWorldBookBinding> {
+        val explicitBindings = runCatching { book.bindings }.getOrDefault(emptyList())
+        val sourceBindings = if (explicitBindings.isEmpty() && safeInt(0) { book.bindingVersion } <= 0) {
+            legacyWorldBookBinding(book, legacyScope)?.let(::listOf) ?: emptyList()
+        } else {
+            explicitBindings
+        }
+        return sourceBindings.mapNotNull { binding ->
+            val id = safeString { binding.id }.trim()
+            val targetType = normalizeWorldBookTarget(safeString { binding.targetType }.trim())
+            val targetKey = safeString { binding.targetKey }.trim()
+            if (id.isEmpty() || targetType.isBlank()) {
+                null
+            } else {
+                AiWorldBookBinding(
+                    id = id,
+                    targetType = targetType,
+                    targetKey = targetKey,
+                    enabled = safeBoolean(true) { binding.enabled },
+                    order = safeInt(0) { binding.order }
+                )
+            }
+        }
+            .distinctBy { "${it.targetType}|${it.targetKey}" }
+            .sortedBy { it.order }
+            .mapIndexed { index, binding -> binding.copy(order = index) }
+    }
+
+    private fun legacyWorldBookBinding(
+        book: AiWorldBookConfig,
+        legacyScope: String
+    ): AiWorldBookBinding? {
+        val bookKey = safeString { book.bookKey }.trim()
+        return when (legacyScope) {
+            AiWorldBookConfig.SCOPE_BOOK -> bookKey
+                .takeIf { it.isNotBlank() }
+                ?.let {
+                    AiWorldBookBinding(
+                        targetType = AiWorldBookBinding.TARGET_BOOK,
+                        targetKey = it
+                    )
+                }
+            AiWorldBookConfig.SCOPE_SESSION -> bookKey
+                .takeIf { it.isNotBlank() }
+                ?.let {
+                    AiWorldBookBinding(
+                        targetType = AiWorldBookBinding.TARGET_SESSION,
+                        targetKey = it
+                    )
+                }
+            else -> AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_GLOBAL)
+        }
+    }
+
+    private fun normalizeWorldBookTarget(targetType: String): String {
+        return when (targetType) {
+            AiWorldBookBinding.TARGET_GLOBAL,
+            AiWorldBookBinding.TARGET_CHAT,
+            AiWorldBookBinding.TARGET_READ_AI,
+            AiWorldBookBinding.TARGET_BOOK,
+            AiWorldBookBinding.TARGET_SESSION -> targetType
+            else -> ""
+        }
     }
 
     private fun normalizeAiPersonas(value: List<AiPersonaConfig>): List<AiPersonaConfig> {

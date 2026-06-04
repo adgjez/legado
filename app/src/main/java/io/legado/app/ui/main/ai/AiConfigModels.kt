@@ -51,6 +51,9 @@ data class AiWorldBookConfig(
     val scope: String = SCOPE_GLOBAL,
     val bookKey: String = "",
     val enabled: Boolean = true,
+    val bindingVersion: Int = 1,
+    val maxEntries: Int = 12,
+    val bindings: List<AiWorldBookBinding> = emptyList(),
     val order: Int = 0,
     val entries: List<AiWorldBookEntry> = emptyList()
 ) {
@@ -62,6 +65,23 @@ data class AiWorldBookConfig(
 }
 
 @Keep
+data class AiWorldBookBinding(
+    val id: String = UUID.randomUUID().toString(),
+    val targetType: String = TARGET_GLOBAL,
+    val targetKey: String = "",
+    val enabled: Boolean = true,
+    val order: Int = 0
+) {
+    companion object {
+        const val TARGET_GLOBAL = "global"
+        const val TARGET_CHAT = "chat"
+        const val TARGET_READ_AI = "read_ai"
+        const val TARGET_BOOK = "book"
+        const val TARGET_SESSION = "session"
+    }
+}
+
+@Keep
 data class AiWorldBookEntry(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
@@ -69,9 +89,12 @@ data class AiWorldBookEntry(
     val keys: List<String> = emptyList(),
     val secondaryKeys: List<String> = emptyList(),
     val excludeKeys: List<String> = emptyList(),
+    val regexEnabled: Boolean = false,
     val enabled: Boolean = true,
     val constant: Boolean = false,
     val priority: Int = 50,
+    val scanDepth: Int = 8,
+    val maxMatches: Int = 1,
     val order: Int = 0
 )
 
