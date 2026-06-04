@@ -44,6 +44,28 @@ data class AiSkillConfig(
 )
 
 @Keep
+data class AiChatCompanionConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val type: String = TYPE_DEFAULT,
+    val name: String,
+    val avatar: String = "",
+    val bookKey: String = "",
+    val characterId: String = "",
+    val prompt: String = "",
+    val worldBookIds: List<String> = emptyList(),
+    val ttsRouteJson: String = "",
+    val order: Int = 0,
+    val enabled: Boolean = true,
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    companion object {
+        const val TYPE_DEFAULT = "default"
+        const val TYPE_CHARACTER = "character"
+        const val DEFAULT_COMPANION_ID = "default_assistant"
+    }
+}
+
+@Keep
 data class AiWorldBookConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,

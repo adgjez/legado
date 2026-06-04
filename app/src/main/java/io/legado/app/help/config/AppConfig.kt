@@ -26,6 +26,7 @@ import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
+import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiImageProviderConfig
@@ -548,6 +549,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 }
                 .map { session ->
                     session.copy(
+                        companionId = session.companionId
+                            .trim()
+                            .ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID },
                         messages = session.messages.map { message ->
                             message.copy(
                                 kind = message.kind ?: io.legado.app.ui.main.ai.AiChatMessage.Kind.TEXT,
@@ -578,6 +582,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                         session.copy(
                             id = session.id.trim(),
                             title = title,
+                            companionId = session.companionId
+                                .trim()
+                                .ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID },
                             messages = normalizedMessages
                         )
                     }
@@ -733,6 +740,64 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 appCtx.putPrefString(PreferKey.aiCurrentChatSessionId, value.trim())
             }
         }
+
+    var aiChatCompanionList: List<AiChatCompanionConfig>
+        get() = readAiChatCompanions()
+        set(value) {
+            val companions = normalizeAiChatCompanions(value)
+            persistAiChatCompanions(companions)
+            syncCurrentAiChatCompanionId(companions)
+        }
+
+    var aiCurrentChatCompanionId: String
+        get() = syncCurrentAiChatCompanionId(aiChatCompanionList)
+        set(value) {
+            val companions = aiChatCompanionList
+            val targetId = companions.firstOrNull { it.id == value.trim() && it.enabled }?.id
+                ?: AiChatCompanionConfig.DEFAULT_COMPANION_ID
+            if (targetId == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                appCtx.removePref(PreferKey.aiCurrentChatCompanionId)
+            } else {
+                appCtx.putPrefString(PreferKey.aiCurrentChatCompanionId, targetId)
+            }
+        }
+
+    val aiCurrentChatCompanion: AiChatCompanionConfig
+        get() {
+            val companions = aiChatCompanionList
+            val currentId = syncCurrentAiChatCompanionId(companions)
+            return companions.firstOrNull { it.id == currentId }
+                ?: defaultAiChatCompanion()
+        }
+
+    var aiChatAutoSpeakEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiChatAutoSpeakEnabled)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiChatAutoSpeakEnabled, value)
+
+    fun upsertAiChatCompanion(config: AiChatCompanionConfig) {
+        val companions = aiChatCompanionList.toMutableList()
+        val index = companions.indexOfFirst { it.id == config.id }
+        if (index >= 0) {
+            companions[index] = config.copy(updatedAt = System.currentTimeMillis())
+        } else {
+            companions += config.copy(order = companions.size, updatedAt = System.currentTimeMillis())
+        }
+        aiChatCompanionList = companions
+    }
+
+    fun removeAiChatCompanion(id: String) {
+        if (id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) return
+        val companions = aiChatCompanionList.filterNot { it.id == id }
+        aiChatCompanionList = companions
+        aiChatSessionList = aiChatSessionList.filterNot { it.companionId == id }
+        aiWorldBookList = aiWorldBookList.map { book ->
+            book.copy(
+                bindings = book.bindings.filterNot {
+                    it.targetType == AiWorldBookBinding.TARGET_COMPANION && it.targetKey == id
+                }
+            )
+        }
+    }
 
     var aiSystemPrompt: String
         get() = appCtx.getPrefString(PreferKey.aiSystemPrompt, DEFAULT_AI_SYSTEM_PROMPT)
@@ -1240,6 +1305,109 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         } else {
             appCtx.putPrefString(PreferKey.aiMcpServerList, GSON.toJson(servers))
         }
+    }
+
+    private fun readAiChatCompanions(): List<AiChatCompanionConfig> {
+        val companions = normalizeAiChatCompanions(
+            GSON.fromJsonArray<AiChatCompanionConfig>(appCtx.getPrefString(PreferKey.aiChatCompanionList))
+                .getOrDefault(emptyList())
+        )
+        if (appCtx.getPrefString(PreferKey.aiChatCompanionList).isNullOrBlank()) {
+            persistAiChatCompanions(companions)
+        }
+        syncCurrentAiChatCompanionId(companions)
+        return companions
+    }
+
+    private fun normalizeAiChatCompanions(
+        value: List<AiChatCompanionConfig>
+    ): List<AiChatCompanionConfig> {
+        val normalized = value.mapNotNull { config ->
+            val id = safeString { config.id }.trim()
+            val name = safeString { config.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val type = safeString { config.type }.trim()
+                    .takeIf {
+                        it == AiChatCompanionConfig.TYPE_DEFAULT ||
+                                it == AiChatCompanionConfig.TYPE_CHARACTER
+                    }
+                    ?: AiChatCompanionConfig.TYPE_DEFAULT
+                AiChatCompanionConfig(
+                    id = id,
+                    type = if (id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                        AiChatCompanionConfig.TYPE_DEFAULT
+                    } else {
+                        type
+                    },
+                    name = name,
+                    avatar = safeString { config.avatar }.trim(),
+                    bookKey = safeString { config.bookKey }.trim(),
+                    characterId = safeString { config.characterId }.trim(),
+                    prompt = safeString { config.prompt }.trim(),
+                    worldBookIds = safeStringList { config.worldBookIds },
+                    ttsRouteJson = safeString { config.ttsRouteJson }.trim(),
+                    order = safeInt(0) { config.order },
+                    enabled = if (id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                        true
+                    } else {
+                        safeBoolean(true) { config.enabled }
+                    },
+                    updatedAt = safeLong(System.currentTimeMillis()) { config.updatedAt }
+                )
+            }
+        }
+            .distinctBy { it.id }
+        val default = normalized
+            .firstOrNull { it.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+            ?.let { config ->
+                config.copy(
+                    type = AiChatCompanionConfig.TYPE_DEFAULT,
+                    name = config.name.ifBlank { "默认助手" },
+                    prompt = config.prompt.ifBlank { DEFAULT_AI_SYSTEM_PROMPT },
+                    enabled = true,
+                    order = 0
+                )
+            }
+            ?: defaultAiChatCompanion()
+        val custom = normalized
+            .filter { it.id != AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+            .sortedBy { it.order }
+        return (listOf(default) + custom)
+            .mapIndexed { index, config -> config.copy(order = index) }
+    }
+
+    private fun defaultAiChatCompanion(): AiChatCompanionConfig {
+        val prompt = appCtx.getPrefString(PreferKey.aiSystemPrompt, DEFAULT_AI_SYSTEM_PROMPT)
+            ?.trim()
+            ?.ifBlank { DEFAULT_AI_SYSTEM_PROMPT }
+            ?: DEFAULT_AI_SYSTEM_PROMPT
+        return AiChatCompanionConfig(
+            id = AiChatCompanionConfig.DEFAULT_COMPANION_ID,
+            type = AiChatCompanionConfig.TYPE_DEFAULT,
+            name = "默认助手",
+            prompt = prompt,
+            order = 0,
+            enabled = true
+        )
+    }
+
+    private fun persistAiChatCompanions(companions: List<AiChatCompanionConfig>) {
+        appCtx.putPrefString(PreferKey.aiChatCompanionList, GSON.toJson(companions))
+    }
+
+    private fun syncCurrentAiChatCompanionId(companions: List<AiChatCompanionConfig>): String {
+        val stored = appCtx.getPrefString(PreferKey.aiCurrentChatCompanionId).orEmpty()
+        val targetId = companions.firstOrNull { it.id == stored && it.enabled }?.id
+            ?: companions.firstOrNull { it.enabled }?.id
+            ?: AiChatCompanionConfig.DEFAULT_COMPANION_ID
+        if (targetId == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+            appCtx.removePref(PreferKey.aiCurrentChatCompanionId)
+        } else if (targetId != stored) {
+            appCtx.putPrefString(PreferKey.aiCurrentChatCompanionId, targetId)
+        }
+        return targetId
     }
 
     private fun readAiSkills(): List<AiSkillConfig> {
