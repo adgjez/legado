@@ -118,6 +118,7 @@ data class AiChatScreenActions(
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
+    val onSpeakMessage: ((String) -> Unit)? = null,
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
     val onEditCompanion: ((AiChatCompanionConfig) -> Unit)? = null,
@@ -188,6 +189,7 @@ fun AiChatScreen(
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     var processExpandSignal by remember { mutableStateOf(0) }
     var companionDrawerOpen by rememberSaveable { mutableStateOf(false) }
+    var lastAutoSpokenMessageId by rememberSaveable { mutableStateOf("") }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
     val uiItems = remember(context, messages) {
@@ -241,6 +243,25 @@ fun AiChatScreen(
     LaunchedEffect(requesting, autoScrollSignal, processExpandSignal, stickToBottom) {
         if (displayItems.isNotEmpty() && stickToBottom && !listState.isScrollInProgress) {
             listState.scrollToItem(0)
+        }
+    }
+    LaunchedEffect(
+        autoSpeakEnabled,
+        messages.lastOrNull()?.id,
+        messages.lastOrNull()?.pending,
+        messages.lastOrNull()?.updatedAt
+    ) {
+        val last = messages.lastOrNull()
+        if (autoSpeakEnabled &&
+            last != null &&
+            last.role == AiChatMessage.Role.ASSISTANT &&
+            !last.pending &&
+            (last.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT &&
+            last.id != lastAutoSpokenMessageId &&
+            System.currentTimeMillis() - last.updatedAt <= 60_000
+        ) {
+            lastAutoSpokenMessageId = last.id
+            actions.onSpeakMessage?.invoke(last.content)
         }
     }
     Box(
@@ -297,6 +318,7 @@ fun AiChatScreen(
                             AiMessageRow(
                                 item = item,
                                 style = style,
+                                onSpeak = actions.onSpeakMessage,
                                 onToolPreview = { toolPreviewPayload = it },
                                 onProcessExpanded = {
                                     processExpandSignal += 1
@@ -778,12 +800,13 @@ private fun AiEmptyState(style: AiComposeStyle) {
 private fun AiMessageRow(
     item: AiChatUiItem,
     style: AiComposeStyle,
+    onSpeak: ((String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
     when (item) {
         is AiChatUiItem.User -> AiUserMessageRow(item, style)
-        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview, onProcessExpanded)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onSpeak, onToolPreview, onProcessExpanded)
     }
 }
 
@@ -820,6 +843,7 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
 private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
     style: AiComposeStyle,
+    onSpeak: ((String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
@@ -834,7 +858,7 @@ private fun AiAssistantMessageRow(
             message.parts.forEach { part ->
                 key(part.id) {
                     when (part) {
-                        is AiMessagePartUi.Text -> AiAssistantTextPart(part, style)
+                        is AiMessagePartUi.Text -> AiAssistantTextPart(part, style, onSpeak)
                         is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                         is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
                         is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
@@ -846,7 +870,11 @@ private fun AiAssistantMessageRow(
 }
 
 @Composable
-private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyle) {
+private fun AiAssistantTextPart(
+    part: AiMessagePartUi.Text,
+    style: AiComposeStyle,
+    onSpeak: ((String) -> Unit)?
+) {
     Surface(
         shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.toolSurface,
@@ -854,7 +882,7 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
         shadowElevation = 0.dp,
         border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
-        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (part.pending) {
                 Text(
                     text = part.content,
@@ -867,6 +895,29 @@ private fun AiAssistantTextPart(part: AiMessagePartUi.Text, style: AiComposeStyl
                     content = part.content,
                     style = style
                 )
+            }
+            if (!part.pending && onSpeak != null && part.content.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        onClick = { onSpeak(part.content) },
+                        shape = CircleShape,
+                        color = style.colors.accent.copy(alpha = 0.10f)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_play_24dp),
+                            contentDescription = null,
+                            tint = style.colors.accent,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .padding(6.dp)
+                        )
+                    }
+                }
             }
         }
     }

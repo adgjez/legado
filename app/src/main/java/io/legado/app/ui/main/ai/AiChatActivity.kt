@@ -65,6 +65,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = ::showCompanionWorldBookDialog,
                     onToggleAutoSpeak = ::toggleAutoSpeak,
+                    onSpeakMessage = AiChatSpeechPlayer::speak,
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
                     onEditCompanion = ::showEditCompanionDialog,
@@ -80,6 +81,11 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     override fun onResume() {
         super.onResume()
         refreshToken.intValue += 1
+    }
+
+    override fun onDestroy() {
+        AiChatSpeechPlayer.stop()
+        super.onDestroy()
     }
 
     private fun dispatchSend(content: String): Boolean {
