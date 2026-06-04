@@ -52,11 +52,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.constant.EventBus
+import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.toastOnUi
 
 @Immutable
 private data class WorldBookTarget(
@@ -82,11 +84,21 @@ private data class WorldBookEntryEditState(
     val secondaryKeys: String,
     val excludeKeys: String,
     val regexEnabled: Boolean,
+    val caseSensitive: Boolean,
     val enabled: Boolean,
     val constant: Boolean,
     val priority: String,
+    val position: String,
+    val injectDepth: String,
+    val role: String,
     val scanDepth: String,
     val maxMatches: String
+)
+
+private data class WorldBookJsonState(
+    val title: String,
+    val text: String,
+    val importMode: Boolean
 )
 
 @Composable
@@ -103,6 +115,7 @@ fun AiWorldBookManageRoute(
     var expandedBookId by rememberSaveable { mutableStateOf("") }
     var editingBook by remember { mutableStateOf<WorldBookEditState?>(null) }
     var editingEntry by remember { mutableStateOf<WorldBookEntryEditState?>(null) }
+    var jsonEditor by remember { mutableStateOf<WorldBookJsonState?>(null) }
     val targets = remember(initialTargetType, initialTargetKey) {
         buildWorldBookTargets(initialTargetType, initialTargetKey)
     }
@@ -123,12 +136,38 @@ fun AiWorldBookManageRoute(
 
     val editEntryState = editingEntry
     val editBookState = editingBook
+    val jsonState = jsonEditor
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(style.colors.pageBackground)
     ) {
         when {
+            jsonState != null -> WorldBookJsonEditor(
+                state = jsonState,
+                style = style,
+                onBack = { jsonEditor = null },
+                onImport = { raw ->
+                    runCatching {
+                        val imported = AiWorldBookManager.parseStandardWorldBook(raw, books.size)
+                        val existingIds = books.map { it.id }.toSet()
+                        val saving = if (imported.id in existingIds) {
+                            imported.copy(
+                                id = AiWorldBookConfig(name = imported.name).id,
+                                name = "${imported.name} 副本"
+                            )
+                        } else {
+                            imported
+                        }
+                        persist(books + saving)
+                        expandedBookId = saving.id
+                        jsonEditor = null
+                        context.toastOnUi("世界书已导入")
+                    }.onFailure {
+                        context.toastOnUi(it.localizedMessage ?: "世界书 JSON 解析失败")
+                    }
+                }
+            )
             editEntryState != null -> WorldBookEntryEditor(
                 state = editEntryState,
                 style = style,
@@ -187,6 +226,13 @@ fun AiWorldBookManageRoute(
                     )
                 },
                 onEditBook = { book -> editingBook = book.toEditState() },
+                onImportJson = {
+                    jsonEditor = WorldBookJsonState(
+                        title = "导入世界书 JSON",
+                        text = "",
+                        importMode = true
+                    )
+                },
                 onCopyBook = { book ->
                     val copy = book.copy(
                         id = java.util.UUID.randomUUID().toString(),
@@ -198,6 +244,13 @@ fun AiWorldBookManageRoute(
                     expandedBookId = copy.id
                 },
                 onDeleteBook = { book -> persist(books.filterNot { it.id == book.id }) },
+                onExportBook = { book ->
+                    jsonEditor = WorldBookJsonState(
+                        title = "${book.name} · 导出 JSON",
+                        text = AiWorldBookManager.exportStandardWorldBook(book).toString(2),
+                        importMode = false
+                    )
+                },
                 onToggleBook = { book ->
                     persist(books.map { if (it.id == book.id) it.copy(enabled = !it.enabled) else it })
                 },
@@ -211,9 +264,13 @@ fun AiWorldBookManageRoute(
                         secondaryKeys = "",
                         excludeKeys = "",
                         regexEnabled = false,
+                        caseSensitive = false,
                         enabled = true,
                         constant = false,
                         priority = "50",
+                        position = AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT,
+                        injectDepth = "4",
+                        role = AiWorldBookEntry.ROLE_USER,
                         scanDepth = "8",
                         maxMatches = "1"
                     )
@@ -273,9 +330,11 @@ private fun WorldBookMainScreen(
     onTargetChange: (String, String) -> Unit,
     onRefresh: () -> Unit,
     onAddBook: () -> Unit,
+    onImportJson: () -> Unit,
     onEditBook: (AiWorldBookConfig) -> Unit,
     onCopyBook: (AiWorldBookConfig) -> Unit,
     onDeleteBook: (AiWorldBookConfig) -> Unit,
+    onExportBook: (AiWorldBookConfig) -> Unit,
     onToggleBook: (AiWorldBookConfig) -> Unit,
     onAddEntry: (AiWorldBookConfig) -> Unit,
     onEditEntry: (AiWorldBookConfig, AiWorldBookEntry) -> Unit,
@@ -316,6 +375,12 @@ private fun WorldBookMainScreen(
         )
         WorldBookTabs(tab, style, onTabChange)
         SearchField(query, style, onQueryChange)
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SmallAction("导入 JSON", style, onClick = onImportJson)
+        }
         Spacer(modifier = Modifier.height(10.dp))
         if (tab == 0) {
             LazyColumn(
@@ -333,6 +398,7 @@ private fun WorldBookMainScreen(
                         onEdit = { onEditBook(book) },
                         onCopy = { onCopyBook(book) },
                         onDelete = { onDeleteBook(book) },
+                        onExport = { onExportBook(book) },
                         onToggle = { onToggleBook(book) },
                         onAddEntry = { onAddEntry(book) },
                         onEditEntry = { onEditEntry(book, it) },
@@ -483,6 +549,7 @@ private fun WorldBookCard(
     onEdit: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onExport: () -> Unit,
     onToggle: () -> Unit,
     onAddEntry: () -> Unit,
     onEditEntry: (AiWorldBookEntry) -> Unit,
@@ -535,6 +602,7 @@ private fun WorldBookCard(
         ) {
             SmallAction("编辑", style, onClick = onEdit)
             SmallAction("复制", style, onClick = onCopy)
+            SmallAction("导出", style, onClick = onExport)
             SmallAction("新增条目", style, onClick = onAddEntry)
             SmallAction("删除", style, danger = true, onClick = onDelete)
         }
@@ -693,6 +761,50 @@ private fun EnableWorldBookPage(
 }
 
 @Composable
+private fun WorldBookJsonEditor(
+    state: WorldBookJsonState,
+    style: AiComposeStyle,
+    onBack: () -> Unit,
+    onImport: (String) -> Unit
+) {
+    var text by rememberSaveable { mutableStateOf(state.text) }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 14.dp)
+    ) {
+        WorldBookTopBar(
+            title = state.title,
+            subtitle = if (state.importMode) "粘贴 RikkaHub lorebook JSON" else "标准 lorebook JSON",
+            style = style,
+            onBack = onBack
+        )
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                LabeledField(
+                    label = "JSON",
+                    value = text,
+                    style = style,
+                    minLines = 16,
+                    onValueChange = { text = it }
+                )
+                SaveBar(
+                    enabled = !state.importMode || text.trim().isNotBlank(),
+                    style = style,
+                    onCancel = onBack,
+                    onSave = {
+                        if (state.importMode) onImport(text) else onBack()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorldBookEditor(
     state: WorldBookEditState,
     style: AiComposeStyle,
@@ -762,9 +874,13 @@ private fun WorldBookEntryEditor(
     var secondaryKeys by rememberSaveable { mutableStateOf(state.secondaryKeys) }
     var excludeKeys by rememberSaveable { mutableStateOf(state.excludeKeys) }
     var regexEnabled by rememberSaveable { mutableStateOf(state.regexEnabled) }
+    var caseSensitive by rememberSaveable { mutableStateOf(state.caseSensitive) }
     var enabled by rememberSaveable { mutableStateOf(state.enabled) }
     var constant by rememberSaveable { mutableStateOf(state.constant) }
     var priority by rememberSaveable { mutableStateOf(state.priority) }
+    var position by rememberSaveable { mutableStateOf(state.position) }
+    var injectDepth by rememberSaveable { mutableStateOf(state.injectDepth) }
+    var role by rememberSaveable { mutableStateOf(state.role) }
     var scanDepth by rememberSaveable { mutableStateOf(state.scanDepth) }
     var maxMatches by rememberSaveable { mutableStateOf(state.maxMatches) }
     val regexOk = !regexEnabled || splitKeys(keys)
@@ -788,13 +904,30 @@ private fun WorldBookEntryEditor(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 LabeledSwitch("启用条目", enabled, style) { enabled = it }
-                LabeledSwitch("常驻注入", constant, style) { constant = it }
-                LabeledSwitch("关键词按正则匹配", regexEnabled, style) { regexEnabled = it }
-                LabeledField("标题", title, style, onValueChange = { title = it })
+                LabeledSwitch("constantActive 常驻注入", constant, style) { constant = it }
+                LabeledSwitch("useRegex 关键词按正则匹配", regexEnabled, style) { regexEnabled = it }
+                LabeledSwitch("caseSensitive 区分大小写", caseSensitive, style) { caseSensitive = it }
+                LabeledField("name", title, style, onValueChange = { title = it })
                 LabeledField("内容", content, style, minLines = 6, onValueChange = { content = it })
-                LabeledField("关键词，逗号或换行分隔", keys, style, minLines = 2, onValueChange = { keys = it })
+                LabeledField("keywords，逗号或换行分隔", keys, style, minLines = 2, onValueChange = { keys = it })
                 LabeledField("二级关键词", secondaryKeys, style, minLines = 2, onValueChange = { secondaryKeys = it })
                 LabeledField("排除关键词", excludeKeys, style, minLines = 2, onValueChange = { excludeKeys = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField(
+                        label = "position",
+                        value = position,
+                        style = style,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = { position = it.trim() }
+                    )
+                    LabeledField(
+                        label = "role",
+                        value = role,
+                        style = style,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = { role = it.trim() }
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     LabeledField(
                         label = "优先级",
@@ -802,10 +935,20 @@ private fun WorldBookEntryEditor(
                         style = style,
                         modifier = Modifier.weight(1f),
                         keyboardType = KeyboardType.Number,
-                        onValueChange = { priority = it.filter(Char::isDigit).take(3) }
+                        onValueChange = { priority = it.filter { ch -> ch.isDigit() || ch == '-' }.take(5) }
                     )
                     LabeledField(
-                        label = "扫描深度",
+                        label = "injectDepth",
+                        value = injectDepth,
+                        style = style,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                        onValueChange = { injectDepth = it.filter(Char::isDigit).take(2) }
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField(
+                        label = "scanDepth",
                         value = scanDepth,
                         style = style,
                         modifier = Modifier.weight(1f),
@@ -813,7 +956,7 @@ private fun WorldBookEntryEditor(
                         onValueChange = { scanDepth = it.filter(Char::isDigit).take(2) }
                     )
                     LabeledField(
-                        label = "最大命中",
+                        label = "maxMatches",
                         value = maxMatches,
                         style = style,
                         modifier = Modifier.weight(1f),
@@ -837,9 +980,13 @@ private fun WorldBookEntryEditor(
                                 secondaryKeys = secondaryKeys,
                                 excludeKeys = excludeKeys,
                                 regexEnabled = regexEnabled,
+                                caseSensitive = caseSensitive,
                                 enabled = enabled,
                                 constant = constant,
                                 priority = priority.ifBlank { "50" },
+                                position = position.ifBlank { AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT },
+                                injectDepth = injectDepth.ifBlank { "4" },
+                                role = role.ifBlank { AiWorldBookEntry.ROLE_USER },
                                 scanDepth = scanDepth.ifBlank { "8" },
                                 maxMatches = maxMatches.ifBlank { "1" }
                             )
@@ -997,16 +1144,38 @@ private fun AiWorldBookConfig.toEditState(): WorldBookEditState {
 
 private fun WorldBookEntryEditState.toEntry(book: AiWorldBookConfig): AiWorldBookEntry {
     val old = id?.let { targetId -> book.entries.firstOrNull { it.id == targetId } }
+    val keywordList = splitKeys(keys)
+    val safePosition = when (position) {
+        AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT,
+        AiWorldBookEntry.POSITION_BEFORE_PROMPT,
+        AiWorldBookEntry.POSITION_INJECT_DEPTH,
+        AiWorldBookEntry.POSITION_BEFORE_LAST_USER -> position
+        else -> AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT
+    }
+    val safeRole = when (role) {
+        AiWorldBookEntry.ROLE_SYSTEM,
+        AiWorldBookEntry.ROLE_USER,
+        AiWorldBookEntry.ROLE_ASSISTANT -> role
+        else -> AiWorldBookEntry.ROLE_USER
+    }
     return (old ?: AiWorldBookEntry(title = title, content = content, order = book.entries.size)).copy(
         title = title,
+        name = title,
         content = content,
-        keys = splitKeys(keys),
+        keys = keywordList,
+        keywords = keywordList,
         secondaryKeys = splitKeys(secondaryKeys),
         excludeKeys = splitKeys(excludeKeys),
         regexEnabled = regexEnabled,
+        useRegex = regexEnabled,
+        caseSensitive = caseSensitive,
         enabled = enabled,
         constant = constant,
-        priority = priority.toIntOrNull()?.coerceIn(0, 100) ?: 50,
+        constantActive = constant,
+        priority = priority.toIntOrNull()?.coerceIn(-9999, 9999) ?: 50,
+        position = safePosition,
+        injectDepth = injectDepth.toIntOrNull()?.coerceIn(0, 64) ?: 4,
+        role = safeRole,
         scanDepth = scanDepth.toIntOrNull()?.coerceIn(1, 64) ?: 8,
         maxMatches = maxMatches.toIntOrNull()?.coerceIn(1, 20) ?: 1
     )
@@ -1016,15 +1185,19 @@ private fun AiWorldBookEntry.toEditState(worldBookId: String): WorldBookEntryEdi
     return WorldBookEntryEditState(
         worldBookId = worldBookId,
         id = id,
-        title = title,
+        title = name.ifBlank { title },
         content = content,
-        keys = keys.joinToString("\n"),
+        keys = keywords.ifEmpty { keys }.joinToString("\n"),
         secondaryKeys = secondaryKeys.joinToString("\n"),
         excludeKeys = excludeKeys.joinToString("\n"),
-        regexEnabled = regexEnabled,
+        regexEnabled = useRegex || regexEnabled,
+        caseSensitive = caseSensitive,
         enabled = enabled,
-        constant = constant,
+        constant = constantActive || constant,
         priority = priority.toString(),
+        position = position,
+        injectDepth = injectDepth.toString(),
+        role = role,
         scanDepth = scanDepth.toString(),
         maxMatches = maxMatches.toString()
     )
