@@ -104,6 +104,12 @@ private data class WorldBookJsonState(
     val importMode: Boolean
 )
 
+private data class WorldBookSelectOption(
+    val value: String,
+    val label: String,
+    val description: String = ""
+)
+
 data class AiWorldBookImportPayload(
     val id: Long,
     val raw: String
@@ -928,6 +934,35 @@ private fun WorldBookEditor(
     }
 }
 
+private val worldBookPositionOptions = listOf(
+    WorldBookSelectOption(
+        AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT,
+        "系统提示词之后",
+        "适合长期设定和角色资料"
+    ),
+    WorldBookSelectOption(
+        AiWorldBookEntry.POSITION_BEFORE_PROMPT,
+        "对话正文之前",
+        "适合本轮前置补充信息"
+    ),
+    WorldBookSelectOption(
+        AiWorldBookEntry.POSITION_BEFORE_LAST_USER,
+        "最后一条用户消息之前",
+        "适合贴近当前问题的补充"
+    ),
+    WorldBookSelectOption(
+        AiWorldBookEntry.POSITION_INJECT_DEPTH,
+        "按深度插入",
+        "按下方插入深度放入历史消息附近"
+    )
+)
+
+private val worldBookRoleOptions = listOf(
+    WorldBookSelectOption(AiWorldBookEntry.ROLE_SYSTEM, "系统消息", "最高优先级设定"),
+    WorldBookSelectOption(AiWorldBookEntry.ROLE_USER, "用户消息", "模拟用户侧补充"),
+    WorldBookSelectOption(AiWorldBookEntry.ROLE_ASSISTANT, "助手消息", "模拟助手侧记忆")
+)
+
 @Composable
 private fun WorldBookEntryEditor(
     state: WorldBookEntryEditState,
@@ -971,28 +1006,30 @@ private fun WorldBookEntryEditor(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 LabeledSwitch("启用条目", enabled, style) { enabled = it }
-                LabeledSwitch("constantActive 常驻注入", constant, style) { constant = it }
-                LabeledSwitch("useRegex 关键词按正则匹配", regexEnabled, style) { regexEnabled = it }
-                LabeledSwitch("caseSensitive 区分大小写", caseSensitive, style) { caseSensitive = it }
-                LabeledField("name", title, style, onValueChange = { title = it })
+                LabeledSwitch("常驻注入", constant, style) { constant = it }
+                LabeledSwitch("关键词按正则匹配", regexEnabled, style) { regexEnabled = it }
+                LabeledSwitch("区分大小写", caseSensitive, style) { caseSensitive = it }
+                LabeledField("条目名称", title, style, onValueChange = { title = it })
                 LabeledField("内容", content, style, minLines = 6, onValueChange = { content = it })
-                LabeledField("keywords，逗号或换行分隔", keys, style, minLines = 2, onValueChange = { keys = it })
+                LabeledField("关键词，逗号或换行分隔", keys, style, minLines = 2, onValueChange = { keys = it })
                 LabeledField("二级关键词", secondaryKeys, style, minLines = 2, onValueChange = { secondaryKeys = it })
                 LabeledField("排除关键词", excludeKeys, style, minLines = 2, onValueChange = { excludeKeys = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    LabeledField(
-                        label = "position",
+                    LabeledSelect(
+                        label = "插入位置",
                         value = position,
+                        options = worldBookPositionOptions,
                         style = style,
                         modifier = Modifier.weight(1f),
-                        onValueChange = { position = it.trim() }
+                        onValueChange = { position = it }
                     )
-                    LabeledField(
-                        label = "role",
+                    LabeledSelect(
+                        label = "消息角色",
                         value = role,
+                        options = worldBookRoleOptions,
                         style = style,
                         modifier = Modifier.weight(1f),
-                        onValueChange = { role = it.trim() }
+                        onValueChange = { role = it }
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1004,18 +1041,22 @@ private fun WorldBookEntryEditor(
                         keyboardType = KeyboardType.Number,
                         onValueChange = { priority = it.filter { ch -> ch.isDigit() || ch == '-' }.take(5) }
                     )
-                    LabeledField(
-                        label = "injectDepth",
-                        value = injectDepth,
-                        style = style,
-                        modifier = Modifier.weight(1f),
-                        keyboardType = KeyboardType.Number,
-                        onValueChange = { injectDepth = it.filter(Char::isDigit).take(2) }
-                    )
+                    if (position == AiWorldBookEntry.POSITION_INJECT_DEPTH) {
+                        LabeledField(
+                            label = "插入深度",
+                            value = injectDepth,
+                            style = style,
+                            modifier = Modifier.weight(1f),
+                            keyboardType = KeyboardType.Number,
+                            onValueChange = { injectDepth = it.filter(Char::isDigit).take(2) }
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     LabeledField(
-                        label = "scanDepth",
+                        label = "扫描深度",
                         value = scanDepth,
                         style = style,
                         modifier = Modifier.weight(1f),
@@ -1023,7 +1064,7 @@ private fun WorldBookEntryEditor(
                         onValueChange = { scanDepth = it.filter(Char::isDigit).take(2) }
                     )
                     LabeledField(
-                        label = "maxMatches",
+                        label = "最大命中数",
                         value = maxMatches,
                         style = style,
                         modifier = Modifier.weight(1f),
@@ -1085,6 +1126,81 @@ private fun LabeledField(
             .padding(top = 10.dp)
             .heightIn(min = if (minLines > 1) 96.dp else 56.dp)
     )
+}
+
+@Composable
+private fun LabeledSelect(
+    label: String,
+    value: String,
+    options: List<WorldBookSelectOption>,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    onValueChange: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = options.firstOrNull { it.value == value } ?: options.first()
+    Column(modifier = modifier.padding(top = 10.dp)) {
+        Text(label, color = style.colors.secondaryText, fontSize = 12.sp)
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 54.dp)
+                    .clip(RoundedCornerShape(style.metrics.chipRadius))
+                    .background(style.colors.cardSurface)
+                    .border(style.metrics.strokeWidth, style.colors.stroke, RoundedCornerShape(style.metrics.chipRadius))
+                    .clickable { expanded = true }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = selected.label,
+                        color = style.colors.primaryText,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (selected.description.isNotBlank()) {
+                        Text(
+                            text = selected.description,
+                            color = style.colors.secondaryText,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_expand_more),
+                    contentDescription = null,
+                    tint = style.colors.secondaryText,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(option.label, color = style.colors.primaryText)
+                                if (option.description.isNotBlank()) {
+                                    Text(option.description, color = style.colors.secondaryText, fontSize = 12.sp)
+                                }
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            onValueChange(option.value)
+                        }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
