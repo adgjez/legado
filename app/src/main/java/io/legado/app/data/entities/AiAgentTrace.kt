@@ -40,7 +40,10 @@ data class AiAgentTrace(
         const val EVENT_MODEL_RESPONSE = "model_response"
         const val EVENT_TOOL_CALL = "tool_call"
         const val EVENT_TOOL_RESULT = "tool_result"
+        const val EVENT_PLAN_CREATED = "plan_created"
+        const val EVENT_VALIDATION = "validation"
         const val EVENT_MEMORY_RETRIEVED = "memory_retrieved"
+        const val EVENT_WORLD_BOOK_RETRIEVED = "world_book_retrieved"
         const val EVENT_ERROR = "error"
     }
 }

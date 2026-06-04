@@ -222,15 +222,6 @@ object AiChatService {
         preparedContext.summary
             ?.takeIf { preparedContext.compressed && it.isValid }
             ?.let(onContextSummary)
-        onContextStats(
-            JSONObject().apply {
-                put("compressed", preparedContext.compressed)
-                put("inputTokens", preparedContext.inputTokens)
-                put("limitTokens", preparedContext.limitTokens)
-                put("reserveTokens", reserveTokens)
-                put("totalTokens", estimatedTotalTokens)
-            }
-        )
         val retrievedMemory = AiMemoryRetriever.retrieve(memoryContext, preparedContext.messages)
         if (retrievedMemory.isNotEmpty) {
             AiAgentStateStore.trace(
@@ -242,16 +233,50 @@ object AiChatService {
                 success = true
             )
         }
+        val worldBookContext = AiWorldBookManager.retrieve(memoryContext, preparedContext.messages)
+        if (worldBookContext.isNotEmpty) {
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_WORLD_BOOK_RETRIEVED,
+                payload = worldBookContext.toTraceJson(),
+                success = true
+            )
+        }
+        val agentPlan = AiAgentPlanner.create(preparedContext.messages, tools)
+        if (agentPlan.steps.isNotEmpty()) {
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_PLAN_CREATED,
+                payload = agentPlan.toTraceJson(),
+                success = true
+            )
+        }
+        val dynamicContextTokens = AiContextManager.estimateTokens(worldBookContext.toSystemPrompt()) +
+                AiContextManager.estimateTokens(agentPlan.toSystemPrompt())
+        val totalTokensWithDynamicContext = estimatedTotalTokens + dynamicContextTokens
+        onContextStats(
+            JSONObject().apply {
+                put("compressed", preparedContext.compressed)
+                put("inputTokens", preparedContext.inputTokens)
+                put("limitTokens", preparedContext.limitTokens)
+                put("reserveTokens", reserveTokens)
+                put("dynamicContextTokens", dynamicContextTokens)
+                put("totalTokens", totalTokensWithDynamicContext)
+            }
+        )
         val conversation = buildConversation(
             messages = preparedContext.messages,
             contextSummary = preparedContext.summary,
             retrievedMemory = retrievedMemory,
+            worldBookContext = worldBookContext,
+            agentPlan = agentPlan,
             activeSkills = activeSkills
         )
-        if (estimatedTotalTokens > preparedContext.limitTokens) {
+        if (totalTokensWithDynamicContext > preparedContext.limitTokens) {
             throw AiChatException(
                 message = "当前 AI 静态配置或本轮输入超过上下文限制，已自动压缩但仍无法放入，请减少系统提示词、Skill、工具或本次输入。",
-                debugLog = requestLog.append("estimatedTotalTokens=$estimatedTotalTokens\n")
+                debugLog = requestLog.append("estimatedTotalTokens=$totalTokensWithDynamicContext\n")
+                    .append("dynamicContextTokens=$dynamicContextTokens\n")
                     .append("limitTokens=${preparedContext.limitTokens}\n")
                     .toSafeDebugLog()
             )
@@ -274,7 +299,8 @@ object AiChatService {
                 run = agentRun,
                 eventType = AiAgentTrace.EVENT_MODEL_REQUEST,
                 payload = JSONObject()
-                    .put("estimatedTotalTokens", estimatedTotalTokens)
+                    .put("estimatedTotalTokens", totalTokensWithDynamicContext)
+                    .put("dynamicContextTokens", dynamicContextTokens)
                     .put("tools", tools.map { it.name }.joinToString(","))
             )
             AiAgentRuntime.runToolLoop(
@@ -968,6 +994,8 @@ object AiChatService {
         messages: List<AiChatMessage>,
         contextSummary: AiContextSummary? = null,
         retrievedMemory: AiRetrievedMemory = AiRetrievedMemory(),
+        worldBookContext: AiWorldBookContext = AiWorldBookContext(),
+        agentPlan: AiAgentPlan = AiAgentPlan("", emptyList()),
         activeSkills: List<AiSkillConfig> = emptyList()
     ): MutableList<JSONObject> {
         val conversation = mutableListOf<JSONObject>()
@@ -991,6 +1019,18 @@ object AiChatService {
             conversation += JSONObject().apply {
                 put("role", "system")
                 put("content", memoryPrompt)
+            }
+        }
+        worldBookContext.toSystemPrompt().takeIf { it.isNotBlank() }?.let { worldBookPrompt ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", worldBookPrompt)
+            }
+        }
+        agentPlan.toSystemPrompt().takeIf { it.isNotBlank() }?.let { planPrompt ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", planPrompt)
             }
         }
         activeSkills.forEach { skill ->

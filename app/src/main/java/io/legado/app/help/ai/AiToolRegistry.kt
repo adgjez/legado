@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 4
+    private const val TOOL_SETTINGS_VERSION = 5
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -26,6 +26,13 @@ object AiToolRegistry {
         "list_speech_voice_groups",
         "upsert_speech_voice_group",
         "delete_speech_voice_group"
+    )
+    private val version5AddedDefaultTools = setOf(
+        "list_world_books",
+        "upsert_world_book",
+        "delete_world_book",
+        "upsert_world_book_entry",
+        "delete_world_book_entry"
     )
 
     val readSafeToolNames = setOf(
@@ -48,6 +55,7 @@ object AiToolRegistry {
         "list_speech_voice_groups",
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
+        "list_world_books",
         "get_app_settings"
     )
 
@@ -97,6 +105,11 @@ object AiToolRegistry {
         "delete_speech_voice_group",
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
+        "list_world_books",
+        "upsert_world_book",
+        "delete_world_book",
+        "upsert_world_book_entry",
+        "delete_world_book_entry",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -142,6 +155,11 @@ object AiToolRegistry {
         "delete_speech_voice_group" to "删除发言人分组",
         "list_read_aloud_bgm_catalog" to "读取朗读配乐曲库",
         "assign_read_aloud_bgm_ranges" to "分配朗读配乐范围",
+        "list_world_books" to "读取世界书",
+        "upsert_world_book" to "新增或更新世界书",
+        "delete_world_book" to "删除世界书",
+        "upsert_world_book_entry" to "新增或更新世界书条目",
+        "delete_world_book_entry" to "删除世界书条目",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -187,6 +205,11 @@ object AiToolRegistry {
         "delete_speech_voice_group" to "角色配音",
         "list_read_aloud_bgm_catalog" to "智能配乐",
         "assign_read_aloud_bgm_ranges" to "智能配乐",
+        "list_world_books" to "世界书",
+        "upsert_world_book" to "世界书",
+        "delete_world_book" to "世界书",
+        "upsert_world_book_entry" to "世界书",
+        "delete_world_book_entry" to "世界书",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -224,6 +247,7 @@ object AiToolRegistry {
         tools += AiImageTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
         tools += AiReadAloudBgmTool.resolvedTools()
+        tools += AiWorldBookTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 
@@ -254,6 +278,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 2) addAll(version2AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 3) addAll(version3AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 4) addAll(version4AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 5) addAll(version5AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }
