@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.ai
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableIntStateOf
@@ -12,6 +13,7 @@ import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.ui.config.AiWorldBookManageActivity
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
 import io.legado.app.ui.main.ai.compose.AiChatRoute
@@ -124,17 +126,38 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             listOf(
                 "Skill：${viewModel.activeWindowSkillIds().size} 个",
                 "MCP：${viewModel.activeWindowMcpServerIds().size} 个",
-                "清空当前窗口能力"
+                "世界书：${activeSessionWorldBookCount()} 个",
+                "清空 Skill/MCP"
             )
         ) { _, _, index ->
             when (index) {
                 0 -> showWindowSkillDialog()
                 1 -> showWindowMcpDialog()
-                2 -> {
+                2 -> openSessionWorldBookManage()
+                3 -> {
                     viewModel.setActiveWindowSkillIds(emptySet())
                     viewModel.setActiveWindowMcpServerIds(emptySet())
                     refreshToken.intValue += 1
                 }
+            }
+        }
+    }
+
+    private fun openSessionWorldBookManage() {
+        startActivity(
+            Intent(this, AiWorldBookManageActivity::class.java)
+                .putExtra(AiWorldBookManageActivity.EXTRA_TARGET_TYPE, AiWorldBookBinding.TARGET_SESSION)
+                .putExtra(AiWorldBookManageActivity.EXTRA_TARGET_KEY, viewModel.activeSessionId())
+        )
+    }
+
+    private fun activeSessionWorldBookCount(): Int {
+        val sessionId = viewModel.activeSessionId()
+        return AppConfig.aiWorldBookList.count { worldBook ->
+            worldBook.enabled && worldBook.bindings.any { binding ->
+                binding.enabled &&
+                        binding.targetType == AiWorldBookBinding.TARGET_SESSION &&
+                        binding.targetKey == sessionId
             }
         }
     }

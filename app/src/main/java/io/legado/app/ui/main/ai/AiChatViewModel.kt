@@ -488,6 +488,8 @@ class AiChatViewModel : ViewModel() {
         }
     }
 
+    fun activeSessionId(): String = currentSessionId
+
     fun currentContextSummary() = currentSessionSummary()
 
     fun restoreCurrentSession() {
