@@ -35,7 +35,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,18 +56,10 @@ import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
-
-@Immutable
-private data class WorldBookTarget(
-    val label: String,
-    val type: String,
-    val fixedKey: String = ""
-)
 
 private data class WorldBookEditState(
     val id: String?,
@@ -128,19 +119,11 @@ fun AiWorldBookManageRoute(
     val context = LocalContext.current
     val style = aiComposeStyle(context)
     var books by remember { mutableStateOf(AppConfig.aiWorldBookList) }
-    var tab by rememberSaveable { mutableStateOf(if (initialTargetType.isBlank()) 0 else 1) }
     var query by rememberSaveable { mutableStateOf("") }
     var expandedBookId by rememberSaveable { mutableStateOf("") }
     var editingBook by remember { mutableStateOf<WorldBookEditState?>(null) }
     var editingEntry by remember { mutableStateOf<WorldBookEntryEditState?>(null) }
     var jsonEditor by remember { mutableStateOf<WorldBookJsonState?>(null) }
-    val targets = remember(initialTargetType, initialTargetKey) {
-        buildWorldBookTargets(initialTargetType, initialTargetKey)
-    }
-    var selectedTargetType by rememberSaveable {
-        mutableStateOf(targets.firstOrNull { it.type == initialTargetType }?.type ?: AiWorldBookBinding.TARGET_GLOBAL)
-    }
-    var selectedTargetKey by rememberSaveable { mutableStateOf(initialTargetKey) }
 
     fun persist(updated: List<AiWorldBookConfig>) {
         AppConfig.aiWorldBookList = updated
@@ -228,20 +211,11 @@ fun AiWorldBookManageRoute(
             else -> WorldBookMainScreen(
                 books = books,
                 query = query,
-                tab = tab,
                 expandedBookId = expandedBookId,
-                targets = targets,
-                selectedTargetType = selectedTargetType,
-                selectedTargetKey = selectedTargetKey,
                 style = style,
                 onBack = onBack,
                 onQueryChange = { query = it },
-                onTabChange = { tab = it },
                 onExpandedChange = { expandedBookId = it },
-                onTargetChange = { type, key ->
-                    selectedTargetType = type
-                    selectedTargetKey = key
-                },
                 onRefresh = ::reload,
                 onImportLocal = onRequestImportLocal,
                 onImportNetwork = onRequestImportNetwork,
@@ -321,21 +295,6 @@ fun AiWorldBookManageRoute(
                             it
                         }
                     })
-                },
-                onToggleBinding = { book, targetType, targetKey ->
-                    val old = book.bindings.firstOrNull { it.targetType == targetType && it.targetKey == targetKey }
-                    val updatedBook = if (old == null) {
-                        book.copy(
-                            bindings = book.bindings + AiWorldBookBinding(
-                                targetType = targetType,
-                                targetKey = targetKey,
-                                order = book.bindings.size
-                            )
-                        )
-                    } else {
-                        book.copy(bindings = book.bindings.filterNot { it.id == old.id })
-                    }
-                    persist(books.map { if (it.id == book.id) updatedBook else it })
                 }
             )
         }
@@ -346,17 +305,11 @@ fun AiWorldBookManageRoute(
 private fun WorldBookMainScreen(
     books: List<AiWorldBookConfig>,
     query: String,
-    tab: Int,
     expandedBookId: String,
-    targets: List<WorldBookTarget>,
-    selectedTargetType: String,
-    selectedTargetKey: String,
     style: AiComposeStyle,
     onBack: () -> Unit,
     onQueryChange: (String) -> Unit,
-    onTabChange: (Int) -> Unit,
     onExpandedChange: (String) -> Unit,
-    onTargetChange: (String, String) -> Unit,
     onRefresh: () -> Unit,
     onAddBook: () -> Unit,
     onImportLocal: () -> Unit,
@@ -370,8 +323,7 @@ private fun WorldBookMainScreen(
     onAddEntry: (AiWorldBookConfig) -> Unit,
     onEditEntry: (AiWorldBookConfig, AiWorldBookEntry) -> Unit,
     onDeleteEntry: (AiWorldBookConfig, AiWorldBookEntry) -> Unit,
-    onToggleEntry: (AiWorldBookConfig, AiWorldBookEntry) -> Unit,
-    onToggleBinding: (AiWorldBookConfig, String, String) -> Unit
+    onToggleEntry: (AiWorldBookConfig, AiWorldBookEntry) -> Unit
 ) {
     val filtered = remember(books, query) {
         if (query.isBlank()) {
@@ -407,45 +359,32 @@ private fun WorldBookMainScreen(
             onImportPaste = onImportPaste,
             onRefresh = onRefresh
         )
-        WorldBookTabs(tab, style, onTabChange)
         SearchField(query, style, onQueryChange)
         Spacer(modifier = Modifier.height(10.dp))
-        if (tab == 0) {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(filtered, key = { it.id }) { book ->
-                    WorldBookCard(
-                        book = book,
-                        expanded = expandedBookId == book.id,
-                        style = style,
-                        onExpand = {
-                            onExpandedChange(if (expandedBookId == book.id) "" else book.id)
-                        },
-                        onEdit = { onEditBook(book) },
-                        onCopy = { onCopyBook(book) },
-                        onDelete = { onDeleteBook(book) },
-                        onExport = { onExportBook(book) },
-                        onToggle = { onToggleBook(book) },
-                        onAddEntry = { onAddEntry(book) },
-                        onEditEntry = { onEditEntry(book, it) },
-                        onDeleteEntry = { onDeleteEntry(book, it) },
-                        onToggleEntry = { onToggleEntry(book, it) }
-                    )
-                }
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(filtered, key = { it.id }) { book ->
+                WorldBookCard(
+                    book = book,
+                    expanded = expandedBookId == book.id,
+                    style = style,
+                    onExpand = {
+                        onExpandedChange(if (expandedBookId == book.id) "" else book.id)
+                    },
+                    onEdit = { onEditBook(book) },
+                    onCopy = { onCopyBook(book) },
+                    onDelete = { onDeleteBook(book) },
+                    onExport = { onExportBook(book) },
+                    onToggle = { onToggleBook(book) },
+                    onAddEntry = { onAddEntry(book) },
+                    onEditEntry = { onEditEntry(book, it) },
+                    onDeleteEntry = { onDeleteEntry(book, it) },
+                    onToggleEntry = { onToggleEntry(book, it) }
+                )
             }
-        } else {
-            EnableWorldBookPage(
-                books = filtered,
-                targets = targets,
-                selectedTargetType = selectedTargetType,
-                selectedTargetKey = selectedTargetKey,
-                style = style,
-                onTargetChange = onTargetChange,
-                onToggleBinding = onToggleBinding
-            )
+            item { Spacer(modifier = Modifier.height(16.dp)) }
         }
     }
 }
@@ -550,40 +489,6 @@ private fun WorldBookTopBar(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WorldBookTabs(
-    tab: Int,
-    style: AiComposeStyle,
-    onTabChange: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(style.metrics.chipRadius))
-            .background(style.colors.processSurface)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        listOf("世界书库", "启用").forEachIndexed { index, label ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(style.metrics.chipRadius))
-                    .background(if (tab == index) style.colors.cardSurface else Color.Transparent)
-                    .clickable { onTabChange(index) }
-                    .padding(vertical = 9.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label,
-                    color = if (tab == index) style.colors.accent else style.colors.secondaryText,
-                    fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal
-                )
             }
         }
     }
@@ -749,86 +654,6 @@ private fun EntryRow(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
             SmallAction("编辑", style, onClick = onEdit)
             SmallAction("删除", style, danger = true, onClick = onDelete)
-        }
-    }
-}
-
-@Composable
-private fun EnableWorldBookPage(
-    books: List<AiWorldBookConfig>,
-    targets: List<WorldBookTarget>,
-    selectedTargetType: String,
-    selectedTargetKey: String,
-    style: AiComposeStyle,
-    onTargetChange: (String, String) -> Unit,
-    onToggleBinding: (AiWorldBookConfig, String, String) -> Unit
-) {
-    var customKey by rememberSaveable(selectedTargetType) { mutableStateOf(selectedTargetKey) }
-    val target = targets.firstOrNull { it.type == selectedTargetType }
-        ?: targets.first()
-    val effectiveKey = if (target.fixedKey.isNotBlank()) target.fixedKey else customKey.trim()
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            targets.forEach { item ->
-                InfoChip(
-                    text = item.label,
-                    style = style,
-                    selected = selectedTargetType == item.type && selectedTargetKey == item.fixedKey,
-                    modifier = Modifier.clickable {
-                        customKey = item.fixedKey
-                        onTargetChange(item.type, item.fixedKey)
-                    }
-                )
-            }
-        }
-        if (requiresTargetKey(selectedTargetType) && target.fixedKey.isBlank()) {
-            OutlinedTextField(
-                value = customKey,
-                onValueChange = {
-                    customKey = it
-                    onTargetChange(selectedTargetType, it.trim())
-                },
-                singleLine = true,
-                label = { Text(if (selectedTargetType == AiWorldBookBinding.TARGET_BOOK) "bookKey" else "sessionId") },
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(books, key = { it.id }) { book ->
-                val active = book.bindings.any {
-                    it.enabled && it.targetType == selectedTargetType && it.targetKey == effectiveKey
-                }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(style.metrics.cardRadius))
-                        .background(style.colors.cardSurface)
-                        .border(style.metrics.strokeWidth, style.colors.stroke, RoundedCornerShape(style.metrics.cardRadius))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(book.name, color = style.colors.primaryText, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "${book.entries.size} 条目 · ${book.bindings.size} 场景",
-                            color = style.colors.secondaryText,
-                            fontSize = 12.sp
-                        )
-                    }
-                    Switch(
-                        checked = active,
-                        enabled = !requiresTargetKey(selectedTargetType) || effectiveKey.isNotBlank(),
-                        onCheckedChange = { onToggleBinding(book, selectedTargetType, effectiveKey) }
-                    )
-                }
-            }
-            item { Spacer(modifier = Modifier.height(16.dp)) }
         }
     }
 }
@@ -1289,19 +1114,6 @@ private fun SmallAction(
     )
 }
 
-private fun buildWorldBookTargets(
-    initialTargetType: String,
-    initialTargetKey: String
-): List<WorldBookTarget> {
-    return buildList {
-        add(WorldBookTarget("全局", AiWorldBookBinding.TARGET_GLOBAL))
-        add(WorldBookTarget("正文问 AI", AiWorldBookBinding.TARGET_CHAT))
-        add(WorldBookTarget("阅读页问 AI", AiWorldBookBinding.TARGET_READ_AI))
-        add(WorldBookTarget("本书", AiWorldBookBinding.TARGET_BOOK, if (initialTargetType == AiWorldBookBinding.TARGET_BOOK) initialTargetKey else ""))
-        add(WorldBookTarget("当前会话", AiWorldBookBinding.TARGET_SESSION, if (initialTargetType == AiWorldBookBinding.TARGET_SESSION) initialTargetKey else ""))
-    }
-}
-
 private fun WorldBookEditState.toBook(
     old: AiWorldBookConfig?,
     order: Int
@@ -1392,9 +1204,4 @@ private fun splitKeys(value: String): List<String> {
         .filter { it.isNotBlank() }
         .distinct()
         .take(40)
-}
-
-private fun requiresTargetKey(targetType: String): Boolean {
-    return targetType == AiWorldBookBinding.TARGET_BOOK ||
-            targetType == AiWorldBookBinding.TARGET_SESSION
 }

@@ -1407,35 +1407,16 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         book: AiWorldBookConfig,
         legacyScope: String
     ): AiWorldBookBinding? {
-        val bookKey = safeString { book.bookKey }.trim()
         return when (legacyScope) {
-            AiWorldBookConfig.SCOPE_BOOK -> bookKey
-                .takeIf { it.isNotBlank() }
-                ?.let {
-                    AiWorldBookBinding(
-                        targetType = AiWorldBookBinding.TARGET_BOOK,
-                        targetKey = it
-                    )
-                }
-            AiWorldBookConfig.SCOPE_SESSION -> bookKey
-                .takeIf { it.isNotBlank() }
-                ?.let {
-                    AiWorldBookBinding(
-                        targetType = AiWorldBookBinding.TARGET_SESSION,
-                        targetKey = it
-                    )
-                }
-            else -> AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_GLOBAL)
+            AiWorldBookConfig.SCOPE_GLOBAL -> AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_GLOBAL)
+            else -> null
         }
     }
 
     private fun normalizeWorldBookTarget(targetType: String): String {
         return when (targetType) {
             AiWorldBookBinding.TARGET_GLOBAL,
-            AiWorldBookBinding.TARGET_CHAT,
-            AiWorldBookBinding.TARGET_READ_AI,
-            AiWorldBookBinding.TARGET_BOOK,
-            AiWorldBookBinding.TARGET_SESSION -> targetType
+            AiWorldBookBinding.TARGET_COMPANION -> targetType
             else -> ""
         }
     }

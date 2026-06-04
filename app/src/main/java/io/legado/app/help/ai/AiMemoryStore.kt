@@ -11,6 +11,7 @@ data class AiMemoryContext(
     val scope: String = AiMemoryItem.SCOPE_GLOBAL,
     val bookKey: String = "",
     val sessionId: String = "",
+    val companionId: String = "",
     val title: String = ""
 )
 

@@ -1,7 +1,6 @@
 package io.legado.app.help.ai
 
 import io.legado.app.help.config.AppConfig
-import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
@@ -309,8 +308,7 @@ object AiWorldBookManager {
         val targetType = normalizeTargetType(arguments.optString("targetType").trim())
         if (targetType.isBlank()) return jsonError("invalid targetType")
         val targetKey = arguments.optString("targetKey").trim()
-        val requiresKey = targetType == AiWorldBookBinding.TARGET_BOOK ||
-                targetType == AiWorldBookBinding.TARGET_SESSION
+        val requiresKey = targetType == AiWorldBookBinding.TARGET_COMPANION
         if (requiresKey && targetKey.isBlank()) return jsonError("targetKey is required")
         var updatedBinding: AiWorldBookBinding? = null
         var found = false
@@ -498,14 +496,9 @@ object AiWorldBookManager {
     private fun AiWorldBookBinding.matches(context: AiMemoryContext?): Boolean {
         return when (targetType) {
             AiWorldBookBinding.TARGET_GLOBAL -> true
-            AiWorldBookBinding.TARGET_CHAT -> context?.scope == AiMemoryItem.SCOPE_GLOBAL
-            AiWorldBookBinding.TARGET_READ_AI -> context?.scope == AiMemoryItem.SCOPE_BOOK
-            AiWorldBookBinding.TARGET_BOOK -> context?.bookKey?.isNotBlank() == true &&
+            AiWorldBookBinding.TARGET_COMPANION -> context?.companionId?.isNotBlank() == true &&
                     targetKey.isNotBlank() &&
-                    context.bookKey == targetKey
-            AiWorldBookBinding.TARGET_SESSION -> context?.sessionId?.isNotBlank() == true &&
-                    targetKey.isNotBlank() &&
-                    context.sessionId == targetKey
+                    context.companionId == targetKey
             else -> false
         }
     }
@@ -665,14 +658,7 @@ object AiWorldBookManager {
 
     private fun legacyBindingsFromArguments(arguments: JSONObject): List<AiWorldBookBinding> {
         val scope = arguments.optString("scope").trim()
-        val bookKey = arguments.optString("bookKey").trim()
         return when (scope) {
-            AiWorldBookConfig.SCOPE_BOOK -> bookKey.takeIf { it.isNotBlank() }?.let {
-                listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_BOOK, targetKey = it))
-            } ?: emptyList()
-            AiWorldBookConfig.SCOPE_SESSION -> bookKey.takeIf { it.isNotBlank() }?.let {
-                listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_SESSION, targetKey = it))
-            } ?: emptyList()
             AiWorldBookConfig.SCOPE_GLOBAL -> listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_GLOBAL))
             else -> emptyList()
         }
@@ -681,10 +667,7 @@ object AiWorldBookManager {
     private fun normalizeTargetType(targetType: String): String {
         return when (targetType) {
             AiWorldBookBinding.TARGET_GLOBAL,
-            AiWorldBookBinding.TARGET_CHAT,
-            AiWorldBookBinding.TARGET_READ_AI,
-            AiWorldBookBinding.TARGET_BOOK,
-            AiWorldBookBinding.TARGET_SESSION -> targetType
+            AiWorldBookBinding.TARGET_COMPANION -> targetType
             else -> ""
         }
     }

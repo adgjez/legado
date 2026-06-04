@@ -77,6 +77,7 @@ data class AiWorldBookBinding(
 ) {
     companion object {
         const val TARGET_GLOBAL = "global"
+        const val TARGET_COMPANION = "companion"
         const val TARGET_CHAT = "chat"
         const val TARGET_READ_AI = "read_ai"
         const val TARGET_BOOK = "book"
