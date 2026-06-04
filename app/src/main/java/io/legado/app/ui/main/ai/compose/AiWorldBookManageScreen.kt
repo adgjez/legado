@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,10 +104,19 @@ private data class WorldBookJsonState(
     val importMode: Boolean
 )
 
+data class AiWorldBookImportPayload(
+    val id: Long,
+    val raw: String
+)
+
 @Composable
 fun AiWorldBookManageRoute(
     initialTargetType: String,
     initialTargetKey: String,
+    importPayload: AiWorldBookImportPayload? = null,
+    onImportConsumed: () -> Unit = {},
+    onRequestImportLocal: () -> Unit = {},
+    onRequestImportNetwork: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -134,6 +146,34 @@ fun AiWorldBookManageRoute(
         books = AppConfig.aiWorldBookList
     }
 
+    fun importWorldBookRaw(raw: String) {
+        runCatching {
+            val imported = AiWorldBookManager.parseStandardWorldBook(raw, books.size)
+            val existingIds = books.map { it.id }.toSet()
+            if (imported.id in existingIds) {
+                imported.copy(
+                    id = AiWorldBookConfig(name = imported.name).id,
+                    name = "${imported.name} 副本"
+                )
+            } else {
+                imported
+            }
+        }.onSuccess { saving ->
+            persist(books + saving)
+            expandedBookId = saving.id
+            jsonEditor = null
+            context.toastOnUi("世界书已导入")
+        }.onFailure {
+            context.toastOnUi(it.localizedMessage ?: "世界书 JSON 解析失败")
+        }
+    }
+
+    LaunchedEffect(importPayload?.id) {
+        val payload = importPayload ?: return@LaunchedEffect
+        importWorldBookRaw(payload.raw)
+        onImportConsumed()
+    }
+
     val editEntryState = editingEntry
     val editBookState = editingBook
     val jsonState = jsonEditor
@@ -147,26 +187,7 @@ fun AiWorldBookManageRoute(
                 state = jsonState,
                 style = style,
                 onBack = { jsonEditor = null },
-                onImport = { raw ->
-                    runCatching {
-                        val imported = AiWorldBookManager.parseStandardWorldBook(raw, books.size)
-                        val existingIds = books.map { it.id }.toSet()
-                        val saving = if (imported.id in existingIds) {
-                            imported.copy(
-                                id = AiWorldBookConfig(name = imported.name).id,
-                                name = "${imported.name} 副本"
-                            )
-                        } else {
-                            imported
-                        }
-                        persist(books + saving)
-                        expandedBookId = saving.id
-                        jsonEditor = null
-                        context.toastOnUi("世界书已导入")
-                    }.onFailure {
-                        context.toastOnUi(it.localizedMessage ?: "世界书 JSON 解析失败")
-                    }
-                }
+                onImport = ::importWorldBookRaw
             )
             editEntryState != null -> WorldBookEntryEditor(
                 state = editEntryState,
@@ -216,6 +237,8 @@ fun AiWorldBookManageRoute(
                     selectedTargetKey = key
                 },
                 onRefresh = ::reload,
+                onImportLocal = onRequestImportLocal,
+                onImportNetwork = onRequestImportNetwork,
                 onAddBook = {
                     editingBook = WorldBookEditState(
                         id = null,
@@ -226,7 +249,7 @@ fun AiWorldBookManageRoute(
                     )
                 },
                 onEditBook = { book -> editingBook = book.toEditState() },
-                onImportJson = {
+                onImportPaste = {
                     jsonEditor = WorldBookJsonState(
                         title = "导入世界书 JSON",
                         text = "",
@@ -330,7 +353,9 @@ private fun WorldBookMainScreen(
     onTargetChange: (String, String) -> Unit,
     onRefresh: () -> Unit,
     onAddBook: () -> Unit,
-    onImportJson: () -> Unit,
+    onImportLocal: () -> Unit,
+    onImportNetwork: () -> Unit,
+    onImportPaste: () -> Unit,
     onEditBook: (AiWorldBookConfig) -> Unit,
     onCopyBook: (AiWorldBookConfig) -> Unit,
     onDeleteBook: (AiWorldBookConfig) -> Unit,
@@ -371,16 +396,13 @@ private fun WorldBookMainScreen(
             style = style,
             onBack = onBack,
             onAdd = onAddBook,
+            onImportLocal = onImportLocal,
+            onImportNetwork = onImportNetwork,
+            onImportPaste = onImportPaste,
             onRefresh = onRefresh
         )
         WorldBookTabs(tab, style, onTabChange)
         SearchField(query, style, onQueryChange)
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            SmallAction("导入 JSON", style, onClick = onImportJson)
-        }
         Spacer(modifier = Modifier.height(10.dp))
         if (tab == 0) {
             LazyColumn(
@@ -429,8 +451,12 @@ private fun WorldBookTopBar(
     style: AiComposeStyle,
     onBack: () -> Unit,
     onAdd: (() -> Unit)? = null,
+    onImportLocal: (() -> Unit)? = null,
+    onImportNetwork: (() -> Unit)? = null,
+    onImportPaste: (() -> Unit)? = null,
     onRefresh: (() -> Unit)? = null
 ) {
+    var addMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -471,12 +497,53 @@ private fun WorldBookTopBar(
             }
         }
         onAdd?.let {
-            IconButton(onClick = it) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_add),
-                    contentDescription = "新增",
-                    tint = style.colors.accent
-                )
+            Box {
+                IconButton(onClick = { addMenuExpanded = true }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = "新增",
+                        tint = style.colors.accent
+                    )
+                }
+                DropdownMenu(
+                    expanded = addMenuExpanded,
+                    onDismissRequest = { addMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("新增世界书", color = style.colors.primaryText) },
+                        onClick = {
+                            addMenuExpanded = false
+                            it()
+                        }
+                    )
+                    onImportLocal?.let { action ->
+                        DropdownMenuItem(
+                            text = { Text("本地导入", color = style.colors.primaryText) },
+                            onClick = {
+                                addMenuExpanded = false
+                                action()
+                            }
+                        )
+                    }
+                    onImportNetwork?.let { action ->
+                        DropdownMenuItem(
+                            text = { Text("网络导入", color = style.colors.primaryText) },
+                            onClick = {
+                                addMenuExpanded = false
+                                action()
+                            }
+                        )
+                    }
+                    onImportPaste?.let { action ->
+                        DropdownMenuItem(
+                            text = { Text("粘贴导入", color = style.colors.primaryText) },
+                            onClick = {
+                                addMenuExpanded = false
+                                action()
+                            }
+                        )
+                    }
+                }
             }
         }
     }
