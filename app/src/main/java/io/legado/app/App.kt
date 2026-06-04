@@ -52,7 +52,6 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.RestoreJournal
 import io.legado.app.model.BookCover
-import io.legado.app.ui.book.read.ReadAloudAppCapsuleHost
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -79,7 +78,6 @@ class App : Application() {
         oldConfig = Configuration(resources.configuration)
         applyDayNightInit(this)
         registerActivityLifecycleCallbacks(LifecycleHelp)
-        ReadAloudAppCapsuleHost.init(this)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
         Coroutine.async {
             RestoreJournal.recoverIfNeeded("应用启动检测到上次恢复未完成")

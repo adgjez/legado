@@ -1,11 +1,7 @@
 package io.legado.app.ui.book.read
 
 import android.app.Activity
-import android.app.Application
 import android.graphics.RectF
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -28,308 +24,78 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.config.ReaderSheetStyle
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.startActivityForBook
 import splitties.init.appCtx
 import java.util.Collections
 import java.util.WeakHashMap
 
-object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
+object ReadAloudAppCapsuleHost {
+
+    private enum class HostKind {
+        Main,
+        ReadBook
+    }
 
     private data class PendingPanelOpenRequest(
         val bookUrl: String,
-        val token: Long,
         val requestedAt: Long
     )
 
-    private const val ACTIVITY_SWITCH_REVEAL_DELAY_MILLIS = 260L
-
-    private val observedActivities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var currentActivity: Activity? = null
-    private var overlay: ComposeCapsuleOverlay? = null
-    private var pendingReveal: Runnable? = null
-    private var revealAfterActivitySwitch = false
+    private val observedOwners = Collections.newSetFromMap(WeakHashMap<LifecycleOwner, Boolean>())
+    private val overlays = WeakHashMap<Activity, CapsuleOverlay>()
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private var readBookPanelActive by mutableStateOf(false)
     private var readMenuAvoidBounds by mutableStateOf<RectF?>(null)
-    private val capsuleBounds = RectF()
     private var pendingPanelOpenRequest: PendingPanelOpenRequest? = null
-    private var pendingPanelOpenToken = 0L
 
-    fun init(application: Application) {
-        application.registerActivityLifecycleCallbacks(this)
-    }
-
-    override fun onActivityStarted(activity: Activity) {
-        if (!revealAfterActivitySwitch) return
-        currentActivity = activity
-        installObservers(activity)
-        activity.window?.decorView?.post {
-            if (currentActivity === activity && revealAfterActivitySwitch) {
-                sync(activity, revealAfterTransition = true)
-            }
-        }
-    }
-
-    override fun onActivityResumed(activity: Activity) {
-        currentActivity = activity
-        val revealAfterTransition = revealAfterActivitySwitch
-        if (activity !is ReadBookActivity) {
-            readBookPanelActive = false
-            readMenuAvoidBounds = null
-        }
-        installObservers(activity)
-        activity.window?.decorView?.post {
-            if (currentActivity === activity) {
-                sync(
-                    activity,
-                    revealAfterTransition = revealAfterTransition,
-                    keepPendingReveal = true
-                )
-            }
-        }
-    }
-
-    override fun onActivityPaused(activity: Activity) {
-        if (currentActivity === activity) {
-            revealAfterActivitySwitch = true
-            detach(activity)
-            currentActivity = null
-        }
-    }
-
-    override fun onActivityDestroyed(activity: Activity) {
-        if (currentActivity === activity) {
-            currentActivity = null
-        }
-        detach(activity)
-        observedActivities.remove(activity)
-    }
-
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-    override fun onActivityStopped(activity: Activity) = Unit
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-
-    private fun installObservers(activity: Activity) {
-        if (!observedActivities.add(activity)) return
-        val owner = activity as? LifecycleOwner ?: return
-        LiveEventBus.get(EventBus.ALOUD_STATE, Int::class.java).observe(owner, Observer { status ->
-            if (status == Status.STOP) {
-                lastPlaybackState = ReadAloudPlaybackState()
-                detach()
-            } else {
-                currentActivity?.let { sync(it, keepPendingReveal = true) }
-            }
-        })
-        LiveEventBus.get(EventBus.READ_ALOUD_PLAYBACK_STATE, ReadAloudPlaybackState::class.java)
-            .observe(owner, Observer { state ->
-                lastPlaybackState = state
-                currentActivity?.let { sync(it, keepPendingReveal = true) }
-            })
-    }
-
-    private fun sync(
-        activity: Activity,
-        revealAfterTransition: Boolean = false,
-        keepPendingReveal: Boolean = false
-    ) {
-        if (!shouldShow(activity)) {
-            detach()
-            return
-        }
-        val parent = activity.window?.decorView as? ViewGroup ?: return
-        val current = overlay
-        val view = if (current?.activity === activity) {
-            current
-        } else {
-            capsuleBounds.setEmpty()
-            ComposeCapsuleOverlay(activity).also { newView ->
-                if (revealAfterTransition) {
-                    newView.alpha = 0f
-                    newView.visibility = View.INVISIBLE
-                }
-                overlay = newView
-                parent.addView(
-                    newView,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                )
-                current?.let(::removeOverlay)
-            }
-        }
-        if (view.parent !== parent) {
-            (view.parent as? ViewGroup)?.removeView(view)
-            parent.addView(
-                view,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            )
-        }
-        view.bind(buildPlayerState(activity))
-        when {
-            revealAfterTransition -> scheduleReveal(activity, view)
-            keepPendingReveal && pendingReveal != null -> Unit
-            else -> showOverlayImmediately(view)
-        }
-    }
-
-    private fun buildPlayerState(activity: Activity): ReadAloudPlayerPanel.PlayerUiState {
-        val book = ReadBook.book
-        val playing = lastPlaybackState.playing ?: BaseReadAloudService.isPlay()
-        return ReadAloudPlayerPanel.PlayerUiState(
-            bookName = book?.name.orEmpty(),
-            author = book?.author.orEmpty(),
-            coverUrl = book?.getDisplayCover(),
-            sourceOrigin = ReadBook.bookSource?.bookSourceUrl,
-            chapterTitle = ReadBook.curTextChapter?.chapter?.title.orEmpty(),
-            playing = playing,
-            playbackPhase = lastPlaybackState.phase,
-            playbackBusy = lastPlaybackState.busy && !BaseReadAloudService.pause,
-            serviceRunning = BaseReadAloudService.isRun,
-            foregroundActive = true,
-            expanded = false,
-            readMenuVisible = false,
-            readMenuAvoidBounds = if (activity is ReadBookActivity) {
-                readMenuAvoidBounds?.let(::RectF)
-            } else {
-                null
-            }
+    fun attachMain(activity: MainActivity, parent: ViewGroup) {
+        attach(
+            activity = activity,
+            parent = parent,
+            kind = HostKind.Main,
+            openReadBookPanel = null
         )
     }
 
-    private fun shouldShow(activity: Activity): Boolean {
-        if (!BaseReadAloudService.isRun) return false
-        if (activity is ReadBookActivity && readBookPanelActive) return false
-        if (activity is ReadBookActivity &&
-            pendingPanelOpenRequest?.bookUrl == ReadBook.book?.bookUrl
-        ) {
-            return false
-        }
-        return ReadBook.book != null
+    fun attachReadBook(
+        activity: ReadBookActivity,
+        parent: ViewGroup,
+        openReadBookPanel: () -> Boolean
+    ) {
+        attach(
+            activity = activity,
+            parent = parent,
+            kind = HostKind.ReadBook,
+            openReadBookPanel = openReadBookPanel
+        )
     }
 
-    private fun detach() {
-        cancelPendingReveal()
-        overlay?.let { view ->
-            (view.parent as? ViewGroup)?.removeView(view)
-        }
-        overlay = null
-        capsuleBounds.setEmpty()
-    }
-
-    private fun detach(activity: Activity) {
-        if (overlay?.activity === activity) {
-            detach()
-        }
-    }
-
-    private fun removeOverlay(view: ComposeCapsuleOverlay) {
-        if (overlay === view) {
-            cancelPendingReveal()
-        }
-        (view.parent as? ViewGroup)?.removeView(view)
-        if (overlay === view) {
-            overlay = null
-            capsuleBounds.setEmpty()
-        }
-    }
-
-    private fun scheduleReveal(activity: Activity, view: ComposeCapsuleOverlay) {
-        cancelPendingReveal()
-        revealAfterActivitySwitch = false
-        view.animate().cancel()
-        view.alpha = 0f
-        view.visibility = View.INVISIBLE
-        pendingReveal = Runnable {
-            pendingReveal = null
-            if (currentActivity === activity && overlay === view && shouldShow(activity)) {
-                view.visibility = View.VISIBLE
-                view.animate()
-                    .alpha(1f)
-                    .setDuration(90L)
-                    .start()
-            }
-        }.also {
-            mainHandler.postDelayed(it, ACTIVITY_SWITCH_REVEAL_DELAY_MILLIS)
-        }
-    }
-
-    private fun showOverlayImmediately(view: ComposeCapsuleOverlay) {
-        revealAfterActivitySwitch = false
-        view.animate().cancel()
-        view.alpha = 1f
-        view.visibility = View.VISIBLE
-    }
-
-    private fun cancelPendingReveal() {
-        pendingReveal?.let(mainHandler::removeCallbacks)
-        pendingReveal = null
-    }
-
-    private fun updateCapsulePosition(x: Float, y: Float) {
-        val current = capsulePosition
-        if (current.x != x || current.y != y) {
-            capsulePosition = CapsulePositionState(x, y)
-        }
-    }
-
-    private fun updateCapsuleBounds(bounds: RectF) {
-        capsuleBounds.set(bounds)
-    }
-
-    private fun openReadAloudPanel(activity: Activity) {
-        ReadBook.book?.let { book ->
-            if (activity is ReadBookActivity && activity.openReadAloudPanelFromGlobalCapsule()) {
-                readBookPanelActive = true
-                detach()
-                return
-            }
-            requestReadAloudPanelOpen(book.bookUrl)
-            activity.startActivityForBook(book) {
-                putExtra("openReadAloudPanel", true)
-            }
+    fun detach(activity: Activity) {
+        overlays.remove(activity)?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
         }
     }
 
     fun updateReadBookPanelActive(active: Boolean) {
         if (readBookPanelActive == active) return
         readBookPanelActive = active
-        currentActivity?.let { activity ->
-            activity.window?.decorView?.post {
-                if (currentActivity === activity) {
-                    sync(activity)
-                }
-            }
-        }
+        refreshAll()
     }
 
     fun updateReadMenuAvoidBounds(bounds: RectF?) {
         val next = bounds?.let(::RectF)
         if (readMenuAvoidBounds == next) return
         readMenuAvoidBounds = next
-        currentActivity?.let { activity ->
-            if (activity is ReadBookActivity) {
-                activity.window?.decorView?.post {
-                    if (currentActivity === activity) {
-                        sync(activity)
-                    }
-                }
-            }
-        }
+        refreshAll()
     }
 
     fun requestReadAloudPanelOpen(bookUrl: String) {
         if (bookUrl.isBlank()) return
-        pendingPanelOpenToken += 1
         pendingPanelOpenRequest = PendingPanelOpenRequest(
             bookUrl = bookUrl,
-            token = pendingPanelOpenToken,
             requestedAt = System.currentTimeMillis()
         )
     }
@@ -345,11 +111,126 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
         return true
     }
 
-    private class ComposeCapsuleOverlay(
-        val activity: Activity
+    private fun attach(
+        activity: Activity,
+        parent: ViewGroup,
+        kind: HostKind,
+        openReadBookPanel: (() -> Boolean)?
+    ) {
+        installObservers(activity)
+        val current = overlays[activity]
+        val overlay = if (current != null) {
+            current.updateHost(kind, openReadBookPanel)
+            current
+        } else {
+            CapsuleOverlay(activity).also {
+                it.updateHost(kind, openReadBookPanel)
+                overlays[activity] = it
+            }
+        }
+        if (overlay.parent !== parent) {
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+            parent.addView(
+                overlay,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        overlay.sync()
+    }
+
+    private fun installObservers(activity: Activity) {
+        val owner = activity as? LifecycleOwner ?: return
+        if (!observedOwners.add(owner)) return
+        LiveEventBus.get(EventBus.ALOUD_STATE, Int::class.java).observe(owner, Observer { status ->
+            if (status == Status.STOP) {
+                lastPlaybackState = ReadAloudPlaybackState()
+            }
+            refreshAll()
+        })
+        LiveEventBus.get(EventBus.READ_ALOUD_PLAYBACK_STATE, ReadAloudPlaybackState::class.java)
+            .observe(owner, Observer { state ->
+                lastPlaybackState = state
+                refreshAll()
+            })
+    }
+
+    private fun refreshAll() {
+        overlays.values.toList().forEach { it.sync() }
+    }
+
+    private fun shouldShow(kind: HostKind): Boolean {
+        if (!BaseReadAloudService.isRun) return false
+        if (ReadBook.book == null) return false
+        if (kind == HostKind.ReadBook && readBookPanelActive) return false
+        if (kind == HostKind.ReadBook &&
+            pendingPanelOpenRequest?.bookUrl == ReadBook.book?.bookUrl
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private fun buildPlayerState(
+        activity: Activity,
+        kind: HostKind
+    ): ReadAloudPlayerPanel.PlayerUiState {
+        val book = ReadBook.book
+        val playing = lastPlaybackState.playing ?: BaseReadAloudService.isPlay()
+        return ReadAloudPlayerPanel.PlayerUiState(
+            bookName = book?.name.orEmpty(),
+            author = book?.author.orEmpty(),
+            coverUrl = book?.getDisplayCover(),
+            sourceOrigin = ReadBook.bookSource?.bookSourceUrl,
+            chapterTitle = ReadBook.curTextChapter?.chapter?.title.orEmpty(),
+            playing = playing,
+            playbackPhase = lastPlaybackState.phase,
+            playbackBusy = lastPlaybackState.busy && !BaseReadAloudService.pause,
+            serviceRunning = BaseReadAloudService.isRun && shouldShow(kind),
+            foregroundActive = true,
+            expanded = false,
+            readMenuVisible = false,
+            readMenuAvoidBounds = if (kind == HostKind.ReadBook) {
+                readMenuAvoidBounds?.let(::RectF)
+            } else {
+                null
+            }
+        )
+    }
+
+    private fun openReadAloudPanel(
+        activity: Activity,
+        openReadBookPanel: (() -> Boolean)?
+    ) {
+        val book = ReadBook.book ?: return
+        if (activity is ReadBookActivity && openReadBookPanel?.invoke() == true) {
+            readBookPanelActive = true
+            refreshAll()
+            return
+        }
+        requestReadAloudPanelOpen(book.bookUrl)
+        activity.startActivityForBook(book) {
+            putExtra("openReadAloudPanel", true)
+        }
+    }
+
+    private fun updateCapsulePosition(x: Float, y: Float) {
+        val current = capsulePosition
+        if (current.x != x || current.y != y) {
+            capsulePosition = CapsulePositionState(x, y)
+        }
+    }
+
+    private class CapsuleOverlay(
+        private val activity: Activity
     ) : FrameLayout(activity) {
 
         private val composeView = ComposeView(activity)
+        private val capsuleBounds = RectF()
+        private var kind by mutableStateOf(HostKind.Main)
+        private var openReadBookPanel: (() -> Boolean)? = null
         private var uiState by mutableStateOf(ReadAloudPlayerPanel.PlayerUiState())
         private var touchCaptured = false
 
@@ -361,7 +242,7 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
                 composeView,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             )
-            composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             composeView.setContent {
                 val colors = rememberPlayerColors(ReaderSheetStyle.resolve(activity))
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -376,26 +257,40 @@ object ReadAloudAppCapsuleHost : Application.ActivityLifecycleCallbacks {
                                     ReadAloud.pause(appCtx)
                                 }
                             },
-                            onExpand = { openReadAloudPanel(activity) },
+                            onExpand = {
+                                openReadAloudPanel(activity, openReadBookPanel)
+                            },
                             onClose = {
                                 ReadAloud.stop(appCtx)
                                 visibility = GONE
                             },
                             capsulePosition = capsulePosition,
                             onPositionChange = ::updateCapsulePosition,
-                            onBounds = ::updateCapsuleBounds
+                            onBounds = { bounds ->
+                                capsuleBounds.set(bounds)
+                            }
                         )
                     }
                 }
             }
         }
 
-        fun bind(state: ReadAloudPlayerPanel.PlayerUiState) {
-            uiState = state
+        fun updateHost(nextKind: HostKind, nextOpenReadBookPanel: (() -> Boolean)?) {
+            kind = nextKind
+            openReadBookPanel = nextOpenReadBookPanel
+        }
+
+        fun sync() {
+            val show = shouldShow(kind)
+            visibility = if (show) VISIBLE else GONE
+            if (!show) {
+                capsuleBounds.setEmpty()
+            }
+            uiState = buildPlayerState(activity, kind)
         }
 
         override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-            if (capsuleBounds.isEmpty) {
+            if (visibility != VISIBLE || capsuleBounds.isEmpty) {
                 touchCaptured = false
                 return false
             }
