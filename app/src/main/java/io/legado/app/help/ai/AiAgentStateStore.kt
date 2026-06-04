@@ -64,7 +64,8 @@ object AiAgentStateStore {
         payload: JSONObject,
         round: Int = 0,
         success: Boolean = true,
-        usage: AiUsageStats? = null
+        usage: AiUsageStats? = null,
+        checkpointPayload: JSONObject? = null
     ) {
         if (run == null) return
         val now = System.currentTimeMillis()
@@ -80,18 +81,41 @@ object AiAgentStateStore {
                 createdAt = now
             )
         )
-        val checkpoint = JSONObject()
-            .put("eventType", eventType)
-            .put("round", round)
-            .put("stage", payload.optString("stage"))
-            .put("toolName", payload.optString("name"))
-            .put("success", success)
-            .put("updatedAt", now)
+        val checkpoint = buildCheckpoint(
+            eventType = eventType,
+            payload = payload,
+            round = round,
+            success = success,
+            updatedAt = now,
+            checkpointPayload = checkpointPayload
+        )
         appDb.aiAgentDao.updateJobCheckpoint(
             jobId = run.jobId,
             status = AiAgentJob.STATUS_RUNNING,
             checkpointJson = checkpoint.toString(),
             leaseUntil = now + DEFAULT_LEASE_MILLIS,
+            updatedAt = now
+        )
+    }
+
+    fun markWaitingResume(
+        run: Run?,
+        reason: String,
+        delayMillis: Long = 5_000L
+    ) {
+        if (run == null) return
+        val now = System.currentTimeMillis()
+        val nextRunAt = now + delayMillis.coerceAtLeast(0L)
+        appDb.aiAgentDao.markJobWaitingResume(
+            jobId = run.jobId,
+            error = reason.take(4_000),
+            nextRunAt = nextRunAt,
+            updatedAt = now
+        )
+        appDb.aiAgentDao.updateSessionStatus(
+            sessionId = run.sessionId,
+            status = AiAgentSession.STATUS_WAITING_RESUME,
+            error = reason.take(4_000),
             updatedAt = now
         )
     }
@@ -148,19 +172,44 @@ object AiAgentStateStore {
 
     fun markExpiredRunningJobs(now: Long = System.currentTimeMillis()) {
         appDb.aiAgentDao.expiredRunningJobs(now).forEach { job ->
-            appDb.aiAgentDao.finishJob(
+            val reason = "任务被系统中断，等待恢复"
+            appDb.aiAgentDao.markJobWaitingResume(
                 jobId = job.jobId,
-                status = AiAgentJob.STATUS_INTERRUPTED,
-                error = "任务被系统中断",
+                error = reason,
+                nextRunAt = now + 5_000L,
                 updatedAt = now
             )
             appDb.aiAgentDao.updateSessionStatus(
                 sessionId = job.sessionId,
-                status = AiAgentSession.STATUS_INTERRUPTED,
-                error = "任务被系统中断",
+                status = AiAgentSession.STATUS_WAITING_RESUME,
+                error = reason,
                 updatedAt = now
             )
         }
+    }
+
+    private fun buildCheckpoint(
+        eventType: String,
+        payload: JSONObject,
+        round: Int,
+        success: Boolean,
+        updatedAt: Long,
+        checkpointPayload: JSONObject?
+    ): JSONObject {
+        val checkpoint = checkpointPayload?.let {
+            runCatching { JSONObject(it.toString()) }.getOrNull()
+        } ?: JSONObject()
+        checkpoint.put("eventType", eventType)
+        checkpoint.put("round", checkpoint.optInt("round", round))
+        if (!checkpoint.has("stage")) {
+            checkpoint.put("stage", payload.optString("stage"))
+        }
+        if (!checkpoint.has("toolName")) {
+            checkpoint.put("toolName", payload.optString("name"))
+        }
+        checkpoint.put("success", success)
+        checkpoint.put("updatedAt", updatedAt)
+        return checkpoint
     }
 
     private fun AiUsageStats.toJson(): JSONObject {

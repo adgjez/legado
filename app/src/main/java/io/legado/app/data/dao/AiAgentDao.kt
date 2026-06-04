@@ -67,4 +67,24 @@ interface AiAgentDao {
         leaseUntil: Long,
         updatedAt: Long = System.currentTimeMillis()
     )
+
+    @Query(
+        """
+        UPDATE ai_agent_jobs
+        SET status = :status,
+            error = :error,
+            leaseUntil = 0,
+            nextRunAt = :nextRunAt,
+            retryCount = retryCount + 1,
+            updatedAt = :updatedAt
+        WHERE jobId = :jobId
+        """
+    )
+    fun markJobWaitingResume(
+        jobId: String,
+        status: String = AiAgentJob.STATUS_WAITING_RESUME,
+        error: String = "",
+        nextRunAt: Long = 0L,
+        updatedAt: Long = System.currentTimeMillis()
+    )
 }

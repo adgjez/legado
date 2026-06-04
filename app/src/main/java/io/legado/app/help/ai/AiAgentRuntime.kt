@@ -70,7 +70,13 @@ internal object AiAgentRuntime {
                     .put("toolCalls", assistantTurn.toolCalls.size)
                     .put("reasoningChars", assistantTurn.reasoningContent.length),
                 round = roundNo,
-                success = true
+                success = true,
+                checkpointPayload = buildRuntimeCheckpoint(
+                    stage = "model_response",
+                    round = roundNo,
+                    conversation = conversation,
+                    toolEvents = toolEvents
+                )
             )
             if (assistantTurn.toolCalls.isEmpty()) {
                 onStatus(
@@ -99,7 +105,13 @@ internal object AiAgentRuntime {
                         .put("stage", "round_finish")
                         .put("round", roundNo)
                         .put("outputChars", content.length),
-                    round = roundNo
+                    round = roundNo,
+                    checkpointPayload = buildRuntimeCheckpoint(
+                        stage = "round_finish",
+                        round = roundNo,
+                        conversation = conversation,
+                        toolEvents = toolEvents
+                    )
                 )
                 return if (includeStructuredBlocks) {
                     appendStructuredBlocks(content, searchResultCards, toolEvents)
@@ -160,6 +172,18 @@ internal object AiAgentRuntime {
                 val result = execution.result
                 collectSearchResultCards(toolCall, result, searchResultCards)
                 val resultSuccess = parseToolResultSuccess(result)
+                val toolOutputMessage = JSONObject().apply {
+                    if (apiMode == AI_API_MODE_RESPONSES) {
+                        put("type", "function_call_output")
+                        put("call_id", toolCall.id)
+                        put("output", result)
+                    } else {
+                        put("role", "tool")
+                        put("tool_call_id", toolCall.id)
+                        put("content", result)
+                    }
+                }
+                conversation += toolOutputMessage
                 AiAgentStateStore.trace(
                     run = agentRun,
                     eventType = AiAgentTrace.EVENT_TOOL_RESULT,
@@ -167,7 +191,16 @@ internal object AiAgentRuntime {
                         .put("name", toolCall.name)
                         .put("result", result.take(8_000)),
                     round = roundNo,
-                    success = resultSuccess && execution.validation.ok
+                    success = resultSuccess && execution.validation.ok,
+                    checkpointPayload = buildRuntimeCheckpoint(
+                        stage = "tool_result",
+                        round = roundNo,
+                        conversation = conversation,
+                        toolEvents = toolEvents,
+                        toolCall = toolCall,
+                        validation = execution.validation,
+                        attempts = execution.attempts
+                    )
                 )
                 toolEvents.put(
                     JSONObject().apply {
@@ -193,24 +226,19 @@ internal object AiAgentRuntime {
                         put("success", resultSuccess)
                     }
                 )
-                conversation += JSONObject().apply {
-                    if (apiMode == AI_API_MODE_RESPONSES) {
-                        put("type", "function_call_output")
-                        put("call_id", toolCall.id)
-                        put("output", result)
-                    } else {
-                        put("role", "tool")
-                        put("tool_call_id", toolCall.id)
-                        put("content", result)
-                    }
-                }
             }
         }
         AiAgentStateStore.trace(
             run = agentRun,
             eventType = AiAgentTrace.EVENT_STATUS,
             payload = JSONObject().put("stage", "round_limit"),
-            round = MAX_TOOL_ROUNDS
+            round = MAX_TOOL_ROUNDS,
+            checkpointPayload = buildRuntimeCheckpoint(
+                stage = "round_limit",
+                round = MAX_TOOL_ROUNDS,
+                conversation = conversation,
+                toolEvents = toolEvents
+            )
         )
         conversation += JSONObject().apply {
             put("role", "system")
@@ -235,7 +263,8 @@ internal object AiAgentRuntime {
 
     private data class ValidatedToolExecution(
         val result: String,
-        val validation: AiToolValidationResult
+        val validation: AiToolValidationResult,
+        val attempts: Int
     )
 
     private suspend fun executeValidatedTool(
@@ -309,7 +338,79 @@ internal object AiAgentRuntime {
                 maxAttempts = maxAttempts
             )
         }
-        return ValidatedToolExecution(finalResult, lastValidation)
+        return ValidatedToolExecution(finalResult, lastValidation, finalAttempt)
+    }
+
+    private fun buildRuntimeCheckpoint(
+        stage: String,
+        round: Int,
+        conversation: List<JSONObject>,
+        toolEvents: JSONArray,
+        toolCall: AiAgentToolCall? = null,
+        validation: AiToolValidationResult? = null,
+        attempts: Int = 0
+    ): JSONObject {
+        val checkpoint = JSONObject()
+            .put("stage", stage)
+            .put("round", round)
+            .put("conversationTail", JSONArray().apply {
+                conversation.takeLast(10).forEach { put(compactMessageForCheckpoint(it)) }
+            })
+            .put("toolEventsTail", JSONArray().apply {
+                val start = (toolEvents.length() - 8).coerceAtLeast(0)
+                for (index in start until toolEvents.length()) {
+                    val item = toolEvents.optJSONObject(index) ?: continue
+                    put(compactToolEventForCheckpoint(item))
+                }
+            })
+        toolCall?.let {
+            checkpoint.put("toolName", it.name)
+            checkpoint.put("toolCallId", it.id)
+            checkpoint.put("toolArguments", it.arguments.take(2_000))
+        }
+        validation?.let {
+            checkpoint.put("validation", it.toJson())
+        }
+        if (attempts > 0) {
+            checkpoint.put("attempts", attempts)
+        }
+        return checkpoint
+    }
+
+    private fun compactMessageForCheckpoint(message: JSONObject): JSONObject {
+        val compact = JSONObject()
+        listOf("role", "type", "tool_call_id", "call_id", "name").forEach { key ->
+            if (message.has(key)) compact.put(key, message.optString(key))
+        }
+        message.optString("content").takeIf { it.isNotBlank() }?.let {
+            compact.put("content", it.take(3_000))
+        }
+        message.optString("output").takeIf { it.isNotBlank() }?.let {
+            compact.put("output", it.take(3_000))
+        }
+        message.optJSONArray("tool_calls")?.let { toolCalls ->
+            compact.put("tool_calls", JSONArray().apply {
+                for (index in 0 until toolCalls.length()) {
+                    val item = toolCalls.optJSONObject(index) ?: continue
+                    val function = item.optJSONObject("function")
+                    put(JSONObject().apply {
+                        put("id", item.optString("id"))
+                        put("type", item.optString("type"))
+                        put("name", function?.optString("name").orEmpty())
+                        put("arguments", function?.optString("arguments").orEmpty().take(2_000))
+                    })
+                }
+            })
+        }
+        return compact
+    }
+
+    private fun compactToolEventForCheckpoint(event: JSONObject): JSONObject {
+        return JSONObject()
+            .put("name", event.optString("name"))
+            .put("stage", event.optString("stage"))
+            .put("success", event.optBoolean("success", true))
+            .put("content", event.optString("content").take(2_000))
     }
 
     private fun collectSearchResultCards(
