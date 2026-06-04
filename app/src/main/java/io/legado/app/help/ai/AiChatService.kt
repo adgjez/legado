@@ -14,6 +14,7 @@ import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
+import io.legado.app.ui.main.ai.AiWorldBookEntry
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -251,7 +252,7 @@ object AiChatService {
                 success = true
             )
         }
-        val dynamicContextTokens = AiContextManager.estimateTokens(worldBookContext.toSystemPrompt()) +
+        val dynamicContextTokens = AiContextManager.estimateTokens(worldBookContext.toTokenText()) +
                 AiContextManager.estimateTokens(agentPlan.toSystemPrompt())
         val totalTokensWithDynamicContext = estimatedTotalTokens + dynamicContextTokens
         onContextStats(
@@ -1003,6 +1004,11 @@ object AiChatService {
             put("role", "system")
             put("content", AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
         }
+        appendWorldBookInjections(
+            conversation = conversation,
+            worldBookContext = worldBookContext,
+            position = AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT
+        )
         AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { personaPrompt ->
             conversation += JSONObject().apply {
                 put("role", "system")
@@ -1019,12 +1025,6 @@ object AiChatService {
             conversation += JSONObject().apply {
                 put("role", "system")
                 put("content", memoryPrompt)
-            }
-        }
-        worldBookContext.toSystemPrompt().takeIf { it.isNotBlank() }?.let { worldBookPrompt ->
-            conversation += JSONObject().apply {
-                put("role", "system")
-                put("content", worldBookPrompt)
             }
         }
         agentPlan.toSystemPrompt().takeIf { it.isNotBlank() }?.let { planPrompt ->
@@ -1067,6 +1067,11 @@ object AiChatService {
         }
         val textMessages = messages.filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
         val requestMessages = if (AppConfig.aiContextCompressionEnabled) textMessages else textMessages.takeLast(12)
+        appendWorldBookInjections(
+            conversation = conversation,
+            worldBookContext = worldBookContext,
+            position = AiWorldBookEntry.POSITION_BEFORE_PROMPT
+        )
         requestMessages.forEach { message ->
             conversation += JSONObject().apply {
                 put(
@@ -1086,7 +1091,61 @@ object AiChatService {
                 }
             }
         }
+        insertWorldBookBeforeLastUser(conversation, worldBookContext)
+        insertWorldBookByDepth(conversation, worldBookContext)
         return conversation
+    }
+
+    private fun appendWorldBookInjections(
+        conversation: MutableList<JSONObject>,
+        worldBookContext: AiWorldBookContext,
+        position: String
+    ) {
+        worldBookContext.injections
+            .filter {
+                if (position == AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT) {
+                    it.position == position || it.position.isBlank()
+                } else {
+                    it.position == position
+                }
+            }
+            .forEach { injection ->
+                conversation += worldBookInjectionMessage(injection)
+            }
+    }
+
+    private fun insertWorldBookBeforeLastUser(
+        conversation: MutableList<JSONObject>,
+        worldBookContext: AiWorldBookContext
+    ) {
+        val messages = worldBookContext.injections
+            .filter { it.position == AiWorldBookEntry.POSITION_BEFORE_LAST_USER }
+            .map(::worldBookInjectionMessage)
+        if (messages.isEmpty()) return
+        val index = conversation.indexOfLast { it.optString("role") == "user" }
+            .takeIf { it >= 0 }
+            ?: conversation.size
+        conversation.addAll(index, messages)
+    }
+
+    private fun insertWorldBookByDepth(
+        conversation: MutableList<JSONObject>,
+        worldBookContext: AiWorldBookContext
+    ) {
+        worldBookContext.injections
+            .filter { it.position == AiWorldBookEntry.POSITION_INJECT_DEPTH }
+            .sortedByDescending { it.injectDepth }
+            .forEach { injection ->
+                val index = (conversation.size - injection.injectDepth).coerceIn(1, conversation.size)
+                conversation.add(index, worldBookInjectionMessage(injection))
+            }
+    }
+
+    private fun worldBookInjectionMessage(injection: AiWorldBookInjection): JSONObject {
+        return JSONObject().apply {
+            put("role", injection.role)
+            put("content", injection.content)
+        }
     }
 
     private fun estimateStaticRequestTokens(

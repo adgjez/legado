@@ -1288,6 +1288,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     id = id,
                     name = name,
                     description = safeString { book.description }.trim(),
+                    version = safeInt(1) { book.version }.takeIf { it > 0 } ?: 1,
+                    type = safeString { book.type }.trim()
+                        .takeIf { it == AiWorldBookConfig.TYPE_LOREBOOK }
+                        ?: AiWorldBookConfig.TYPE_LOREBOOK,
                     scope = scope,
                     bookKey = safeString { book.bookKey }.trim(),
                     enabled = safeBoolean(true) { book.enabled },
@@ -1307,22 +1311,37 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     private fun normalizeAiWorldBookEntries(value: List<AiWorldBookEntry>): List<AiWorldBookEntry> {
         return value.mapNotNull { entry ->
             val id = safeString { entry.id }.trim()
-            val title = safeString { entry.title }.trim()
+            val displayName = safeString { entry.name }.trim()
+                .ifBlank { safeString { entry.title }.trim() }
             val content = safeString { entry.content }.trim()
-            if (id.isEmpty() || title.isEmpty() || content.isEmpty()) {
+            if (id.isEmpty() || displayName.isEmpty() || content.isEmpty()) {
                 null
             } else {
+                val keywords = safeStringList { entry.keywords }
+                    .ifEmpty { safeStringList { entry.keys } }
+                val useRegex = safeBoolean(false) { entry.useRegex } ||
+                        safeBoolean(false) { entry.regexEnabled }
+                val constantActive = safeBoolean(false) { entry.constantActive } ||
+                        safeBoolean(false) { entry.constant }
                 AiWorldBookEntry(
                     id = id,
-                    title = title,
+                    title = displayName,
+                    name = displayName,
                     content = content.take(8_000),
-                    keys = safeStringList { entry.keys },
+                    keys = keywords,
+                    keywords = keywords,
                     secondaryKeys = safeStringList { entry.secondaryKeys },
                     excludeKeys = safeStringList { entry.excludeKeys },
-                    regexEnabled = safeBoolean(false) { entry.regexEnabled },
+                    regexEnabled = useRegex,
+                    useRegex = useRegex,
+                    caseSensitive = safeBoolean(false) { entry.caseSensitive },
                     enabled = safeBoolean(true) { entry.enabled },
-                    constant = safeBoolean(false) { entry.constant },
+                    constant = constantActive,
+                    constantActive = constantActive,
                     priority = safeInt(50) { entry.priority }.coerceIn(0, 100),
+                    position = normalizeWorldBookPosition(safeString { entry.position }.trim()),
+                    injectDepth = safeInt(4) { entry.injectDepth }.coerceIn(0, 64),
+                    role = normalizeWorldBookRole(safeString { entry.role }.trim()),
                     scanDepth = safeInt(8) { entry.scanDepth }.coerceIn(1, 64),
                     maxMatches = safeInt(1) { entry.maxMatches }.coerceIn(1, 20),
                     order = safeInt(0) { entry.order }
@@ -1332,6 +1351,25 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             .distinctBy { it.id }
             .sortedWith(compareByDescending<AiWorldBookEntry> { it.priority }.thenBy { it.order })
             .mapIndexed { index, entry -> entry.copy(order = index) }
+    }
+
+    private fun normalizeWorldBookPosition(position: String): String {
+        return when (position) {
+            AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT,
+            AiWorldBookEntry.POSITION_BEFORE_PROMPT,
+            AiWorldBookEntry.POSITION_INJECT_DEPTH,
+            AiWorldBookEntry.POSITION_BEFORE_LAST_USER -> position
+            else -> AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT
+        }
+    }
+
+    private fun normalizeWorldBookRole(role: String): String {
+        return when (role) {
+            AiWorldBookEntry.ROLE_SYSTEM,
+            AiWorldBookEntry.ROLE_USER,
+            AiWorldBookEntry.ROLE_ASSISTANT -> role
+            else -> AiWorldBookEntry.ROLE_USER
+        }
     }
 
     private fun normalizeAiWorldBookBindings(

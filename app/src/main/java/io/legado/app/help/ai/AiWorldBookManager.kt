@@ -17,18 +17,28 @@ data class AiWorldBookHit(
     val score: Int
 )
 
+data class AiWorldBookInjection(
+    val hit: AiWorldBookHit,
+    val role: String,
+    val position: String,
+    val injectDepth: Int,
+    val content: String
+)
+
 data class AiWorldBookContext(
-    val hits: List<AiWorldBookHit> = emptyList()
+    val injections: List<AiWorldBookInjection> = emptyList()
 ) {
     val isNotEmpty: Boolean
-        get() = hits.isNotEmpty()
+        get() = injections.isNotEmpty()
 
-    fun toSystemPrompt(maxChars: Int = 4_800): String {
-        if (hits.isEmpty()) return ""
+    val hits: List<AiWorldBookHit>
+        get() = injections.map { it.hit }
+
+    fun toTokenText(maxChars: Int = 4_800): String {
+        if (injections.isEmpty()) return ""
         val builder = StringBuilder()
-        builder.append("世界书命中条目：这些是当前对话必须优先遵循的设定、背景、规则或长期资料。")
-        builder.append("如果世界书和工具结果冲突，以工具结果为准；如果和用户本轮明确要求冲突，以用户本轮要求为准。\n")
-        hits.forEach { hit ->
+        injections.forEach { injection ->
+            val hit = injection.hit
             val line = buildString {
                 append("- [")
                 append(hit.worldBook.name)
@@ -40,7 +50,7 @@ data class AiWorldBookContext(
                     append(hit.matchedKeys.joinToString(","))
                 }
                 append(": ")
-                append(hit.entry.content.replace(Regex("\\s+"), " ").trim())
+                append(injection.content.replace(Regex("\\s+"), " ").trim())
             }
             if (builder.length + line.length + 1 > maxChars) return@forEach
             builder.append(line.take(1_200)).append('\n')
@@ -60,6 +70,9 @@ data class AiWorldBookContext(
                     .put("keys", JSONArray(hit.matchedKeys))
                     .put("bindingType", hit.binding?.targetType.orEmpty())
                     .put("bindingKey", hit.binding?.targetKey.orEmpty())
+                    .put("position", hit.entry.position)
+                    .put("role", hit.entry.role)
+                    .put("injectDepth", hit.entry.injectDepth)
                     .put("score", hit.score)
             )
         }
@@ -87,7 +100,7 @@ object AiWorldBookManager {
                         val scanText = messages.scanText(entry.scanDepth)
                         val matchedKeys = entry.matchedKeys(scanText)
                         val excluded = entry.isExcluded(scanText)
-                        val active = if (entry.constant) {
+                        val active = if (entry.constantActive || entry.constant) {
                             !excluded
                         } else {
                             matchedKeys.isNotEmpty() &&
@@ -102,9 +115,9 @@ object AiWorldBookManager {
                                 entry = entry,
                                 matchedKeys = matchedKeys,
                                 binding = activeBinding,
-                                score = entry.priority * 10 +
+                                        score = entry.priority * 10 +
                                         matchedKeys.sumOf { it.length.coerceAtMost(30) } +
-                                        if (entry.constant) 120 else 0
+                                        if (entry.constantActive || entry.constant) 120 else 0
                             )
                         }
                     }
@@ -114,7 +127,17 @@ object AiWorldBookManager {
             .sortedWith(compareByDescending<AiWorldBookHit> { it.score }.thenBy { it.entry.order })
             .take(maxEntries)
             .toList()
-        return AiWorldBookContext(hits)
+        return AiWorldBookContext(
+            hits.map { hit ->
+                AiWorldBookInjection(
+                    hit = hit,
+                    role = normalizeRole(hit.entry.role),
+                    position = normalizePosition(hit.entry.position),
+                    injectDepth = hit.entry.injectDepth.coerceIn(0, 64),
+                    content = hit.entry.content
+                )
+            }
+        )
     }
 
     fun listWorldBooks(arguments: JSONObject?): String {
@@ -140,6 +163,10 @@ object AiWorldBookManager {
         val updated = (old ?: AiWorldBookConfig(name = name)).copy(
             name = name,
             description = arguments.optString("description", old?.description.orEmpty()).trim(),
+            version = arguments.optInt("version", old?.version ?: 1).takeIf { it > 0 } ?: 1,
+            type = arguments.optString("type", old?.type ?: AiWorldBookConfig.TYPE_LOREBOOK)
+                .takeIf { it == AiWorldBookConfig.TYPE_LOREBOOK }
+                ?: AiWorldBookConfig.TYPE_LOREBOOK,
             scope = arguments.optString("scope", old?.scope ?: AiWorldBookConfig.SCOPE_GLOBAL)
                 .takeIf {
                     it == AiWorldBookConfig.SCOPE_GLOBAL ||
@@ -186,20 +213,36 @@ object AiWorldBookManager {
         val entryJson = arguments.optJSONObject("entry") ?: arguments
         val entryId = entryJson.optString("id").trim()
         val old = worldBook.entries.firstOrNull { it.id == entryId }
-        val title = entryJson.optString("title", old?.title.orEmpty()).trim()
+        val title = entryJson.optString("name")
+            .ifBlank { entryJson.optString("title", old?.title.orEmpty()) }
+            .trim()
         val content = entryJson.optString("content", old?.content.orEmpty()).trim()
         if (title.isBlank()) return jsonError("entry title is required")
         if (content.isBlank()) return jsonError("entry content is required")
+        val keywords = entryJson.optStringArray("keywords", old?.keywords?.takeIf { it.isNotEmpty() } ?: old?.keys ?: emptyList())
+            .ifEmpty { entryJson.optStringArray("keys", old?.keys ?: emptyList()) }
+        val useRegex = entryJson.optBoolean("useRegex", old?.useRegex ?: old?.regexEnabled ?: false) ||
+                entryJson.optBoolean("regexEnabled", false)
+        val constantActive = entryJson.optBoolean("constantActive", old?.constantActive ?: old?.constant ?: false) ||
+                entryJson.optBoolean("constant", false)
         val updated = (old ?: AiWorldBookEntry(title = title, content = content)).copy(
             title = title,
+            name = title,
             content = content.take(8_000),
-            keys = entryJson.optStringArray("keys", old?.keys ?: emptyList()),
+            keys = keywords,
+            keywords = keywords,
             secondaryKeys = entryJson.optStringArray("secondaryKeys", old?.secondaryKeys ?: emptyList()),
             excludeKeys = entryJson.optStringArray("excludeKeys", old?.excludeKeys ?: emptyList()),
-            regexEnabled = entryJson.optBoolean("regexEnabled", old?.regexEnabled ?: false),
+            regexEnabled = useRegex,
+            useRegex = useRegex,
+            caseSensitive = entryJson.optBoolean("caseSensitive", old?.caseSensitive ?: false),
             enabled = entryJson.optBoolean("enabled", old?.enabled ?: true),
-            constant = entryJson.optBoolean("constant", old?.constant ?: false),
-            priority = entryJson.optInt("priority", old?.priority ?: 50).coerceIn(0, 100),
+            constant = constantActive,
+            constantActive = constantActive,
+            priority = entryJson.optInt("priority", old?.priority ?: 50).coerceIn(-9999, 9999),
+            position = normalizePosition(entryJson.optString("position", old?.position ?: AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT)),
+            injectDepth = entryJson.optInt("injectDepth", old?.injectDepth ?: 4).coerceIn(0, 64),
+            role = normalizeRole(entryJson.optString("role", old?.role ?: AiWorldBookEntry.ROLE_USER)),
             scanDepth = entryJson.optInt("scanDepth", old?.scanDepth ?: 8).coerceIn(1, 64),
             maxMatches = entryJson.optInt("maxMatches", old?.maxMatches ?: 1).coerceIn(1, 20),
             order = entryJson.optInt("order", old?.order ?: worldBook.entries.size)
@@ -331,6 +374,121 @@ object AiWorldBookManager {
             .toString()
     }
 
+    fun importWorldBookJson(arguments: JSONObject?): String {
+        val raw = arguments?.optString("json")?.trim().orEmpty()
+        if (raw.isBlank()) return jsonError("json is required")
+        return runCatching {
+            val imported = parseStandardWorldBook(raw, AppConfig.aiWorldBookList.size)
+            val copyOnConflict = arguments?.optBoolean("copyOnConflict", true) != false
+            val existingIds = AppConfig.aiWorldBookList.map { it.id }.toSet()
+            val saving = if (copyOnConflict && imported.id in existingIds) {
+                imported.copy(id = AiWorldBookConfig(name = imported.name).id, name = "${imported.name} 副本")
+            } else {
+                imported
+            }
+            AppConfig.aiWorldBookList = AppConfig.aiWorldBookList
+                .filterNot { !copyOnConflict && it.id == saving.id }
+                .plus(saving)
+            JSONObject()
+                .put("ok", true)
+                .put("item", saving.toJson(includeEntries = true, includeBindings = true))
+                .toString()
+        }.getOrElse { throwable ->
+            jsonError(throwable.localizedMessage ?: throwable.javaClass.simpleName)
+        }
+    }
+
+    fun exportWorldBookJson(arguments: JSONObject?): String {
+        val id = arguments?.optString("id")?.trim().orEmpty()
+        val worldBook = AppConfig.aiWorldBookList.firstOrNull { it.id == id }
+            ?: return jsonError("world book not found")
+        return JSONObject()
+            .put("ok", true)
+            .put("json", exportStandardWorldBook(worldBook).toString())
+            .put("item", worldBook.toJson(includeEntries = true, includeBindings = true))
+            .toString()
+    }
+
+    fun parseStandardWorldBook(raw: String, order: Int = 0): AiWorldBookConfig {
+        val root = JSONObject(raw)
+        val data = root.optJSONObject("data") ?: root
+        val type = root.optString("type", data.optString("type", AiWorldBookConfig.TYPE_LOREBOOK))
+        require(type == AiWorldBookConfig.TYPE_LOREBOOK) { "unsupported world book type: $type" }
+        val entriesArray = data.optJSONArray("entries") ?: JSONArray()
+        val entries = buildList {
+            for (index in 0 until entriesArray.length()) {
+                val item = entriesArray.optJSONObject(index) ?: continue
+                val name = item.optString("name")
+                    .ifBlank { item.optString("title") }
+                    .trim()
+                val content = item.optString("content").trim()
+                if (name.isBlank() || content.isBlank()) continue
+                val keywords = item.optStringArray("keywords", item.optStringArray("keys", emptyList()))
+                val useRegex = item.optBoolean("useRegex", item.optBoolean("regexEnabled", false))
+                val constantActive = item.optBoolean("constantActive", item.optBoolean("constant", false))
+                add(
+                    AiWorldBookEntry(
+                        id = item.optString("id").trim().ifBlank { AiWorldBookEntry(title = name, content = content).id },
+                        title = name,
+                        name = name,
+                        content = content.take(8_000),
+                        keys = keywords,
+                        keywords = keywords,
+                        secondaryKeys = item.optStringArray("secondaryKeys", emptyList()),
+                        excludeKeys = item.optStringArray("excludeKeys", emptyList()),
+                        regexEnabled = useRegex,
+                        useRegex = useRegex,
+                        caseSensitive = item.optBoolean("caseSensitive", false),
+                        enabled = item.optBoolean("enabled", true),
+                        constant = constantActive,
+                        constantActive = constantActive,
+                        priority = item.optInt("priority", 0).coerceIn(-9999, 9999),
+                        position = normalizePosition(item.optString("position", AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT)),
+                        injectDepth = item.optInt("injectDepth", 4).coerceIn(0, 64),
+                        role = normalizeRole(item.optString("role", AiWorldBookEntry.ROLE_USER)),
+                        scanDepth = item.optInt("scanDepth", 4).coerceIn(1, 64),
+                        maxMatches = item.optInt("maxMatches", 1).coerceIn(1, 20),
+                        order = item.optInt("order", index)
+                    )
+                )
+            }
+        }
+        val name = data.optString("name").trim()
+        require(name.isNotBlank()) { "world book name is required" }
+        return AiWorldBookConfig(
+            id = data.optString("id").trim().ifBlank { AiWorldBookConfig(name = name).id },
+            name = name,
+            description = data.optString("description").trim(),
+            version = root.optInt("version", data.optInt("version", 1)).takeIf { it > 0 } ?: 1,
+            type = AiWorldBookConfig.TYPE_LOREBOOK,
+            enabled = data.optBoolean("enabled", true),
+            bindingVersion = 1,
+            maxEntries = data.optInt("maxEntries", 12).coerceIn(1, 40),
+            bindings = emptyList(),
+            order = order,
+            entries = entries
+        )
+    }
+
+    fun exportStandardWorldBook(worldBook: AiWorldBookConfig): JSONObject {
+        return JSONObject()
+            .put("version", worldBook.version.takeIf { it > 0 } ?: 1)
+            .put("type", AiWorldBookConfig.TYPE_LOREBOOK)
+            .put(
+                "data",
+                JSONObject()
+                    .put("id", worldBook.id)
+                    .put("name", worldBook.name)
+                    .put("description", worldBook.description)
+                    .put("enabled", worldBook.enabled)
+                    .put("entries", JSONArray().also { array ->
+                        worldBook.entries.forEach { entry ->
+                            array.put(entry.toStandardJson())
+                        }
+                    })
+            )
+    }
+
     private fun AiWorldBookConfig.activeBinding(context: AiMemoryContext?): AiWorldBookBinding? {
         return bindings
             .filter { it.enabled }
@@ -359,28 +517,34 @@ object AiWorldBookManager {
     }
 
     private fun AiWorldBookEntry.matchedKeys(text: String): List<String> {
-        if (keys.isEmpty()) return emptyList()
-        return keys.filter { key -> text.matchesWorldBookKey(key, regexEnabled) }
+        val activeKeywords = keywords.ifEmpty { keys }
+        if (activeKeywords.isEmpty()) return emptyList()
+        return activeKeywords.filter { key -> text.matchesWorldBookKey(key, useRegex || regexEnabled, caseSensitive) }
             .take(maxMatches)
     }
 
     private fun AiWorldBookEntry.matchesSecondary(text: String): Boolean {
         if (secondaryKeys.isEmpty()) return true
-        return secondaryKeys.any { text.matchesWorldBookKey(it, regexEnabled) }
+        return secondaryKeys.any { text.matchesWorldBookKey(it, useRegex || regexEnabled, caseSensitive) }
     }
 
     private fun AiWorldBookEntry.isExcluded(text: String): Boolean {
-        return excludeKeys.any { text.matchesWorldBookKey(it, regexEnabled) }
+        return excludeKeys.any { text.matchesWorldBookKey(it, useRegex || regexEnabled, caseSensitive) }
     }
 
-    private fun String.matchesWorldBookKey(key: String, regexEnabled: Boolean): Boolean {
+    private fun String.matchesWorldBookKey(key: String, regexEnabled: Boolean, caseSensitive: Boolean): Boolean {
         if (isBlank() || key.isBlank()) return false
         return if (regexEnabled) {
             runCatching {
-                Regex(key, setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)).containsMatchIn(this)
+                val options = if (caseSensitive) {
+                    setOf(RegexOption.MULTILINE)
+                } else {
+                    setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+                }
+                Regex(key, options).containsMatchIn(this)
             }.getOrDefault(false)
         } else {
-            contains(key, ignoreCase = true)
+            contains(key, ignoreCase = !caseSensitive)
         }
     }
 
@@ -392,6 +556,8 @@ object AiWorldBookManager {
             .put("id", id)
             .put("name", name)
             .put("description", description)
+            .put("version", version)
+            .put("type", type)
             .put("scope", scope)
             .put("bookKey", bookKey)
             .put("enabled", enabled)
@@ -418,17 +584,42 @@ object AiWorldBookManager {
         return JSONObject()
             .put("id", id)
             .put("title", title)
+            .put("name", name.ifBlank { title })
             .put("content", content)
             .put("keys", JSONArray(keys))
+            .put("keywords", JSONArray(keywords.ifEmpty { keys }))
             .put("secondaryKeys", JSONArray(secondaryKeys))
             .put("excludeKeys", JSONArray(excludeKeys))
             .put("regexEnabled", regexEnabled)
+            .put("useRegex", useRegex || regexEnabled)
+            .put("caseSensitive", caseSensitive)
             .put("enabled", enabled)
             .put("constant", constant)
+            .put("constantActive", constantActive || constant)
             .put("priority", priority)
+            .put("position", position)
+            .put("injectDepth", injectDepth)
+            .put("role", role)
             .put("scanDepth", scanDepth)
             .put("maxMatches", maxMatches)
             .put("order", order)
+    }
+
+    private fun AiWorldBookEntry.toStandardJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("name", name.ifBlank { title })
+            .put("enabled", enabled)
+            .put("priority", priority)
+            .put("position", normalizePosition(position))
+            .put("content", content)
+            .put("injectDepth", injectDepth)
+            .put("role", normalizeRole(role))
+            .put("keywords", JSONArray(keywords.ifEmpty { keys }))
+            .put("useRegex", useRegex || regexEnabled)
+            .put("caseSensitive", caseSensitive)
+            .put("scanDepth", scanDepth)
+            .put("constantActive", constantActive || constant)
     }
 
     private fun AiWorldBookBinding.toJson(): JSONObject {
@@ -495,6 +686,25 @@ object AiWorldBookManager {
             AiWorldBookBinding.TARGET_BOOK,
             AiWorldBookBinding.TARGET_SESSION -> targetType
             else -> ""
+        }
+    }
+
+    private fun normalizePosition(position: String): String {
+        return when (position) {
+            AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT,
+            AiWorldBookEntry.POSITION_BEFORE_PROMPT,
+            AiWorldBookEntry.POSITION_INJECT_DEPTH,
+            AiWorldBookEntry.POSITION_BEFORE_LAST_USER -> position
+            else -> AiWorldBookEntry.POSITION_AFTER_SYSTEM_PROMPT
+        }
+    }
+
+    private fun normalizeRole(role: String): String {
+        return when (role) {
+            AiWorldBookEntry.ROLE_SYSTEM,
+            AiWorldBookEntry.ROLE_USER,
+            AiWorldBookEntry.ROLE_ASSISTANT -> role
+            else -> AiWorldBookEntry.ROLE_USER
         }
     }
 

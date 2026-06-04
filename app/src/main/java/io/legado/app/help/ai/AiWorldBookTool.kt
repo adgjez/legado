@@ -13,6 +13,8 @@ object AiWorldBookTool {
     private const val TOOL_LIST_WORLD_BOOK_BINDINGS = "list_world_book_bindings"
     private const val TOOL_UPSERT_WORLD_BOOK_BINDING = "upsert_world_book_binding"
     private const val TOOL_DELETE_WORLD_BOOK_BINDING = "delete_world_book_binding"
+    private const val TOOL_IMPORT_WORLD_BOOK_JSON = "import_world_book_json"
+    private const val TOOL_EXPORT_WORLD_BOOK_JSON = "export_world_book_json"
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -55,6 +57,16 @@ object AiWorldBookTool {
                 name = TOOL_DELETE_WORLD_BOOK_BINDING,
                 definition = deleteWorldBookBindingDefinition(),
                 execute = { args -> AiWorldBookManager.deleteWorldBookBinding(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_IMPORT_WORLD_BOOK_JSON,
+                definition = importWorldBookJsonDefinition(),
+                execute = { args -> AiWorldBookManager.importWorldBookJson(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_EXPORT_WORLD_BOOK_JSON,
+                definition = exportWorldBookJsonDefinition(),
+                execute = { args -> AiWorldBookManager.exportWorldBookJson(args) }
             )
         )
     }
@@ -74,6 +86,8 @@ object AiWorldBookTool {
             .put("id", JSONObject().put("type", "string"))
             .put("name", JSONObject().put("type", "string"))
             .put("description", JSONObject().put("type", "string"))
+            .put("version", JSONObject().put("type", "integer"))
+            .put("type", JSONObject().put("type", "string").put("enum", JSONArray(listOf("lorebook"))))
             .put("scope", JSONObject().put("type", "string").put("enum", JSONArray(listOf("global", "book", "session"))))
             .put("bookKey", JSONObject().put("type", "string"))
             .put("enabled", JSONObject().put("type", "boolean"))
@@ -96,22 +110,30 @@ object AiWorldBookTool {
 
     private fun upsertWorldBookEntryDefinition() = functionDefinition(
         name = TOOL_UPSERT_WORLD_BOOK_ENTRY,
-        description = "新增或更新世界书条目。keys 命中时注入，constant=true 时常驻注入，excludeKeys 命中时不注入。",
+        description = "新增或更新标准 lorebook 世界书条目。keywords 命中时按 position/role/injectDepth 注入，constantActive=true 时常驻注入。",
         properties = JSONObject()
             .put("worldBookId", JSONObject().put("type", "string"))
             .put("entry", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject()
                     .put("id", JSONObject().put("type", "string"))
+                    .put("name", JSONObject().put("type", "string"))
                     .put("title", JSONObject().put("type", "string"))
                     .put("content", JSONObject().put("type", "string"))
+                    .put("keywords", stringArraySchema())
                     .put("keys", stringArraySchema())
                     .put("secondaryKeys", stringArraySchema())
                     .put("excludeKeys", stringArraySchema())
+                    .put("useRegex", JSONObject().put("type", "boolean"))
                     .put("regexEnabled", JSONObject().put("type", "boolean").put("description", "keys/secondaryKeys/excludeKeys 是否按正则匹配"))
+                    .put("caseSensitive", JSONObject().put("type", "boolean"))
                     .put("enabled", JSONObject().put("type", "boolean"))
+                    .put("constantActive", JSONObject().put("type", "boolean"))
                     .put("constant", JSONObject().put("type", "boolean"))
-                    .put("priority", JSONObject().put("type", "integer").put("minimum", 0).put("maximum", 100))
+                    .put("priority", JSONObject().put("type", "integer").put("minimum", -9999).put("maximum", 9999))
+                    .put("position", JSONObject().put("type", "string").put("enum", JSONArray(listOf("after_system_prompt", "before_prompt", "inject_depth", "before_last_user"))))
+                    .put("injectDepth", JSONObject().put("type", "integer").put("minimum", 0).put("maximum", 64))
+                    .put("role", JSONObject().put("type", "string").put("enum", JSONArray(listOf("system", "user", "assistant"))))
                     .put("scanDepth", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 64))
                     .put("maxMatches", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 20))
                     .put("order", JSONObject().put("type", "integer"))
@@ -162,6 +184,23 @@ object AiWorldBookTool {
             .put("targetType", targetTypeSchema())
             .put("targetKey", JSONObject().put("type", "string")),
         required = listOf("worldBookId")
+    )
+
+    private fun importWorldBookJsonDefinition() = functionDefinition(
+        name = TOOL_IMPORT_WORLD_BOOK_JSON,
+        description = "导入标准 RikkaHub lorebook JSON，格式为 {version,type:'lorebook',data:{id,name,description,enabled,entries}}。",
+        properties = JSONObject()
+            .put("json", JSONObject().put("type", "string"))
+            .put("copyOnConflict", JSONObject().put("type", "boolean").put("description", "id 冲突时是否生成副本，默认 true")),
+        required = listOf("json")
+    )
+
+    private fun exportWorldBookJsonDefinition() = functionDefinition(
+        name = TOOL_EXPORT_WORLD_BOOK_JSON,
+        description = "导出指定世界书为标准 RikkaHub lorebook JSON。",
+        properties = JSONObject()
+            .put("id", JSONObject().put("type", "string")),
+        required = listOf("id")
     )
 
     private fun functionDefinition(

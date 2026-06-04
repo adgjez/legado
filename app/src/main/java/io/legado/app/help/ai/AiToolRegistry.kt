@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 6
+    private const val TOOL_SETTINGS_VERSION = 7
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -38,6 +38,10 @@ object AiToolRegistry {
         "list_world_book_bindings",
         "upsert_world_book_binding",
         "delete_world_book_binding"
+    )
+    private val version7AddedDefaultTools = setOf(
+        "import_world_book_json",
+        "export_world_book_json"
     )
 
     val readSafeToolNames = setOf(
@@ -119,6 +123,8 @@ object AiToolRegistry {
         "list_world_book_bindings",
         "upsert_world_book_binding",
         "delete_world_book_binding",
+        "import_world_book_json",
+        "export_world_book_json",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -172,6 +178,8 @@ object AiToolRegistry {
         "list_world_book_bindings" to "读取世界书启用",
         "upsert_world_book_binding" to "启用世界书",
         "delete_world_book_binding" to "移除世界书启用",
+        "import_world_book_json" to "导入世界书 JSON",
+        "export_world_book_json" to "导出世界书 JSON",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -225,6 +233,8 @@ object AiToolRegistry {
         "list_world_book_bindings" to "世界书",
         "upsert_world_book_binding" to "世界书",
         "delete_world_book_binding" to "世界书",
+        "import_world_book_json" to "世界书",
+        "export_world_book_json" to "世界书",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -295,6 +305,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 4) addAll(version4AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 5) addAll(version5AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 6) addAll(version6AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 7) addAll(version7AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }

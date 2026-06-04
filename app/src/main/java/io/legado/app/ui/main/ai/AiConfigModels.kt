@@ -48,6 +48,8 @@ data class AiWorldBookConfig(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val description: String = "",
+    val version: Int = 1,
+    val type: String = TYPE_LOREBOOK,
     val scope: String = SCOPE_GLOBAL,
     val bookKey: String = "",
     val enabled: Boolean = true,
@@ -58,6 +60,7 @@ data class AiWorldBookConfig(
     val entries: List<AiWorldBookEntry> = emptyList()
 ) {
     companion object {
+        const val TYPE_LOREBOOK = "lorebook"
         const val SCOPE_GLOBAL = "global"
         const val SCOPE_BOOK = "book"
         const val SCOPE_SESSION = "session"
@@ -85,18 +88,37 @@ data class AiWorldBookBinding(
 data class AiWorldBookEntry(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
+    val name: String = "",
     val content: String,
     val keys: List<String> = emptyList(),
+    val keywords: List<String> = emptyList(),
     val secondaryKeys: List<String> = emptyList(),
     val excludeKeys: List<String> = emptyList(),
     val regexEnabled: Boolean = false,
+    val useRegex: Boolean = false,
+    val caseSensitive: Boolean = false,
     val enabled: Boolean = true,
     val constant: Boolean = false,
+    val constantActive: Boolean = false,
     val priority: Int = 50,
+    val position: String = POSITION_AFTER_SYSTEM_PROMPT,
+    val injectDepth: Int = 4,
+    val role: String = ROLE_USER,
     val scanDepth: Int = 8,
     val maxMatches: Int = 1,
     val order: Int = 0
-)
+) {
+    companion object {
+        const val POSITION_AFTER_SYSTEM_PROMPT = "after_system_prompt"
+        const val POSITION_BEFORE_PROMPT = "before_prompt"
+        const val POSITION_INJECT_DEPTH = "inject_depth"
+        const val POSITION_BEFORE_LAST_USER = "before_last_user"
+
+        const val ROLE_SYSTEM = "system"
+        const val ROLE_USER = "user"
+        const val ROLE_ASSISTANT = "assistant"
+    }
+}
 
 @Keep
 data class AiContextSummary(
