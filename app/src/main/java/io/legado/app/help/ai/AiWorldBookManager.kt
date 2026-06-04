@@ -1,7 +1,9 @@
 package io.legado.app.help.ai
 
 import io.legado.app.help.config.AppConfig
+import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import org.json.JSONArray
@@ -11,6 +13,7 @@ data class AiWorldBookHit(
     val worldBook: AiWorldBookConfig,
     val entry: AiWorldBookEntry,
     val matchedKeys: List<String>,
+    val binding: AiWorldBookBinding?,
     val score: Int
 )
 
@@ -55,6 +58,8 @@ data class AiWorldBookContext(
                     .put("entryId", hit.entry.id)
                     .put("entryTitle", hit.entry.title)
                     .put("keys", JSONArray(hit.matchedKeys))
+                    .put("bindingType", hit.binding?.targetType.orEmpty())
+                    .put("bindingKey", hit.binding?.targetKey.orEmpty())
                     .put("score", hit.score)
             )
         }
@@ -71,34 +76,40 @@ object AiWorldBookManager {
         messages: List<AiChatMessage>,
         maxEntries: Int = 12
     ): AiWorldBookContext {
-        val queryText = messages
-            .takeLast(8)
-            .joinToString("\n") { it.content }
-            .take(8_000)
-        if (queryText.isBlank()) return AiWorldBookContext()
         val hits = AppConfig.aiWorldBookList
             .asSequence()
             .filter { it.enabled && it.entries.isNotEmpty() }
-            .filter { it.matchesScope(context) }
             .flatMap { worldBook ->
+                val activeBinding = worldBook.activeBinding(context) ?: return@flatMap emptySequence()
                 worldBook.entries.asSequence()
                     .filter { it.enabled }
                     .mapNotNull { entry ->
-                        val matchedKeys = entry.matchedKeys(queryText)
-                        val active = entry.constant || matchedKeys.isNotEmpty()
-                        if (!active || entry.isExcluded(queryText) || !entry.matchesSecondary(queryText)) {
+                        val scanText = messages.scanText(entry.scanDepth)
+                        val matchedKeys = entry.matchedKeys(scanText)
+                        val excluded = entry.isExcluded(scanText)
+                        val active = if (entry.constant) {
+                            !excluded
+                        } else {
+                            matchedKeys.isNotEmpty() &&
+                                    !excluded &&
+                                    entry.matchesSecondary(scanText)
+                        }
+                        if (!active) {
                             null
                         } else {
                             AiWorldBookHit(
                                 worldBook = worldBook,
                                 entry = entry,
                                 matchedKeys = matchedKeys,
+                                binding = activeBinding,
                                 score = entry.priority * 10 +
                                         matchedKeys.sumOf { it.length.coerceAtMost(30) } +
                                         if (entry.constant) 120 else 0
                             )
                         }
                     }
+                    .sortedWith(compareByDescending<AiWorldBookHit> { it.score }.thenBy { it.entry.order })
+                    .take(worldBook.maxEntries)
             }
             .sortedWith(compareByDescending<AiWorldBookHit> { it.score }.thenBy { it.entry.order })
             .take(maxEntries)
@@ -220,30 +231,57 @@ object AiWorldBookManager {
             .toString()
     }
 
-    private fun AiWorldBookConfig.matchesScope(context: AiMemoryContext?): Boolean {
-        return when (scope) {
-            AiWorldBookConfig.SCOPE_BOOK -> context?.bookKey?.isNotBlank() == true &&
-                    bookKey.isNotBlank() &&
-                    context.bookKey == bookKey
-            AiWorldBookConfig.SCOPE_SESSION -> context?.sessionId?.isNotBlank() == true &&
-                    bookKey.isNotBlank() &&
-                    context.sessionId == bookKey
-            else -> true
+    private fun AiWorldBookConfig.activeBinding(context: AiMemoryContext?): AiWorldBookBinding? {
+        return bindings
+            .filter { it.enabled }
+            .firstOrNull { it.matches(context) }
+    }
+
+    private fun AiWorldBookBinding.matches(context: AiMemoryContext?): Boolean {
+        return when (targetType) {
+            AiWorldBookBinding.TARGET_GLOBAL -> true
+            AiWorldBookBinding.TARGET_CHAT -> context?.scope == AiMemoryItem.SCOPE_GLOBAL
+            AiWorldBookBinding.TARGET_READ_AI -> context?.scope == AiMemoryItem.SCOPE_BOOK
+            AiWorldBookBinding.TARGET_BOOK -> context?.bookKey?.isNotBlank() == true &&
+                    targetKey.isNotBlank() &&
+                    context.bookKey == targetKey
+            AiWorldBookBinding.TARGET_SESSION -> context?.sessionId?.isNotBlank() == true &&
+                    targetKey.isNotBlank() &&
+                    context.sessionId == targetKey
+            else -> false
         }
+    }
+
+    private fun List<AiChatMessage>.scanText(scanDepth: Int): String {
+        return takeLast(scanDepth.coerceAtLeast(1))
+            .joinToString("\n") { it.content }
+            .take(12_000)
     }
 
     private fun AiWorldBookEntry.matchedKeys(text: String): List<String> {
         if (keys.isEmpty()) return emptyList()
-        return keys.filter { key -> text.contains(key, ignoreCase = true) }
+        return keys.filter { key -> text.matchesWorldBookKey(key, regexEnabled) }
+            .take(maxMatches)
     }
 
     private fun AiWorldBookEntry.matchesSecondary(text: String): Boolean {
         if (secondaryKeys.isEmpty()) return true
-        return secondaryKeys.any { text.contains(it, ignoreCase = true) }
+        return secondaryKeys.any { text.matchesWorldBookKey(it, regexEnabled) }
     }
 
     private fun AiWorldBookEntry.isExcluded(text: String): Boolean {
-        return excludeKeys.any { text.contains(it, ignoreCase = true) }
+        return excludeKeys.any { text.matchesWorldBookKey(it, regexEnabled) }
+    }
+
+    private fun String.matchesWorldBookKey(key: String, regexEnabled: Boolean): Boolean {
+        if (isBlank() || key.isBlank()) return false
+        return if (regexEnabled) {
+            runCatching {
+                Regex(key, setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)).containsMatchIn(this)
+            }.getOrDefault(false)
+        } else {
+            contains(key, ignoreCase = true)
+        }
     }
 
     private fun AiWorldBookConfig.toJson(includeEntries: Boolean): JSONObject {
