@@ -4,8 +4,14 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.data.entities.AiAgentJob
+import io.legado.app.data.entities.AiAgentSession
+import io.legado.app.data.entities.AiMemoryItem
+import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiMemoryContext
 import io.legado.app.help.ai.AiTaskKeepAlive
+import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +19,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import splitties.init.appCtx
 import java.util.UUID
 
@@ -27,6 +34,8 @@ class AiChatViewModel : ViewModel() {
 
     private val messages = mutableListOf<AiChatMessage>()
     private var currentSessionId: String = AppConfig.aiCurrentChatSessionId ?: UUID.randomUUID().toString()
+    private var windowSkillIds: Set<String> = emptySet()
+    private var windowMcpServerIds: Set<String> = emptySet()
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
@@ -38,6 +47,7 @@ class AiChatViewModel : ViewModel() {
         private var activeThinkingKey: String? = null
         private var activeThinkingLabel: String? = null
         private var activePendingAssistantMessageId: String? = null
+        private var activeAgentRun: AiAgentStateStore.Run? = null
         private val activeToolMessageIds = linkedMapOf<String, String>()
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
         private const val MAX_STORED_TEXT_CHARS = 20_000
@@ -73,6 +83,20 @@ class AiChatViewModel : ViewModel() {
         append(AiChatMessage(role = AiChatMessage.Role.USER, content = userContent))
         activePendingContent = ""
         val requestMessages = snapshotForRequest()
+        val activeSkills = activeWindowSkills()
+        val activeMcpServerIds = windowMcpServerIds
+        val agentRun = AiAgentStateStore.startRun(
+            sessionId = requestSessionId,
+            scope = AiAgentSession.SCOPE_CHAT,
+            type = AiAgentJob.TYPE_CHAT,
+            currentGoal = userContent,
+            currentTask = "AI 回复生成",
+            inputJson = JSONObject()
+                .put("messageCount", requestMessages.size)
+                .put("userContent", userContent.take(2_000))
+                .toString()
+        )
+        activeAgentRun = agentRun
         var updatedContextSummary = currentSessionSummary()
         val keepAliveId = AiTaskKeepAlive.retain(
             title = "AI回复生成中",
@@ -104,7 +128,15 @@ class AiChatViewModel : ViewModel() {
                         contextSummary = updatedContextSummary,
                         onContextSummary = { summary ->
                             updatedContextSummary = summary
-                        }
+                        },
+                        agentRun = agentRun,
+                        memoryContext = AiMemoryContext(
+                            scope = AiMemoryItem.SCOPE_GLOBAL,
+                            sessionId = requestSessionId,
+                            title = "AI Chat"
+                        ),
+                        activeSkills = activeSkills,
+                        extraTools = AiToolRegistry.resolveMcpTools(activeMcpServerIds)
                     )
                 }
                 targetFor(requestSessionId).setRequesting(false)
@@ -114,6 +146,12 @@ class AiChatViewModel : ViewModel() {
                     targetFor(requestSessionId).finishActiveThinking(removeIfBlank = true)
                     activePendingContent = ""
                     activeToolMessageIds.clear()
+                    activeAgentRun = null
+                    AiAgentStateStore.finish(
+                        agentRun,
+                        success = true,
+                        outputJson = JSONObject().put("contentChars", content.length).toString()
+                    )
                     updatedContextSummary?.let { targetFor(requestSessionId).saveContextSummary(requestSessionId, it) }
                     targetFor(requestSessionId).replacePendingAssistant(content.ifBlank { pendingThinkingLabel })
                 }.onFailure { throwable ->
@@ -122,6 +160,8 @@ class AiChatViewModel : ViewModel() {
                     activePendingContent = ""
                     activeToolMessageIds.clear()
                     if (throwable is CancellationException) {
+                        activeAgentRun = null
+                        AiAgentStateStore.cancel(agentRun, "User stopped generation")
                         targetFor(requestSessionId).replacePendingAssistant(cancelledText)
                         return@onFailure
                     }
@@ -131,6 +171,8 @@ class AiChatViewModel : ViewModel() {
                         cause = throwable
                     )
                     AppLog.put("AI 请求失败\n${chatError.debugLog}", chatError)
+                    activeAgentRun = null
+                    AiAgentStateStore.finish(agentRun, success = false, error = chatError.message)
                     targetFor(requestSessionId).failPendingAssistant(failureMessage(chatError.message))
                 }
             } finally {
@@ -145,6 +187,8 @@ class AiChatViewModel : ViewModel() {
         activeJob = null
         activeSessionId = null
         activePendingContent = ""
+        AiAgentStateStore.cancel(activeAgentRun, "User stopped generation")
+        activeAgentRun = null
         finishActiveThinking(fallback = cancelledText)
         finishActiveTools(false, cancelledText)
         activePendingAssistantMessageId = null
@@ -428,6 +472,22 @@ class AiChatViewModel : ViewModel() {
             .map { it.copy(content = sanitizeImagePayloadsForRequest(it.content)) }
     }
 
+    fun activeWindowSkillIds(): Set<String> = windowSkillIds
+
+    fun setActiveWindowSkillIds(ids: Set<String>) {
+        windowSkillIds = ids.filterTo(linkedSetOf()) { id ->
+            AppConfig.aiSkillList.any { it.id == id }
+        }
+    }
+
+    fun activeWindowMcpServerIds(): Set<String> = windowMcpServerIds
+
+    fun setActiveWindowMcpServerIds(ids: Set<String>) {
+        windowMcpServerIds = ids.filterTo(linkedSetOf()) { id ->
+            AppConfig.aiMcpServerList.any { it.id == id && it.enabled }
+        }
+    }
+
     fun currentContextSummary() = currentSessionSummary()
 
     fun restoreCurrentSession() {
@@ -545,6 +605,11 @@ class AiChatViewModel : ViewModel() {
 
     private fun currentSessionSummary() =
         AppConfig.aiChatSessionList.firstOrNull { it.id == currentSessionId }?.contextSummary
+
+    private fun activeWindowSkills(): List<AiSkillConfig> {
+        if (windowSkillIds.isEmpty()) return emptyList()
+        return AppConfig.aiSkillList.filter { it.id in windowSkillIds }
+    }
 
     fun saveContextSummary(sessionId: String, summary: io.legado.app.ui.main.ai.AiContextSummary) {
         if (!AppConfig.aiContextCompressionEnabled || !summary.isValid) return

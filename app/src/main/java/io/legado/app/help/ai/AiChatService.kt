@@ -1,6 +1,6 @@
 package io.legado.app.help.ai
 
-import io.legado.app.R
+import io.legado.app.data.entities.AiAgentTrace
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -13,13 +13,9 @@ import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import io.legado.app.ui.main.ai.AiSkillConfig
 import org.json.JSONArray
 import org.json.JSONObject
-import splitties.init.appCtx
-import java.io.IOException
-import java.net.SocketException
 import java.util.concurrent.TimeUnit
 
 data class AiUsageStats(
@@ -49,63 +45,14 @@ data class AiSingleToolCallResult(
 
 object AiChatService {
 
-    private const val MAX_TOOL_ROUNDS = 12
-    private const val MAX_SEARCH_RESULT_CARDS = 8
-    private const val DEFAULT_TOOL_TIMEOUT_MILLIS = 120_000L
-    private const val IMAGE_TOOL_TIMEOUT_MILLIS = 300_000L
     private const val NETWORK_ABORT_RETRY_COUNT = 1
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
-    private val imageToolNames = setOf(
-        "generate_image",
-        "generate_book_character_avatar"
-    )
-    private val retryableToolNames = setOf(
-        "query_bookshelf",
-        "get_bookshelf_book_info",
-        "list_book_chapters",
-        "read_book_chapter_content",
-        "query_read_records",
-        "list_book_sources",
-        "search_book_source",
-        "get_book_source",
-        "fetch_source_html",
-        "debug_book_source",
-        "reading_ajax",
-        "reading_webview",
-        "capture_web_requests",
-        "search_web_tavily",
-        "generate_image",
-        "generate_book_character_avatar",
-        "list_book_characters",
-        "list_book_character_relations",
-        "get_app_settings"
-    )
-
-    private data class ToolCall(
-        val id: String,
-        val name: String,
-        val arguments: String
-    )
 
     private data class ToolCallBuilder(
         var id: String = "",
         var name: String = "",
         val arguments: StringBuilder = StringBuilder()
-    )
-
-    private data class ToolEvent(
-        val name: String,
-        val stage: String,
-        val content: String,
-        val success: Boolean = true
-    )
-
-    private data class AssistantTurn(
-        val content: String,
-        val toolCalls: List<ToolCall>,
-        val rawMessage: JSONObject,
-        val reasoningContent: String = ""
     )
 
     suspend fun chat(messages: List<AiChatMessage>): String {
@@ -117,6 +64,7 @@ object AiChatService {
         tool: AiResolvedTool,
         modelConfigOverride: AiModelConfig? = null,
         promptCacheKeyOverride: String? = null,
+        activeSkills: List<AiSkillConfig> = emptyList(),
         onUsage: (AiUsageStats) -> Unit = {}
     ): AiSingleToolCallResult {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
@@ -142,9 +90,13 @@ object AiChatService {
             append("provider=${provider?.name.orEmpty()}").append('\n')
             append("singleTool=${tool.name}").append('\n')
         }
-        val reserveTokens = estimateStaticRequestTokens(messages, listOf(tool))
+        val reserveTokens = estimateStaticRequestTokens(messages, listOf(tool), activeSkills)
         val preparedContext = AiContextManager.prepare(messages, null, reserveTokens)
-        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
+        val conversation = buildConversation(
+            messages = preparedContext.messages,
+            contextSummary = preparedContext.summary,
+            activeSkills = activeSkills
+        )
         return runCatching {
             val assistantTurn = requestCompletionStreamWithRetry(
                 chatUrl = chatUrl,
@@ -225,7 +177,10 @@ object AiChatService {
         extraTools: List<AiResolvedTool> = emptyList(),
         modelConfigOverride: AiModelConfig? = null,
         promptCacheKeyOverride: String? = null,
-        onUsage: (AiUsageStats) -> Unit = {}
+        activeSkills: List<AiSkillConfig> = emptyList(),
+        onUsage: (AiUsageStats) -> Unit = {},
+        agentRun: AiAgentStateStore.Run? = null,
+        memoryContext: AiMemoryContext? = null
     ): String {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
         val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
@@ -261,7 +216,7 @@ object AiChatService {
             append("provider=${provider?.name.orEmpty()}").append('\n')
             append("tools=${tools.joinToString { it.name }}").append('\n')
         }
-        val reserveTokens = estimateStaticRequestTokens(messages, tools)
+        val reserveTokens = estimateStaticRequestTokens(messages, tools, activeSkills)
         val preparedContext = AiContextManager.prepare(messages, contextSummary, reserveTokens)
         val estimatedTotalTokens = reserveTokens + preparedContext.inputTokens
         preparedContext.summary
@@ -276,7 +231,23 @@ object AiChatService {
                 put("totalTokens", estimatedTotalTokens)
             }
         )
-        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
+        val retrievedMemory = AiMemoryRetriever.retrieve(memoryContext, preparedContext.messages)
+        if (retrievedMemory.isNotEmpty) {
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_MEMORY_RETRIEVED,
+                payload = JSONObject()
+                    .put("items", retrievedMemory.items.size)
+                    .put("fragments", retrievedMemory.fragments.size),
+                success = true
+            )
+        }
+        val conversation = buildConversation(
+            messages = preparedContext.messages,
+            contextSummary = preparedContext.summary,
+            retrievedMemory = retrievedMemory,
+            activeSkills = activeSkills
+        )
         if (estimatedTotalTokens > preparedContext.limitTokens) {
             throw AiChatException(
                 message = "当前 AI 静态配置或本轮输入超过上下文限制，已自动压缩但仍无法放入，请减少系统提示词、Skill、工具或本次输入。",
@@ -286,27 +257,73 @@ object AiChatService {
             )
         }
 
+        var totalUsage = AiUsageStats()
+        val tracedUsage: (AiUsageStats) -> Unit = { stats ->
+            totalUsage += stats
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_MODEL_RESPONSE,
+                payload = JSONObject().put("stage", "usage"),
+                success = true,
+                usage = stats
+            )
+            onUsage(stats)
+        }
         return runCatching {
-            executeToolLoop(
-                baseUrl = baseUrl,
-                chatUrl = chatUrl,
-                apiMode = apiMode,
-                model = model,
-                providerApiKey = provider?.apiKey.orEmpty(),
-                providerHeaders = provider?.headers.orEmpty(),
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_MODEL_REQUEST,
+                payload = JSONObject()
+                    .put("estimatedTotalTokens", estimatedTotalTokens)
+                    .put("tools", tools.map { it.name }.joinToString(","))
+            )
+            AiAgentRuntime.runToolLoop(
                 conversation = conversation,
                 tools = tools,
                 requestLog = requestLog,
-                onPartial = onPartial,
-                onThinking = onThinking,
                 onStatus = onStatus,
                 includeStructuredBlocks = includeStructuredBlocks,
-                promptCacheKey = promptCacheKey,
+                apiMode = apiMode,
                 useAllTools = useAllTools,
                 extraToolNames = extraToolNames,
-                onUsage = onUsage
+                agentRun = agentRun
+            ) { roundNo, roundMessages, roundTools ->
+                requestCompletionStreamWithRetry(
+                    chatUrl = chatUrl,
+                    apiMode = apiMode,
+                    model = model,
+                    providerApiKey = provider?.apiKey.orEmpty(),
+                    providerHeaders = provider?.headers.orEmpty(),
+                    messages = roundMessages,
+                    tools = roundTools,
+                    promptCacheKey = promptCacheKey,
+                    requestLog = requestLog,
+                    round = roundNo,
+                    onPartial = onPartial,
+                    onThinking = onThinking,
+                    onUsage = tracedUsage
+                )
+            }
+        }.onSuccess { content ->
+            AiMemoryExtractor.recordConversation(memoryContext, messages, content)
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_STATUS,
+                payload = JSONObject()
+                    .put("stage", "chat_success")
+                    .put("outputChars", content.length)
+                    .put("totalTokens", totalUsage.totalTokens),
+                success = true,
+                usage = totalUsage
             )
         }.getOrElse { throwable ->
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_ERROR,
+                payload = JSONObject()
+                    .put("message", throwable.localizedMessage ?: throwable.javaClass.simpleName),
+                success = false
+            )
             if (throwable is AiChatException) {
                 throw throwable
             }
@@ -318,331 +335,12 @@ object AiChatService {
         }
     }
 
-    private suspend fun executeToolLoop(
-        baseUrl: String,
-        chatUrl: String,
-        apiMode: String,
-        model: String,
-        providerApiKey: String,
-        providerHeaders: String,
-        conversation: MutableList<JSONObject>,
-        tools: List<AiResolvedTool>,
-        requestLog: StringBuilder,
-        onPartial: (String) -> Unit,
-        onThinking: (String) -> Unit,
-        onStatus: (JSONObject) -> Unit,
-        includeStructuredBlocks: Boolean,
-        promptCacheKey: String?,
-        useAllTools: Boolean,
-        extraToolNames: Set<String>,
-        onUsage: (AiUsageStats) -> Unit
-    ): String {
-        val toolMap = tools.associateBy { it.name }
-        val searchResultCards = JSONArray()
-        val toolEvents = JSONArray()
-        repeat(MAX_TOOL_ROUNDS) { round ->
-            val roundNo = round + 1
-            val thinkingKey = "thinking_$roundNo"
-            onStatus(
-                JSONObject().apply {
-                    put("key", thinkingKey)
-                    put("kind", "thinking")
-                    put("stage", "start")
-                    put("round", roundNo)
-                    put("label", appCtx.getString(R.string.ai_chat_thinking))
-                    put("success", true)
-                }
-            )
-            val assistantTurn = requestCompletionStreamWithRetry(
-                chatUrl = chatUrl,
-                apiMode = apiMode,
-                model = model,
-                providerApiKey = providerApiKey,
-                providerHeaders = providerHeaders,
-                messages = conversation,
-                tools = tools,
-                promptCacheKey = promptCacheKey,
-                requestLog = requestLog,
-                round = roundNo,
-                onPartial = onPartial,
-                onThinking = onThinking,
-                onUsage = onUsage
-            )
-            conversation += assistantTurn.rawMessage
-            if (assistantTurn.toolCalls.isEmpty()) {
-                onStatus(
-                    JSONObject().apply {
-                        put("key", thinkingKey)
-                        put("kind", "thinking")
-                        put("stage", "finish")
-                        put("round", roundNo)
-                        put("label", appCtx.getString(R.string.ai_chat_thinking_done))
-                        put("content", assistantTurn.reasoningContent)
-                        put("removeIfBlank", assistantTurn.reasoningContent.isBlank())
-                        put("success", true)
-                    }
-                )
-                val content = assistantTurn.content
-                if (content.isBlank()) {
-                    throw AiChatException(
-                        message = "Empty response",
-                        debugLog = requestLog.toSafeDebugLog()
-                    )
-                }
-                return if (includeStructuredBlocks) {
-                    appendStructuredBlocks(content, searchResultCards, toolEvents)
-                } else {
-                    content
-                }
-            }
-            onStatus(
-                JSONObject().apply {
-                    put("key", thinkingKey)
-                    put("kind", "thinking")
-                    put("stage", "finish")
-                    put("round", roundNo)
-                    put("label", appCtx.getString(R.string.ai_chat_thinking_done))
-                    put("content", assistantTurn.reasoningContent)
-                    put("fallback", appCtx.getString(R.string.ai_tool_status_calling))
-                    put("success", true)
-                }
-            )
-            assistantTurn.toolCalls.forEach { toolCall ->
-                onStatus(
-                    JSONObject().apply {
-                        put("key", toolCall.id.ifBlank { toolCall.name })
-                        put("kind", "tool")
-                        put("name", toolCall.name)
-                        put("stage", "call")
-                        put("label", appCtx.getString(R.string.ai_tool_status_calling))
-                        put("content", toolCall.arguments)
-                        put("success", true)
-                    }
-                )
-                toolEvents.put(
-                    JSONObject().apply {
-                        put("name", toolCall.name)
-                        put("stage", "call")
-                        put("content", toolCall.arguments)
-                        put("success", true)
-                    }
-                )
-                val result = executeToolCall(toolCall, toolMap, useAllTools, extraToolNames)
-                collectSearchResultCards(toolCall, result, searchResultCards)
-                val resultSuccess = parseToolResultSuccess(result)
-                toolEvents.put(
-                    JSONObject().apply {
-                        put("name", toolCall.name)
-                        put("stage", "result")
-                        put("content", result)
-                        put("success", resultSuccess)
-                    }
-                )
-                onStatus(
-                    JSONObject().apply {
-                        put("key", toolCall.id.ifBlank { toolCall.name })
-                        put("kind", "tool")
-                        put("name", toolCall.name)
-                        put("stage", "result")
-                        put(
-                            "label",
-                            appCtx.getString(
-                                if (resultSuccess) R.string.ai_tool_status_done else R.string.ai_tool_status_failed
-                            )
-                        )
-                        put("content", result)
-                        put("success", resultSuccess)
-                    }
-                )
-                conversation += JSONObject().apply {
-                    if (apiMode == AI_API_MODE_RESPONSES) {
-                        put("type", "function_call_output")
-                        put("call_id", toolCall.id)
-                        put("output", result)
-                    } else {
-                        put("role", "tool")
-                        put("tool_call_id", toolCall.id)
-                        put("content", result)
-                    }
-                }
-            }
-        }
-        conversation += JSONObject().apply {
-            put("role", "system")
-            put(
-                "content",
-                appCtx.getString(R.string.ai_tool_round_limit_system_prompt)
-            )
-        }
-        val finalTurn = requestCompletionStreamWithRetry(
-            chatUrl = chatUrl,
-            apiMode = apiMode,
-            model = model,
-            providerApiKey = providerApiKey,
-            providerHeaders = providerHeaders,
-            messages = conversation,
-            tools = emptyList(),
-            promptCacheKey = promptCacheKey,
-            requestLog = requestLog,
-            round = MAX_TOOL_ROUNDS + 1,
-            onPartial = onPartial,
-            onThinking = onThinking,
-            onUsage = onUsage
-        )
-        if (finalTurn.content.isBlank()) {
-            throw AiChatException(
-                message = appCtx.getString(R.string.ai_tool_round_limit_summary),
-                debugLog = requestLog.toSafeDebugLog()
-            )
-        }
-        return if (includeStructuredBlocks) {
-            appendStructuredBlocks(finalTurn.content, searchResultCards, toolEvents)
-        } else {
-            finalTurn.content
-        }
-    }
-
-    private fun collectSearchResultCards(
-        toolCall: ToolCall,
-        result: String,
-        cards: JSONArray
-    ) {
-        if (toolCall.name != "search_book_source") return
-        runCatching {
-            val results = JSONObject(result).optJSONArray("results") ?: return
-            for (index in 0 until results.length()) {
-                if (cards.length() >= MAX_SEARCH_RESULT_CARDS) break
-                val item = results.optJSONObject(index) ?: continue
-                if (item.optString("bookUrl").isBlank() || item.optString("origin").isBlank()) continue
-                cards.put(JSONObject().apply {
-                    put("name", item.optString("name").take(80))
-                    put("author", item.optString("author").take(60))
-                    put("originName", item.optString("originName").take(60))
-                    put("kind", item.optString("kind").take(80))
-                    put("intro", item.optString("intro").replace(Regex("\\s+"), " ").trim().take(160))
-                    put("latestChapterTitle", item.optString("latestChapterTitle").take(80))
-                    put("coverUrl", item.optString("coverUrl"))
-                    put("bookUrl", item.optString("bookUrl"))
-                    put("origin", item.optString("origin"))
-                    put("target", item.optString("target"))
-                })
-            }
-        }
-    }
-
-    private fun appendStructuredBlocks(content: String, cards: JSONArray, toolEvents: JSONArray): String {
-        if (cards.length() == 0) return content
-        val payload = JSONObject().apply {
-            put("type", "search_book_results")
-            put("results", cards)
-        }
-        return buildString {
-            append(content.trimEnd())
-            if (cards.length() > 0) {
-                append("\n\n```legado-search-results\n")
-                append(payload)
-                append("\n```")
-            }
-        }
-    }
-
-    private fun parseToolResultSuccess(result: String): Boolean {
-        return runCatching {
-            JSONObject(result).optBoolean("ok", true)
-        }.getOrDefault(true)
-    }
-
     private fun aiChatHttpClient() = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(300, TimeUnit.SECONDS)
         .readTimeout(300, TimeUnit.SECONDS)
         .callTimeout(300, TimeUnit.SECONDS)
         .build()
-
-    private suspend fun executeToolCall(
-        toolCall: ToolCall,
-        toolMap: Map<String, AiResolvedTool>,
-        useAllTools: Boolean,
-        extraToolNames: Set<String>
-    ): String {
-        val enabled = AppConfig.aiEnabledToolNames.ifEmpty { AiToolRegistry.defaultEnabledTools }
-        if (!useAllTools && toolCall.name !in enabled && toolCall.name !in extraToolNames) {
-            return JSONObject().apply {
-                put("ok", false)
-                put("error", "Tool is disabled: ${toolCall.name}")
-            }.toString()
-        }
-        val resolvedTool = toolMap[toolCall.name]
-        if (resolvedTool == null) {
-            return JSONObject().apply {
-                put("ok", false)
-                put("error", "Unknown tool: ${toolCall.name}")
-            }.toString()
-        }
-        val arguments = runCatching {
-            toolCall.arguments.trim().takeIf { it.isNotBlank() }?.let(::JSONObject)
-        }.getOrElse { throwable ->
-            return JSONObject().apply {
-                put("ok", false)
-                put("error", throwable.message ?: throwable.javaClass.simpleName)
-            }.toString()
-        }
-        return runCatching {
-            var lastError: Throwable? = null
-            repeat(NETWORK_ABORT_RETRY_COUNT + 1) { attempt ->
-                try {
-                    return@runCatching withTimeout(toolTimeoutMillis(toolCall.name)) {
-                        resolvedTool.execute(arguments)
-                    }
-                } catch (throwable: Throwable) {
-                    lastError = throwable
-                    if (attempt >= NETWORK_ABORT_RETRY_COUNT ||
-                        toolCall.name !in retryableToolNames ||
-                        !throwable.isRetryableNetworkAbort()
-                    ) {
-                        throw throwable
-                    }
-                }
-            }
-            throw lastError ?: IllegalStateException("Tool failed")
-        }.getOrElse { throwable ->
-            JSONObject().apply {
-                put("ok", false)
-                put(
-                    "error",
-                    if (throwable is TimeoutCancellationException) {
-                        "Tool timed out after ${toolTimeoutMillis(toolCall.name)} ms"
-                    } else {
-                        throwable.message ?: throwable.javaClass.simpleName
-                    }
-                )
-            }.toString()
-        }
-    }
-
-    private fun toolTimeoutMillis(name: String): Long {
-        return if (name in imageToolNames) IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
-    }
-
-    private fun Throwable.isRetryableNetworkAbort(): Boolean {
-        var current: Throwable? = this
-        while (current != null) {
-            val message = current.message.orEmpty().lowercase()
-            if (current is SocketException) return true
-            if (current is IOException && (
-                    "software caused connection abort" in message ||
-                            "connection reset" in message ||
-                            "unexpected end of stream" in message ||
-                            "stream was reset" in message ||
-                            "closed" in message && "connection" in message
-                    )
-            ) {
-                return true
-            }
-            current = current.cause
-        }
-        return false
-    }
 
     private suspend fun requestCompletionStreamWithRetry(
         chatUrl: String,
@@ -658,7 +356,7 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onUsage: (AiUsageStats) -> Unit
-    ): AssistantTurn {
+    ): AiAgentAssistantTurn {
         var lastError: Throwable? = null
         repeat(NETWORK_ABORT_RETRY_COUNT + 1) { attempt ->
             try {
@@ -686,7 +384,7 @@ object AiChatService {
                 )
             } catch (throwable: Throwable) {
                 lastError = throwable
-                if (attempt >= NETWORK_ABORT_RETRY_COUNT || !throwable.isRetryableNetworkAbort()) {
+                if (attempt >= NETWORK_ABORT_RETRY_COUNT || !throwable.isAiRetryableNetworkAbort()) {
                     throw throwable
                 }
             }
@@ -708,7 +406,7 @@ object AiChatService {
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onUsage: (AiUsageStats) -> Unit
-    ): AssistantTurn {
+    ): AiAgentAssistantTurn {
         val requestBody = buildRequestBody(
             messages = messages,
             model = model,
@@ -776,7 +474,7 @@ object AiChatService {
             }
             requestLog.append("response=").append(safeDebugPayload(rawPayload.toString())).append('\n')
             val toolCalls = toolCallBuilders.map { (index, builder) ->
-                ToolCall(
+                AiAgentToolCall(
                     id = builder.id.ifBlank { "call_$index" },
                     name = builder.name,
                     arguments = builder.arguments.toString().ifBlank { "{}" }
@@ -787,7 +485,7 @@ object AiChatService {
                 if (fallback.isNotBlank()) {
                     val visibleFallback = stripInlineThinking(fallback, onThinking)
                     onPartial(visibleFallback)
-                    return AssistantTurn(
+                    return AiAgentAssistantTurn(
                         visibleFallback,
                         emptyList(),
                         if (apiMode == AI_API_MODE_RESPONSES) {
@@ -799,7 +497,7 @@ object AiChatService {
                     )
                 }
             }
-            return AssistantTurn(
+            return AiAgentAssistantTurn(
                 content = rendered.toString(),
                 toolCalls = toolCalls,
                 rawMessage = if (apiMode == AI_API_MODE_RESPONSES) {
@@ -1191,7 +889,7 @@ object AiChatService {
 
     private fun buildAssistantRawMessage(
         content: String,
-        toolCalls: List<ToolCall>,
+        toolCalls: List<AiAgentToolCall>,
         reasoningContent: String = ""
     ): JSONObject {
         return JSONObject().apply {
@@ -1227,7 +925,7 @@ object AiChatService {
 
     private fun buildResponsesRawMessage(
         content: String,
-        toolCalls: List<ToolCall>
+        toolCalls: List<AiAgentToolCall>
     ): JSONObject {
         return JSONObject().apply {
             put("type", "responses_output")
@@ -1268,7 +966,9 @@ object AiChatService {
 
     private fun buildConversation(
         messages: List<AiChatMessage>,
-        contextSummary: AiContextSummary? = null
+        contextSummary: AiContextSummary? = null,
+        retrievedMemory: AiRetrievedMemory = AiRetrievedMemory(),
+        activeSkills: List<AiSkillConfig> = emptyList()
     ): MutableList<JSONObject> {
         val conversation = mutableListOf<JSONObject>()
         conversation += JSONObject().apply {
@@ -1287,7 +987,13 @@ object AiChatService {
                 put("content", "Conversation summary from earlier context:\n$summary")
             }
         }
-        AppConfig.aiEnabledSkills.forEach { skill ->
+        retrievedMemory.toSystemPrompt().takeIf { it.isNotBlank() }?.let { memoryPrompt ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", memoryPrompt)
+            }
+        }
+        activeSkills.forEach { skill ->
             conversation += JSONObject().apply {
                 put("role", "system")
                 put(
@@ -1343,10 +1049,14 @@ object AiChatService {
         return conversation
     }
 
-    private fun estimateStaticRequestTokens(messages: List<AiChatMessage>, tools: List<AiResolvedTool>): Int {
+    private fun estimateStaticRequestTokens(
+        messages: List<AiChatMessage>,
+        tools: List<AiResolvedTool>,
+        activeSkills: List<AiSkillConfig> = emptyList()
+    ): Int {
         val systemTokens = AiContextManager.estimateTokens(AppConfig.aiSystemPrompt)
         val personaTokens = AiContextManager.estimateTokens(AppConfig.aiCurrentPersona?.prompt.orEmpty())
-        val skillTokens = AppConfig.aiEnabledSkills.sumOf {
+        val skillTokens = activeSkills.sumOf {
             AiContextManager.estimateTokens(it.name) +
                 AiContextManager.estimateTokens(it.description) +
                 AiContextManager.estimateTokens(it.sourceUrl) +
@@ -1365,7 +1075,7 @@ object AiChatService {
         return safeDebugLog(toString())
     }
 
-    private fun safeDebugLog(text: String): String {
+    internal fun safeDebugLog(text: String): String {
         return safeDebugPayload(text, MAX_DEBUG_LOG_CHARS)
     }
 
@@ -1405,7 +1115,7 @@ object AiChatService {
         ).any { content.contains(it) }
     }
 
-    private fun parseAssistantTurn(response: JSONObject): AssistantTurn {
+    private fun parseAssistantTurn(response: JSONObject): AiAgentAssistantTurn {
         val message = response.optJSONArray("choices")
             ?.optJSONObject(0)
             ?.optJSONObject("message")
@@ -1420,7 +1130,7 @@ object AiChatService {
                 val toolCall = array.optJSONObject(index) ?: continue
                 val function = toolCall.optJSONObject("function") ?: continue
                 add(
-                    ToolCall(
+                    AiAgentToolCall(
                         id = toolCall.optJsonString("id").ifBlank { "call_$index" },
                         name = function.optJsonString("name"),
                         arguments = extractToolArguments(function.opt("arguments"))
@@ -1428,7 +1138,7 @@ object AiChatService {
                 )
             }
         }
-        return AssistantTurn(
+        return AiAgentAssistantTurn(
             content = content,
             toolCalls = toolCalls,
             rawMessage = JSONObject().apply {

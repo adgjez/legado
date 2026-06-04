@@ -9,6 +9,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.databinding.FragmentAiChatBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
@@ -51,7 +52,8 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
                     onNewChat = ::startNewChat,
                     onOpenHistory = ::openHistory,
                     onSelectModel = ::showModelSelectorDialog,
-                    onOpenImageGallery = ::openImageGallery
+                    onOpenImageGallery = ::openImageGallery,
+                    onOpenWindowAbilities = ::showWindowAbilityDialog
                 )
             )
         }
@@ -89,6 +91,83 @@ class AiChatFragment() : BaseFragment(R.layout.fragment_ai_chat), MainFragmentIn
 
     private fun openImageGallery() {
         startActivity<AiImageGalleryActivity>()
+    }
+
+    private fun showWindowAbilityDialog() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        requireContext().selector(
+            "当前窗口能力",
+            listOf(
+                "Skill：${viewModel.activeWindowSkillIds().size} 个",
+                "MCP：${viewModel.activeWindowMcpServerIds().size} 个",
+                "清空当前窗口能力"
+            )
+        ) { _, _, index ->
+            when (index) {
+                0 -> showWindowSkillDialog()
+                1 -> showWindowMcpDialog()
+                2 -> {
+                    viewModel.setActiveWindowSkillIds(emptySet())
+                    viewModel.setActiveWindowMcpServerIds(emptySet())
+                    refreshToken.intValue += 1
+                }
+            }
+        }
+    }
+
+    private fun showWindowSkillDialog() {
+        val skills = AppConfig.aiSkillList
+        if (skills.isEmpty()) {
+            toastOnUi("没有可用 Skill")
+            return
+        }
+        val selected = viewModel.activeWindowSkillIds().toMutableSet()
+        requireContext().alert(title = "当前窗口 Skill") {
+            multiChoiceItems(
+                items = skills.map { skill -> skill.name.ifBlank { "Skill" } }.toTypedArray(),
+                checkedItems = BooleanArray(skills.size) { index -> skills[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += skills[which].id else selected -= skills[which].id
+            }
+            okButton {
+                viewModel.setActiveWindowSkillIds(selected)
+                refreshToken.intValue += 1
+            }
+            neutralButton("清空") {
+                viewModel.setActiveWindowSkillIds(emptySet())
+                refreshToken.intValue += 1
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showWindowMcpDialog() {
+        val servers = AppConfig.aiMcpServerList.filter { it.enabled }
+        if (servers.isEmpty()) {
+            toastOnUi("没有已启用 MCP")
+            return
+        }
+        val selected = viewModel.activeWindowMcpServerIds().toMutableSet()
+        requireContext().alert(title = "当前窗口 MCP") {
+            multiChoiceItems(
+                items = servers.map { server -> server.name.ifBlank { "MCP" } }.toTypedArray(),
+                checkedItems = BooleanArray(servers.size) { index -> servers[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += servers[which].id else selected -= servers[which].id
+            }
+            okButton {
+                viewModel.setActiveWindowMcpServerIds(selected)
+                refreshToken.intValue += 1
+            }
+            neutralButton("清空") {
+                viewModel.setActiveWindowMcpServerIds(emptySet())
+                refreshToken.intValue += 1
+            }
+            cancelButton()
+        }
     }
 
     private fun startNewChat() {

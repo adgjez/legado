@@ -61,10 +61,17 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
+import io.legado.app.data.entities.AiAgentJob
+import io.legado.app.data.entities.AiAgentSession
+import io.legado.app.data.entities.AiMemoryItem
+import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiMemoryContext
+import io.legado.app.help.ai.AiMemoryStore
 import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -81,6 +88,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -116,6 +124,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var readContext: ReadContext? = null
     private var currentSessionId: String = ""
     private var answerJob: Job? = null
+    private var activeAgentRun: AiAgentStateStore.Run? = null
     private var streamingAssistantContent: String? = null
     private var streamingAssistantMessageId: String? = null
     private var downRawX = 0f
@@ -130,6 +139,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var showingHistory by mutableStateOf(false)
     private var requesting by mutableStateOf(false)
     private var modelLabel by mutableStateOf(currentModelLabel())
+    private var windowSkillIds: Set<String> = emptySet()
+    private var windowMcpServerIds: Set<String> = emptySet()
 
     init {
         orientation = VERTICAL
@@ -152,6 +163,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 timeFormat = timeFormat,
                 onTopDrag = ::handleDrag,
                 onSelectModel = ::selectModel,
+                onOpenAbilities = ::showWindowAbilityDialog,
                 onNewChat = ::startNewChat,
                 onToggleHistory = ::toggleHistory,
                 onClose = ::close,
@@ -218,6 +230,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private fun stopAnswer() {
         val context = readContext
         answerJob?.cancel()
+        AiAgentStateStore.cancel(activeAgentRun, "User stopped read ai")
+        activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
         if (context != null) {
@@ -238,6 +252,8 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private fun startNewChat() {
         val context = readContext ?: return
         answerJob?.cancel()
+        AiAgentStateStore.cancel(activeAgentRun, "Start new read ai chat")
+        activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
         currentSessionId = ensureSession(context, createNew = true).id
@@ -257,6 +273,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private fun ask(question: String) {
         val context = readContext ?: return
         answerJob?.cancel()
+        AiAgentStateStore.cancel(activeAgentRun, "Superseded by next read ai question")
         val requestSessionId = currentSessionId
         appendMessage(context, ReadAiMessage.Role.USER, question)
         val pendingAssistantId = appendMessage(
@@ -265,6 +282,27 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             resources.getString(R.string.ai_chat_thinking)
         )
         val requestMessages = buildRequestMessages(context, question)
+        val memoryContext = AiMemoryContext(
+            scope = AiMemoryItem.SCOPE_BOOK,
+            bookKey = AiMemoryStore.bookKey(context.bookName, context.author),
+            sessionId = requestSessionId,
+            title = context.bookName.ifBlank { "阅读页问AI" }
+        )
+        val agentRun = AiAgentStateStore.startRun(
+            sessionId = requestSessionId,
+            scope = AiAgentSession.SCOPE_READ_AI,
+            type = AiAgentJob.TYPE_READ_AI,
+            currentGoal = question,
+            currentTask = "阅读页问 AI",
+            inputJson = JSONObject()
+                .put("bookName", context.bookName)
+                .put("author", context.author)
+                .put("chapterTitle", context.chapterTitle)
+                .put("chapterIndex", context.chapterIndex)
+                .put("question", question.take(2_000))
+                .toString()
+        )
+        activeAgentRun = agentRun
         streamingAssistantMessageId = pendingAssistantId
         val keepAliveId = AiTaskKeepAlive.retain(
             title = "阅读页问AI",
@@ -289,7 +327,28 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                             },
                             includeStructuredBlocks = false,
                             toolOverride = AiToolRegistry.resolveReadTools(),
-                            modelConfigOverride = AppConfig.aiAskModelConfig
+                            extraTools = AiToolRegistry.resolveMcpTools(windowMcpServerIds),
+                            modelConfigOverride = AppConfig.aiAskModelConfig,
+                            activeSkills = activeWindowSkills(),
+                            agentRun = agentRun,
+                            memoryContext = memoryContext
+                        )
+                    }
+                }
+                result.onSuccess { content ->
+                    AiAgentStateStore.finish(
+                        agentRun,
+                        success = true,
+                        outputJson = JSONObject().put("contentChars", content.length).toString()
+                    )
+                }.onFailure { throwable ->
+                    if (throwable is CancellationException) {
+                        AiAgentStateStore.cancel(agentRun, "Read ai cancelled")
+                    } else {
+                        AiAgentStateStore.finish(
+                            agentRun,
+                            success = false,
+                            error = throwable.localizedMessage ?: throwable.javaClass.simpleName
                         )
                     }
                 }
@@ -313,6 +372,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                     )
                     replaceMessage(context, pendingAssistantId, content, requestSessionId)
                     answerJob = null
+                    activeAgentRun = null
                     updateRequestingState()
                     if (!showingHistory) renderCurrentSession()
                 }
@@ -631,6 +691,84 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
     }
 
+    private fun showWindowAbilityDialog() {
+        if (answerJob?.isActive == true) {
+            context.toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        context.selector(
+            "当前窗口能力",
+            listOf(
+                "Skill：${windowSkillIds.size} 个",
+                "MCP：${windowMcpServerIds.size} 个",
+                "清空当前窗口能力"
+            )
+        ) { _, _, index ->
+            when (index) {
+                0 -> showWindowSkillDialog()
+                1 -> showWindowMcpDialog()
+                2 -> {
+                    windowSkillIds = emptySet()
+                    windowMcpServerIds = emptySet()
+                }
+            }
+        }
+    }
+
+    private fun showWindowSkillDialog() {
+        val skills = AppConfig.aiSkillList
+        if (skills.isEmpty()) {
+            context.toastOnUi("没有可用 Skill")
+            return
+        }
+        val selected = windowSkillIds.toMutableSet()
+        context.alert(title = "当前窗口 Skill") {
+            multiChoiceItems(
+                items = skills.map { skill -> skill.name.ifBlank { "Skill" } }.toTypedArray(),
+                checkedItems = BooleanArray(skills.size) { index -> skills[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += skills[which].id else selected -= skills[which].id
+            }
+            okButton {
+                windowSkillIds = selected.filterTo(linkedSetOf()) { id ->
+                    AppConfig.aiSkillList.any { it.id == id }
+                }
+            }
+            neutralButton("清空") {
+                windowSkillIds = emptySet()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showWindowMcpDialog() {
+        val servers = AppConfig.aiMcpServerList.filter { it.enabled }
+        if (servers.isEmpty()) {
+            context.toastOnUi("没有已启用 MCP")
+            return
+        }
+        val selected = windowMcpServerIds.toMutableSet()
+        context.alert(title = "当前窗口 MCP") {
+            multiChoiceItems(
+                items = servers.map { server -> server.name.ifBlank { "MCP" } }.toTypedArray(),
+                checkedItems = BooleanArray(servers.size) { index -> servers[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += servers[which].id else selected -= servers[which].id
+            }
+            okButton {
+                windowMcpServerIds = selected.filterTo(linkedSetOf()) { id ->
+                    AppConfig.aiMcpServerList.any { it.id == id && it.enabled }
+                }
+            }
+            neutralButton("清空") {
+                windowMcpServerIds = emptySet()
+            }
+            cancelButton()
+        }
+    }
+
+    private fun activeWindowSkills() = AppConfig.aiSkillList.filter { it.id in windowSkillIds }
+
     private fun buildContextLabel(context: ReadContext): String {
         return buildString {
             append(context.bookName.ifBlank { resources.getString(R.string.book_name) })
@@ -715,6 +853,7 @@ private fun ReadAiPanelContent(
     timeFormat: SimpleDateFormat,
     onTopDrag: (MotionEvent) -> Boolean,
     onSelectModel: () -> Unit,
+    onOpenAbilities: () -> Unit,
     onNewChat: () -> Unit,
     onToggleHistory: () -> Unit,
     onClose: () -> Unit,
@@ -770,6 +909,7 @@ private fun ReadAiPanelContent(
                         .height(44.dp)
                         .pointerInteropFilter(onTouchEvent = onTopDrag)
                 )
+                ReadAiIconButton(R.drawable.ic_more_vert, R.string.menu, style, onOpenAbilities)
                 ReadAiIconButton(R.drawable.ic_add, R.string.ai_new_chat, style, onNewChat)
                 ReadAiIconButton(R.drawable.ic_history, R.string.history, style, onToggleHistory)
                 ReadAiIconButton(R.drawable.ic_close_x, R.string.close, style, onClose)

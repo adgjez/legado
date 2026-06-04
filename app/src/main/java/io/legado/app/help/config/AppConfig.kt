@@ -1029,10 +1029,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiEnterToSend, true)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiEnterToSend, value)
 
-    var aiShowProcessToolbar: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.aiShowProcessToolbar, true)
-        set(value) = appCtx.putPrefBoolean(PreferKey.aiShowProcessToolbar, value)
-
     var aiEnabledToolNames: Set<String>
         get() = appCtx.getPrefStringSet(PreferKey.aiEnabledToolNames, mutableSetOf())
             ?.filter { it.isNotBlank() }

@@ -1453,10 +1453,6 @@
     <string name="ai_manage_native_tools_summary">启用或停用内置工具能力</string>
     <string name="ai_enter_to_send">回车发送</string>
     <string name="ai_enter_to_send_summary">开启后按回车直接发送；关闭后只能点击发送按钮发送。</string>
-    <string name="ai_show_process_toolbar">显示思考和工具过程</string>
-    <string name="ai_show_process_toolbar_summary">关闭后隐藏 AI 对话里的思考和工具调用过程，不影响工具调用。</string>
-    <string name="ai_hide_process_toolbar">隐藏过程</string>
-    <string name="ai_show_process_toolbar_action">显示过程</string>
     <string name="ai_tavily_api_key">Tavily API Key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">点按填写 Tavily API Key。</string>

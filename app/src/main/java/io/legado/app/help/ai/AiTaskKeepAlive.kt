@@ -1,6 +1,7 @@
 package io.legado.app.help.ai
 
 import android.content.Intent
+import io.legado.app.data.entities.AiAgentJob
 import io.legado.app.service.AiTaskKeepAliveService
 import io.legado.app.utils.startForegroundServiceCompat
 import splitties.init.appCtx
@@ -38,7 +39,7 @@ object AiTaskKeepAlive {
     private var lastNotifyAt = 0L
 
     val activeCount: Int
-        get() = activeTasks.size
+        get() = activeTaskSnapshot().size
 
     val title: String
         get() = latestTask()?.title ?: "AI任务处理中"
@@ -47,8 +48,21 @@ object AiTaskKeepAlive {
         get() = latestTask()?.displayText ?: title
 
     fun activeTaskSnapshot(): List<TaskState> {
-        return activeTasks.values
+        val memoryTasks = activeTasks.values
             .sortedByDescending { it.updatedAt }
+        if (memoryTasks.isNotEmpty()) return memoryTasks
+        return runCatching {
+            AiAgentStateStore.activeJobs().map { job ->
+                TaskState(
+                    id = job.jobId,
+                    title = jobTitle(job),
+                    content = job.type,
+                    progressText = job.status,
+                    kind = job.type,
+                    updatedAt = job.updatedAt
+                )
+            }
+        }.getOrDefault(emptyList())
     }
 
     fun retain(
@@ -99,7 +113,16 @@ object AiTaskKeepAlive {
     }
 
     private fun latestTask(): TaskState? {
-        return activeTasks.values.maxByOrNull { it.updatedAt }
+        return activeTaskSnapshot().maxByOrNull { it.updatedAt }
+    }
+
+    private fun jobTitle(job: AiAgentJob): String {
+        return when (job.type) {
+            AiAgentJob.TYPE_READ_AI -> "阅读页问AI"
+            AiAgentJob.TYPE_ROLE_ASSIGN -> "角色分配中"
+            AiAgentJob.TYPE_AUDIO_ASSIGN -> "智能音频处理中"
+            else -> "AI回复生成中"
+        }
     }
 
     private fun notifyService(action: String, force: Boolean = false) {

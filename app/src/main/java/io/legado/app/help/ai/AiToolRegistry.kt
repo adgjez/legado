@@ -236,9 +236,11 @@ object AiToolRegistry {
         return dynamic.toList().sorted()
     }
 
-    suspend fun resolveAvailableTools(): List<AiResolvedTool> {
+    suspend fun resolveAvailableTools(includeMcp: Boolean = false): List<AiResolvedTool> {
         val tools = nativeResolvedTools().toMutableList()
-        tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+        if (includeMcp) {
+            tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+        }
         val enabled = effectiveEnabledToolNames()
         return tools
             .distinctBy { it.name }
@@ -263,15 +265,17 @@ object AiToolRegistry {
         return stored.ifEmpty { defaultEnabledTools }
     }
 
-    suspend fun resolveReadTools(): List<AiResolvedTool> {
+    suspend fun resolveReadTools(includeMcp: Boolean = false): List<AiResolvedTool> {
         return when (AppConfig.aiReadToolMode) {
-            AppConfig.AI_READ_TOOL_MODE_ALL -> resolveAllTools()
+            AppConfig.AI_READ_TOOL_MODE_ALL -> resolveAllTools(includeMcp)
             AppConfig.AI_READ_TOOL_MODE_SAFE -> {
                 val tools = nativeResolvedTools().toMutableList()
-                tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+                if (includeMcp) {
+                    tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+                }
                 tools.distinctBy { it.name }.filter { it.name in readSafeToolNames }
             }
-            else -> resolveAvailableTools()
+            else -> resolveAvailableTools(includeMcp)
         }
     }
 
@@ -280,9 +284,20 @@ object AiToolRegistry {
             .filter { it.name in names }
     }
 
-    suspend fun resolveAllTools(): List<AiResolvedTool> {
+    suspend fun resolveMcpTools(serverIds: Set<String>): List<AiResolvedTool> {
+        if (serverIds.isEmpty()) return emptyList()
+        val servers = AppConfig.aiMcpServerList.filter { server ->
+            server.enabled && server.id in serverIds
+        }
+        if (servers.isEmpty()) return emptyList()
+        return AiMcpClient.resolveTools(servers)
+    }
+
+    suspend fun resolveAllTools(includeMcp: Boolean = false): List<AiResolvedTool> {
         val tools = nativeResolvedTools().toMutableList()
-        tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+        if (includeMcp) {
+            tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
+        }
         return tools.distinctBy { it.name }
     }
 }

@@ -664,10 +664,6 @@
     <string name="ai_manage_native_tools_summary">Enable or disable available built-in tools</string>
     <string name="ai_enter_to_send">Enter to send</string>
     <string name="ai_enter_to_send_summary">When enabled, pressing Enter sends the message. When disabled, only the send button sends.</string>
-    <string name="ai_show_process_toolbar">Show thinking and tools</string>
-    <string name="ai_show_process_toolbar_summary">Hide or show the thinking and tool process in AI chat. Tools still run when hidden.</string>
-    <string name="ai_hide_process_toolbar">Hide process</string>
-    <string name="ai_show_process_toolbar_action">Show process</string>
     <string name="ai_context_compression">上下文压缩</string>
     <string name="ai_context_compression_summary_default">默认 258K 上下文，128K 思考上下文；接近上限时压缩旧历史</string>
     <string name="ai_context_compression_enabled">启用上下文压缩</string>

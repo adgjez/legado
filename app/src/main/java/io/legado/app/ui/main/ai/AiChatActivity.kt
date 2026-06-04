@@ -52,7 +52,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onNewChat = ::startNewChatFromMenu,
                     onOpenHistory = ::openHistoryFromMenu,
                     onSelectModel = ::showModelSelectorDialog,
-                    onOpenImageGallery = ::openImageGallery
+                    onOpenImageGallery = ::openImageGallery,
+                    onOpenWindowAbilities = ::showWindowAbilityDialog
                 )
             )
         }
@@ -111,6 +112,83 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun openImageGallery() {
         startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
+    }
+
+    private fun showWindowAbilityDialog() {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        selector(
+            "当前窗口能力",
+            listOf(
+                "Skill：${viewModel.activeWindowSkillIds().size} 个",
+                "MCP：${viewModel.activeWindowMcpServerIds().size} 个",
+                "清空当前窗口能力"
+            )
+        ) { _, _, index ->
+            when (index) {
+                0 -> showWindowSkillDialog()
+                1 -> showWindowMcpDialog()
+                2 -> {
+                    viewModel.setActiveWindowSkillIds(emptySet())
+                    viewModel.setActiveWindowMcpServerIds(emptySet())
+                    refreshToken.intValue += 1
+                }
+            }
+        }
+    }
+
+    private fun showWindowSkillDialog() {
+        val skills = AppConfig.aiSkillList
+        if (skills.isEmpty()) {
+            toastOnUi("没有可用 Skill")
+            return
+        }
+        val selected = viewModel.activeWindowSkillIds().toMutableSet()
+        alert(title = "当前窗口 Skill") {
+            multiChoiceItems(
+                items = skills.map { skill -> skill.name.ifBlank { "Skill" } }.toTypedArray(),
+                checkedItems = BooleanArray(skills.size) { index -> skills[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += skills[which].id else selected -= skills[which].id
+            }
+            okButton {
+                viewModel.setActiveWindowSkillIds(selected)
+                refreshToken.intValue += 1
+            }
+            neutralButton("清空") {
+                viewModel.setActiveWindowSkillIds(emptySet())
+                refreshToken.intValue += 1
+            }
+            cancelButton()
+        }
+    }
+
+    private fun showWindowMcpDialog() {
+        val servers = AppConfig.aiMcpServerList.filter { it.enabled }
+        if (servers.isEmpty()) {
+            toastOnUi("没有已启用 MCP")
+            return
+        }
+        val selected = viewModel.activeWindowMcpServerIds().toMutableSet()
+        alert(title = "当前窗口 MCP") {
+            multiChoiceItems(
+                items = servers.map { server -> server.name.ifBlank { "MCP" } }.toTypedArray(),
+                checkedItems = BooleanArray(servers.size) { index -> servers[index].id in selected }
+            ) { _, which, isChecked ->
+                if (isChecked) selected += servers[which].id else selected -= servers[which].id
+            }
+            okButton {
+                viewModel.setActiveWindowMcpServerIds(selected)
+                refreshToken.intValue += 1
+            }
+            neutralButton("清空") {
+                viewModel.setActiveWindowMcpServerIds(emptySet())
+                refreshToken.intValue += 1
+            }
+            cancelButton()
+        }
     }
 
     private fun showHistoryDialog() {

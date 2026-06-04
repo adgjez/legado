@@ -9,6 +9,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.dao.AiAgentDao
+import io.legado.app.data.dao.AiMemoryDao
 import io.legado.app.data.dao.AiReadAloudRoleCacheDao
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiImageGroupDao
@@ -42,8 +44,15 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.entities.AiAgentJob
+import io.legado.app.data.entities.AiAgentSession
+import io.legado.app.data.entities.AiAgentTrace
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiImageGroup
+import io.legado.app.data.entities.AiMemoryFragment
+import io.legado.app.data.entities.AiMemoryFragmentFts
+import io.legado.app.data.entities.AiMemoryItem
+import io.legado.app.data.entities.AiMemoryItemFts
 import io.legado.app.data.entities.AiReadAloudRoleCache
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
@@ -97,7 +106,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 107,
+    version = 108,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -112,7 +121,9 @@ val appDb by lazy {
         BookAiChapterSummary::class, AiReadAloudRoleCache::class,
         ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class,
         ReadAloudSpeakerGroup::class, ReadAloudSpeakerGroupItem::class,
-        AiReadAloudUsageRecord::class],
+        AiReadAloudUsageRecord::class,
+        AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
+        AiMemoryItem::class, AiMemoryFragment::class, AiMemoryItemFts::class, AiMemoryFragmentFts::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -200,6 +211,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val readAloudBgmDao: ReadAloudBgmDao
     abstract val readAloudSpeakerGroupDao: ReadAloudSpeakerGroupDao
     abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
+    abstract val aiAgentDao: AiAgentDao
+    abstract val aiMemoryDao: AiMemoryDao
 
     companion object {
 

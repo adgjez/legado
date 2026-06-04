@@ -24,8 +24,14 @@ object DatabaseMigrations {
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102, migration_102_103,
             migration_103_104, migration_104_105, migration_105_106,
-            migration_106_107,
+            migration_106_107, migration_107_108,
         )
+    }
+
+    private val migration_107_108 = object : Migration(107, 108) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            repairAiAgentAndMemoryTables(db)
+        }
     }
 
     private val migration_106_107 = object : Migration(106, 107) {
@@ -35,6 +41,148 @@ object DatabaseMigrations {
                 db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `gender` TEXT NOT NULL DEFAULT ''")
             }
         }
+    }
+
+    private fun repairAiAgentAndMemoryTables(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments_fts`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_items_fts`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_fragments`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_memory_items`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_agent_traces`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_agent_jobs`")
+        db.execSQL("DROP TABLE IF EXISTS `ai_agent_sessions`")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (
+                `sessionId` TEXT NOT NULL,
+                `scope` TEXT NOT NULL DEFAULT '',
+                `status` TEXT NOT NULL DEFAULT '',
+                `currentGoal` TEXT NOT NULL DEFAULT '',
+                `currentTask` TEXT NOT NULL DEFAULT '',
+                `currentStep` TEXT NOT NULL DEFAULT '',
+                `contextJson` TEXT NOT NULL DEFAULT '',
+                `pendingConfirmationsJson` TEXT NOT NULL DEFAULT '',
+                `retryStateJson` TEXT NOT NULL DEFAULT '',
+                `lastError` TEXT NOT NULL DEFAULT '',
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`sessionId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_updatedAt` ON `ai_agent_sessions` (`scope`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_status_updatedAt` ON `ai_agent_sessions` (`status`, `updatedAt`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `ai_agent_jobs` (
+                `jobId` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL DEFAULT '',
+                `type` TEXT NOT NULL DEFAULT '',
+                `status` TEXT NOT NULL DEFAULT '',
+                `inputJson` TEXT NOT NULL DEFAULT '',
+                `checkpointJson` TEXT NOT NULL DEFAULT '',
+                `outputJson` TEXT NOT NULL DEFAULT '',
+                `error` TEXT NOT NULL DEFAULT '',
+                `retryCount` INTEGER NOT NULL DEFAULT 0,
+                `maxRetry` INTEGER NOT NULL DEFAULT 2,
+                `nextRunAt` INTEGER NOT NULL DEFAULT 0,
+                `leaseUntil` INTEGER NOT NULL DEFAULT 0,
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`jobId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId_createdAt` ON `ai_agent_jobs` (`sessionId`, `createdAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status_updatedAt` ON `ai_agent_jobs` (`status`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_type_updatedAt` ON `ai_agent_jobs` (`type`, `updatedAt`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `ai_agent_traces` (
+                `traceId` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL DEFAULT '',
+                `jobId` TEXT NOT NULL DEFAULT '',
+                `round` INTEGER NOT NULL DEFAULT 0,
+                `eventType` TEXT NOT NULL DEFAULT '',
+                `payloadJson` TEXT NOT NULL DEFAULT '',
+                `usageJson` TEXT NOT NULL DEFAULT '',
+                `success` INTEGER NOT NULL DEFAULT 1,
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`traceId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_jobId_round_createdAt` ON `ai_agent_traces` (`jobId`, `round`, `createdAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId_createdAt` ON `ai_agent_traces` (`sessionId`, `createdAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_eventType_createdAt` ON `ai_agent_traces` (`eventType`, `createdAt`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `ai_memory_items` (
+                `memoryId` TEXT NOT NULL,
+                `scope` TEXT NOT NULL DEFAULT '',
+                `bookKey` TEXT NOT NULL DEFAULT '',
+                `sessionId` TEXT NOT NULL DEFAULT '',
+                `type` TEXT NOT NULL DEFAULT '',
+                `subject` TEXT NOT NULL DEFAULT '',
+                `predicate` TEXT NOT NULL DEFAULT '',
+                `objectValue` TEXT NOT NULL DEFAULT '',
+                `content` TEXT NOT NULL DEFAULT '',
+                `confidence` INTEGER NOT NULL DEFAULT 50,
+                `importance` INTEGER NOT NULL DEFAULT 50,
+                `sourceIds` TEXT NOT NULL DEFAULT '',
+                `sourceChapterIndex` INTEGER NOT NULL DEFAULT -1,
+                `fingerprint` TEXT NOT NULL DEFAULT '',
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                `lastUsedAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`memoryId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_scope_updatedAt` ON `ai_memory_items` (`scope`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_bookKey_updatedAt` ON `ai_memory_items` (`bookKey`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_sessionId_updatedAt` ON `ai_memory_items` (`sessionId`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_items_type_updatedAt` ON `ai_memory_items` (`type`, `updatedAt`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_items_fingerprint` ON `ai_memory_items` (`fingerprint`)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `ai_memory_fragments` (
+                `fragmentId` TEXT NOT NULL,
+                `scope` TEXT NOT NULL DEFAULT '',
+                `bookKey` TEXT NOT NULL DEFAULT '',
+                `sessionId` TEXT NOT NULL DEFAULT '',
+                `sourceType` TEXT NOT NULL DEFAULT '',
+                `title` TEXT NOT NULL DEFAULT '',
+                `content` TEXT NOT NULL DEFAULT '',
+                `chapterIndex` INTEGER NOT NULL DEFAULT -1,
+                `chapterTitle` TEXT NOT NULL DEFAULT '',
+                `paragraphStart` INTEGER NOT NULL DEFAULT -1,
+                `paragraphEnd` INTEGER NOT NULL DEFAULT -1,
+                `contentHash` TEXT NOT NULL DEFAULT '',
+                `importance` INTEGER NOT NULL DEFAULT 50,
+                `createdAt` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                `lastUsedAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`fragmentId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_updatedAt` ON `ai_memory_fragments` (`scope`, `updatedAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_bookKey_chapterIndex` ON `ai_memory_fragments` (`bookKey`, `chapterIndex`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_memory_fragments_sessionId_updatedAt` ON `ai_memory_fragments` (`sessionId`, `updatedAt`)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_contentHash` ON `ai_memory_fragments` (`contentHash`)")
+        db.execSQL(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts`
+            USING FTS4(`memoryId` TEXT NOT NULL, `subject` TEXT NOT NULL, `predicate` TEXT NOT NULL, `objectValue` TEXT NOT NULL, `content` TEXT NOT NULL)
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_fragments_fts`
+            USING FTS4(`fragmentId` TEXT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL)
+            """.trimIndent()
+        )
     }
 
     private val migration_105_106 = object : Migration(105, 106) {
