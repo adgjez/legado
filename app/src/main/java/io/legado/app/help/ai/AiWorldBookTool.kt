@@ -10,6 +10,9 @@ object AiWorldBookTool {
     private const val TOOL_DELETE_WORLD_BOOK = "delete_world_book"
     private const val TOOL_UPSERT_WORLD_BOOK_ENTRY = "upsert_world_book_entry"
     private const val TOOL_DELETE_WORLD_BOOK_ENTRY = "delete_world_book_entry"
+    private const val TOOL_LIST_WORLD_BOOK_BINDINGS = "list_world_book_bindings"
+    private const val TOOL_UPSERT_WORLD_BOOK_BINDING = "upsert_world_book_binding"
+    private const val TOOL_DELETE_WORLD_BOOK_BINDING = "delete_world_book_binding"
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -37,6 +40,21 @@ object AiWorldBookTool {
                 name = TOOL_DELETE_WORLD_BOOK_ENTRY,
                 definition = deleteWorldBookEntryDefinition(),
                 execute = { args -> AiWorldBookManager.deleteWorldBookEntry(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_LIST_WORLD_BOOK_BINDINGS,
+                definition = listWorldBookBindingsDefinition(),
+                execute = { args -> AiWorldBookManager.listWorldBookBindings(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_UPSERT_WORLD_BOOK_BINDING,
+                definition = upsertWorldBookBindingDefinition(),
+                execute = { args -> AiWorldBookManager.upsertWorldBookBinding(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_DELETE_WORLD_BOOK_BINDING,
+                definition = deleteWorldBookBindingDefinition(),
+                execute = { args -> AiWorldBookManager.deleteWorldBookBinding(args) }
             )
         )
     }
@@ -46,11 +64,12 @@ object AiWorldBookTool {
         description = "列出 AI 世界书配置。世界书用于长期设定、角色背景、写作规则、酒馆设定和固定知识注入。",
         properties = JSONObject()
             .put("includeEntries", JSONObject().put("type", "boolean").put("description", "是否返回条目内容"))
+            .put("includeBindings", JSONObject().put("type", "boolean").put("description", "是否返回启用绑定，默认 true"))
     )
 
     private fun upsertWorldBookDefinition() = functionDefinition(
         name = TOOL_UPSERT_WORLD_BOOK,
-        description = "新增或更新世界书。scope=global 全局生效，book 按 bookKey 生效，session 按 sessionId 生效。",
+        description = "新增或更新世界书。世界书默认只是资料库，不一定启用；需要启用到场景时调用 upsert_world_book_binding。",
         properties = JSONObject()
             .put("id", JSONObject().put("type", "string"))
             .put("name", JSONObject().put("type", "string"))
@@ -58,6 +77,11 @@ object AiWorldBookTool {
             .put("scope", JSONObject().put("type", "string").put("enum", JSONArray(listOf("global", "book", "session"))))
             .put("bookKey", JSONObject().put("type", "string"))
             .put("enabled", JSONObject().put("type", "boolean"))
+            .put("maxEntries", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 40))
+            .put("bindings", JSONObject().apply {
+                put("type", "array")
+                put("items", bindingSchema())
+            })
             .put("order", JSONObject().put("type", "integer")),
         required = listOf("name")
     )
@@ -84,9 +108,12 @@ object AiWorldBookTool {
                     .put("keys", stringArraySchema())
                     .put("secondaryKeys", stringArraySchema())
                     .put("excludeKeys", stringArraySchema())
+                    .put("regexEnabled", JSONObject().put("type", "boolean").put("description", "keys/secondaryKeys/excludeKeys 是否按正则匹配"))
                     .put("enabled", JSONObject().put("type", "boolean"))
                     .put("constant", JSONObject().put("type", "boolean"))
                     .put("priority", JSONObject().put("type", "integer").put("minimum", 0).put("maximum", 100))
+                    .put("scanDepth", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 64))
+                    .put("maxMatches", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 20))
                     .put("order", JSONObject().put("type", "integer"))
                 )
                 put("required", JSONArray(listOf("title", "content")))
@@ -102,6 +129,39 @@ object AiWorldBookTool {
             .put("worldBookId", JSONObject().put("type", "string"))
             .put("entryId", JSONObject().put("type", "string")),
         required = listOf("worldBookId", "entryId")
+    )
+
+    private fun listWorldBookBindingsDefinition() = functionDefinition(
+        name = TOOL_LIST_WORLD_BOOK_BINDINGS,
+        description = "列出世界书启用绑定。targetType 支持 global/chat/read_ai/book/session。",
+        properties = JSONObject()
+            .put("worldBookId", JSONObject().put("type", "string"))
+            .put("targetType", targetTypeSchema())
+            .put("targetKey", JSONObject().put("type", "string"))
+    )
+
+    private fun upsertWorldBookBindingDefinition() = functionDefinition(
+        name = TOOL_UPSERT_WORLD_BOOK_BINDING,
+        description = "启用或更新世界书到指定场景。global=全局，chat=正文问AI默认，read_ai=阅读页问AI默认，book/session 需要 targetKey。",
+        properties = JSONObject()
+            .put("worldBookId", JSONObject().put("type", "string"))
+            .put("bindingId", JSONObject().put("type", "string"))
+            .put("targetType", targetTypeSchema())
+            .put("targetKey", JSONObject().put("type", "string"))
+            .put("enabled", JSONObject().put("type", "boolean"))
+            .put("order", JSONObject().put("type", "integer")),
+        required = listOf("worldBookId", "targetType")
+    )
+
+    private fun deleteWorldBookBindingDefinition() = functionDefinition(
+        name = TOOL_DELETE_WORLD_BOOK_BINDING,
+        description = "从指定场景移除世界书启用绑定。优先传 bindingId，也可传 targetType+targetKey。",
+        properties = JSONObject()
+            .put("worldBookId", JSONObject().put("type", "string"))
+            .put("bindingId", JSONObject().put("type", "string"))
+            .put("targetType", targetTypeSchema())
+            .put("targetKey", JSONObject().put("type", "string")),
+        required = listOf("worldBookId")
     )
 
     private fun functionDefinition(
@@ -127,5 +187,26 @@ object AiWorldBookTool {
         return JSONObject()
             .put("type", "array")
             .put("items", JSONObject().put("type", "string"))
+    }
+
+    private fun targetTypeSchema(): JSONObject {
+        return JSONObject()
+            .put("type", "string")
+            .put("enum", JSONArray(listOf("global", "chat", "read_ai", "book", "session")))
+    }
+
+    private fun bindingSchema(): JSONObject {
+        return JSONObject().apply {
+            put("type", "object")
+            put("properties", JSONObject()
+                .put("id", JSONObject().put("type", "string"))
+                .put("targetType", targetTypeSchema())
+                .put("targetKey", JSONObject().put("type", "string"))
+                .put("enabled", JSONObject().put("type", "boolean"))
+                .put("order", JSONObject().put("type", "integer"))
+            )
+            put("required", JSONArray(listOf("targetType")))
+            put("additionalProperties", false)
+        }
     }
 }

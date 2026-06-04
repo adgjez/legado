@@ -119,9 +119,10 @@ object AiWorldBookManager {
 
     fun listWorldBooks(arguments: JSONObject?): String {
         val includeEntries = arguments?.optBoolean("includeEntries", false) == true
+        val includeBindings = arguments?.optBoolean("includeBindings", true) != false
         val items = JSONArray()
         AppConfig.aiWorldBookList.forEach { worldBook ->
-            items.put(worldBook.toJson(includeEntries))
+            items.put(worldBook.toJson(includeEntries, includeBindings))
         }
         return JSONObject()
             .put("ok", true)
@@ -148,6 +149,9 @@ object AiWorldBookManager {
                 ?: AiWorldBookConfig.SCOPE_GLOBAL,
             bookKey = arguments.optString("bookKey", old?.bookKey.orEmpty()).trim(),
             enabled = arguments.optBoolean("enabled", old?.enabled ?: true),
+            bindingVersion = 1,
+            maxEntries = arguments.optInt("maxEntries", old?.maxEntries ?: 12).coerceIn(1, 40),
+            bindings = arguments.optBindingArray("bindings", old?.bindings ?: legacyBindingsFromArguments(arguments)),
             order = arguments.optInt("order", old?.order ?: AppConfig.aiWorldBookList.size),
             entries = old?.entries ?: emptyList()
         )
@@ -156,7 +160,7 @@ object AiWorldBookManager {
             .plus(updated)
         return JSONObject()
             .put("ok", true)
-            .put("item", updated.toJson(includeEntries = true))
+            .put("item", updated.toJson(includeEntries = true, includeBindings = true))
             .toString()
     }
 
@@ -192,9 +196,12 @@ object AiWorldBookManager {
             keys = entryJson.optStringArray("keys", old?.keys ?: emptyList()),
             secondaryKeys = entryJson.optStringArray("secondaryKeys", old?.secondaryKeys ?: emptyList()),
             excludeKeys = entryJson.optStringArray("excludeKeys", old?.excludeKeys ?: emptyList()),
+            regexEnabled = entryJson.optBoolean("regexEnabled", old?.regexEnabled ?: false),
             enabled = entryJson.optBoolean("enabled", old?.enabled ?: true),
             constant = entryJson.optBoolean("constant", old?.constant ?: false),
             priority = entryJson.optInt("priority", old?.priority ?: 50).coerceIn(0, 100),
+            scanDepth = entryJson.optInt("scanDepth", old?.scanDepth ?: 8).coerceIn(1, 64),
+            maxMatches = entryJson.optInt("maxMatches", old?.maxMatches ?: 1).coerceIn(1, 20),
             order = entryJson.optInt("order", old?.order ?: worldBook.entries.size)
         )
         worldBooks[worldBookIndex] = worldBook.copy(
@@ -228,6 +235,99 @@ object AiWorldBookManager {
             .put("ok", deleted)
             .put("worldBookId", worldBookId)
             .put("entryId", entryId)
+            .toString()
+    }
+
+    fun listWorldBookBindings(arguments: JSONObject?): String {
+        val worldBookId = arguments?.optString("worldBookId")?.trim().orEmpty()
+        val targetType = arguments?.optString("targetType")?.trim().orEmpty()
+        val targetKey = arguments?.optString("targetKey")?.trim().orEmpty()
+        val items = JSONArray()
+        AppConfig.aiWorldBookList.forEach { worldBook ->
+            if (worldBookId.isNotBlank() && worldBook.id != worldBookId) return@forEach
+            worldBook.bindings
+                .filter { targetType.isBlank() || it.targetType == targetType }
+                .filter { targetKey.isBlank() || it.targetKey == targetKey }
+                .forEach { binding ->
+                    items.put(binding.toJson().put("worldBookId", worldBook.id).put("worldBookName", worldBook.name))
+                }
+        }
+        return JSONObject()
+            .put("ok", true)
+            .put("count", items.length())
+            .put("items", items)
+            .toString()
+    }
+
+    fun upsertWorldBookBinding(arguments: JSONObject?): String {
+        if (arguments == null) return jsonError("missing arguments")
+        val worldBookId = arguments.optString("worldBookId").trim()
+        if (worldBookId.isBlank()) return jsonError("worldBookId is required")
+        val targetType = normalizeTargetType(arguments.optString("targetType").trim())
+        if (targetType.isBlank()) return jsonError("invalid targetType")
+        val targetKey = arguments.optString("targetKey").trim()
+        val requiresKey = targetType == AiWorldBookBinding.TARGET_BOOK ||
+                targetType == AiWorldBookBinding.TARGET_SESSION
+        if (requiresKey && targetKey.isBlank()) return jsonError("targetKey is required")
+        var updatedBinding: AiWorldBookBinding? = null
+        var found = false
+        AppConfig.aiWorldBookList = AppConfig.aiWorldBookList.map { worldBook ->
+            if (worldBook.id != worldBookId) return@map worldBook
+            found = true
+            val old = worldBook.bindings.firstOrNull {
+                it.id == arguments.optString("bindingId").trim() ||
+                        (it.targetType == targetType && it.targetKey == targetKey)
+            }
+            val updated = (old ?: AiWorldBookBinding(
+                targetType = targetType,
+                targetKey = targetKey,
+                order = worldBook.bindings.size
+            )).copy(
+                targetType = targetType,
+                targetKey = targetKey,
+                enabled = arguments.optBoolean("enabled", old?.enabled ?: true),
+                order = arguments.optInt("order", old?.order ?: worldBook.bindings.size)
+            )
+            updatedBinding = updated
+            worldBook.copy(
+                bindingVersion = 1,
+                bindings = worldBook.bindings
+                    .filterNot { it.id == updated.id || (it.targetType == targetType && it.targetKey == targetKey) }
+                    .plus(updated)
+            )
+        }
+        if (!found) return jsonError("world book not found")
+        return JSONObject()
+            .put("ok", true)
+            .put("worldBookId", worldBookId)
+            .put("binding", updatedBinding?.toJson())
+            .toString()
+    }
+
+    fun deleteWorldBookBinding(arguments: JSONObject?): String {
+        val worldBookId = arguments?.optString("worldBookId")?.trim().orEmpty()
+        if (worldBookId.isBlank()) return jsonError("worldBookId is required")
+        val bindingId = arguments?.optString("bindingId")?.trim().orEmpty()
+        val targetType = arguments?.optString("targetType")?.trim().orEmpty()
+        val targetKey = arguments?.optString("targetKey")?.trim().orEmpty()
+        var deleted = false
+        AppConfig.aiWorldBookList = AppConfig.aiWorldBookList.map { worldBook ->
+            if (worldBook.id != worldBookId) return@map worldBook
+            val bindings = worldBook.bindings.filterNot { binding ->
+                val hit = if (bindingId.isNotBlank()) {
+                    binding.id == bindingId
+                } else {
+                    binding.targetType == targetType && binding.targetKey == targetKey
+                }
+                if (hit) deleted = true
+                hit
+            }
+            worldBook.copy(bindingVersion = 1, bindings = bindings)
+        }
+        return JSONObject()
+            .put("ok", deleted)
+            .put("worldBookId", worldBookId)
+            .put("bindingId", bindingId)
             .toString()
     }
 
@@ -284,7 +384,10 @@ object AiWorldBookManager {
         }
     }
 
-    private fun AiWorldBookConfig.toJson(includeEntries: Boolean): JSONObject {
+    private fun AiWorldBookConfig.toJson(
+        includeEntries: Boolean,
+        includeBindings: Boolean
+    ): JSONObject {
         return JSONObject()
             .put("id", id)
             .put("name", name)
@@ -292,9 +395,17 @@ object AiWorldBookManager {
             .put("scope", scope)
             .put("bookKey", bookKey)
             .put("enabled", enabled)
+            .put("bindingVersion", bindingVersion)
+            .put("maxEntries", maxEntries)
             .put("order", order)
+            .put("bindingCount", bindings.size)
             .put("entryCount", entries.size)
             .apply {
+                if (includeBindings) {
+                    put("bindings", JSONArray().also { array ->
+                        bindings.forEach { array.put(it.toJson()) }
+                    })
+                }
                 if (includeEntries) {
                     put("entries", JSONArray().also { array ->
                         entries.forEach { array.put(it.toJson()) }
@@ -311,9 +422,21 @@ object AiWorldBookManager {
             .put("keys", JSONArray(keys))
             .put("secondaryKeys", JSONArray(secondaryKeys))
             .put("excludeKeys", JSONArray(excludeKeys))
+            .put("regexEnabled", regexEnabled)
             .put("enabled", enabled)
             .put("constant", constant)
             .put("priority", priority)
+            .put("scanDepth", scanDepth)
+            .put("maxMatches", maxMatches)
+            .put("order", order)
+    }
+
+    private fun AiWorldBookBinding.toJson(): JSONObject {
+        return JSONObject()
+            .put("id", id)
+            .put("targetType", targetType)
+            .put("targetKey", targetKey)
+            .put("enabled", enabled)
             .put("order", order)
     }
 
@@ -324,6 +447,55 @@ object AiWorldBookManager {
                 array.optString(index).trim().takeIf { it.isNotBlank() }?.let(::add)
             }
         }.distinct().take(40)
+    }
+
+    private fun JSONObject.optBindingArray(
+        name: String,
+        fallback: List<AiWorldBookBinding>
+    ): List<AiWorldBookBinding> {
+        val array = optJSONArray(name) ?: return fallback
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val targetType = normalizeTargetType(item.optString("targetType").trim())
+                if (targetType.isBlank()) continue
+                add(
+                    AiWorldBookBinding(
+                        id = item.optString("id").trim().ifBlank { AiWorldBookBinding().id },
+                        targetType = targetType,
+                        targetKey = item.optString("targetKey").trim(),
+                        enabled = item.optBoolean("enabled", true),
+                        order = item.optInt("order", size)
+                    )
+                )
+            }
+        }
+    }
+
+    private fun legacyBindingsFromArguments(arguments: JSONObject): List<AiWorldBookBinding> {
+        val scope = arguments.optString("scope").trim()
+        val bookKey = arguments.optString("bookKey").trim()
+        return when (scope) {
+            AiWorldBookConfig.SCOPE_BOOK -> bookKey.takeIf { it.isNotBlank() }?.let {
+                listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_BOOK, targetKey = it))
+            } ?: emptyList()
+            AiWorldBookConfig.SCOPE_SESSION -> bookKey.takeIf { it.isNotBlank() }?.let {
+                listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_SESSION, targetKey = it))
+            } ?: emptyList()
+            AiWorldBookConfig.SCOPE_GLOBAL -> listOf(AiWorldBookBinding(targetType = AiWorldBookBinding.TARGET_GLOBAL))
+            else -> emptyList()
+        }
+    }
+
+    private fun normalizeTargetType(targetType: String): String {
+        return when (targetType) {
+            AiWorldBookBinding.TARGET_GLOBAL,
+            AiWorldBookBinding.TARGET_CHAT,
+            AiWorldBookBinding.TARGET_READ_AI,
+            AiWorldBookBinding.TARGET_BOOK,
+            AiWorldBookBinding.TARGET_SESSION -> targetType
+            else -> ""
+        }
     }
 
     private fun jsonError(message: String): String {

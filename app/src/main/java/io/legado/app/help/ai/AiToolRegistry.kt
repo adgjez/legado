@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 5
+    private const val TOOL_SETTINGS_VERSION = 6
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -33,6 +33,11 @@ object AiToolRegistry {
         "delete_world_book",
         "upsert_world_book_entry",
         "delete_world_book_entry"
+    )
+    private val version6AddedDefaultTools = setOf(
+        "list_world_book_bindings",
+        "upsert_world_book_binding",
+        "delete_world_book_binding"
     )
 
     val readSafeToolNames = setOf(
@@ -56,6 +61,7 @@ object AiToolRegistry {
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
         "list_world_books",
+        "list_world_book_bindings",
         "get_app_settings"
     )
 
@@ -110,6 +116,9 @@ object AiToolRegistry {
         "delete_world_book",
         "upsert_world_book_entry",
         "delete_world_book_entry",
+        "list_world_book_bindings",
+        "upsert_world_book_binding",
+        "delete_world_book_binding",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"
@@ -160,6 +169,9 @@ object AiToolRegistry {
         "delete_world_book" to "删除世界书",
         "upsert_world_book_entry" to "新增或更新世界书条目",
         "delete_world_book_entry" to "删除世界书条目",
+        "list_world_book_bindings" to "读取世界书启用",
+        "upsert_world_book_binding" to "启用世界书",
+        "delete_world_book_binding" to "移除世界书启用",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -210,6 +222,9 @@ object AiToolRegistry {
         "delete_world_book" to "世界书",
         "upsert_world_book_entry" to "世界书",
         "delete_world_book_entry" to "世界书",
+        "list_world_book_bindings" to "世界书",
+        "upsert_world_book_binding" to "世界书",
+        "delete_world_book_binding" to "世界书",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -279,6 +294,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 3) addAll(version3AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 4) addAll(version4AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 5) addAll(version5AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 6) addAll(version6AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }
