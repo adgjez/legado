@@ -76,8 +76,6 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
-        val chatCompanion = resolveChatCompanion(memoryContext)
-        val systemPrompt = chatCompanion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
         val promptCacheKey = promptCacheKeyOverride
             ?.takeIf { provider?.promptCache == true }
             ?.let(::normalizePromptCacheKey)
@@ -203,6 +201,8 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        val chatCompanion = resolveChatCompanion(memoryContext)
+        val systemPrompt = chatCompanion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
         val promptCacheKey = promptCacheKeyOverride
             ?.takeIf { provider?.promptCache == true }
             ?.let(::normalizePromptCacheKey)

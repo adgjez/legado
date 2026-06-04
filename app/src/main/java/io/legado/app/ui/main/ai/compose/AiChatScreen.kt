@@ -96,8 +96,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
+import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.ui.main.ai.AiChatViewModel
+import io.legado.app.ui.book.character.compose.CharacterAvatar
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.parseToUri
 import io.legado.app.utils.showDialogFragment
@@ -113,7 +115,13 @@ data class AiChatScreenActions(
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
     val onOpenImageGallery: (() -> Unit)? = null,
-    val onOpenWindowAbilities: (() -> Unit)? = null
+    val onOpenWindowAbilities: (() -> Unit)? = null,
+    val onOpenWorldBooks: (() -> Unit)? = null,
+    val onToggleAutoSpeak: (() -> Unit)? = null,
+    val onAddCompanion: (() -> Unit)? = null,
+    val onSelectCompanion: ((String) -> Unit)? = null,
+    val onEditCompanion: ((AiChatCompanionConfig) -> Unit)? = null,
+    val onDeleteCompanion: ((AiChatCompanionConfig) -> Unit)? = null
 )
 
 @Composable
@@ -139,11 +147,21 @@ fun AiChatRoute(
     val modelLabel = remember(refreshToken, messages.size, requesting) {
         AppConfig.aiCurrentModelConfig?.modelId ?: ""
     }
+    val companions = remember(refreshToken, messages.size, requesting) {
+        viewModel.companions()
+    }
+    val currentCompanion = remember(refreshToken, messages.size, requesting) {
+        viewModel.currentCompanion()
+    }
+    val autoSpeakEnabled = remember(refreshToken) { AppConfig.aiChatAutoSpeakEnabled }
     val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
     AiChatScreen(
         messages = messages,
         requesting = requesting,
         modelLabel = modelLabel,
+        companions = companions,
+        currentCompanion = currentCompanion,
+        autoSpeakEnabled = autoSpeakEnabled,
         enterToSend = enterToSend,
         compactHeader = compactHeader,
         actions = actions
@@ -155,6 +173,9 @@ fun AiChatScreen(
     messages: List<AiChatMessage>,
     requesting: Boolean,
     modelLabel: String,
+    companions: List<AiChatCompanionConfig>,
+    currentCompanion: AiChatCompanionConfig,
+    autoSpeakEnabled: Boolean,
     enterToSend: Boolean,
     compactHeader: Boolean,
     actions: AiChatScreenActions
@@ -166,6 +187,7 @@ fun AiChatScreen(
     val coroutineScope = rememberCoroutineScope()
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     var processExpandSignal by remember { mutableStateOf(0) }
+    var companionDrawerOpen by rememberSaveable { mutableStateOf(false) }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
     val uiItems = remember(context, messages) {
@@ -233,9 +255,12 @@ fun AiChatScreen(
         ) {
             AiChatTopBar(
                 modelLabel = modelLabel,
+                currentCompanion = currentCompanion,
                 requesting = requesting,
                 compactHeader = compactHeader,
+                autoSpeakEnabled = autoSpeakEnabled,
                 style = style,
+                onOpenCompanionDrawer = { companionDrawerOpen = true },
                 actions = actions
             )
             Box(
@@ -325,15 +350,27 @@ fun AiChatScreen(
                 onDismiss = { toolPreviewPayload = null }
             )
         }
+        if (companionDrawerOpen) {
+            AiCompanionDrawer(
+                companions = companions,
+                currentCompanionId = currentCompanion.id,
+                style = style,
+                actions = actions,
+                onDismiss = { companionDrawerOpen = false }
+            )
+        }
     }
 }
 
 @Composable
 private fun AiChatTopBar(
     modelLabel: String,
+    currentCompanion: AiChatCompanionConfig,
     requesting: Boolean,
     compactHeader: Boolean,
+    autoSpeakEnabled: Boolean,
     style: AiComposeStyle,
+    onOpenCompanionDrawer: () -> Unit,
     actions: AiChatScreenActions
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -348,17 +385,31 @@ private fun AiChatTopBar(
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(onClick = onOpenCompanionDrawer) {
+            Icon(
+                painter = painterResource(R.drawable.ic_menu),
+                contentDescription = null,
+                tint = style.colors.primaryText,
+                modifier = Modifier.size(22.dp)
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stringResource(R.string.ai),
+                text = currentCompanion.name.ifBlank { stringResource(R.string.ai) },
                 color = style.colors.primaryText,
                 fontSize = if (compactHeader) 24.sp else 20.sp,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (!compactHeader) {
                 Text(
-                    text = modelLabel.ifBlank { stringResource(R.string.ai_current_model_summary_empty) },
+                    text = buildString {
+                        append(modelLabel.ifBlank { stringResource(R.string.ai_current_model_summary_empty) })
+                        if (currentCompanion.type == AiChatCompanionConfig.TYPE_CHARACTER) {
+                            append(" · 角色")
+                        }
+                    },
                     color = style.colors.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -383,18 +434,10 @@ private fun AiChatTopBar(
                 )
             }
         }
-        IconButton(onClick = actions.onOpenSettings) {
-            Icon(
-                painter = painterResource(R.drawable.ic_settings),
-                contentDescription = stringResource(R.string.ai_setting),
-                tint = style.colors.primaryText,
-                modifier = Modifier.size(21.dp)
-            )
-        }
         Box {
             IconButton(onClick = { menuExpanded = true }) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_more_vert),
+                    painter = painterResource(R.drawable.ic_settings),
                     contentDescription = null,
                     tint = style.colors.primaryText,
                     modifier = Modifier.size(21.dp)
@@ -408,6 +451,12 @@ private fun AiChatTopBar(
                         add(AiTopMenuAction(stringResource(R.string.ai_chat_history)) { actions.onOpenHistory() })
                         actions.onOpenWindowAbilities?.let { openAbilities ->
                             add(AiTopMenuAction("窗口能力", openAbilities))
+                        }
+                        actions.onOpenWorldBooks?.let { openWorldBooks ->
+                            add(AiTopMenuAction("浏览世界书", openWorldBooks))
+                        }
+                        actions.onToggleAutoSpeak?.let { toggleAutoSpeak ->
+                            add(AiTopMenuAction("自动播放语音：${if (autoSpeakEnabled) "开" else "关"}", toggleAutoSpeak))
                         }
                         add(AiTopMenuAction(stringResource(R.string.ai_setting)) { actions.onOpenSettings() })
                         actions.onOpenImageGallery?.let { openGallery ->
@@ -472,6 +521,223 @@ private fun AiModernTopMenu(
             }
         }
     }
+}
+
+@Composable
+private fun AiCompanionDrawer(
+    companions: List<AiChatCompanionConfig>,
+    currentCompanionId: String,
+    style: AiComposeStyle,
+    actions: AiChatScreenActions,
+    onDismiss: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.22f))
+                .clickable { onDismiss() }
+        )
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 0.dp,
+                bottomStart = 0.dp,
+                topEnd = style.metrics.cardRadius,
+                bottomEnd = style.metrics.cardRadius
+            ),
+            color = style.colors.pageBackground,
+            border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(304.dp)
+                .align(Alignment.CenterStart)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "助手",
+                            color = style.colors.primaryText,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${companions.size} 个角色窗口",
+                            color = style.colors.secondaryText,
+                            fontSize = 12.sp
+                        )
+                    }
+                    actions.onAddCompanion?.let { add ->
+                        IconButton(onClick = add) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_add),
+                                contentDescription = null,
+                                tint = style.colors.accent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_x),
+                            contentDescription = null,
+                            tint = style.colors.secondaryText,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(companions, key = { it.id }) { companion ->
+                        AiCompanionDrawerItem(
+                            companion = companion,
+                            selected = companion.id == currentCompanionId,
+                            style = style,
+                            onSelect = {
+                                actions.onSelectCompanion?.invoke(companion.id)
+                                onDismiss()
+                            },
+                            onEdit = actions.onEditCompanion,
+                            onDelete = actions.onDeleteCompanion
+                        )
+                    }
+                    item { Spacer(modifier = Modifier.height(18.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiCompanionDrawerItem(
+    companion: AiChatCompanionConfig,
+    selected: Boolean,
+    style: AiComposeStyle,
+    onSelect: () -> Unit,
+    onEdit: ((AiChatCompanionConfig) -> Unit)?,
+    onDelete: ((AiChatCompanionConfig) -> Unit)?
+) {
+    val isDefault = companion.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.cardRadius))
+            .background(if (selected) style.colors.accent.copy(alpha = 0.12f) else style.colors.cardSurface)
+            .border(
+                style.metrics.strokeWidth,
+                if (selected) style.colors.accent.copy(alpha = 0.35f) else style.colors.stroke,
+                RoundedCornerShape(style.metrics.cardRadius)
+            )
+            .clickable { onSelect() }
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AiCompanionAvatar(companion, style, 42)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp)
+        ) {
+            Text(
+                text = companion.name,
+                color = style.colors.primaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = when {
+                    isDefault -> "默认系统提示词"
+                    companion.bookKey.isNotBlank() -> "角色 · ${companion.bookKey}"
+                    else -> "角色"
+                },
+                color = style.colors.secondaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!isDefault) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    onEdit?.let {
+                        AiDrawerTextAction("编辑", style) { it(companion) }
+                    }
+                    onDelete?.let {
+                        AiDrawerTextAction("删除", style, danger = true) { it(companion) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiCompanionAvatar(
+    companion: AiChatCompanionConfig,
+    style: AiComposeStyle,
+    sizeDp: Int
+) {
+    if (companion.avatar.isNotBlank()) {
+        CharacterAvatar(
+            path = companion.avatar,
+            contentDescription = companion.name,
+            sizeDp = sizeDp
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(sizeDp.dp)
+                .clip(CircleShape)
+                .background(style.colors.toolSurface),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(
+                    if (companion.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                        R.drawable.ic_bottom_ai_e
+                    } else {
+                        R.drawable.ic_bottom_person
+                    }
+                ),
+                contentDescription = null,
+                tint = style.colors.accent,
+                modifier = Modifier.size((sizeDp * 0.55f).dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiDrawerTextAction(
+    text: String,
+    style: AiComposeStyle,
+    danger: Boolean = false,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = if (danger) style.colors.danger else style.colors.accent,
+        fontSize = 12.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(style.metrics.chipRadius))
+            .clickable { onClick() }
+            .padding(vertical = 2.dp)
+    )
 }
 
 @Composable
