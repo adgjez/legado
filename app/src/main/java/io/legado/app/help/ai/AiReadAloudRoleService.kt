@@ -47,6 +47,7 @@ object AiReadAloudRoleService {
     private const val RUNNING_WAIT_STEP_MILLIS = 600L
     private const val RUNNING_WAIT_TIMEOUT_MILLIS = 120_000L
     private const val PLAYBACK_CACHE_SCHEMA_VERSION = "playback-v1"
+    private const val MIN_AUTO_CREATE_CHARACTER_CONFIDENCE = 0.62
     private val runningCacheKeys = ConcurrentHashMap.newKeySet<String>()
     private val avatarScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val speechVerbRegex = Regex(
@@ -139,6 +140,11 @@ object AiReadAloudRoleService {
         val contentHash: String,
         val contextParagraphs: Int,
         val mergeGapParagraphs: Int
+    )
+
+    private data class CacheRepairResult(
+        val segments: List<Segment>,
+        val createdIds: List<Long> = emptyList()
     )
 
     private data class UnitAssignmentBatch(
@@ -381,7 +387,13 @@ object AiReadAloudRoleService {
         }
         val oldCache = appDb.aiReadAloudRoleCacheDao.get(cacheKey)
         if (oldCache?.status == AiReadAloudRoleCache.STATUS_SUCCESS && oldCache.segmentsJson.isNotBlank()) {
-            val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
+            val repair = repairCachedCharactersIfNeeded(
+                cache = oldCache,
+                characterBookKey = characterBookKey,
+                sourceBookUrl = currentBook.bookUrl,
+                paragraphs = cleanParagraphs
+            )
+            val cachedSegments = repair.segments
             val preview = buildPreviewSegments(
                 characterBookKey,
                 cachedSegments,
@@ -393,7 +405,8 @@ object AiReadAloudRoleService {
                 AiReadAloudRoleState.STATUS_SKIPPED,
                 "当前章节角色已分配",
                 AiReadAloudRoleState.SOURCE_CACHE,
-                preview
+                preview,
+                createdCharacterCount = repair.createdIds.size
             )
             return EnsureResult(
                 AiReadAloudRoleState.STATUS_SKIPPED,
@@ -405,7 +418,13 @@ object AiReadAloudRoleService {
         latestSuccessCache(currentBook, currentChapter, roleKey)
             ?.takeIf { it.cacheKey != cacheKey }
             ?.let { usableCache ->
-                val cachedSegments = segmentsFromJson(usableCache.segmentsJson)
+                val repair = repairCachedCharactersIfNeeded(
+                    cache = usableCache,
+                    characterBookKey = characterBookKey,
+                    sourceBookUrl = currentBook.bookUrl,
+                    paragraphs = cleanParagraphs
+                )
+                val cachedSegments = repair.segments
                 val now = System.currentTimeMillis()
                 appDb.aiReadAloudRoleCacheDao.upsert(
                     usableCache.copy(
@@ -415,6 +434,11 @@ object AiReadAloudRoleService {
                         paragraphCount = cleanParagraphs.size,
                         retryCount = 0,
                         lastError = "",
+                        segmentsJson = replaceSegmentsInCacheJson(usableCache.segmentsJson, cachedSegments),
+                        createdCharacterIdsJson = mergeCreatedCharacterIds(
+                            usableCache.createdCharacterIdsJson,
+                            repair.createdIds
+                        ),
                         characterHash = characterHash(characterBookKey),
                         voiceHash = voiceHash(characterBookKey),
                         updatedAt = now
@@ -430,7 +454,8 @@ object AiReadAloudRoleService {
                     AiReadAloudRoleState.STATUS_SKIPPED,
                     "当前章节角色已分配",
                     AiReadAloudRoleState.SOURCE_CACHE,
-                    preview
+                    preview,
+                    createdCharacterCount = repair.createdIds.size
                 )
                 return EnsureResult(
                     AiReadAloudRoleState.STATUS_SKIPPED,
@@ -445,7 +470,13 @@ object AiReadAloudRoleService {
                 return EnsureResult(AiReadAloudRoleState.STATUS_RUNNING, message = "分配角色中", cacheKey = cacheKey)
             }
             if (oldCache.segmentsJson.isNotBlank()) {
-                val cachedSegments = segmentsFromJson(oldCache.segmentsJson)
+                val repair = repairCachedCharactersIfNeeded(
+                    cache = oldCache,
+                    characterBookKey = characterBookKey,
+                    sourceBookUrl = currentBook.bookUrl,
+                    paragraphs = cleanParagraphs
+                )
+                val cachedSegments = repair.segments
                 val preview = buildPreviewSegments(
                     characterBookKey,
                     cachedSegments,
@@ -457,6 +488,11 @@ object AiReadAloudRoleService {
                         status = AiReadAloudRoleCache.STATUS_SUCCESS,
                         retryCount = 0,
                         lastError = "",
+                        segmentsJson = replaceSegmentsInCacheJson(oldCache.segmentsJson, cachedSegments),
+                        createdCharacterIdsJson = mergeCreatedCharacterIds(
+                            oldCache.createdCharacterIdsJson,
+                            repair.createdIds
+                        ),
                         updatedAt = System.currentTimeMillis()
                     )
                 )
@@ -464,7 +500,8 @@ object AiReadAloudRoleService {
                     AiReadAloudRoleState.STATUS_SKIPPED,
                     "当前章节角色已分配",
                     AiReadAloudRoleState.SOURCE_CACHE,
-                    preview
+                    preview,
+                    createdCharacterCount = repair.createdIds.size
                 )
                 return EnsureResult(
                     AiReadAloudRoleState.STATUS_SKIPPED,
@@ -613,7 +650,13 @@ object AiReadAloudRoleService {
                 )
                 return EnsureResult(AiReadAloudRoleState.STATUS_FAILED, error = error, cacheKey = cacheKey)
             }
-            val resolved = persistDetectedCharacters(characterBookKey, currentBook.bookUrl, aiSegments, result.candidates)
+            val resolved = persistDetectedCharacters(
+                characterBookKey,
+                currentBook.bookUrl,
+                aiSegments,
+                result.candidates,
+                cleanParagraphs
+            )
             val finalUsage = usageTracker.snapshot()
             appDb.aiReadAloudRoleCacheDao.upsert(
                 AiReadAloudRoleCache(
@@ -2245,7 +2288,8 @@ object AiReadAloudRoleService {
         characterBookKey: String,
         sourceBookUrl: String,
         segments: List<Segment>,
-        candidates: List<CharacterCandidate>
+        candidates: List<CharacterCandidate>,
+        paragraphs: List<String> = emptyList()
     ): Pair<List<Segment>, List<Long>> {
         if (!AppConfig.aiReadAloudAutoCreateCharacters) {
             val characters = appDb.bookCharacterDao.characters(characterBookKey)
@@ -2257,10 +2301,13 @@ object AiReadAloudRoleService {
         val byName = existing.associateBy { it.name }.toMutableMap()
         val createdIds = mutableListOf<Long>()
         var characterChanged = false
-        val candidateMap = candidates
-            .filter { it.confidence >= 0.75 && it.evidence.isNotBlank() && isCreatableCharacterName(it.name) }
-            .associateBy { it.name }
-            .toMutableMap()
+        val segmentEvidenceByName = segmentEvidenceByName(segments, paragraphs)
+        val candidateMap = buildAutoCreateCandidateMap(
+            candidates = candidates,
+            segments = segments,
+            paragraphs = paragraphs,
+            existingNames = byName.keys
+        )
         candidateMap.values
             .sortedByDescending { it.confidence }
             .take(20)
@@ -2274,7 +2321,7 @@ object AiReadAloudRoleService {
                         gender = candidate.gender,
                         attributes = BookCharacterProfileMeta.mergeAgeIntoAttributes(candidate.age, ""),
                         appearance = candidate.appearance,
-                        biography = candidate.evidence,
+                        biography = candidate.evidence.ifBlank { segmentEvidenceByName[candidate.name].orEmpty() },
                         roleLevel = candidate.roleLevel,
                         sortOrder = (appDb.bookCharacterDao.maxCharacterOrder(characterBookKey) ?: -1) + 1,
                         speechRouteJson = SpeechVoiceAssigner
@@ -2370,6 +2417,138 @@ object AiReadAloudRoleService {
         }
         queueAutoCharacterAvatars(characterBookKey, sourceBookUrl, createdIds)
         return resolveSegmentCharacters(segments, byName.values.toList()) to createdIds
+    }
+
+    private fun buildAutoCreateCandidateMap(
+        candidates: List<CharacterCandidate>,
+        segments: List<Segment>,
+        paragraphs: List<String>,
+        existingNames: Set<String>
+    ): MutableMap<String, CharacterCandidate> {
+        val evidenceByName = segmentEvidenceByName(segments, paragraphs)
+        val result = linkedMapOf<String, CharacterCandidate>()
+        candidates
+            .filter { candidate ->
+                candidate.confidence >= MIN_AUTO_CREATE_CHARACTER_CONFIDENCE &&
+                        isCreatableCharacterName(candidate.name)
+            }
+            .forEach { candidate ->
+                val evidence = candidate.evidence.ifBlank { evidenceByName[candidate.name].orEmpty() }
+                if (candidate.name in existingNames || evidence.isNotBlank()) {
+                    result[candidate.name] = candidate.copy(evidence = evidence)
+                }
+            }
+        segments.asSequence()
+            .filter { it.roleType == "character" || it.roleType == "thought" }
+            .filter { it.characterId <= 0L }
+            .filter { it.confidence >= MIN_AUTO_CREATE_CHARACTER_CONFIDENCE }
+            .filter { isCreatableCharacterName(it.characterName) }
+            .filterNot { it.characterName in existingNames || it.characterName in result }
+            .groupBy { it.characterName }
+            .forEach { (name, roleSegments) ->
+                val best = roleSegments.maxByOrNull { it.confidence } ?: return@forEach
+                val evidence = evidenceByName[name].orEmpty()
+                if (evidence.isBlank()) return@forEach
+                result[name] = CharacterCandidate(
+                    name = name,
+                    identity = "",
+                    gender = BookCharacter.inferGender("$name $evidence"),
+                    age = "",
+                    appearance = "",
+                    roleLevel = BookCharacter.ROLE_NORMAL,
+                    confidence = best.confidence.coerceAtLeast(MIN_AUTO_CREATE_CHARACTER_CONFIDENCE),
+                    evidence = evidence
+                )
+            }
+        return result
+    }
+
+    private fun segmentEvidenceByName(
+        segments: List<Segment>,
+        paragraphs: List<String>
+    ): Map<String, String> {
+        if (paragraphs.isEmpty()) return emptyMap()
+        val result = linkedMapOf<String, String>()
+        segments
+            .filter { it.roleType == "character" || it.roleType == "thought" }
+            .filter { it.characterName.isNotBlank() }
+            .sortedWith(compareBy<Segment> { it.paragraphIndex }.thenBy { it.start })
+            .forEach { segment ->
+                if (segment.characterName in result) return@forEach
+                val paragraph = paragraphs.getOrNull(segment.paragraphIndex) ?: return@forEach
+                val start = segment.start.coerceIn(0, paragraph.length)
+                val end = segment.end.coerceIn(start, paragraph.length)
+                val evidence = paragraph.substring(start, end).trim().take(200)
+                if (evidence.isNotBlank()) {
+                    result[segment.characterName] = evidence
+                }
+            }
+        return result
+    }
+
+    private fun repairCachedCharactersIfNeeded(
+        cache: AiReadAloudRoleCache,
+        characterBookKey: String,
+        sourceBookUrl: String,
+        paragraphs: List<String>
+    ): CacheRepairResult {
+        val segments = segmentsFromJson(cache.segmentsJson)
+        if (segments.isEmpty()) return CacheRepairResult(segments)
+        val repaired = persistDetectedCharacters(
+            characterBookKey = characterBookKey,
+            sourceBookUrl = sourceBookUrl,
+            segments = segments,
+            candidates = emptyList(),
+            paragraphs = paragraphs
+        )
+        if (repaired.first != segments || repaired.second.isNotEmpty()) {
+            appDb.aiReadAloudRoleCacheDao.upsert(
+                cache.copy(
+                    segmentsJson = replaceSegmentsInCacheJson(cache.segmentsJson, repaired.first),
+                    createdCharacterIdsJson = mergeCreatedCharacterIds(
+                        cache.createdCharacterIdsJson,
+                        repaired.second
+                    ),
+                    characterHash = characterHash(characterBookKey),
+                    voiceHash = voiceHash(characterBookKey),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return CacheRepairResult(repaired.first, repaired.second)
+    }
+
+    private fun replaceSegmentsInCacheJson(
+        oldJson: String,
+        segments: List<Segment>
+    ): String {
+        val text = oldJson.trim()
+        return if (text.startsWith("{")) {
+            runCatching {
+                JSONObject(text).apply {
+                    put("segments", segments.toJsonArray())
+                }.toString()
+            }.getOrElse {
+                segments.toJsonArray().toString()
+            }
+        } else {
+            segments.toJsonArray().toString()
+        }
+    }
+
+    private fun mergeCreatedCharacterIds(
+        oldJson: String,
+        newIds: List<Long>
+    ): String {
+        if (newIds.isEmpty()) return oldJson
+        val ids = linkedSetOf<Long>()
+        runCatching { JSONArray(oldJson) }.getOrNull()?.let { array ->
+            for (index in 0 until array.length()) {
+                array.optLong(index, 0L).takeIf { it > 0L }?.let(ids::add)
+            }
+        }
+        ids += newIds.filter { it > 0L }
+        return JSONArray(ids.toList()).toString()
     }
 
     private fun queueAutoCharacterAvatars(
