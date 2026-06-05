@@ -279,6 +279,30 @@ object ReadBook : CoroutineScope by MainScope() {
         chapterLayoutKeys.clear()
     }
 
+    fun reloadCurrentContent(reason: String = "", keepPosition: Boolean = true) {
+        val chapterIndex = durChapterIndex
+        if (chapterIndex !in 0 until chapterSize) return
+        AppLog.putDebug("reloadCurrentContent: reason=$reason, chapter=$chapterIndex")
+        refreshParagraphRuleLayoutKey()
+        chapterLoadingJobs[chapterIndex]?.cancel()
+        removeLoading(chapterIndex)
+        chapterLayoutKeys.remove(chapterIndex)
+        loadContent(
+            chapterIndex,
+            upContent = true,
+            resetPageOffset = !keepPosition,
+            forceReload = true
+        )
+        loadContent(chapterIndex + 1, upContent = false, resetPageOffset = false, forceReload = true)
+        loadContent(chapterIndex - 1, upContent = false, resetPageOffset = false, forceReload = true)
+    }
+
+    fun relayoutCurrentContent(reason: String = "", keepPosition: Boolean = true) {
+        AppLog.putDebug("relayoutCurrentContent: reason=$reason, chapter=$durChapterIndex")
+        ChapterProvider.upStyle()
+        reloadCurrentContent(reason, keepPosition)
+    }
+
     fun invalidateParagraphRuleLayout() {
         ParagraphRuleProcessor.clearProcessCache(book?.bookUrl)
         refreshParagraphRuleLayoutKey()
@@ -653,6 +677,12 @@ object ReadBook : CoroutineScope by MainScope() {
     private fun currentChapterLayoutKey(): String {
         val paint = ChapterProvider.contentPaint
         val titlePaint = ChapterProvider.titlePaint
+        val currentBook = book
+        val processor = contentProcessor
+        val replaceRuleKey = processor?.getContentReplaceRules()
+            ?.joinToString(",") {
+                "${it.id}:${it.pattern.hashCode()}:${it.replacement.hashCode()}:${it.isRegex}:${it.timeoutMillisecond}"
+            }.orEmpty()
         return buildString {
             append(ChapterProvider.viewWidth).append('x').append(ChapterProvider.viewHeight)
             append('|').append(ChapterProvider.visibleWidth).append('x').append(ChapterProvider.visibleHeight)
@@ -664,6 +694,17 @@ object ReadBook : CoroutineScope by MainScope() {
             append('|').append(ChapterProvider.titlePaintTextHeight)
             append('|').append(ChapterProvider.lineSpacingExtra)
             append('|').append(ChapterProvider.paragraphSpacing)
+            append('|').append(ReadBookConfig.paragraphIndent)
+            append('|').append(ReadBookConfig.useZhLayout)
+            append('|').append(ReadBookConfig.textFullJustify)
+            append('|').append(AppConfig.adaptSpecialStyle)
+            if (currentBook != null) {
+                append('|').append(currentBook.getUseReplaceRule())
+                append('|').append(currentBook.config.delTag)
+                append('|').append(currentBook.getReSegment())
+                append('|').append(currentBook.getImageStyle())
+            }
+            append('|').append(replaceRuleKey)
             append('|').append(paragraphRuleLayoutKey)
         }
     }
@@ -689,11 +730,18 @@ object ReadBook : CoroutineScope by MainScope() {
         index: Int,
         upContent: Boolean = true,
         resetPageOffset: Boolean = false,
+        forceReload: Boolean = false,
         success: (() -> Unit)? = null
     ) {
+        if (forceReload) {
+            refreshParagraphRuleLayoutKey()
+            chapterLoadingJobs[index]?.cancel()
+            removeLoading(index)
+            chapterLayoutKeys.remove(index)
+        }
         val layoutKey = currentChapterLayoutKey()
         val cached = textChapter(index - durChapterIndex)
-        if (cached?.isCompleted == true && chapterLayoutKeys[index] == layoutKey) {
+        if (!forceReload && cached?.isCompleted == true && chapterLayoutKeys[index] == layoutKey) {
             if (upContent) {
                 callBack?.upContent(index - durChapterIndex, resetPageOffset)
             }
@@ -1048,8 +1096,10 @@ object ReadBook : CoroutineScope by MainScope() {
                     appDb.bookDao.replace(oldBook, book)
                     BookHelp.updateCacheFolder(oldBook, book)
                 }
-                appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                appDb.bookChapterDao.insert(*cList.toTypedArray())
+                appDb.runInTransaction {
+                    appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+                    appDb.bookChapterDao.insert(*cList.toTypedArray())
+                }
                 onChapterListUpdated(book, false)
                 nextTextChapter ?: loadContent(durChapterIndex + 1)
             }

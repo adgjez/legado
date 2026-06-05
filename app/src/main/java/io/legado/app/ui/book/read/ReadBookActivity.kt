@@ -901,7 +901,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             R.id.menu_re_segment -> ReadBook.book?.let {
                 it.setReSegment(!it.getReSegment())
                 item.isChecked = it.getReSegment()
-                ReadBook.loadContent(false)
+                ReadBook.saveRead(fullUpdate = true)
+                ReadBook.reloadCurrentContent("re-segment")
             }
 
 //            R.id.menu_enable_review -> {
@@ -917,7 +918,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 } else {
                     it.removeDelTag(Book.rubyTag)
                 }
-                refreshContentAll(it)
+                ReadBook.saveRead(fullUpdate = true)
+                ReadBook.reloadCurrentContent("delete-ruby-tag")
             }
 
             R.id.menu_del_h_tag -> ReadBook.book?.let {
@@ -927,7 +929,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                 } else {
                     it.removeDelTag(Book.hTag)
                 }
-                refreshContentAll(it)
+                ReadBook.saveRead(fullUpdate = true)
+                ReadBook.reloadCurrentContent("delete-h-tag")
             }
 
             R.id.menu_epub_schedule_mode -> showEpubCoreScheduleModeDialog()
@@ -942,7 +945,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     }
                     loadEpubCoreContent(resetPageOffset = false, keepCurrentPageUntilReady = true)
                 } else {
-                    ReadBook.loadContent(false)
+                    ReadBook.relayoutCurrentContent("page-anim")
                 }
             }
 
@@ -972,7 +975,8 @@ class ReadBookActivity : BaseReadBookActivity(),
                         ReadBook.book?.setPageAnim(0)  // 切换图片样式single后，自动切换为覆盖
                         binding.readView.upPageAnim()
                     }
-                    ReadBook.loadContent(false)
+                    ReadBook.saveRead(fullUpdate = true)
+                    ReadBook.reloadCurrentContent("image-style")
                 }
             }
 
@@ -1015,8 +1019,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun refreshContentAll(book: Book) {
-        ReadBook.clearTextChapter()
-        binding.readView.upContent()
         viewModel.refreshContentAll(book)
     }
 
@@ -2195,8 +2197,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             readView.upStyle()
         }
         if (needReload && isInitFinish) {
-            ReadBook.clearTextChapter()
-            ReadBook.loadContent(resetPageOffset = false)
+            ReadBook.relayoutCurrentContent("read-config")
         } else {
             if (needInvalidate) {
                 readView.invalidateTextPage()
@@ -4656,8 +4657,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         observeEvent<Boolean>(EventBus.REFRESH_BOOK_CONTENT) { //书源js函数触发刷新
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 ReadBook.book?.let {
-                    ReadBook.curTextChapter = null
-                    binding.readView.upContent()
                     viewModel.refreshContentDur(it)
                 }
             }

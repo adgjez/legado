@@ -222,10 +222,12 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         if (book.isLocal) {
             kotlin.runCatching {
                 LocalBook.getChapterList(book).let {
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookChapterDao.insert(*it.toTypedArray())
-                    appDb.bookDao.update(book)
-                    ReadBook.onChapterListUpdated(book)
+                    appDb.runInTransaction {
+                        appDb.bookChapterDao.delByBook(book.bookUrl)
+                        appDb.bookChapterDao.insert(*it.toTypedArray())
+                        appDb.bookDao.update(book)
+                    }
+                    ReadBook.onChapterListUpdated(book, loadContent = false)
                 }
                 return true
             }.onFailure {
@@ -254,9 +256,11 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                             appDb.bookDao.replace(oldBook, book)
                             BookHelp.updateCacheFolder(oldBook, book)
                         }
-                        appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                        appDb.bookChapterDao.insert(*cList.toTypedArray())
-                        ReadBook.onChapterListUpdated(book)
+                        appDb.runInTransaction {
+                            appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+                            appDb.bookChapterDao.insert(*cList.toTypedArray())
+                        }
+                        ReadBook.onChapterListUpdated(book, loadContent = false)
                         return true
                     }.onFailure {
                         currentCoroutineContext().ensureActive()
@@ -396,7 +400,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?.let { chapter ->
                     BookHelp.delContent(book, chapter)
-                    ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
+                    ReadBook.reloadCurrentContent("refresh-current-content")
                 }
         }
     }
@@ -410,14 +414,14 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             ).forEach { chapter ->
                 BookHelp.delContent(book, chapter)
             }
-            ReadBook.loadContent(false)
+            ReadBook.reloadCurrentContent("refresh-content-after")
         }
     }
 
     fun refreshContentAll(book: Book) {
         execute {
             BookHelp.clearCache(book)
-            ReadBook.loadContent(false)
+            ReadBook.reloadCurrentContent("refresh-content-all")
         }
     }
 
@@ -429,7 +433,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?.let { chapter ->
                     BookHelp.saveText(book, chapter, content)
-                    ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
+                    ReadBook.reloadCurrentContent("save-content")
                 }
         }
     }
@@ -447,7 +451,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 stringBuilder.insert(0, it)
             }
             BookHelp.saveText(book, chapter, stringBuilder.toString())
-            ReadBook.loadContent(ReadBook.durChapterIndex, resetPageOffset = false)
+            ReadBook.reloadCurrentContent("reverse-content")
         }
     }
 
@@ -532,7 +536,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
             BookHelp.setRemoveSameTitle(
                 book, textChapter.chapter, !textChapter.sameTitleRemoved
             )
-            ReadBook.loadContent(ReadBook.durChapterIndex)
+            ReadBook.reloadCurrentContent("same-title")
         }
     }
 
@@ -588,7 +592,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
         execute {
             ReadBook.book?.let {
                 ContentProcessor.get(it.name, it.origin).upReplaceRules()
-                ReadBook.loadContent(resetPageOffset = false)
+                ReadBook.reloadCurrentContent("replace-rule")
             }
         }
     }
