@@ -89,6 +89,11 @@ class AiChatViewModel : ViewModel() {
         val requestMessages = snapshotForRequest()
         val activeSkills = activeWindowSkills()
         val activeMcpServerIds = windowMcpServerIds
+        val companionExtraTools = if (currentCompanion().type == AiChatCompanionConfig.TYPE_CHARACTER) {
+            AiToolRegistry.resolveNativeTools(AiToolRegistry.characterCompanionToolNames)
+        } else {
+            emptyList()
+        }
         val agentRun = AiAgentStateStore.startRun(
             sessionId = requestSessionId,
             scope = AiAgentSession.SCOPE_CHAT,
@@ -142,7 +147,7 @@ class AiChatViewModel : ViewModel() {
                             title = "AI Chat"
                         ),
                         activeSkills = activeSkills,
-                        extraTools = AiToolRegistry.resolveMcpTools(activeMcpServerIds)
+                        extraTools = companionExtraTools + AiToolRegistry.resolveMcpTools(activeMcpServerIds)
                     )
                 }
                 targetFor(requestSessionId, requestCompanionId).setRequesting(false)

@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 7
+    private const val TOOL_SETTINGS_VERSION = 8
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -43,11 +43,24 @@ object AiToolRegistry {
         "import_world_book_json",
         "export_world_book_json"
     )
+    private val version8AddedDefaultTools = setOf(
+        "search_book_chapter_content"
+    )
+
+    val characterCompanionToolNames = setOf(
+        "query_bookshelf",
+        "get_bookshelf_book_info",
+        "list_book_chapters",
+        "search_book_chapter_content",
+        "read_book_chapter_content",
+        "generate_image"
+    )
 
     val readSafeToolNames = setOf(
         "query_bookshelf",
         "get_bookshelf_book_info",
         "list_book_chapters",
+        "search_book_chapter_content",
         "read_book_chapter_content",
         "query_read_records",
         "generate_image",
@@ -83,6 +96,7 @@ object AiToolRegistry {
         "set_bookshelf_book_group",
         "set_bookshelf_book_tags",
         "list_book_chapters",
+        "search_book_chapter_content",
         "read_book_chapter_content",
         "query_read_records",
         "list_book_sources",
@@ -139,6 +153,7 @@ object AiToolRegistry {
         "set_bookshelf_book_tags" to "设置书籍标签",
         "query_read_records" to "查询阅读记录",
         "list_book_chapters" to "读取章节目录",
+        "search_book_chapter_content" to "搜索章节正文",
         "read_book_chapter_content" to "读取章节正文",
         "list_book_sources" to "列出书源",
         "search_book_source" to "搜索书源内容",
@@ -194,6 +209,7 @@ object AiToolRegistry {
         "set_bookshelf_book_tags" to "书架",
         "query_read_records" to "书架",
         "list_book_chapters" to "阅读",
+        "search_book_chapter_content" to "阅读",
         "read_book_chapter_content" to "阅读",
         "list_book_sources" to "书源",
         "search_book_source" to "书源",
@@ -306,6 +322,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 5) addAll(version5AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 6) addAll(version6AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 7) addAll(version7AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 8) addAll(version8AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }

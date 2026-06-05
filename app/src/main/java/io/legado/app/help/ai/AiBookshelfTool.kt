@@ -26,6 +26,7 @@ object AiBookshelfTool {
     private const val TOOL_SET_GROUP = "set_bookshelf_book_group"
     private const val TOOL_SET_TAGS = "set_bookshelf_book_tags"
     private const val TOOL_LIST_CHAPTERS = "list_book_chapters"
+    private const val TOOL_SEARCH_CHAPTER_CONTENT = "search_book_chapter_content"
     private const val TOOL_READ_CHAPTER = "read_book_chapter_content"
     private const val DEFAULT_LIMIT = 6
     private const val MAX_LIMIT = 20
@@ -67,6 +68,11 @@ object AiBookshelfTool {
                 name = TOOL_LIST_CHAPTERS,
                 definition = listChaptersDefinition(),
                 execute = { args -> listBookChapters(args) }
+            ),
+            AiResolvedTool(
+                name = TOOL_SEARCH_CHAPTER_CONTENT,
+                definition = searchChapterContentDefinition(),
+                execute = { args -> searchBookChapterContent(args) }
             ),
             AiResolvedTool(
                 name = TOOL_READ_CHAPTER,
@@ -456,6 +462,73 @@ object AiBookshelfTool {
         }
     }
 
+    private fun searchChapterContentDefinition(): JSONObject {
+        return JSONObject().apply {
+            put("type", "function")
+            put("function", JSONObject().apply {
+                put("name", TOOL_SEARCH_CHAPTER_CONTENT)
+                put(
+                    "description",
+                    "在本地书架指定书籍的章节标题和已缓存正文中搜索关键词，返回少量命中片段。需要补充角色记忆或查找剧情细节时优先用它，再按需读取整章。"
+                )
+                put("parameters", JSONObject().apply {
+                    put("type", "object")
+                    put("properties", JSONObject().apply {
+                        put("bookUrl", JSONObject().apply {
+                            put("type", "string")
+                            put("description", "书籍 URL，本地书也是本地路径。优先精确匹配。")
+                        })
+                        put("name", JSONObject().apply {
+                            put("type", "string")
+                            put("description", "书名。没有 URL 时使用。")
+                        })
+                        put("author", JSONObject().apply {
+                            put("type", "string")
+                            put("description", "作者名，可选。")
+                        })
+                        put("keyword", JSONObject().apply {
+                            put("type", "string")
+                            put("description", "要搜索的剧情、人物、地点或台词关键词。")
+                        })
+                        put("scope", JSONObject().apply {
+                            put("type", "string")
+                            put("enum", JSONArray(listOf("near_current", "all_cached")))
+                            put("description", "near_current 默认只搜当前阅读章节附近；all_cached 搜更多已缓存章节。")
+                        })
+                        put("startIndex", JSONObject().apply {
+                            put("type", "integer")
+                            put("description", "可选，起始章节索引。传入后优先使用显式范围。")
+                        })
+                        put("endIndex", JSONObject().apply {
+                            put("type", "integer")
+                            put("description", "可选，结束章节索引。")
+                        })
+                        put("maxScanChapters", JSONObject().apply {
+                            put("type", "integer")
+                            put("minimum", 20)
+                            put("maximum", 1200)
+                            put("description", "最多扫描多少章，默认 near_current 为 240，all_cached 为 800。")
+                        })
+                        put("maxResults", JSONObject().apply {
+                            put("type", "integer")
+                            put("minimum", 1)
+                            put("maximum", 20)
+                            put("description", "最多返回多少个命中片段，默认 8。")
+                        })
+                        put("contextChars", JSONObject().apply {
+                            put("type", "integer")
+                            put("minimum", 60)
+                            put("maximum", 600)
+                            put("description", "每个命中片段前后保留多少字符，默认 180。")
+                        })
+                    })
+                    put("required", JSONArray(listOf("keyword")))
+                    put("additionalProperties", false)
+                })
+            })
+        }
+    }
+
     private fun queryBookshelf(arguments: JSONObject?): String {
         val query = arguments?.optString("query")?.trim().orEmpty()
         val limit = (arguments?.optInt("limit", DEFAULT_LIMIT) ?: DEFAULT_LIMIT)
@@ -757,11 +830,68 @@ object AiBookshelfTool {
                         put("index", chapter.index)
                         put("title", chapter.title)
                         put("volume", chapter.tag ?: "")
-                        put("url", chapter.url ?: "")
+                        put("url", chapter.url)
                         put("cached", BookHelp.hasContent(book, chapter))
                     })
                 }
             })
+        }.toString()
+    }
+
+    private suspend fun searchBookChapterContent(arguments: JSONObject?): String = withContext(IO) {
+        val book = resolveBook(arguments)
+            ?: return@withContext errorJson("未找到书籍")
+        val keyword = arguments?.optString("keyword")?.trim().orEmpty()
+        if (keyword.isBlank()) return@withContext errorJson("keyword 不能为空")
+        val scope = arguments?.optString("scope")?.trim().orEmpty().ifBlank { "near_current" }
+        val maxResults = (arguments?.optInt("maxResults", 8) ?: 8).coerceIn(1, 20)
+        val contextChars = (arguments?.optInt("contextChars", 180) ?: 180).coerceIn(60, 600)
+        val defaultMaxScan = if (scope == "all_cached") 800 else 240
+        val maxScanChapters = (arguments?.optInt("maxScanChapters", defaultMaxScan) ?: defaultMaxScan)
+            .coerceIn(20, 1200)
+        val chapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+        val chapters = resolveSearchChapters(book, arguments, scope, maxScanChapters, chapterCount)
+        val matches = JSONArray()
+        var scannedCachedContent = 0
+        for (chapter in chapters) {
+            if (matches.length() >= maxResults) break
+            val titleHit = chapter.title.contains(keyword, ignoreCase = true)
+            val cached = BookHelp.hasContent(book, chapter)
+            val content = if (cached) {
+                BookHelp.getContent(book, chapter).orEmpty()
+            } else {
+                ""
+            }
+            if (content.isNotBlank()) scannedCachedContent += 1
+            val normalized = normalizeSearchContent(content)
+            val hitIndex = normalized.indexOf(keyword, ignoreCase = true)
+            if (!titleHit && hitIndex < 0) continue
+            matches.put(JSONObject().apply {
+                put("chapterIndex", chapter.index)
+                put("chapterTitle", chapter.title)
+                put("volume", chapter.tag ?: "")
+                put("cached", cached)
+                put("titleHit", titleHit)
+                put("contentHit", hitIndex >= 0)
+                put(
+                    "snippet",
+                    if (hitIndex >= 0) {
+                        buildSearchSnippet(normalized, hitIndex, keyword.length, contextChars)
+                    } else {
+                        ""
+                    }
+                )
+            })
+        }
+        successJson().apply {
+            put("book", bookToJson(book))
+            put("keyword", keyword)
+            put("scope", scope)
+            put("chapterCount", chapterCount)
+            put("scannedChapters", chapters.size)
+            put("scannedCachedContent", scannedCachedContent)
+            put("resultCount", matches.length())
+            put("results", matches)
         }.toString()
     }
 
@@ -806,6 +936,62 @@ object AiBookshelfTool {
             return findMatchedBooks(query, appDb.bookDao.all).firstOrNull()
         }
         return null
+    }
+
+    private fun resolveSearchChapters(
+        book: Book,
+        arguments: JSONObject?,
+        scope: String,
+        maxScanChapters: Int,
+        chapterCount: Int
+    ): List<io.legado.app.data.entities.BookChapter> {
+        val hasStart = arguments?.has("startIndex") == true
+        val hasEnd = arguments?.has("endIndex") == true
+        if (hasStart || hasEnd) {
+            val start = if (hasStart) arguments.optInt("startIndex", 0) else 0
+            val end = if (hasEnd) {
+                arguments.optInt("endIndex", chapterCount - 1)
+            } else {
+                start + maxScanChapters - 1
+            }
+            return appDb.bookChapterDao.getChapterList(
+                book.bookUrl,
+                start.coerceAtLeast(0),
+                end.coerceAtLeast(start).coerceAtMost(start + maxScanChapters - 1)
+            )
+        }
+        if (scope == "all_cached") {
+            return appDb.bookChapterDao.getChapterList(book.bookUrl).take(maxScanChapters)
+        }
+        val current = book.durChapterIndex.coerceIn(0, (chapterCount - 1).coerceAtLeast(0))
+        val half = maxScanChapters / 2
+        val start = (current - half).coerceAtLeast(0)
+        val end = (start + maxScanChapters - 1).coerceAtMost((chapterCount - 1).coerceAtLeast(0))
+        return appDb.bookChapterDao.getChapterList(book.bookUrl, start, end)
+    }
+
+    private fun normalizeSearchContent(content: String): String {
+        if (content.isBlank()) return ""
+        return content
+            .replace(Regex("(?is)&lt;img\\b.*?&gt;"), " ")
+            .replace(Regex("(?is)<img\\b[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun buildSearchSnippet(
+        content: String,
+        hitIndex: Int,
+        keywordLength: Int,
+        contextChars: Int
+    ): String {
+        val start = (hitIndex - contextChars).coerceAtLeast(0)
+        val end = (hitIndex + keywordLength + contextChars).coerceAtMost(content.length)
+        return buildString {
+            if (start > 0) append("…")
+            append(content.substring(start, end))
+            if (end < content.length) append("…")
+        }
     }
 
     private fun resolveBooks(arguments: JSONObject?, scopedBooks: List<Book>): List<Book> {
