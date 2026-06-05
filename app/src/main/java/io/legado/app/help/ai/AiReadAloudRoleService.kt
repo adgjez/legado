@@ -1448,10 +1448,17 @@ object AiReadAloudRoleService {
             collectedResolutions += fallback.first
             collectedCandidates += fallback.second
         }
+        val normalizedResolutions = collectedResolutions
+            .map { normalizeUnitResolution(it) }
+            .distinctBy { it.unitId }
+        collectedCandidates += missingNewCharacterCandidates(
+            book = book,
+            units = batch.units,
+            resolutions = normalizedResolutions,
+            candidates = collectedCandidates
+        )
         return UnitAssignmentResult(
-            resolutions = collectedResolutions
-                .map { normalizeUnitResolution(it) }
-                .distinctBy { it.unitId },
+            resolutions = normalizedResolutions,
             candidates = collectedCandidates.distinctBy { it.name }
         )
     }
@@ -1589,6 +1596,50 @@ object AiReadAloudRoleService {
         )
     }
 
+    private fun missingNewCharacterCandidates(
+        book: Book,
+        units: List<ReadAloudRoleUnit>,
+        resolutions: List<UnitResolution>,
+        candidates: List<CharacterCandidate>
+    ): List<CharacterCandidate> {
+        if (!AppConfig.aiReadAloudAutoCreateCharacters || resolutions.isEmpty()) return emptyList()
+        val characterBookKey = book.characterBookKey()
+        val existingNames = appDb.bookCharacterDao.characters(characterBookKey).map { it.name }.toSet()
+        val candidateNames = candidates.map { it.name }.toSet()
+        val unitById = units.associateBy { it.id }
+        val missing = resolutions
+            .asSequence()
+            .filter { it.status == "assigned" }
+            .filter { it.roleType == "character" || it.roleType == "thought" }
+            .filter { it.characterId <= 0L }
+            .filter { isCreatableCharacterName(it.characterName) }
+            .filterNot { it.characterName in existingNames || it.characterName in candidateNames }
+            .groupBy { it.characterName }
+        if (missing.isEmpty()) return emptyList()
+        val names = missing.keys.sorted()
+        AppLog.putDebug(
+            "多角色工具未同步返回 newCharacters，已本地兜底候选：${names.joinToString("、")}"
+        )
+        return missing.mapNotNull { (name, roleResolutions) ->
+            val best = roleResolutions.maxByOrNull { it.confidence } ?: return@mapNotNull null
+            val evidence = best.evidence
+                .ifBlank { unitById[best.unitId]?.text.orEmpty() }
+                .trim()
+                .take(200)
+            if (evidence.isBlank()) return@mapNotNull null
+            CharacterCandidate(
+                name = name,
+                identity = "",
+                gender = BookCharacter.inferGender("$name $evidence"),
+                age = "",
+                appearance = "",
+                roleLevel = BookCharacter.ROLE_NORMAL,
+                confidence = best.confidence.coerceAtLeast(MIN_AUTO_CREATE_CHARACTER_CONFIDENCE),
+                evidence = evidence
+            )
+        }
+    }
+
     private fun buildBatchUnitPrompt(
         book: Book,
         textChapter: TextChapter,
@@ -1651,7 +1702,7 @@ object AiReadAloudRoleService {
         val autoCreatePrompt = AppConfig.aiReadAloudAutoCreateCharacterPrompt
         return """
             任务：小说朗读分角色。客户端已切好 unit；只给 targetUnitIds 归因，不新增 unit，不改原文。
-            规则：必须调用 $TOOL_CONFIRM_UNITS；units 只含 targetUnitIds 且逐个覆盖。不要标注未列入 targetUnitIds 的旁白，客户端会自动补齐旁白。roleType=narrator 只用于说明某个候选 unit 实际不是台词/心理活动。证据不足 status=unknown、characterName 空。引号和句末符号跟随同一句台词。强调/称号/书名引用不是发言时归旁白。优先用角色卡 name。不要把代词、称呼对象、动作、语气、副词当角色。情绪不明确留空。
+            规则：必须调用 $TOOL_CONFIRM_UNITS；units 只含 targetUnitIds 且逐个覆盖。不要标注未列入 targetUnitIds 的旁白，客户端会自动补齐旁白。roleType=narrator 只用于说明某个候选 unit 实际不是台词/心理活动。证据不足 status=unknown、characterName 空。引号和句末符号跟随同一句台词。强调/称号/书名引用不是发言时归旁白。优先用角色卡 name。不要把代词、称呼对象、动作、语气、副词当角色。情绪不明确留空。如果 units 中的 characterName 不在下方角色卡列表，且不是 unknown/旁白，必须在 newCharacters 同步返回该角色；只在当前原文有证据时新增，未知字段留空。
             角色(id|name|info)：
             $characters
 
@@ -2663,7 +2714,10 @@ object AiReadAloudRoleService {
             put("type", "function")
             put("function", JSONObject().apply {
                 put("name", TOOL_CONFIRM_UNITS)
-                put("description", "批量确认朗读unit的角色、说话人和情绪。")
+                put(
+                    "description",
+                    "批量确认朗读unit的角色、说话人和情绪。如果 units 里填写了不在已知角色卡列表中的 characterName，必须在 newCharacters 中同步返回该角色。"
+                )
                 put("parameters", JSONObject().apply {
                     put("type", "object")
                     put("properties", JSONObject().apply {
@@ -2674,7 +2728,7 @@ object AiReadAloudRoleService {
                                 put("properties", JSONObject().apply {
                                     put("unitId", stringProp("prompt unit id"))
                                     put("roleType", stringProp("narrator/character/thought/other"))
-                                    put("characterName", stringProp("blank if unknown"))
+                                    put("characterName", stringProp("known character card name, new character name that is also listed in newCharacters, or blank if unknown"))
                                     put("characterId", intProp("known id or 0"))
                                     put("emotionName", stringProp("optional"))
                                     put("emotionTag", stringProp("optional"))
@@ -2688,6 +2742,7 @@ object AiReadAloudRoleService {
                         })
                         put("newCharacters", JSONObject().apply {
                             put("type", "array")
+                            put("description", "Required for every assigned characterName that is not already in the injected character card list.")
                             put("items", JSONObject().apply {
                                 put("type", "object")
                                 put("properties", JSONObject().apply {
