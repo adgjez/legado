@@ -11,17 +11,20 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -184,25 +188,34 @@ fun BookInfoComposeRoute(
             style = style,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(360.dp)
+                .height(430.dp)
         )
-        Column(
+        LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp)
-                .padding(top = 86.dp, bottom = 112.dp),
+                .fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 18.dp,
+                end = 18.dp,
+                top = 132.dp,
+                bottom = 116.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            BookInfoHero(state, actions, style)
-            BookInfoMetaPanel(state, actions, style)
-            BookInfoQuickActionsPanel(state, actions, style)
-            BookInfoIntroPanel(
-                intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
-                style = style
-            )
-            BookInfoChapterPreviewPanel(state, actions, style)
-            BookInfoAiImagesPanel(state, actions, style)
+            item {
+                BookInfoPosterHero(state, actions, style)
+            }
+            item {
+                BookInfoIntroPanel(
+                    intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
+                    style = style
+                )
+            }
+            item {
+                BookInfoChapterPreviewPanel(state, actions, style)
+            }
+            item {
+                BookInfoAiImagesPanel(state, actions, style)
+            }
         }
         BookInfoBottomActions(
             state = state,
@@ -301,7 +314,7 @@ private fun BookInfoCoverBackdrop(
     style: BookInfoComposeStyle,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.background(style.colors.surfaceVariant)) {
+    Box(modifier = modifier.background(Color.Black)) {
         BookInfoImage(
             path = coverPath,
             modifier = Modifier.fillMaxSize()
@@ -309,9 +322,127 @@ private fun BookInfoCoverBackdrop(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(style.colors.scrim)
+                .background(Color.Black.copy(alpha = 0.42f))
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.18f),
+                        0.48f to Color.Transparent,
+                        0.78f to style.colors.background.copy(alpha = 0.70f),
+                        1f to style.colors.background
+                    )
+                )
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookInfoPosterHero(
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 232.dp)
+            .padding(top = 22.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        BookInfoImage(
+            path = state.coverPath,
+            modifier = Modifier
+                .width(126.dp)
+                .aspectRatio(0.72f)
+                .shadow(18.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
+                .clip(RoundedCornerShape(style.metrics.panelRadius))
+                .combinedClickable(
+                    onClick = actions.onChangeCover,
+                    onLongClick = actions.onPreviewCover
+                )
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = state.name.ifBlank { stringResource(R.string.book_name) },
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.combinedClickable(
+                    onClick = actions.onNameClick,
+                    onLongClick = actions.onNameLongClick
+                )
+            )
+            Text(
+                text = state.author.ifBlank { stringResource(R.string.author) },
+                color = Color.White.copy(alpha = 0.82f),
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.combinedClickable(
+                    onClick = actions.onAuthorClick,
+                    onLongClick = actions.onAuthorLongClick
+                )
+            )
+            if (state.latestChapterTitle.isNotBlank()) {
+                Text(
+                    text = state.latestChapterTitle,
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 12.5.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (state.readTimeText.isNotBlank()) {
+                Text(
+                    text = state.readTimeText,
+                    color = Color.White.copy(alpha = 0.68f),
+                    fontSize = 12.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (state.kinds.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    state.kinds.take(6).forEach { kind ->
+                        BookInfoPosterChip(kind, style)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookInfoPosterChip(
+    text: String,
+    style: BookInfoComposeStyle
+) {
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(Color.White.copy(alpha = 0.16f))
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
