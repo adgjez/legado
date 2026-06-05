@@ -213,6 +213,9 @@ fun BookInfoComposeRoute(
                 BookInfoPosterHero(state, actions, style)
             }
             item {
+                BookInfoStatusStrip(state, actions, style)
+            }
+            item {
                 BookInfoIntroPanel(
                     intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
                     style = style
@@ -260,6 +263,52 @@ fun BookInfoComposeRoute(
             )
         }
     }
+}
+
+@Composable
+private fun BookInfoStatusStrip(
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        BookInfoStatusPill(
+            text = state.originName,
+            style = style,
+            modifier = Modifier.weight(1f),
+            onClick = actions.onChangeSource
+        )
+        BookInfoStatusPill(
+            text = state.tocText.ifBlank { stringResource(R.string.view_toc) },
+            style = style,
+            modifier = Modifier.weight(1f),
+            onClick = actions.onOpenToc
+        )
+    }
+}
+
+@Composable
+private fun BookInfoStatusPill(
+    text: String,
+    style: BookInfoComposeStyle,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = style.colors.primaryText,
+        fontSize = 12.5.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surface.copy(alpha = 0.78f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 13.dp, vertical = 10.dp)
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -686,16 +735,11 @@ private fun BookInfoIntroPanel(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.panelRadius))
-            .background(style.colors.surface.copy(alpha = 0.96f))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .background(style.colors.surface.copy(alpha = 0.84f))
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = stringResource(R.string.book_info_tab_intro),
-            color = style.colors.primaryText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        BookInfoSectionHeader(title = stringResource(R.string.book_info_tab_intro), style = style)
         BookInfoRichIntro(intro, style)
     }
 }
@@ -733,27 +777,16 @@ private fun BookInfoChapterPreviewPanel(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.panelRadius))
-            .background(style.colors.surface.copy(alpha = 0.96f))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .background(style.colors.surface.copy(alpha = 0.80f))
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.book_info_tab_toc),
-                color = style.colors.primaryText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = stringResource(R.string.catalog_page_indicator, state.chapterPreview.size, state.chapterCount),
-                color = style.colors.secondaryText,
-                fontSize = 12.5.sp
-            )
-        }
+        BookInfoSectionHeader(
+            title = stringResource(R.string.book_info_tab_toc),
+            trailing = stringResource(R.string.catalog_page_indicator, state.chapterPreview.size, state.chapterCount),
+            style = style,
+            onTrailingClick = actions.onOpenToc
+        )
         state.chapterPreview.forEach { chapter ->
             Text(
                 text = chapter.title,
@@ -765,19 +798,9 @@ private fun BookInfoChapterPreviewPanel(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(style.metrics.actionRadius))
                     .clickable { actions.onOpenChapter(chapter) }
-                    .padding(vertical = 7.dp)
+                    .padding(vertical = 8.dp)
             )
         }
-        Text(
-            text = stringResource(R.string.view_toc),
-            color = style.colors.accent,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier
-                .clip(RoundedCornerShape(style.metrics.actionRadius))
-                .clickable(onClick = actions.onOpenToc)
-                .padding(top = 2.dp, bottom = 4.dp)
-        )
     }
 }
 
@@ -791,29 +814,17 @@ private fun BookInfoAiImagesPanel(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.panelRadius))
-            .background(style.colors.surface.copy(alpha = 0.96f))
+            .background(style.colors.surface.copy(alpha = 0.80f))
             .clickable(onClick = actions.onOpenAiGallery)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.book_info_component_ai_images),
-                color = style.colors.primaryText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty),
-                color = style.colors.secondaryText,
-                fontSize = 12.5.sp,
-                maxLines = 1
-            )
-        }
+        BookInfoSectionHeader(
+            title = stringResource(R.string.book_info_component_ai_images),
+            trailing = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty),
+            style = style,
+            onTrailingClick = actions.onOpenAiGallery
+        )
         if (state.aiImagePaths.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -835,6 +846,43 @@ private fun BookInfoAiImagesPanel(
                 text = stringResource(R.string.book_info_component_ai_images_hint),
                 color = style.colors.secondaryText,
                 fontSize = 13.5.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookInfoSectionHeader(
+    title: String,
+    style: BookInfoComposeStyle,
+    trailing: String? = null,
+    onTrailingClick: () -> Unit = {}
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = style.colors.primaryText,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        if (!trailing.isNullOrBlank()) {
+            Text(
+                text = trailing,
+                color = style.colors.accent,
+                fontSize = 12.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(style.metrics.actionRadius))
+                    .clickable(onClick = onTrailingClick)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
     }
