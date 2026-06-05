@@ -157,6 +157,18 @@
             android:title="智能音频设置"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudBgmPrompt"
+            android:summary="内置默认"
+            android:title="配乐提示词"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudSoundEffectPrompt"
+            android:summary="内置默认"
+            android:title="音效提示词"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.SeekBarPreference
             android:defaultValue="100"
             android:key="aiReadAloudBgmVolume"

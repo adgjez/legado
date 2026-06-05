@@ -506,6 +506,12 @@ object AiReadAloudBgmService {
             书：${book.name} / ${book.author}
             章：${chapter.chapter.title}
 
+            配乐策略：
+            ${AppConfig.aiReadAloudBgmPrompt}
+
+            音效策略：
+            ${AppConfig.aiReadAloudSoundEffectPrompt}
+
             配乐曲库(trackId|名称|分组|标签|时长|默认音量)：
             $catalogText
 
@@ -530,11 +536,14 @@ object AiReadAloudBgmService {
         val contentHash = MD5Utils.md5Encode(
             cues.joinToString("\n") { "${it.chapterPosition}|${it.text}" }
         )
+        val promptHash = MD5Utils.md5Encode(
+            "${AppConfig.aiReadAloudBgmPrompt}\n${AppConfig.aiReadAloudSoundEffectPrompt}"
+        )
         val cacheKey = MD5Utils.md5Encode(
-            "read-aloud-audio|${book.bookUrl}|${chapter.chapter.index}|${chapter.chapter.url}|$contentHash|$catalogHash|$modelId|$SCHEMA_VERSION"
+            "read-aloud-audio|${book.bookUrl}|${chapter.chapter.index}|${chapter.chapter.url}|$contentHash|$catalogHash|$modelId|$promptHash|$SCHEMA_VERSION"
         )
         val promptCacheKey = MD5Utils.md5Encode(
-            "read-aloud-audio-prompt|${book.bookUrl}|$catalogHash|$modelId|$SCHEMA_VERSION"
+            "read-aloud-audio-prompt|${book.bookUrl}|$catalogHash|$modelId|$promptHash|$SCHEMA_VERSION"
         )
         return BgmCacheKey(
             cacheKey = cacheKey,

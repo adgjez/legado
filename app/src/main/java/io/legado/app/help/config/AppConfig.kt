@@ -938,6 +938,20 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         5. appearance 只写文本能支持的可见形象，例如发型、服饰、体型、气质、明显特征；没有证据留空。
         6. evidence 必须引用当前章节的简短证据。
     """.trimIndent()
+    val DEFAULT_AI_READ_ALOUD_BGM_PROMPT = """
+        配乐策略：
+        1. 只在氛围、场景、危机、战斗、悬疑、温情、转折明显的连续段落使用配乐。
+        2. 一段配乐至少覆盖 3 个 cue，除非是极短的开场、结尾或强转场。
+        3. 普通对话、解释说明、平静过渡可以不配乐，避免逐句切换。
+        4. 优先匹配曲库名称、分组和标签；没有合适曲目就不返回该范围。
+    """.trimIndent()
+    val DEFAULT_AI_READ_ALOUD_SOUND_EFFECT_PROMPT = """
+        音效策略：
+        1. 音效可以比配乐更频繁，但必须是文本中明确发生的声音事件。
+        2. 优先标注开门、关门、敲门、脚步、撞击、破碎、枪声、爆炸、铃声、风雨雷电、车辆、衣物摩擦、金属碰撞等可听见事件。
+        3. 不要把人物说话声、语气描写、心理活动、心声、名声、形容词当音效。
+        4. 只能从音效候选事件中选择；没有合适音效就不要返回。
+    """.trimIndent()
     val DEFAULT_AI_READ_ALOUD_PREPROCESS_RULES = """
         {
           "quotePairs": [
@@ -1051,6 +1065,38 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var aiReadAloudBgmEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudBgmEnabled, value)
+
+    var aiReadAloudBgmPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudBgmPrompt)
+            .orEmpty()
+            .ifBlank { DEFAULT_AI_READ_ALOUD_BGM_PROMPT }
+        set(value) {
+            val prompt = value.trim()
+            if (prompt.isBlank() || prompt == DEFAULT_AI_READ_ALOUD_BGM_PROMPT) {
+                appCtx.removePref(PreferKey.aiReadAloudBgmPrompt)
+            } else {
+                appCtx.putPrefString(PreferKey.aiReadAloudBgmPrompt, prompt.take(4000))
+            }
+        }
+
+    val aiReadAloudUsingDefaultBgmPrompt: Boolean
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudBgmPrompt).isNullOrBlank()
+
+    var aiReadAloudSoundEffectPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudSoundEffectPrompt)
+            .orEmpty()
+            .ifBlank { DEFAULT_AI_READ_ALOUD_SOUND_EFFECT_PROMPT }
+        set(value) {
+            val prompt = value.trim()
+            if (prompt.isBlank() || prompt == DEFAULT_AI_READ_ALOUD_SOUND_EFFECT_PROMPT) {
+                appCtx.removePref(PreferKey.aiReadAloudSoundEffectPrompt)
+            } else {
+                appCtx.putPrefString(PreferKey.aiReadAloudSoundEffectPrompt, prompt.take(4000))
+            }
+        }
+
+    val aiReadAloudUsingDefaultSoundEffectPrompt: Boolean
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudSoundEffectPrompt).isNullOrBlank()
 
     var aiReadAloudBgmVolume: Int
         get() = appCtx.getPrefInt(PreferKey.aiReadAloudBgmVolume, 100).coerceIn(0, 100)

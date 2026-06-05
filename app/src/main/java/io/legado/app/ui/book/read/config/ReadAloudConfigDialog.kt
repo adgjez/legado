@@ -91,6 +91,8 @@ enum class ReadAloudConfigGroup(
             KEY_AI_READ_ALOUD_USAGE_RECORDS,
             PreferKey.aiReadAloudBgmEnabled,
             KEY_AI_READ_ALOUD_BGM_MANAGE,
+            PreferKey.aiReadAloudBgmPrompt,
+            PreferKey.aiReadAloudSoundEffectPrompt,
             PreferKey.aiReadAloudBgmVolume,
             PreferKey.aiReadAloudSfxVolume,
             PreferKey.readAloudSpeakerLoudnessEnabled,
@@ -308,6 +310,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 KEY_AI_READ_ALOUD_BGM_MANAGE -> startActivity(
                     android.content.Intent(requireContext(), ReadAloudBgmManageActivity::class.java)
                 )
+                PreferKey.aiReadAloudBgmPrompt -> showBgmPromptDialog()
+                PreferKey.aiReadAloudSoundEffectPrompt -> showSoundEffectPromptDialog()
                 KEY_AI_READ_ALOUD_USAGE_RECORDS -> startActivity(
                     android.content.Intent(requireContext(), AiReadAloudUsageRecordActivity::class.java)
                 )
@@ -367,6 +371,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     )
                 }
                 PreferKey.aiReadAloudBgmEnabled,
+                PreferKey.aiReadAloudBgmPrompt,
+                PreferKey.aiReadAloudSoundEffectPrompt,
                 PreferKey.aiReadAloudBgmVolume,
                 PreferKey.aiReadAloudSfxVolume,
                 PreferKey.readAloudSpeakerLoudnessEnabled,
@@ -532,6 +538,26 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 val sfxCount = appDb.readAloudBgmDao.enabledTracksByType(io.legado.app.data.entities.ReadAloudBgmTrack.TYPE_SFX).size
                 it.summary = "$bgmCount 首配乐 · $sfxCount 个音效"
             }
+            findPreference<Preference>(PreferKey.aiReadAloudBgmPrompt)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudBgmEnabled
+                val prefix = if (AppConfig.aiReadAloudUsingDefaultBgmPrompt) "内置默认 · " else ""
+                it.summary = prefix + AppConfig.aiReadAloudBgmPrompt
+                    .lineSequence()
+                    .firstOrNull()
+                    ?.take(40)
+                    ?.ifBlank { null }
+                    .orEmpty()
+            }
+            findPreference<Preference>(PreferKey.aiReadAloudSoundEffectPrompt)?.let {
+                it.isEnabled = enabled && AppConfig.aiReadAloudBgmEnabled
+                val prefix = if (AppConfig.aiReadAloudUsingDefaultSoundEffectPrompt) "内置默认 · " else ""
+                it.summary = prefix + AppConfig.aiReadAloudSoundEffectPrompt
+                    .lineSequence()
+                    .firstOrNull()
+                    ?.take(40)
+                    ?.ifBlank { null }
+                    .orEmpty()
+            }
             findPreference<SeekBarPreference>(PreferKey.aiReadAloudBgmVolume)?.let {
                 it.isEnabled = enabled && AppConfig.aiReadAloudBgmEnabled
                 it.value = AppConfig.aiReadAloudBgmVolume
@@ -674,13 +700,67 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             }
         }
 
+        private fun showBgmPromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "只填写配乐策略，不要写工具 JSON。留空会恢复内置默认。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudBgmPrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("配乐提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最大 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudBgmPrompt = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudBgmPrompt = ""
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
+        }
+
+        private fun showSoundEffectPromptDialog() {
+            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "只填写音效选择策略。音效只能从候选事件中选择，留空会恢复内置默认。"
+                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                editView.minLines = 6
+                editView.setText(AppConfig.aiReadAloudSoundEffectPrompt)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            alert("音效提示词") {
+                customView { binding.root }
+                okButton {
+                    val value = binding.editView.text?.toString().orEmpty()
+                    if (value.length > 4000) {
+                        toastOnUi("提示词最大 4000 字")
+                        return@okButton
+                    }
+                    AppConfig.aiReadAloudSoundEffectPrompt = value
+                    updateAiRolePreferences()
+                }
+                neutralButton("恢复默认") {
+                    AppConfig.aiReadAloudSoundEffectPrompt = ""
+                    updateAiRolePreferences()
+                }
+                cancelButton()
+            }
+        }
+
         private fun showMultiRolePreprocessRulesDialog() {
             val config = ReadAloudPreprocessRuleConfig.current()
             val items = listOf(
                 "引号与句末规则 · ${config.quotePairs.size} 组引号",
                 "心理活动提示词 · ${config.thoughtCuePatterns.size} 条",
                 "判断阈值 · 台词 ${config.dialogueMinLength} / 强调 ${config.emphasisMaxLength}",
-                "音效候选规则 · ${config.soundEffectCuePatterns.size} 个候选词",
+                "音效预筛触发词 · ${config.soundEffectCuePatterns.size} 个",
                 "试运行预处理",
                 "恢复默认"
             )
@@ -780,16 +860,16 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         private fun showSoundEffectRuleDialog(config: ReadAloudPreprocessRuleConfig) {
             val items = listOf(
-                "音效候选词 · ${config.soundEffectCuePatterns.size} 条",
+                "音效预筛触发词 · ${config.soundEffectCuePatterns.size} 条",
                 "音效排除词 · ${config.soundEffectExcludePatterns.size} 条",
                 "上下文字符数 · ${config.soundEffectContextChars}"
             )
-            requireContext().selector("音效候选规则", items) { _, _, index ->
+            requireContext().selector("音效预筛规则", items) { _, _, index ->
                 when (index) {
                     0 -> showRuleListEditor(
-                        title = "音效候选词",
+                        title = "音效预筛触发词",
                         values = config.soundEffectCuePatterns,
-                        hint = "每行一个候选词，例如：吱呀、敲门声、枪声",
+                        hint = "每行一个触发词，只用于找可能需要音效的句子，例如：吱呀、敲门声、枪声",
                         onSave = { savePreprocessConfig(config.copy(soundEffectCuePatterns = it)) }
                     )
                     1 -> showRuleListEditor(
