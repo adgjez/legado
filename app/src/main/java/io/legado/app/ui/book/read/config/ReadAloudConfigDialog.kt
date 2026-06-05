@@ -45,10 +45,12 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 
 private const val KEY_AI_READ_ALOUD_BGM_MANAGE = "aiReadAloudBgmManage"
 private const val KEY_AI_READ_ALOUD_USAGE_RECORDS = "aiReadAloudUsageRecords"
+private const val KEY_AI_READ_ALOUD_MODEL_ROUTING = "aiReadAloudModelRouting"
 private const val KEY_READ_ALOUD_SPEAKER_MANAGE = "readAloudSpeakerManage"
 private const val KEY_READ_ALOUD_LOUDNESS_RESET = "readAloudSpeakerLoudnessReset"
 
@@ -78,10 +80,15 @@ enum class ReadAloudConfigGroup(
         "\u591a\u89d2\u8272",
         setOf(
             PreferKey.aiReadAloudRoleEnabled,
-            PreferKey.aiReadAloudRoleModelId,
+            KEY_AI_READ_ALOUD_MODEL_ROUTING,
+            PreferKey.aiReadAloudRoleBackupModelId,
+            PreferKey.aiReadAloudRoleFirstResponseTimeoutSeconds,
+            PreferKey.aiReadAloudAudioModelId,
+                PreferKey.aiReadAloudAudioBackupModelId,
             PreferKey.aiReadAloudAutoCreateCharacters,
             PreferKey.aiReadAloudAutoCreateCharacterPrompt,
             PreferKey.aiReadAloudAutoCreateAvatar,
+            KEY_READ_ALOUD_SPEAKER_MANAGE,
             PreferKey.aiReadAloudRoleMode,
             PreferKey.aiReadAloudRolePreprocess,
             PreferKey.aiReadAloudRoleThreadCount,
@@ -110,6 +117,7 @@ enum class ReadAloudConfigGroup(
 
     companion object {
         private val hiddenPreferenceKeys = setOf(
+            PreferKey.aiReadAloudRoleModelId,
             PreferKey.readAloudTargetVoiceVolume,
             PreferKey.readAloudMaxSpeakerGain,
             PreferKey.readAloudNarratorBaseGain
@@ -274,8 +282,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         override fun onPreferenceTreeClick(preference: Preference): Boolean {
             when (preference.key) {
                 PreferKey.ttsEngine -> showDialogFragment(SpeakEngineDialog())
-                KEY_READ_ALOUD_SPEAKER_MANAGE -> showDialogFragment(SpeakerGroupManageDialog())
+                KEY_READ_ALOUD_SPEAKER_MANAGE -> startActivity<SpeakerGroupManageActivity>()
                 "sysTtsConfig" -> IntentHelp.openTTSSetting()
+                KEY_AI_READ_ALOUD_MODEL_ROUTING -> showAiReadAloudModelRoutingDialog()
                 PreferKey.aiReadAloudRoleModelId -> showAiRoleModelDialog()
                 PreferKey.aiReadAloudRoleThreadCount -> showAiRoleNumberDialog(
                     title = "并发请求数",
@@ -351,6 +360,10 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
                 PreferKey.aiReadAloudRoleEnabled,
                 PreferKey.aiReadAloudRoleModelId,
+                PreferKey.aiReadAloudRoleBackupModelId,
+                PreferKey.aiReadAloudRoleFirstResponseTimeoutSeconds,
+                PreferKey.aiReadAloudAudioModelId,
+                PreferKey.aiReadAloudAudioBackupModelId,
                 PreferKey.aiReadAloudAutoCreateCharacters,
                 PreferKey.aiReadAloudAutoCreateCharacterPrompt,
                 PreferKey.aiReadAloudAutoCreateAvatar,
@@ -454,7 +467,12 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 it.summary = if (hasModel) "后台分析当前章节的旁白和角色片段，并缓存结果" else "请先选择多角色模型"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleModelId)?.let {
-                it.summary = modelLabel(AppConfig.aiReadAloudRoleModelConfig)
+                it.title = "AI 模型与超时"
+                it.summary = aiReadAloudModelRoutingSummary()
+            }
+            findPreference<Preference>(KEY_AI_READ_ALOUD_MODEL_ROUTING)?.let {
+                it.isEnabled = hasModel
+                it.summary = aiReadAloudModelRoutingSummary()
             }
             findPreference<SwitchPreference>(PreferKey.aiReadAloudAutoCreateCharacters)?.let {
                 it.isEnabled = enabled
@@ -484,6 +502,9 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     providerCount <= 0 -> "没有可用生图提供商，自动跳过"
                     else -> "使用当前生图提供商后台生成头像"
                 }
+            }
+            findPreference<Preference>(KEY_READ_ALOUD_SPEAKER_MANAGE)?.let {
+                it.summary = "管理多角色可用发言人；未绑定或失效时朗读会自动回退到默认配音，不在正文里反复提示"
             }
             findPreference<Preference>(PreferKey.aiReadAloudRoleMode)?.let {
                 it.isEnabled = enabled
@@ -590,6 +611,107 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 it.isEnabled = count > 0
                 it.summary = if (count > 0) "已学习 $count 个发言人" else "暂无学习数据"
             }
+        }
+
+        private fun showAiReadAloudModelRoutingDialog() {
+            val options = listOf(
+                "多角色主模型：${modelLabel(AppConfig.aiReadAloudRoleModelConfig)}",
+                "多角色备用模型：${optionalModelLabel(AppConfig.aiReadAloudRoleBackupModelId, "不使用")}",
+                "首响超时：${AppConfig.aiReadAloudRoleFirstResponseTimeoutSeconds} 秒",
+                "智能音频模型：${optionalModelLabel(AppConfig.aiReadAloudAudioModelId, "跟随多角色")}",
+                "智能音频备用：${optionalModelLabel(AppConfig.aiReadAloudAudioBackupModelId, "跟随多角色备用")}"
+            )
+            requireContext().selector("AI 模型与超时", options) { _, _, index ->
+                when (index) {
+                    0 -> showAiModelPicker(
+                        title = "多角色主模型",
+                        currentModelId = AppConfig.aiReadAloudRoleModelId,
+                        noneLabel = null
+                    ) {
+                        AppConfig.aiReadAloudRoleModelId = it
+                        updateAiRolePreferences()
+                    }
+                    1 -> showAiModelPicker(
+                        title = "多角色备用模型",
+                        currentModelId = AppConfig.aiReadAloudRoleBackupModelId,
+                        noneLabel = "不使用备用模型"
+                    ) {
+                        AppConfig.aiReadAloudRoleBackupModelId = it
+                        updateAiRolePreferences()
+                    }
+                    2 -> showAiRoleNumberDialog(
+                        title = "首响超时秒数",
+                        value = AppConfig.aiReadAloudRoleFirstResponseTimeoutSeconds,
+                        min = 5,
+                        max = 90
+                    ) {
+                        AppConfig.aiReadAloudRoleFirstResponseTimeoutSeconds = it
+                        updateAiRolePreferences()
+                    }
+                    3 -> showAiModelPicker(
+                        title = "智能音频模型",
+                        currentModelId = AppConfig.aiReadAloudAudioModelId,
+                        noneLabel = "跟随多角色主模型"
+                    ) {
+                        AppConfig.aiReadAloudAudioModelId = it
+                        updateAiRolePreferences()
+                    }
+                    4 -> showAiModelPicker(
+                        title = "智能音频备用模型",
+                        currentModelId = AppConfig.aiReadAloudAudioBackupModelId,
+                        noneLabel = "跟随多角色备用模型"
+                    ) {
+                        AppConfig.aiReadAloudAudioBackupModelId = it
+                        updateAiRolePreferences()
+                    }
+                }
+            }
+        }
+
+        private fun showAiModelPicker(
+            title: String,
+            currentModelId: String?,
+            noneLabel: String?,
+            onSelected: (String?) -> Unit
+        ) {
+            val models = AppConfig.aiModelConfigList
+            if (models.isEmpty()) {
+                toastOnUi(R.string.ai_no_models)
+                return
+            }
+            val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
+            val offset = if (noneLabel == null) 0 else 1
+            val labels = buildList {
+                noneLabel?.let {
+                    add(if (currentModelId.isNullOrBlank()) "$it ✓" else it)
+                }
+                models.forEach { model ->
+                    val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                        ?.let { "${model.modelId} - $it" }
+                        ?: model.modelId
+                    add(if (model.id == currentModelId) "$label ✓" else label)
+                }
+            }
+            requireContext().selector(title, labels) { _, _, index ->
+                if (index < offset) {
+                    onSelected(null)
+                } else {
+                    onSelected(models[index - offset].id)
+                }
+                selectGroup(selectedGroup)
+            }
+        }
+
+        private fun aiReadAloudModelRoutingSummary(): String {
+            val role = modelLabel(AppConfig.aiReadAloudRoleModelConfig)
+            val backup = optionalModelLabel(AppConfig.aiReadAloudRoleBackupModelId, "无备用")
+            val audio = optionalModelLabel(AppConfig.aiReadAloudAudioModelId, "音频跟随")
+            return "$role · 备用 $backup · 首响 ${AppConfig.aiReadAloudRoleFirstResponseTimeoutSeconds}s · $audio"
+        }
+
+        private fun optionalModelLabel(modelId: String?, fallback: String): String {
+            if (modelId.isNullOrBlank()) return fallback
+            return modelLabel(AppConfig.aiModelConfigList.firstOrNull { it.id == modelId })
         }
 
         private fun showAiRoleModelDialog() {

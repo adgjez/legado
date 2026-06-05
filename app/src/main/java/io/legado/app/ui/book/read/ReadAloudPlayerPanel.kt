@@ -3119,13 +3119,11 @@ private fun roleSpeakerLine(segment: AiReadAloudRolePreviewSegment): String {
         segment.matchedCharacter -> segment.characterName
         else -> "${segment.characterName}（未匹配）"
     }
-    val voice = segment.speakerName.ifBlank {
-        if (segment.roleType == "narrator") "使用默认朗读" else "未绑定发言人"
-    }
+    val voice = segment.speakerName.takeIf { it.isNotBlank() }
     val emotion = segment.emotionName.takeIf { it.isNotBlank() }
     return buildList {
         add(roleName)
-        add(voice)
+        voice?.let(::add)
         emotion?.let(::add)
     }.joinToString(" · ")
 }
