@@ -684,7 +684,7 @@ private fun AiCompanionDrawerItem(
             Text(
                 text = when {
                     isDefault -> "默认系统提示词"
-                    companion.bookKey.isNotBlank() -> "角色 · ${companion.bookKey}"
+                    companion.bookKey.isNotBlank() -> "角色 · ${displayBookKeyLabel(companion.bookKey)}"
                     else -> "角色"
                 },
                 color = style.colors.secondaryText,
@@ -734,7 +734,7 @@ private fun AiCompanionAvatar(
                     if (companion.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
                         R.drawable.ic_bottom_ai_e
                     } else {
-                        R.drawable.ic_bottom_person
+                        R.drawable.ic_bottom_person_e
                     }
                 ),
                 contentDescription = null,
@@ -742,6 +742,18 @@ private fun AiCompanionAvatar(
                 modifier = Modifier.size((sizeDp * 0.55f).dp)
             )
         }
+    }
+}
+
+private fun displayBookKeyLabel(bookKey: String): String {
+    val value = bookKey.trim()
+    if (!value.startsWith("work:")) return value
+    val body = value.removePrefix("work:")
+    val parts = body.split('/', limit = 2)
+    return when {
+        parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank() -> "${parts[1]} · ${parts[0]}"
+        body.isNotBlank() -> body
+        else -> value
     }
 }
 
@@ -848,7 +860,7 @@ private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) 
         }
         Spacer(modifier = Modifier.width(8.dp))
         AiFallbackAvatar(
-            iconRes = R.drawable.ic_bottom_person,
+            iconRes = R.drawable.ic_bottom_person_e,
             style = style,
             sizeDp = 34,
             accent = false
