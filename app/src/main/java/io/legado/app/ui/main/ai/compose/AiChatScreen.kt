@@ -280,9 +280,7 @@ fun AiChatScreen(
             actions.onSpeakMessage?.invoke(last.content, currentCompanion)
         }
     }
-    val drawerEdgeWidthPx = remember(density) { with(density) { 34.dp.toPx() } }
     val drawerOpenDistancePx = remember(density) { with(density) { 72.dp.toPx() } }
-    var drawerDragFromEdge by remember { mutableStateOf(false) }
     var drawerDragDistance by remember { mutableStateOf(0f) }
     Box(
         modifier = Modifier
@@ -290,26 +288,22 @@ fun AiChatScreen(
             .background(style.colors.pageBackground)
             .pointerInput(companionDrawerOpen) {
                 detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        drawerDragFromEdge = !companionDrawerOpen && offset.x <= drawerEdgeWidthPx
+                    onDragStart = {
                         drawerDragDistance = 0f
                     },
                     onHorizontalDrag = { _, dragAmount ->
-                        if (drawerDragFromEdge) {
+                        if (!companionDrawerOpen) {
                             drawerDragDistance = (drawerDragDistance + dragAmount).coerceAtLeast(0f)
                             if (drawerDragDistance >= drawerOpenDistancePx) {
                                 companionDrawerOpen = true
-                                drawerDragFromEdge = false
                                 drawerDragDistance = 0f
                             }
                         }
                     },
                     onDragEnd = {
-                        drawerDragFromEdge = false
                         drawerDragDistance = 0f
                     },
                     onDragCancel = {
-                        drawerDragFromEdge = false
                         drawerDragDistance = 0f
                     }
                 )
@@ -807,10 +801,10 @@ private fun AiCompanionDrawerItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.cardRadius))
-            .background(if (selected) style.colors.accent.copy(alpha = 0.12f) else style.colors.cardSurface)
+            .background(if (selected) style.colors.accent.copy(alpha = 0.11f) else style.colors.cardSurface)
             .border(
                 style.metrics.strokeWidth,
-                if (selected) style.colors.accent.copy(alpha = 0.35f) else style.colors.stroke,
+                if (selected) style.colors.accent.copy(alpha = 0.10f) else style.colors.stroke,
                 RoundedCornerShape(style.metrics.cardRadius)
             )
             .combinedClickable(
@@ -825,7 +819,7 @@ private fun AiCompanionDrawerItem(
                 .width(3.dp)
                 .height(38.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(if (selected) style.colors.accent else Color.Transparent)
+                .background(if (selected) style.colors.accent.copy(alpha = 0.72f) else Color.Transparent)
         )
         Spacer(modifier = Modifier.width(9.dp))
         AiCompanionAvatar(companion, style, 42)

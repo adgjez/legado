@@ -518,7 +518,24 @@ class AiChatViewModel : ViewModel() {
         AppConfig.aiChatCompanionList.firstOrNull { it.id == currentCompanionId }
             ?: AppConfig.aiCurrentChatCompanion
 
-    fun companions(): List<AiChatCompanionConfig> = AppConfig.aiChatCompanionList
+    fun companions(): List<AiChatCompanionConfig> {
+        val companions = AppConfig.aiChatCompanionList
+        if (companions.size <= 1) return companions
+        val lastSessionByCompanion = AppConfig.aiChatSessionList
+            .groupBy { it.companionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID } }
+            .mapValues { entry -> entry.value.maxOfOrNull { it.updatedAt } ?: 0L }
+        return companions.withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<AiChatCompanionConfig>> {
+                    if (it.value.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) 0 else 1
+                }.thenByDescending {
+                    lastSessionByCompanion[it.value.id] ?: Long.MIN_VALUE
+                }.thenBy {
+                    it.index
+                }
+            )
+            .map { it.value }
+    }
 
     fun switchCompanion(companionId: String): Boolean {
         if (isRequesting || activeJob?.isActive == true) return false
