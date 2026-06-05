@@ -8,6 +8,9 @@ import android.text.style.URLSpan
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -310,7 +314,21 @@ fun AiChatScreen(
             companionDrawerOpen -> (1f + drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
             else -> (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
         }
-        val drawerVisible = companionDrawerOpen || drawerDragging || drawerProgress > 0f
+        val animatedDrawerProgress by animateFloatAsState(
+            targetValue = if (drawerDragging) {
+                drawerProgress
+            } else if (companionDrawerOpen) {
+                1f
+            } else {
+                0f
+            },
+            animationSpec = tween(
+                durationMillis = if (drawerDragging) 1 else 240,
+                easing = FastOutSlowInEasing
+            ),
+            label = "aiCompanionDrawerProgress"
+        )
+        val drawerVisible = drawerDragging || animatedDrawerProgress > 0.002f
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -471,7 +489,7 @@ fun AiChatScreen(
                 currentSessionId = currentSessionId,
                 style = style,
                 actions = actions,
-                progress = drawerProgress,
+                animatedProgress = animatedDrawerProgress,
                 drawerWidthPx = drawerWidthPx,
                 onDismiss = { companionDrawerOpen = false }
             )
@@ -635,11 +653,11 @@ private fun AiCompanionDrawer(
     currentSessionId: String,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
-    progress: Float,
+    animatedProgress: Float,
     drawerWidthPx: Float,
     onDismiss: () -> Unit
 ) {
-    val clampedProgress = progress.coerceIn(0f, 1f)
+    val clampedProgress = animatedProgress.coerceIn(0f, 1f)
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -1207,11 +1225,18 @@ private fun AiAssistantTextPart(
                         .padding(top = 6.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Surface(
-                        onClick = { onSpeak(part.content, companion, part.id) },
-                        shape = CircleShape,
-                        color = style.colors.accent.copy(alpha = if (isSpeaking) 0.18f else 0.10f),
-                        shadowElevation = if (isSpeaking) 3.dp else 0.dp
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(style.colors.accent.copy(alpha = if (isSpeaking) 0.16f else 0.10f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                onSpeak(part.content, companion, part.id)
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(
@@ -1219,9 +1244,7 @@ private fun AiAssistantTextPart(
                             ),
                             contentDescription = null,
                             tint = style.colors.accent,
-                            modifier = Modifier
-                                .size(30.dp)
-                                .padding(6.5.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
