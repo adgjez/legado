@@ -9,20 +9,21 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -39,7 +40,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -68,6 +68,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,6 +82,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -122,9 +124,10 @@ import io.legado.app.ui.book.character.compose.CharacterAvatar
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.parseToUri
 import io.legado.app.utils.showDialogFragment
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.min
-import kotlin.math.roundToInt
+import kotlin.math.abs
 
 @Stable
 data class AiChatScreenActions(
@@ -147,6 +150,84 @@ data class AiChatScreenActions(
     val onDeleteSession: ((AiChatSession) -> Unit)? = null,
     val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null
 )
+
+@Stable
+private class AiCompanionDrawerController {
+    var progress by mutableFloatStateOf(0f)
+        private set
+    var open by mutableStateOf(false)
+        private set
+    var visible by mutableStateOf(false)
+        private set
+    var dragging by mutableStateOf(false)
+        private set
+    var animating by mutableStateOf(false)
+        private set
+    private var animationJob: Job? = null
+
+    fun startDrag() {
+        animationJob?.cancel()
+        visible = true
+        animating = false
+        dragging = true
+    }
+
+    fun dragBy(deltaProgress: Float): Boolean {
+        val next = (progress + deltaProgress).coerceIn(0f, 1f)
+        if (next == progress) return false
+        progress = next
+        return true
+    }
+
+    fun endDrag(scope: kotlinx.coroutines.CoroutineScope, widthPx: Float, openDistancePx: Float) {
+        dragging = false
+        val openByDistance = progress * widthPx >= openDistancePx
+        val closeByDistance = (1f - progress) * widthPx >= openDistancePx
+        val target = when {
+            open && (closeByDistance || progress < 0.72f) -> 0f
+            !open && (openByDistance || progress >= 0.25f) -> 1f
+            open -> 1f
+            else -> 0f
+        }
+        settle(scope, target)
+    }
+
+    fun cancelDrag(scope: kotlinx.coroutines.CoroutineScope) {
+        dragging = false
+        settle(scope, if (open) 1f else 0f)
+    }
+
+    fun settle(scope: kotlinx.coroutines.CoroutineScope, target: Float, animateChange: Boolean = true) {
+        val clampedTarget = target.coerceIn(0f, 1f)
+        animationJob?.cancel()
+        visible = clampedTarget > 0f || progress > 0f
+        open = clampedTarget >= 0.5f
+        if (!animateChange || progress == clampedTarget) {
+            progress = clampedTarget
+            animating = false
+            visible = clampedTarget > 0f
+            return
+        }
+        animating = true
+        animationJob = scope.launch {
+            val opening = clampedTarget > progress
+            animate(
+                initialValue = progress,
+                targetValue = clampedTarget,
+                animationSpec = tween(
+                    durationMillis = if (opening) 220 else 170,
+                    easing = if (opening) LinearOutSlowInEasing else FastOutLinearInEasing
+                )
+            ) { value, _ ->
+                progress = value
+            }
+            progress = clampedTarget
+            open = clampedTarget >= 0.5f
+            animating = false
+            visible = clampedTarget > 0f
+        }
+    }
+}
 
 @Composable
 fun AiChatRoute(
@@ -177,13 +258,14 @@ fun AiChatRoute(
     val currentCompanion = remember(refreshToken, messages.size, requesting) {
         viewModel.currentCompanion()
     }
-    val sessionsByCompanion = remember(refreshToken, messages.size, requesting, companions) {
-        companions.associate { companion ->
-            companion.id to viewModel.historySessions(companion.id)
-        }
-    }
     val currentSessionId = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
         viewModel.activeSessionId()
+    }
+    val sessionRefreshKey = remember(refreshToken, messages.size, requesting, currentSessionId) {
+        "$refreshToken:${messages.size}:$requesting:$currentSessionId"
+    }
+    val loadCompanionSessions: (String) -> List<AiChatSession> = remember(viewModel) {
+        { companionId -> viewModel.historySessions(companionId) }
     }
     val userAvatar = remember(refreshToken) {
         ReadRecordWidgetStore.loadGoalConfig().avatar
@@ -197,7 +279,8 @@ fun AiChatRoute(
         modelLabel = modelLabel,
         companions = companions,
         currentCompanion = currentCompanion,
-        sessionsByCompanion = sessionsByCompanion,
+        sessionRefreshKey = sessionRefreshKey,
+        loadCompanionSessions = loadCompanionSessions,
         currentSessionId = currentSessionId,
         userAvatar = userAvatar,
         autoSpeakEnabled = autoSpeakEnabled,
@@ -215,7 +298,8 @@ fun AiChatScreen(
     modelLabel: String,
     companions: List<AiChatCompanionConfig>,
     currentCompanion: AiChatCompanionConfig,
-    sessionsByCompanion: Map<String, List<AiChatSession>>,
+    sessionRefreshKey: String,
+    loadCompanionSessions: (String) -> List<AiChatSession>,
     currentSessionId: String,
     userAvatar: String?,
     autoSpeakEnabled: Boolean,
@@ -231,12 +315,11 @@ fun AiChatScreen(
     val coroutineScope = rememberCoroutineScope()
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     var processExpandSignal by remember { mutableStateOf(0) }
-    var companionDrawerOpen by rememberSaveable { mutableStateOf(false) }
+    val companionDrawerController = remember { AiCompanionDrawerController() }
     var expandedCompanionId by rememberSaveable { mutableStateOf(currentCompanion.id) }
     var lastAutoSpokenMessageId by rememberSaveable { mutableStateOf("") }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
-    val speechState by AiChatSpeechPlayer.playbackState.collectAsState()
     val uiItems = remember(context, messages, thinkingToolbarEnabled) {
         buildAiChatUiItems(
             context = context,
@@ -249,7 +332,12 @@ fun AiChatScreen(
     }
     val autoScrollSignal = remember(messages) {
         messages.takeLast(8).joinToString("|") { message ->
-            "${message.id}:${message.updatedAt}:${message.content.length}:${message.pending}:${message.collapsed}"
+            val lengthBucket = if (message.pending) {
+                message.content.length / 80
+            } else {
+                message.content.length
+            }
+            "${message.id}:${message.updatedAt}:$lengthBucket:${message.pending}:${message.collapsed}"
         }
     }
     val bottomThresholdPx = remember(density) { with(density) { 32.dp.toPx().toInt() } }
@@ -319,8 +407,6 @@ fun AiChatScreen(
         }
     }
     val drawerOpenDistancePx = remember(density) { with(density) { 72.dp.toPx() } }
-    var drawerDragDistance by remember { mutableStateOf(0f) }
-    var drawerDragging by remember { mutableStateOf(false) }
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -332,70 +418,58 @@ fun AiChatScreen(
                 with(density) { 340.dp.toPx() }
             ).coerceAtLeast(1f)
         }
-        val drawerProgress = when {
-            companionDrawerOpen -> (1f + drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
-            else -> (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
+        val messageBubbleMaxWidth = remember(maxWidth) {
+            maxWidth * 0.76f
         }
-        val animatedDrawerProgress by animateFloatAsState(
-            targetValue = if (companionDrawerOpen) {
-                1f
-            } else {
-                0f
-            },
-            animationSpec = tween(
-                durationMillis = if (drawerDragging) 1 else 240,
-                easing = FastOutSlowInEasing
-            ),
-            label = "aiCompanionDrawerProgress"
-        )
-        val visibleDrawerProgress = if (drawerDragging) drawerProgress else animatedDrawerProgress
-        val drawerVisible = drawerDragging || visibleDrawerProgress > 0.002f
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(companionDrawerOpen, drawerWidthPx) {
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        drawerDragDistance = 0f
-                        drawerDragging = true
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        val next = if (companionDrawerOpen) {
-                            (drawerDragDistance + dragAmount).coerceIn(-drawerWidthPx, 0f)
-                        } else {
-                            (drawerDragDistance + dragAmount).coerceIn(0f, drawerWidthPx)
-                        }
-                        if (next != drawerDragDistance) {
-                            change.consume()
-                            drawerDragDistance = next
-                        }
-                    },
-                    onDragEnd = {
-                        val endProgress = if (companionDrawerOpen) {
-                            (1f + drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
-                        } else {
-                            (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
-                        }
-                        if (companionDrawerOpen) {
-                            if (-drawerDragDistance >= drawerOpenDistancePx ||
-                                endProgress < 0.72f
-                            ) {
-                                companionDrawerOpen = false
+                .pointerInput(drawerWidthPx, drawerOpenDistancePx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val pointerId = down.id
+                        val touchSlop = viewConfiguration.touchSlop
+                        var lockedToDrawer = false
+                        var totalX = 0f
+                        var totalY = 0f
+                        var cancelled = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == pointerId }
+                                ?: break
+                            if (!change.pressed) break
+                            val delta = change.positionChange()
+                            if (!lockedToDrawer) {
+                                totalX += delta.x
+                                totalY += delta.y
+                                val absX = abs(totalX)
+                                val absY = abs(totalY)
+                                if (absX <= touchSlop && absY <= touchSlop) {
+                                    continue
+                                }
+                                val horizontalIntent = absX > absY * 1.25f
+                                val canOpenOrClose = totalX > 0f || companionDrawerController.open
+                                if (!horizontalIntent || !canOpenOrClose) {
+                                    cancelled = true
+                                    break
+                                }
+                                lockedToDrawer = true
+                                companionDrawerController.startDrag()
+                                val overSlopX = totalX - if (totalX > 0f) touchSlop else -touchSlop
+                                if (companionDrawerController.dragBy(overSlopX / drawerWidthPx)) {
+                                    change.consume()
+                                }
+                            } else if (companionDrawerController.dragBy(delta.x / drawerWidthPx)) {
+                                change.consume()
                             }
-                        } else if (drawerDragDistance >= drawerOpenDistancePx ||
-                            endProgress >= 0.25f
-                        ) {
-                            companionDrawerOpen = true
                         }
-                        drawerDragDistance = 0f
-                        drawerDragging = false
-                    },
-                    onDragCancel = {
-                        drawerDragDistance = 0f
-                        drawerDragging = false
+                        if (lockedToDrawer) {
+                            companionDrawerController.endDrag(coroutineScope, drawerWidthPx, drawerOpenDistancePx)
+                        } else if (!cancelled) {
+                            companionDrawerController.cancelDrag(coroutineScope)
+                        }
                     }
-                )
-            }
+                }
         ) {
         Column(
             modifier = Modifier
@@ -409,7 +483,7 @@ fun AiChatScreen(
                 compactHeader = compactHeader,
                 autoSpeakEnabled = autoSpeakEnabled,
                 style = style,
-                onOpenCompanionDrawer = { companionDrawerOpen = true },
+                onOpenCompanionDrawer = { companionDrawerController.settle(coroutineScope, 1f) },
                 actions = actions
             )
             Box(
@@ -448,7 +522,7 @@ fun AiChatScreen(
                                 currentCompanion = currentCompanion,
                                 userAvatar = userAvatar,
                                 style = style,
-                                speechState = speechState,
+                                bubbleMaxWidth = messageBubbleMaxWidth,
                                 onSpeak = actions.onSpeakMessage,
                                 onToolPreview = { toolPreviewPayload = it },
                                 onProcessExpanded = {
@@ -503,27 +577,26 @@ fun AiChatScreen(
                 onDismiss = { toolPreviewPayload = null }
             )
         }
-        if (drawerVisible) {
-            AiCompanionDrawer(
-                companions = companions,
-                currentCompanionId = currentCompanion.id,
-                expandedCompanionId = expandedCompanionId,
-                sessionsByCompanion = sessionsByCompanion,
-                currentSessionId = currentSessionId,
-                style = style,
-                actions = actions,
-                animatedProgress = visibleDrawerProgress,
-                drawerWidthPx = drawerWidthPx,
-                onToggleCompanion = { companionId ->
-                    expandedCompanionId = if (expandedCompanionId == companionId) {
-                        ""
-                    } else {
-                        companionId
-                    }
-                },
-                onDismiss = { companionDrawerOpen = false }
-            )
-        }
+        AiCompanionDrawerHost(
+            controller = companionDrawerController,
+            companions = companions,
+            currentCompanionId = currentCompanion.id,
+            expandedCompanionId = expandedCompanionId,
+            sessionRefreshKey = sessionRefreshKey,
+            loadCompanionSessions = loadCompanionSessions,
+            currentSessionId = currentSessionId,
+            style = style,
+            actions = actions,
+            drawerWidthPx = drawerWidthPx,
+            onToggleCompanion = { companionId ->
+                expandedCompanionId = if (expandedCompanionId == companionId) {
+                    ""
+                } else {
+                    companionId
+                }
+            },
+            onDismiss = { companionDrawerController.settle(coroutineScope, 0f) }
+        )
     }
     }
 }
@@ -642,10 +715,9 @@ private fun AiModernTopMenu(
     ) {
         Surface(
             shape = RoundedCornerShape(style.metrics.cardRadius),
-            color = style.colors.assistantBubble,
+            color = style.colors.composerSurface,
             tonalElevation = 0.dp,
             shadowElevation = 8.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, style.colors.stroke),
             modifier = Modifier.widthIn(min = 132.dp)
         ) {
             Column(modifier = Modifier.padding(6.dp)) {
@@ -676,56 +748,76 @@ private fun AiModernTopMenu(
 }
 
 @Composable
-private fun AiCompanionDrawer(
+private fun AiCompanionDrawerHost(
+    controller: AiCompanionDrawerController,
     companions: List<AiChatCompanionConfig>,
     currentCompanionId: String,
     expandedCompanionId: String,
-    sessionsByCompanion: Map<String, List<AiChatSession>>,
+    sessionRefreshKey: String,
+    loadCompanionSessions: (String) -> List<AiChatSession>,
     currentSessionId: String,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
-    animatedProgress: Float,
     drawerWidthPx: Float,
     onToggleCompanion: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val clampedProgress = animatedProgress.coerceIn(0f, 1f)
+    if (!controller.visible) return
+    AiCompanionDrawer(
+        companions = companions,
+        currentCompanionId = currentCompanionId,
+        expandedCompanionId = expandedCompanionId,
+        sessionRefreshKey = sessionRefreshKey,
+        loadCompanionSessions = loadCompanionSessions,
+        currentSessionId = currentSessionId,
+        style = style,
+        actions = actions,
+        controller = controller,
+        drawerWidthPx = drawerWidthPx,
+        onToggleCompanion = onToggleCompanion,
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
+private fun AiCompanionDrawer(
+    companions: List<AiChatCompanionConfig>,
+    currentCompanionId: String,
+    expandedCompanionId: String,
+    sessionRefreshKey: String,
+    loadCompanionSessions: (String) -> List<AiChatSession>,
+    currentSessionId: String,
+    style: AiComposeStyle,
+    actions: AiChatScreenActions,
+    controller: AiCompanionDrawerController,
+    drawerWidthPx: Float,
+    onToggleCompanion: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.22f * clampedProgress))
-                .then(
-                    if (clampedProgress >= 0.98f) {
-                        Modifier.clickable { onDismiss() }
-                    } else {
-                        Modifier
-                    }
-                )
+                .graphicsLayer {
+                    alpha = 0.22f * controller.progress.coerceIn(0f, 1f)
+                }
+                .background(Color.Black)
+                .clickable { onDismiss() }
         )
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 0.dp,
-                bottomStart = 0.dp,
-                topEnd = style.metrics.cardRadius,
-                bottomEnd = style.metrics.cardRadius
-            ),
-            color = style.colors.pageBackground,
-            shadowElevation = 14.dp,
-            border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+            shape = RoundedCornerShape(0.dp),
+            color = style.colors.composerSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 18.dp,
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(0.88f)
                 .widthIn(max = 340.dp)
                 .align(Alignment.CenterStart)
-                .offset {
-                    IntOffset(
-                        x = (-drawerWidthPx * (1f - clampedProgress)).roundToInt(),
-                        y = 0
-                    )
-                }
                 .graphicsLayer {
-                    alpha = clampedProgress.coerceAtLeast(0.001f)
+                    val progress = controller.progress.coerceIn(0f, 1f)
+                    translationX = -drawerWidthPx * (1f - progress)
+                    alpha = progress.coerceAtLeast(0.001f)
                 }
         ) {
             Column(
@@ -779,13 +871,20 @@ private fun AiCompanionDrawer(
                     item {
                         DrawerSectionTitle("助手", style)
                     }
-                    items(companions, key = { it.id }) { companion ->
+                    items(
+                        items = companions,
+                        key = { it.id },
+                        contentType = { "companion" }
+                    ) { companion ->
                         val expanded = companion.id == expandedCompanionId
-                        val companionSessions = sessionsByCompanion[companion.id].orEmpty()
+                        val companionSessions = remember(companion.id, expanded, sessionRefreshKey) {
+                            if (expanded) {
+                                loadCompanionSessions(companion.id)
+                            } else {
+                                emptyList()
+                            }
+                        }
                         Column(
-                            modifier = Modifier.animateContentSize(
-                                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
-                            ),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             AiCompanionDrawerItem(
@@ -806,11 +905,13 @@ private fun AiCompanionDrawer(
                             AnimatedVisibility(
                                 visible = expanded,
                                 enter = expandVertically(
-                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
-                                ) + fadeIn(animationSpec = tween(durationMillis = 140)),
+                                    expandFrom = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 170, easing = LinearOutSlowInEasing)
+                                ) + fadeIn(animationSpec = tween(durationMillis = 110)),
                                 exit = shrinkVertically(
-                                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
-                                ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                                    shrinkTowards = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 130, easing = FastOutLinearInEasing)
+                                ) + fadeOut(animationSpec = tween(durationMillis = 90))
                             ) {
                                 AiCompanionSessionPanel(
                                     sessions = companionSessions,
@@ -854,8 +955,9 @@ private fun AiCompanionSessionPanel(
 ) {
     Surface(
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = style.colors.assistantBubble.copy(alpha = 0.72f),
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+        color = style.colors.cardSurface.copy(alpha = 0.90f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 14.dp)
@@ -946,12 +1048,7 @@ private fun AiCompanionDrawerItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.cardRadius))
-            .background(if (selected) style.colors.accent.copy(alpha = 0.11f) else style.colors.cardSurface)
-            .border(
-                style.metrics.strokeWidth,
-                if (selected) style.colors.accent.copy(alpha = 0.10f) else style.colors.stroke,
-                RoundedCornerShape(style.metrics.cardRadius)
-            )
+            .background(if (selected) style.colors.accent.copy(alpha = 0.13f) else style.colors.cardSurface.copy(alpha = 0.92f))
             .combinedClickable(
                 onClick = onSelect,
                 onLongClick = onLongPress
@@ -1016,12 +1113,7 @@ private fun AiSessionDrawerItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(style.metrics.cardRadius))
-            .background(if (selected) style.colors.accent.copy(alpha = 0.10f) else style.colors.cardSurface)
-            .border(
-                style.metrics.strokeWidth,
-                if (selected) style.colors.accent.copy(alpha = 0.30f) else style.colors.stroke,
-                RoundedCornerShape(style.metrics.cardRadius)
-            )
+            .background(if (selected) style.colors.accent.copy(alpha = 0.12f) else style.colors.composerSurface.copy(alpha = 0.72f))
             .combinedClickable(onClick = onSelect, onLongClick = onLongPress)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1117,7 +1209,8 @@ private fun AiEmptyState(style: AiComposeStyle) {
         Surface(
             shape = RoundedCornerShape(style.metrics.cardRadius),
             color = style.colors.cardSurface,
-            border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+            tonalElevation = 0.dp,
+            shadowElevation = 2.dp
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1146,18 +1239,18 @@ private fun AiMessageRow(
     currentCompanion: AiChatCompanionConfig,
     userAvatar: String?,
     style: AiComposeStyle,
-    speechState: AiChatSpeechPlayer.PlaybackState,
+    bubbleMaxWidth: androidx.compose.ui.unit.Dp,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
     when (item) {
-        is AiChatUiItem.User -> AiUserMessageRow(item, userAvatar, style)
+        is AiChatUiItem.User -> AiUserMessageRow(item, userAvatar, style, bubbleMaxWidth)
         is AiChatUiItem.Assistant -> AiAssistantMessageRow(
             message = item,
             companion = currentCompanion,
             style = style,
-            speechState = speechState,
+            bubbleMaxWidth = bubbleMaxWidth,
             onSpeak = onSpeak,
             onToolPreview = onToolPreview,
             onProcessExpanded = onProcessExpanded
@@ -1169,43 +1262,32 @@ private fun AiMessageRow(
 private fun AiUserMessageRow(
     message: AiChatUiItem.User,
     userAvatar: String?,
-    style: AiComposeStyle
+    style: AiComposeStyle,
+    bubbleMaxWidth: androidx.compose.ui.unit.Dp
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val bubbleMaxWidth = maxWidth * 0.76f
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.Top
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.Top
+    ) {
+        AiChatBubbleSurface(
+            isUser = true,
+            style = style,
+            modifier = Modifier.widthIn(max = bubbleMaxWidth)
         ) {
-            Surface(
-                shape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = 20.dp,
-                    bottomEnd = 8.dp
-                ),
-                color = style.colors.userBubble,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    style.colors.userBubbleStroke.copy(alpha = 0.42f)
-                ),
-                shadowElevation = 1.dp,
-                modifier = Modifier.widthIn(max = bubbleMaxWidth)
-            ) {
-                AiPlainSelectableText(
-                    content = message.content,
-                    color = style.colors.userText,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            AiUserAvatar(
-                avatar = userAvatar,
+            AiMarkdownRichText(
+                text = message.content,
                 style = style,
-                sizeDp = 34
+                color = style.colors.userText,
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp)
             )
         }
+        Spacer(modifier = Modifier.width(8.dp))
+        AiUserAvatar(
+            avatar = userAvatar,
+            style = style,
+            sizeDp = 34
+        )
     }
 }
 
@@ -1214,38 +1296,34 @@ private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    speechState: AiChatSpeechPlayer.PlaybackState,
+    bubbleMaxWidth: androidx.compose.ui.unit.Dp,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val bubbleMaxWidth = maxWidth * 0.78f
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.Top
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top
+    ) {
+        AiCompanionAvatar(companion, style, 36)
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(
+            modifier = Modifier.widthIn(max = bubbleMaxWidth),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            AiCompanionAvatar(companion, style, 36)
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(
-                modifier = Modifier.widthIn(max = bubbleMaxWidth),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                message.parts.forEach { part ->
-                    key(part.id) {
-                        when (part) {
-                            is AiMessagePartUi.Text -> AiAssistantTextPart(
-                                part = part,
-                                companion = companion,
-                                style = style,
-                                speechState = speechState,
-                                onSpeak = onSpeak
-                            )
-                            is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
-                            is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
-                            is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
-                        }
+            message.parts.forEach { part ->
+                key(part.id) {
+                    when (part) {
+                        is AiMessagePartUi.Text -> AiAssistantTextPart(
+                            part = part,
+                            companion = companion,
+                            style = style,
+                            onSpeak = onSpeak
+                        )
+                        is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
+                        is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
+                        is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
                     }
                 }
             }
@@ -1258,19 +1336,9 @@ private fun AiAssistantTextPart(
     part: AiMessagePartUi.Text,
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    speechState: AiChatSpeechPlayer.PlaybackState,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?
 ) {
-    Surface(
-        shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = style.colors.assistantBubble,
-        tonalElevation = 0.dp,
-        shadowElevation = 1.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            style.metrics.strokeWidth,
-            style.colors.assistantBubbleStroke.copy(alpha = 0.62f)
-        )
-    ) {
+    AiChatBubbleSurface(isUser = false, style = style) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (part.pending) {
                 Text(
@@ -1280,44 +1348,81 @@ private fun AiAssistantTextPart(
                     lineHeight = 21.sp
                 )
             } else {
-                AiMarkdownText(
+                AiComposeMarkdownText(
                     content = part.content,
                     style = style
                 )
             }
             if (!part.pending && onSpeak != null && part.content.isNotBlank()) {
-                val isSpeaking = speechState.key == part.id && speechState.active
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(style.colors.accent.copy(alpha = if (isSpeaking) 0.20f else 0.10f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                onSpeak(part.content, companion, part.id)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(
-                                if (isSpeaking) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp
-                            ),
-                            contentDescription = null,
-                            tint = style.colors.accent,
-                            modifier = Modifier.size(if (isSpeaking) 15.dp else 16.dp)
-                        )
-                    }
+                    AiMessageSpeakButton(
+                        partId = part.id,
+                        content = part.content,
+                        companion = companion,
+                        style = style,
+                        onSpeak = onSpeak
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AiMessageSpeakButton(
+    partId: String,
+    content: String,
+    companion: AiChatCompanionConfig,
+    style: AiComposeStyle,
+    onSpeak: (String, AiChatCompanionConfig, String) -> Unit
+) {
+    val speechState by AiChatSpeechPlayer.playbackState.collectAsState()
+    val isSpeaking = speechState.key == partId && speechState.active
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(style.colors.accent.copy(alpha = if (isSpeaking) 0.20f else 0.10f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                onSpeak(content, companion, partId)
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(
+                if (isSpeaking) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp
+            ),
+            contentDescription = null,
+            tint = style.colors.accent,
+            modifier = Modifier.size(if (isSpeaking) 15.dp else 16.dp)
+        )
+    }
+}
+
+@Composable
+private fun AiChatBubbleSurface(
+    isUser: Boolean,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val shape = RoundedCornerShape(style.metrics.cardRadius)
+    Surface(
+        shape = shape,
+        color = if (isUser) style.colors.userBubble else style.colors.composerSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier
+    ) {
+        content()
     }
 }
 
@@ -1339,11 +1444,15 @@ private fun AiUserAvatar(
             }
         },
         update = { imageView ->
-            ImageLoader.load(context, avatar)
-                .placeholder(R.drawable.ic_read_record_default_avatar)
-                .error(R.drawable.ic_read_record_default_avatar)
-                .centerCrop()
-                .into(imageView)
+            val target = avatar.orEmpty()
+            if (imageView.tag != target) {
+                imageView.tag = target
+                ImageLoader.load(context, avatar)
+                    .placeholder(R.drawable.ic_read_record_default_avatar)
+                    .error(R.drawable.ic_read_record_default_avatar)
+                    .centerCrop()
+                    .into(imageView)
+            }
         }
     )
 }
@@ -1531,6 +1640,147 @@ private fun AiPlainSelectableText(
 }
 
 @Composable
+private fun AiComposeMarkdownText(
+    content: String,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier
+) {
+    val normalizedContent = remember(content) { normalizeAiMarkdownContent(content) }
+    val blocks = remember(normalizedContent) { parseAiMarkdownBlocks(normalizedContent) }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is AiMarkdownBlock.Paragraph -> AiMarkdownInlineContent(
+                    text = block.text,
+                    style = style
+                )
+                is AiMarkdownBlock.Heading -> AiMarkdownRichText(
+                    text = block.text,
+                    style = style,
+                    color = style.colors.primaryText,
+                    fontSize = when {
+                        block.level <= 2 -> 17.sp
+                        block.level == 3 -> 16.sp
+                        else -> 15.sp
+                    },
+                    lineHeight = when {
+                        block.level <= 2 -> 24.sp
+                        block.level == 3 -> 23.sp
+                        else -> 21.sp
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = if (block.level <= 2) 2.dp else 0.dp)
+                )
+                is AiMarkdownBlock.Bullet -> AiMarkdownListLine(
+                    prefix = "•",
+                    text = block.text,
+                    style = style
+                )
+                is AiMarkdownBlock.Numbered -> AiMarkdownListLine(
+                    prefix = "${block.number}.",
+                    text = block.text,
+                    style = style
+                )
+                is AiMarkdownBlock.Quote -> AiMarkdownQuote(
+                    text = block.text,
+                    style = style
+                )
+                is AiMarkdownBlock.Table -> AiMarkdownTable(block, style)
+                is AiMarkdownBlock.Code -> AiMarkdownCodeBlock(
+                    text = block.text,
+                    style = style
+                )
+                AiMarkdownBlock.Divider -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(style.colors.stroke)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiMarkdownListLine(
+    prefix: String,
+    text: String,
+    style: AiComposeStyle
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = prefix,
+            color = style.colors.secondaryText,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            modifier = Modifier.width(24.dp)
+        )
+        AiMarkdownInlineContent(
+            text = text,
+            style = style,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun AiMarkdownQuote(
+    text: String,
+    style: AiComposeStyle
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .heightIn(min = 22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(style.colors.accent.copy(alpha = 0.46f))
+        )
+        AiMarkdownInlineContent(
+            text = text,
+            style = style,
+            color = style.colors.secondaryText,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp)
+        )
+    }
+}
+
+@Composable
+private fun AiMarkdownCodeBlock(
+    text: String,
+    style: AiComposeStyle
+) {
+    Surface(
+        shape = RoundedCornerShape(style.metrics.chipRadius),
+        color = style.colors.processSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Text(
+            text = text,
+            color = style.colors.primaryText,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 9.dp)
+        )
+    }
+}
+
+@Composable
 private fun AiMarkdownRichText(
     text: String,
     style: AiComposeStyle,
@@ -1618,7 +1868,8 @@ private fun AiMarkdownTable(table: AiMarkdownBlock.Table, style: AiComposeStyle)
     Surface(
         shape = RoundedCornerShape(style.metrics.chipRadius),
         color = style.colors.processSurface,
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         BoxWithConstraints(
             modifier = Modifier
@@ -1747,7 +1998,8 @@ private fun AiMarkdownImage(
             },
         shape = RoundedCornerShape(style.metrics.chipRadius),
         color = style.colors.background.copy(alpha = 0.08f),
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -1757,10 +2009,13 @@ private fun AiMarkdownImage(
                     contentDescription = image.alt
                 }
             },
-            update = {
-                ImageLoader.load(context, imageUrl)
-                    .error(R.drawable.image_loading_error)
-                    .into(it)
+            update = { imageView ->
+                if (imageView.tag != imageUrl) {
+                    imageView.tag = imageUrl
+                    ImageLoader.load(context, imageUrl)
+                        .error(R.drawable.image_loading_error)
+                        .into(imageView)
+                }
             }
         )
     }
@@ -2081,7 +2336,6 @@ private fun AiJumpButton(
         shape = CircleShape,
         color = style.colors.cardSurface,
         shadowElevation = 6.dp,
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
         modifier = Modifier.size(40.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -2114,10 +2368,10 @@ private fun AiComposer(
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.composerSurface,
-        shadowElevation = 8.dp,
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.composerStroke)
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

@@ -29,6 +29,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
     private var textToSpeech: TextToSpeech? = null
     private var ttsInitFinish = false
+    private var pendingPlayOnInit = false
     private val ttsUtteranceListener = TTSUtteranceListener()
     private var speakJob: Coroutine<*>? = null
     private val TAG = "TTSReadAloudService"
@@ -83,7 +84,9 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
             textToSpeech?.let {
                 it.setOnUtteranceProgressListener(ttsUtteranceListener)
                 ttsInitFinish = true
-                play()
+                if (pendingPlayOnInit) {
+                    play()
+                }
             }
         } else {
             toastOnUi(R.string.tts_init_failed)
@@ -92,11 +95,20 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
 
     @Synchronized
     override fun play() {
-        if (!ttsInitFinish) return
+        if (!ttsInitFinish) {
+            pendingPlayOnInit = true
+            return
+        }
+        pendingPlayOnInit = false
         if (!requestFocus()) return
         if (contentList.isEmpty()) {
             AppLog.putDebug("朗读列表为空")
-            ReadBook.readAloud()
+            pauseReadAloud(abandonFocus = false)
+            postReadAloudPlaybackPhase(
+                ReadAloudPlaybackState.PHASE_PAUSED,
+                message = "朗读内容为空",
+                playing = false
+            )
             return
         }
         super.play()
@@ -236,7 +248,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
                     && readAloudNumber + 1 > it.getReadLength(pageIndex + 1)
                 ) {
                     pageIndex++
-                    ReadBook.moveToNextPage()
+                    ReadBook.moveToNextPage(fromReadAloud = true)
                 }
                 upTtsProgress(readAloudNumber + 1)
             }
@@ -265,7 +277,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
                     && readAloudNumber + start > it.getReadLength(pageIndex + 1)
                 ) {
                     pageIndex++
-                    ReadBook.moveToNextPage()
+                    ReadBook.moveToNextPage(fromReadAloud = true)
                     upTtsProgress(readAloudNumber + start)
                 }
             }

@@ -10,8 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,11 +22,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,7 +129,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                 )
             )
             if (characterPickerVisible) {
-                AiCharacterCompanionPickerDialog(
+                AiCharacterCompanionPickerDialogV2(
                     groups = characterPickerGroups,
                     onDismiss = { characterPickerVisible = false },
                     onCharacterSelected = { group, character ->
@@ -437,8 +445,15 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             }
             return
         }
-        val visibleWorldBooks = worldBooks.filter { it.enabled || it.id in companion.worldBookIds }
-        val selected = companion.worldBookIds.toMutableSet()
+        val visibleWorldBooks = worldBooks.filter { it.enabled && !it.isGlobalWorldBookEnabled() }
+        if (visibleWorldBooks.isEmpty()) {
+            selector("世界书", listOf("没有可单独绑定到角色的世界书", "打开世界书管理")) { _, _, which ->
+                if (which == 1) openWorldBookManage()
+            }
+            return
+        }
+        val visibleIds = visibleWorldBooks.map { it.id }.toSet()
+        val selected = companion.worldBookIds.filterTo(mutableSetOf()) { it in visibleIds }
         alert(title = "${companion.name} · 世界书") {
             multiChoiceItems(
                 items = visibleWorldBooks.map { book ->
@@ -460,9 +475,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             }
             okButton {
                 AppConfig.upsertAiChatCompanion(
-                    companion.copy(worldBookIds = selected.filter { id ->
-                        worldBooks.any { it.id == id && it.enabled }
-                    })
+                    companion.copy(worldBookIds = selected.filter { id -> id in visibleIds })
                 )
                 refreshToken.intValue += 1
             }
@@ -505,7 +518,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     private fun activeCompanionWorldBookCount(): Int {
         val companion = viewModel.currentCompanion()
         return companion.worldBookIds.count { worldBookId ->
-            AppConfig.aiWorldBookList.any { it.id == worldBookId && it.enabled }
+            AppConfig.aiWorldBookList.any {
+                it.id == worldBookId && it.enabled && !it.isGlobalWorldBookEnabled()
+            }
         }
     }
 
@@ -650,6 +665,455 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun characterCompanionId(character: BookCharacter): String {
         return "character_${character.id}"
+    }
+
+    @Composable
+    private fun AiCharacterCompanionPickerDialogV2(
+        groups: List<CharacterPickGroup>,
+        onDismiss: () -> Unit,
+        onCharacterSelected: (CharacterPickGroup, BookCharacter) -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        var query by remember(groups) { mutableStateOf("") }
+        var selectedGroup by remember(groups) { mutableStateOf<CharacterPickGroup?>(null) }
+        var selectedRole by remember(groups) { mutableIntStateOf(BookCharacter.ROLE_MAIN) }
+        val filteredGroups = remember(groups, query) {
+            val keyword = query.trim()
+            if (keyword.isBlank()) {
+                groups
+            } else {
+                groups.filter { group ->
+                    group.bookName.contains(keyword, ignoreCase = true) ||
+                        group.author.contains(keyword, ignoreCase = true) ||
+                        group.label.contains(keyword, ignoreCase = true) ||
+                        group.characters.any { character ->
+                            character.displayName().contains(keyword, ignoreCase = true)
+                        }
+                }
+            }
+        }
+        Dialog(onDismissRequest = onDismiss) {
+            Surface(
+                shape = RoundedCornerShape(style.metrics.cardRadius),
+                color = style.colors.composerSurface,
+                tonalElevation = 0.dp,
+                shadowElevation = 14.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 620.dp)
+                    .heightIn(max = 720.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "添加角色助手",
+                                color = style.colors.primaryText,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = selectedGroup?.let { "从《${it.bookName.ifBlank { it.label }}》选择角色" }
+                                    ?: "先选择书籍，再选择要添加到侧边栏的角色",
+                                color = style.colors.secondaryText,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = "关闭",
+                            color = style.colors.accent,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(style.metrics.chipRadius))
+                                .clickable(onClick = onDismiss)
+                                .padding(horizontal = 10.dp, vertical = 7.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    CharacterPickerSearchFieldV2(
+                        value = query,
+                        onValueChange = {
+                            query = it
+                            selectedGroup = null
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    val current = selectedGroup
+                    if (current == null) {
+                        Text(
+                            text = "选择书籍",
+                            color = style.colors.secondaryText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        if (filteredGroups.isEmpty()) {
+                            CharacterPickerEmptyV2("没有匹配的角色书籍")
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 280.dp, max = 460.dp),
+                                contentPadding = PaddingValues(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                gridItems(filteredGroups, key = { it.bookKey }) { group ->
+                                    CharacterBookGridCardV2(
+                                        group = group,
+                                        onClick = {
+                                            selectedGroup = group
+                                            selectedRole = bestRoleFor(group)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        CharacterSelectedBookCardV2(
+                            group = current,
+                            onChangeBook = { selectedGroup = null }
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val addedCharacterIds = remember(current.bookKey, current.characters.size) {
+                            AppConfig.aiChatCompanionList
+                                .mapNotNull { it.characterId.toLongOrNull() }
+                                .toSet()
+                        }
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        ) {
+                            items(characterRoleFilters(current), key = { it.roleLevel }) { filter ->
+                                CharacterRoleFilterChipV2(
+                                    filter = filter,
+                                    selected = filter.roleLevel == selectedRole,
+                                    onClick = { selectedRole = filter.roleLevel }
+                                )
+                            }
+                        }
+                        val filteredCharacters = current.characters.filter { character ->
+                            characterMatchesRole(character, selectedRole)
+                        }
+                        Text(
+                            text = "选择角色",
+                            color = style.colors.secondaryText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(filteredCharacters, key = { it.id }) { character ->
+                                CharacterPickRowV2(
+                                    character = character,
+                                    added = character.id in addedCharacterIds,
+                                    onClick = {
+                                        onCharacterSelected(current, character)
+                                        onDismiss()
+                                    }
+                                )
+                            }
+                            if (filteredCharacters.isEmpty()) {
+                                item {
+                                    CharacterPickerEmptyV2("这一组还没有角色")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun CharacterPickerSearchFieldV2(
+        value: String,
+        onValueChange: (String) -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.cardSurface.copy(alpha = 0.92f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .heightIn(min = 44.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isBlank()) {
+                    Text(
+                        text = "搜索书名、作者或角色",
+                        color = style.colors.secondaryText.copy(alpha = 0.72f),
+                        fontSize = 14.sp
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = style.colors.primaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun CharacterPickerEmptyV2(text: String) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = text, color = style.colors.secondaryText, fontSize = 14.sp)
+        }
+    }
+
+    @Composable
+    private fun CharacterBookGridCardV2(
+        group: CharacterPickGroup,
+        onClick: () -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.cardSurface.copy(alpha = 0.94f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                AndroidView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.72f)
+                        .clip(RoundedCornerShape(style.metrics.chipRadius)),
+                    factory = {
+                        CoverImageView(it).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                    },
+                    update = {
+                        it.load(
+                            path = group.coverUrl,
+                            name = group.bookName.ifBlank { group.label },
+                            author = group.author,
+                            loadOnlyWifi = false,
+                            preferThumb = true
+                        )
+                    }
+                )
+                Text(
+                    text = group.bookName.ifBlank { group.label },
+                    color = style.colors.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 7.dp)
+                )
+                Text(
+                    text = "${group.characters.size} 个角色",
+                    color = style.colors.secondaryText,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun CharacterSelectedBookCardV2(
+        group: CharacterPickGroup,
+        onChangeBook: () -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.cardSurface.copy(alpha = 0.94f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AndroidView(
+                    modifier = Modifier
+                        .width(52.dp)
+                        .height(72.dp)
+                        .clip(RoundedCornerShape(style.metrics.chipRadius)),
+                    factory = {
+                        CoverImageView(it).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                        }
+                    },
+                    update = {
+                        it.load(
+                            path = group.coverUrl,
+                            name = group.bookName.ifBlank { group.label },
+                            author = group.author,
+                            loadOnlyWifi = false,
+                            preferThumb = true
+                        )
+                    }
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp)
+                ) {
+                    Text(
+                        text = group.bookName.ifBlank { group.label },
+                        color = style.colors.primaryText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${group.author.ifBlank { "未知作者" }} · ${group.characters.size} 个角色",
+                        color = style.colors.secondaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                Text(
+                    text = "换书",
+                    color = style.colors.accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(style.metrics.chipRadius))
+                        .clickable(onClick = onChangeBook)
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun CharacterRoleFilterChipV2(
+        filter: CharacterRoleFilter,
+        selected: Boolean,
+        onClick: () -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.chipRadius),
+            color = if (selected) style.colors.accent.copy(alpha = 0.14f) else style.colors.cardSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.clickable(onClick = onClick)
+        ) {
+            Text(
+                text = "${filter.label} ${filter.count}",
+                color = if (selected) style.colors.accent else style.colors.secondaryText,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+            )
+        }
+    }
+
+    @Composable
+    private fun CharacterPickRowV2(
+        character: BookCharacter,
+        added: Boolean,
+        onClick: () -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.cardSurface.copy(alpha = 0.94f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CharacterAvatar(
+                    path = character.avatar,
+                    contentDescription = character.displayName(),
+                    sizeDp = 42,
+                    modifier = Modifier.clip(CircleShape)
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 10.dp)
+                ) {
+                    Text(
+                        text = character.displayName(),
+                        color = style.colors.primaryText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = listOf(character.roleLabel(), character.genderLabel(), BookCharacterProfileMeta.ageOf(character))
+                            .filter { it.isNotBlank() && it != "未知" }
+                            .joinToString(" · ")
+                            .ifBlank { "角色卡" },
+                        color = style.colors.secondaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    val summary = characterCardSummary(character)
+                    if (summary.isNotBlank()) {
+                        Text(
+                            text = summary,
+                            color = style.colors.secondaryText,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = if (added) "打开" else "添加",
+                    color = if (added) style.colors.secondaryText else style.colors.accent,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 10.dp)
+                )
+            }
+        }
     }
 
     @Composable
@@ -985,6 +1449,12 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             .map { it.trim() }
             .firstOrNull { it.isNotBlank() }
             .orEmpty()
+    }
+
+    private fun AiWorldBookConfig.isGlobalWorldBookEnabled(): Boolean {
+        return enabled && bindings.any { binding ->
+            binding.enabled && binding.targetType == AiWorldBookBinding.TARGET_GLOBAL
+        }
     }
 
     private data class CharacterRoleFilter(

@@ -42,6 +42,7 @@ import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
+import io.legado.app.help.readaloud.ReadAloudProgressState
 import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
 import io.legado.app.help.glide.ImageLoader
@@ -79,6 +80,7 @@ import splitties.systemservices.notificationManager
 import splitties.systemservices.powerManager
 import splitties.systemservices.telephonyManager
 import splitties.systemservices.wifiManager
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 朗读服务
@@ -144,6 +146,15 @@ abstract class BaseReadAloudService : BaseService(),
     internal var readAloudNumber: Int = 0
     internal var textChapter: TextChapter? = null
     internal var pageIndex = 0
+    @Volatile
+    private var activeSessionId = 0L
+    private val sessionSeed = AtomicLong(0L)
+    @Volatile
+    private var playbackBookUrl = ""
+    @Volatile
+    private var playbackChapterIndex = -1
+    @Volatile
+    private var playbackChapterUrl = ""
     private var needResumeOnAudioFocusGain = false
     private var needResumeOnCallStateIdle = false
     private var registeredPhoneStateListener = false
@@ -162,6 +173,26 @@ abstract class BaseReadAloudService : BaseService(),
     var paragraphStartPos = 0
     var readAloudByPage = false
         private set
+
+    private fun beginReadAloudSession(bookUrl: String?, chapter: TextChapter?): Long {
+        val sessionId = sessionSeed.incrementAndGet()
+        activeSessionId = sessionId
+        playbackBookUrl = bookUrl.orEmpty()
+        playbackChapterIndex = chapter?.chapter?.index ?: -1
+        playbackChapterUrl = chapter?.chapter?.url.orEmpty()
+        return sessionId
+    }
+
+    private fun isActiveSession(
+        sessionId: Long,
+        bookUrl: String?,
+        chapter: TextChapter?
+    ): Boolean {
+        return sessionId == activeSessionId &&
+                playbackBookUrl == bookUrl.orEmpty() &&
+                playbackChapterIndex == (chapter?.chapter?.index ?: -1) &&
+                playbackChapterUrl == chapter?.chapter?.url.orEmpty()
+    }
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -385,19 +416,29 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun newReadAloud(play: Boolean, pageIndex: Int, startPos: Int) {
+        val book = ReadBook.book
+        val targetChapter = ReadBook.curTextChapter
+        val bookUrl = book?.bookUrl
+        val characterBookKey = book?.characterBookKey()
+        val sessionId = beginReadAloudSession(bookUrl, targetChapter)
         execute(executeContext = IO) {
             rolePlaybackBlocked = false
             blockedPageIndex = pageIndex
             blockedStartPos = startPos
             this@BaseReadAloudService.pageIndex = pageIndex
-            textChapter = ReadBook.curTextChapter
-            val textChapter = textChapter ?: return@execute
-            if (!textChapter.isCompleted) {
+            textChapter = targetChapter
+            val textChapter = targetChapter ?: run {
+                launch(Main) {
+                    markReadAloudStartUnavailable(pageIndex, startPos, "章节加载中")
+                }
                 return@execute
             }
-            val book = ReadBook.book
-            val bookUrl = book?.bookUrl
-            val characterBookKey = book?.characterBookKey()
+            if (!textChapter.isCompleted) {
+                launch(Main) {
+                    markReadAloudStartUnavailable(pageIndex, startPos, "章节加载中")
+                }
+                return@execute
+            }
             readAloudByPage = getPrefBoolean(PreferKey.readAloudByPage)
             val baseCues = textChapter.buildReadAloudCues(readAloudByPage)
             postReadAloudPlaybackPhase(
@@ -419,7 +460,9 @@ abstract class BaseReadAloudService : BaseService(),
                     return@execute
                 }
                 roleCacheKey = roleResult.cacheKey
-                if (!isStillCurrentChapter(bookUrl, textChapter)) {
+                if (!isActiveSession(sessionId, bookUrl, textChapter) ||
+                    !isStillCurrentChapter(bookUrl, textChapter)
+                ) {
                     return@execute
                 }
                 queueNextChapterRoleCache()
@@ -431,7 +474,9 @@ abstract class BaseReadAloudService : BaseService(),
                 multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
                 roleCacheKey = roleCacheKey
             )
-            if (!isStillCurrentChapter(bookUrl, textChapter)) {
+            if (!isActiveSession(sessionId, bookUrl, textChapter) ||
+                !isStillCurrentChapter(bookUrl, textChapter)
+            ) {
                 return@execute
             }
             rolePlaybackBlocked = false
@@ -454,6 +499,7 @@ abstract class BaseReadAloudService : BaseService(),
                     )
                 }
             }
+            queueNextChapterRoleCache()
             if (contentList.isNotEmpty()) {
                 val startChapterPosition = textChapter.getReadLength(pageIndex) + startPos
                 nowSpeak = if (toLast) {
@@ -469,6 +515,7 @@ abstract class BaseReadAloudService : BaseService(),
                 toLast = false
             }
             launch(Main) {
+                if (!isActiveSession(sessionId, bookUrl, textChapter)) return@launch
                 if (play) play() else pageChanged = true
             }
         }.onError {
@@ -481,6 +528,26 @@ abstract class BaseReadAloudService : BaseService(),
         return current.chapter.index == chapter.chapter.index &&
                 current.chapter.url == chapter.chapter.url &&
                 ReadBook.book?.bookUrl == bookUrl
+    }
+
+    private fun markReadAloudStartUnavailable(pageIndex: Int, startPos: Int, message: String) {
+        rolePlaybackBlocked = false
+        blockedPageIndex = pageIndex
+        blockedStartPos = startPos
+        readAloudCues = emptyList()
+        speechRoutes = emptyList()
+        speechItems = emptyList()
+        contentList = emptyList()
+        readAloudPlanKey = ""
+        pause = true
+        pageChanged = true
+        upMediaSessionPlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        postReadAloudPlaybackPhase(
+            ReadAloudPlaybackState.PHASE_PAUSED,
+            message = message,
+            playing = false
+        )
+        postEvent(EventBus.ALOUD_STATE, Status.PAUSE)
     }
 
     private fun markReadAloudStartBlocked(pageIndex: Int, startPos: Int, message: String = "") {
@@ -523,7 +590,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private fun queueNextChapterRoleCache() {
-        if (!AppConfig.aiReadAloudRoleEnabled) return
+        if (!AppConfig.aiReadAloudRoleEnabled && !AppConfig.aiReadAloudBgmEnabled) return
         val book = ReadBook.book ?: return
         val nextIndex = ReadBook.durChapterIndex + 1
         if (nextIndex >= ReadBook.chapterSize) return
@@ -558,7 +625,7 @@ abstract class BaseReadAloudService : BaseService(),
     }
 
     private suspend fun prewarmNextChapterRoleCache(bookUrl: String, chapterIndex: Int) {
-        if (!AppConfig.aiReadAloudRoleEnabled) return
+        if (!AppConfig.aiReadAloudRoleEnabled && !AppConfig.aiReadAloudBgmEnabled) return
         var nextChapter: TextChapter? = null
         repeat(6) { attempt ->
             if (ReadBook.book?.bookUrl != bookUrl || ReadBook.durChapterIndex + 1 != chapterIndex) return
@@ -569,12 +636,30 @@ abstract class BaseReadAloudService : BaseService(),
         val readyChapter = nextChapter ?: return
         val cues = readyChapter.buildReadAloudCues(readAloudByPage)
         if (cues.isEmpty()) return
-        AiReadAloudRoleService.ensureCache(
-            book = ReadBook.book,
-            textChapter = readyChapter,
-            paragraphs = cues.map { it.text },
-            stage = AiReadAloudRoleState.STAGE_NEXT
-        )
+        val roleResult = if (AppConfig.aiReadAloudRoleEnabled) {
+            AiReadAloudRoleService.ensureCache(
+                book = ReadBook.book,
+                textChapter = readyChapter,
+                paragraphs = cues.map { it.text },
+                stage = AiReadAloudRoleState.STAGE_NEXT
+            )
+        } else {
+            null
+        }
+        if (AppConfig.aiReadAloudBgmEnabled) {
+            val speechPlan = ReadAloudSpeechPlanner.build(
+                bookUrl = ReadBook.book?.characterBookKey(),
+                chapter = readyChapter,
+                baseCues = cues,
+                multiRoleEnabled = AppConfig.aiReadAloudRoleEnabled,
+                roleCacheKey = roleResult?.cacheKey
+            )
+            AiReadAloudBgmService.ensureChapterAssignments(
+                ReadBook.book,
+                readyChapter,
+                speechPlan.cues
+            )
+        }
     }
 
     @SuppressLint("WakelockTimeout")
@@ -638,7 +723,18 @@ abstract class BaseReadAloudService : BaseService(),
     abstract fun upSpeechRate(reset: Boolean = false)
 
     fun upTtsProgress(progress: Int) {
-        postEvent(EventBus.TTS_PROGRESS, progress)
+        postEvent(
+            EventBus.READ_ALOUD_PROGRESS,
+            ReadAloudProgressState(
+                bookUrl = playbackBookUrl,
+                chapterIndex = playbackChapterIndex,
+                chapterUrl = playbackChapterUrl,
+                chapterPosition = progress.coerceAtLeast(0),
+                cueIndex = nowSpeak,
+                sessionId = activeSessionId,
+                planKey = readAloudPlanKey
+            )
+        )
     }
 
     protected fun postReadAloudPlaybackPhase(
@@ -658,8 +754,9 @@ abstract class BaseReadAloudService : BaseService(),
         val cue = readAloudCues.getOrNull(cueIndex)
         val state = ReadAloudPlaybackState(
             phase = phase,
-            chapterIndex = ReadBook.durChapterIndex,
-            chapterUrl = textChapter?.chapter?.url.orEmpty(),
+            bookUrl = playbackBookUrl,
+            chapterIndex = playbackChapterIndex,
+            chapterUrl = playbackChapterUrl,
             cueIndex = cueIndex,
             cueCount = readAloudCues.size,
             cueChapterPosition = cue?.chapterPosition ?: -1,
@@ -669,7 +766,8 @@ abstract class BaseReadAloudService : BaseService(),
             message = message,
             playing = isPlaying,
             buffering = buffering,
-            serviceRunning = isRun
+            serviceRunning = isRun,
+            sessionId = activeSessionId
         )
         bgmPlayer.onPlaybackState(state)
         postEvent(
@@ -705,14 +803,14 @@ abstract class BaseReadAloudService : BaseService(),
             playStop()
             if (!moveToPrevCue()) {
                 toLast = true
-                ReadBook.moveToPrevChapter(true)
+                ReadBook.moveToPrevChapter(true, fromReadAloud = true)
                 return
             }
             upTtsProgress(readAloudNumber + 1)
             play()
         } else {
             toLast = true
-            ReadBook.moveToPrevChapter(true)
+            ReadBook.moveToPrevChapter(true, fromReadAloud = true)
         }
     }
 
@@ -1045,14 +1143,14 @@ abstract class BaseReadAloudService : BaseService(),
     open fun prevChapter() {
         toLast = false
         prepareChapterTransition()
-        ReadBook.moveToPrevChapter(true, toLast = false)
+        ReadBook.moveToPrevChapter(true, toLast = false, fromReadAloud = true)
     }
 
     open fun nextChapter() {
         ReadBook.upReadTime()
         AppLog.putDebug("${ReadBook.curTextChapter?.chapter?.title} 朗读结束跳转下一章并朗读")
         prepareChapterTransition()
-        if (!ReadBook.moveToNextChapter(true)) {
+        if (!ReadBook.moveToNextChapter(true, fromReadAloud = true)) {
             stopSelf()
         }
     }

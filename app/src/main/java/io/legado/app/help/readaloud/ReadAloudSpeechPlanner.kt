@@ -98,7 +98,7 @@ object ReadAloudSpeechPlanner {
 
         val characters = appDb.bookCharacterDao.characters(bookUrl)
         val byId = characters.associateBy { it.id }
-        val byName = characters.associateBy { it.name }
+        val byName = charactersByNormalizedName(characters)
         val assignedSegmentsByCue = AiReadAloudRoleService.assignedSegmentsByCue(
             bookUrl = bookUrl,
             chapterIndex = chapter.chapter.index,
@@ -190,9 +190,27 @@ object ReadAloudSpeechPlanner {
     ): BookCharacter? {
         return when {
             segment.characterId > 0L -> byId[segment.characterId]
-            segment.characterName.isNotBlank() -> byName[segment.characterName]
+            segment.characterName.isNotBlank() -> byName[characterNameKey(segment.characterName)]
             else -> null
         }
+    }
+
+    private fun charactersByNormalizedName(characters: List<BookCharacter>): Map<String, BookCharacter> {
+        val result = linkedMapOf<String, BookCharacter>()
+        characters.forEach { character ->
+            listOf(character.name, character.displayName())
+                .map(::characterNameKey)
+                .filter { it.isNotBlank() }
+                .forEach { key -> result.putIfAbsent(key, character) }
+        }
+        return result
+    }
+
+    private fun characterNameKey(value: String): String {
+        return value.trim()
+            .replace(Regex("\\s+"), "")
+            .trim('《', '》', '“', '”', '"', '\'', '：', ':')
+            .lowercase()
     }
 
     private fun routeForSegment(

@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.ContentScale
@@ -3668,7 +3669,7 @@ private fun SceneSegmentRow(
             if (segment.leftSide) {
                 SceneAvatar(segment, colors, compact)
                 Spacer(modifier = Modifier.width(6.dp))
-                SceneBubbleArrow(leftSide = true, colors = colors)
+                SceneBubbleArrow(leftSide = true, current = current, colors = colors)
                 SceneBubble(
                     segment = segment,
                     current = current,
@@ -3688,7 +3689,7 @@ private fun SceneSegmentRow(
                     onClick = onClick,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                SceneBubbleArrow(leftSide = false, colors = colors)
+                SceneBubbleArrow(leftSide = false, current = current, colors = colors)
                 Spacer(modifier = Modifier.width(6.dp))
                 SceneAvatar(segment, colors, compact)
             }
@@ -3699,9 +3700,14 @@ private fun SceneSegmentRow(
 @Composable
 private fun SceneBubbleArrow(
     leftSide: Boolean,
+    current: Boolean,
     colors: PlayerColors
 ) {
-    val arrowColor = if (leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
+    val arrowColor = sceneBubbleFillColor(
+        leftSide = leftSide,
+        current = current,
+        colors = colors
+    )
     Canvas(
         modifier = Modifier
             .padding(top = 14.dp)
@@ -3733,8 +3739,7 @@ private fun SceneBubble(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val baseBubbleColor = if (segment.leftSide) colors.panelStrong else colors.accent.copy(alpha = 0.82f)
-    val bubbleColor = baseBubbleColor.copy(alpha = baseBubbleColor.alpha * if (current) 1f else 0.88f)
+    val bubbleColor = sceneBubbleFillColor(segment.leftSide, current, colors)
     val textColor = if (segment.leftSide) colors.primaryText else colors.accentText
     val actionShape = LocalContext.current.composeActionShape()
     val maxWidth = when {
@@ -3751,19 +3756,20 @@ private fun SceneBubble(
                 shape = actionShape,
                 clip = false
             )
-            .clip(actionShape)
-            .background(bubbleColor)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
     ) {
         Column(
-            modifier = Modifier.padding(
-                horizontal = if (fullscreen) 15.dp else 13.dp,
-                vertical = if (fullscreen) 11.dp else 10.dp
-            ),
+            modifier = Modifier
+                .clip(actionShape)
+                .background(bubbleColor)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick
+                )
+                .padding(
+                    horizontal = if (fullscreen) 15.dp else 13.dp,
+                    vertical = if (fullscreen) 11.dp else 10.dp
+                ),
             horizontalAlignment = if (segment.leftSide) Alignment.Start else Alignment.End
         ) {
             val emotion = segment.emotionName.takeIf { it.isNotBlank() }
@@ -3824,6 +3830,22 @@ private fun SceneBubble(
             )
         }
     }
+}
+
+private fun sceneBubbleFillColor(
+    leftSide: Boolean,
+    current: Boolean,
+    colors: PlayerColors
+): Color {
+    val base = if (leftSide) {
+        colors.panelStrong
+    } else {
+        val target = if (colors.night) colors.panelStrong else colors.panel
+        Color(ColorUtils.blendColors(colors.accent.toArgb(), target.toArgb(), 0.10f))
+    }.copy(alpha = 1f)
+    if (current) return base
+    val mutedTarget = if (colors.night) colors.panel else Color.White
+    return Color(ColorUtils.blendColors(base.toArgb(), mutedTarget.toArgb(), 0.18f))
 }
 
 @Composable

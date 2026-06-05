@@ -11,7 +11,7 @@ data class AiResolvedTool(
 
 object AiToolRegistry {
 
-    private const val TOOL_SETTINGS_VERSION = 8
+    private const val TOOL_SETTINGS_VERSION = 9
     private val version2AddedDefaultTools = setOf(
         "list_speech_catalogs",
         "assign_character_speech_route",
@@ -45,6 +45,9 @@ object AiToolRegistry {
     )
     private val version8AddedDefaultTools = setOf(
         "search_book_chapter_content"
+    )
+    private val version9AddedDefaultTools = setOf(
+        "batch_manage_speech_voice_groups"
     )
 
     val characterCompanionToolNames = setOf(
@@ -127,6 +130,7 @@ object AiToolRegistry {
         "list_speech_voice_groups",
         "upsert_speech_voice_group",
         "delete_speech_voice_group",
+        "batch_manage_speech_voice_groups",
         "list_read_aloud_bgm_catalog",
         "assign_read_aloud_bgm_ranges",
         "list_world_books",
@@ -323,6 +327,7 @@ object AiToolRegistry {
                 if (AppConfig.aiEnabledToolNamesVersion < 6) addAll(version6AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 7) addAll(version7AddedDefaultTools)
                 if (AppConfig.aiEnabledToolNamesVersion < 8) addAll(version8AddedDefaultTools)
+                if (AppConfig.aiEnabledToolNamesVersion < 9) addAll(version9AddedDefaultTools)
             }
             val migrated = (stored.ifEmpty { defaultEnabledTools } + additions)
                 .filter { it.isNotBlank() }

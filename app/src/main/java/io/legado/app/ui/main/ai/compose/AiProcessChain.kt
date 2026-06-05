@@ -77,13 +77,9 @@ fun AiProcessTimelineCard(
         modifier = modifier
             .fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = style.colors.toolSurface,
+        color = if (hasFailedStep) style.colors.danger.copy(alpha = 0.08f) else style.colors.composerSurface,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            style.metrics.strokeWidth,
-            if (hasFailedStep) style.colors.danger.copy(alpha = 0.28f) else style.colors.stroke
-        )
+        shadowElevation = if (hasFailedStep) 3.dp else 2.dp
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
@@ -285,13 +281,9 @@ fun AiProcessChainCard(
             .fillMaxWidth()
             .animateContentSize(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = surface,
+        color = if (hasFailedStep) style.colors.danger.copy(alpha = 0.08f) else surface,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            style.metrics.strokeWidth,
-            if (hasFailedStep) style.colors.danger.copy(alpha = 0.28f) else style.colors.stroke
-        )
+        shadowElevation = if (hasFailedStep) 3.dp else 2.dp
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

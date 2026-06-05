@@ -54,9 +54,9 @@ import kotlin.math.min
  * 校验书源
  */
 class CheckSourceService : BaseService() {
-    private var threadCount = AppConfig.threadCount
+    private var threadCount = checkThreadCount()
     private var searchCoroutine =
-        Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
+        Executors.newFixedThreadPool(threadCount).asCoroutineDispatcher()
     private var notificationMsg = appCtx.getString(R.string.service_starting)
     private var checkJob: Job? = null
     private var originSize = 0
@@ -104,6 +104,7 @@ class CheckSourceService : BaseService() {
             toastOnUi("已有书源在校验,等完成后再试")
             return
         }
+        Debug.clearCheckingCache()
         checkJob = lifecycleScope.launch(searchCoroutine) {
             flow {
                 for (origin in ids) {
@@ -193,7 +194,11 @@ class CheckSourceService : BaseService() {
             val searchWord = source.getCheckKeyword(CheckSource.keyword)
             if (!source.searchUrl.isNullOrBlank()) {
                 source.removeGroup("搜索链接规则为空")
-                val searchBooks = WebBook.searchBookAwait(source, searchWord)
+                val searchBooks = WebBook.searchBookAwait(
+                    source,
+                    searchWord,
+                    shouldBreak = { it > 0 }
+                )
                 if (searchBooks.isEmpty()) {
                     source.addGroup("搜索失效")
                 } else {
@@ -213,7 +218,11 @@ class CheckSourceService : BaseService() {
                 source.addGroup("发现规则为空")
             } else {
                 source.removeGroup("发现规则为空")
-                val exploreBooks = WebBook.exploreBookAwait(source, url)
+                val exploreBooks = WebBook.exploreBookAwait(
+                    source,
+                    url,
+                    shouldBreak = { it > 0 }
+                )
                 if (exploreBooks.isEmpty()) {
                     source.addGroup("发现失效")
                 } else {
@@ -289,6 +298,16 @@ class CheckSourceService : BaseService() {
         notificationBuilder.setProgress(originSize, finishCount, false)
         postEvent(EventBus.CHECK_SOURCE, notificationMsg)
         startForeground(NotificationId.CheckSourceService, notificationBuilder.build())
+    }
+
+    private fun checkThreadCount(): Int {
+        val maxMemoryMb = Runtime.getRuntime().maxMemory() / 1024 / 1024
+        val maxByHeap = when {
+            maxMemoryMb <= 256 -> 2
+            maxMemoryMb <= 384 -> 3
+            else -> 4
+        }
+        return AppConfig.threadCount.coerceIn(1, min(AppConst.MAX_THREAD, maxByHeap))
     }
 
 }

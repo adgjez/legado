@@ -117,9 +117,10 @@ object WebBook {
         page: Int? = 1,
         context: CoroutineContext = Dispatchers.IO,
         webViewPoolScope: WebViewPool.Scope = WebViewPool.Scope.GLOBAL,
+        shouldBreak: ((size: Int) -> Boolean)? = null,
     ): Coroutine<List<SearchBook>> {
         return Coroutine.async(scope, context) {
-            exploreBookAwait(bookSource, url, page, webViewPoolScope)
+            exploreBookAwait(bookSource, url, page, webViewPoolScope, shouldBreak)
         }
     }
 
@@ -128,6 +129,7 @@ object WebBook {
         url: String,
         page: Int? = 1,
         webViewPoolScope: WebViewPool.Scope = WebViewPool.Scope.GLOBAL,
+        shouldBreak: ((size: Int) -> Boolean)? = null,
     ): ArrayList<SearchBook> {
         val ruleData = RuleData()
         val sourceUrl = bookSource.bookSourceUrl
@@ -174,7 +176,8 @@ object WebBook {
             analyzeUrl = analyzeUrl,
             baseUrl = res.url,
             body = res.body,
-            isSearch = false
+            isSearch = false,
+            shouldBreak = shouldBreak
         )
     }
 

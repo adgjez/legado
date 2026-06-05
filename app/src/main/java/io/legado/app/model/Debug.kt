@@ -108,6 +108,11 @@ object Debug {
         isChecking = false
     }
 
+    fun clearCheckingCache() {
+        debugMessageMap.clear()
+        debugTimeMap.clear()
+    }
+
     fun getRespondTime(sourceUrl: String): Long {
         return debugTimeMap[sourceUrl] ?: CheckSource.timeout
     }

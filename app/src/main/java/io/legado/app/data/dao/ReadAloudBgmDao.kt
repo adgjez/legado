@@ -125,6 +125,20 @@ interface ReadAloudBgmDao {
         chapterIndex: Int
     ): ReadAloudBgmAssignmentCache?
 
+    @Query(
+        """
+        SELECT * FROM read_aloud_bgm_assignment_caches
+        WHERE bookUrl = :bookUrl
+          AND chapterIndex = :chapterIndex
+        ORDER BY updatedAt DESC
+        LIMIT 1
+        """
+    )
+    fun latestAnyAssignmentCacheByChapter(
+        bookUrl: String,
+        chapterIndex: Int
+    ): ReadAloudBgmAssignmentCache?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertAssignmentCache(cache: ReadAloudBgmAssignmentCache)
 }

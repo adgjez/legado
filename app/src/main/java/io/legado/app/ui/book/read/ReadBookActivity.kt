@@ -95,6 +95,7 @@ import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
+import io.legado.app.help.readaloud.ReadAloudProgressState
 import io.legado.app.help.source.getSourceType
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.AndroidAlertBuilder
@@ -186,7 +187,6 @@ import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.showDialogFragment
@@ -4562,6 +4562,21 @@ class ReadBookActivity : BaseReadBookActivity(),
             level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> ImageProvider.trimMemory()
         }
     }
+
+    private fun isCurrentReadAloudProgress(progress: ReadAloudProgressState): Boolean {
+        val book = ReadBook.book ?: return false
+        val chapter = ReadBook.curTextChapter ?: return false
+        if (progress.bookUrl.isNotBlank() && progress.bookUrl != book.bookUrl) return false
+        if (progress.chapterIndex >= 0 && progress.chapterIndex != chapter.chapter.index) return false
+        if (progress.chapterUrl.isNotBlank() &&
+            chapter.chapter.url.isNotBlank() &&
+            progress.chapterUrl != chapter.chapter.url
+        ) {
+            return false
+        }
+        return true
+    }
+
     override fun observeLiveBus() = binding.run {
         observeEvent<String>(EventBus.TIME_CHANGED) { readView.upTime() }
         observeEvent<Int>(EventBus.BATTERY_CHANGED) { readView.upBattery(it) }
@@ -4615,10 +4630,15 @@ class ReadBookActivity : BaseReadBookActivity(),
                 readAloudPlayerPanel.openFromBottom(force = true)
             }
         }
-        observeEventSticky<Int>(EventBus.TTS_PROGRESS) { chapterStart ->
+        observeEvent<ReadAloudProgressState>(EventBus.READ_ALOUD_PROGRESS) { progress ->
+            if (!isCurrentReadAloudProgress(progress)) return@observeEvent
+            val chapterStart = progress.chapterPosition
             readAloudPlayerPanel.onTtsProgress(chapterStart)
             lifecycleScope.launch(IO) {
-                if (BaseReadAloudService.isPlay()) {
+                if (BaseReadAloudService.isPlay() &&
+                    !ReadBook.isReadAloudUserNavigationActive() &&
+                    isCurrentReadAloudProgress(progress)
+                ) {
                     ReadBook.curTextChapter?.let { textChapter ->
                         ReadBook.durChapterPos = chapterStart
                         val pageIndex = ReadBook.durPageIndex

@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.ai.compose
 
 import android.content.Context
+import android.util.LruCache
 import androidx.compose.runtime.Immutable
 import io.legado.app.R
 import io.legado.app.ui.main.ai.AiChatMessage
@@ -124,11 +125,21 @@ fun buildAiChatUiItems(
     fun flushAssistant() {
         val id = assistantId
         if (id != null && assistantMessages.isNotEmpty()) {
-            val processSteps = assistantMessages
-                .filter { it.isProcessMessage() }
-                .map { it.toProcessStep(context) }
+            val processMessages = assistantMessages.filter { it.isProcessMessage() }
+            val processSteps = if (showProcessChain) {
+                processMessages.map { it.toProcessStep(context) }
+            } else {
+                emptyList()
+            }
             val processImages = processSteps
                 .flatMap { it.payload?.images.orEmpty() }
+                .ifEmpty {
+                    if (showProcessChain) {
+                        emptyList()
+                    } else {
+                        processMessages.mapNotNull { it.toInlineImageResult() }
+                    }
+                }
                 .distinctBy { it.imageKey() }
             val assistantParts = mutableListOf<AiMessagePartUi>()
             if (showProcessChain && processSteps.isNotEmpty()) {
@@ -149,7 +160,7 @@ fun buildAiChatUiItems(
                 val visibleImages = processImages.filterNot { it.imageKey() in existingImageKeys }
                 if (visibleImages.isNotEmpty()) {
                     assistantParts += AiMessagePartUi.Images(
-                        id = "process-images-${processSteps.first().id}",
+                        id = "process-images-${processSteps.firstOrNull()?.id ?: processMessages.first().id}",
                         images = visibleImages
                     )
                 }
@@ -284,7 +295,11 @@ private data class ParsedAssistantContent(
     val images: List<AiImageResultUi>
 )
 
+private val assistantContentCache = object : LruCache<String, ParsedAssistantContent>(96) {}
+
 private fun parseAssistantContent(content: String): ParsedAssistantContent {
+    val cacheKey = "${content.length}:${content.hashCode()}"
+    assistantContentCache.get(cacheKey)?.let { return it }
     val books = mutableListOf<AiSearchBookUi>()
     val images = mutableListOf<AiImageResultUi>()
     val withoutToolEvents = toolEventBlockRegex.replace(content) { match ->
@@ -312,7 +327,19 @@ private fun parseAssistantContent(content: String): ParsedAssistantContent {
         content = visibleContent,
         books = books.distinctBy { it.bookUrl },
         images = images.distinctBy { it.image }
-    )
+    ).also { assistantContentCache.put(cacheKey, it) }
+}
+
+private fun AiChatMessage.toInlineImageResult(): AiImageResultUi? {
+    val name = statusName.orEmpty()
+    if (name != "generate_image" &&
+        name != "generate_book_character_avatar" &&
+        name != "set_book_character_avatar_from_gallery"
+    ) {
+        return null
+    }
+    val raw = statusDetail?.takeIf { it.isNotBlank() } ?: content
+    return parseImageResult(raw)
 }
 
 private fun parseToolDisplayPayload(

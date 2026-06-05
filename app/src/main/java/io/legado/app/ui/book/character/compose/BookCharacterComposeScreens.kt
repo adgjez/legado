@@ -2143,10 +2143,14 @@ fun CharacterAvatar(
             }
         },
         update = { imageView ->
-            ImageLoader.load(context, path.ifBlank { null })
-                .placeholder(R.drawable.ic_bottom_person)
-                .error(R.drawable.ic_bottom_person)
-                .into(imageView)
+            val target = path.trim()
+            if (imageView.tag != target) {
+                imageView.tag = target
+                ImageLoader.load(context, target.ifBlank { null })
+                    .placeholder(R.drawable.ic_bottom_person)
+                    .error(R.drawable.ic_bottom_person)
+                    .into(imageView)
+            }
         }
     )
 }

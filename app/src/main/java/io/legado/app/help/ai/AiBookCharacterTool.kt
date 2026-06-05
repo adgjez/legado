@@ -36,6 +36,7 @@ object AiBookCharacterTool {
     private const val TOOL_LIST_SPEECH_VOICE_GROUPS = "list_speech_voice_groups"
     private const val TOOL_UPSERT_SPEECH_VOICE_GROUP = "upsert_speech_voice_group"
     private const val TOOL_DELETE_SPEECH_VOICE_GROUP = "delete_speech_voice_group"
+    private const val TOOL_BATCH_MANAGE_SPEECH_VOICE_GROUPS = "batch_manage_speech_voice_groups"
     private const val TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE = "assign_character_speech_route"
     private const val TOOL_BATCH_ASSIGN_CHARACTER_SPEECH_ROUTES = "batch_assign_character_speech_routes"
     private const val TOOL_CLEAR_CHARACTER_SPEECH_ROUTES = "clear_character_speech_routes"
@@ -68,6 +69,9 @@ object AiBookCharacterTool {
             },
             AiResolvedTool(TOOL_DELETE_SPEECH_VOICE_GROUP, deleteSpeechVoiceGroupDefinition()) { args ->
                 deleteSpeechVoiceGroup(args)
+            },
+            AiResolvedTool(TOOL_BATCH_MANAGE_SPEECH_VOICE_GROUPS, batchManageSpeechVoiceGroupsDefinition()) { args ->
+                batchManageSpeechVoiceGroups(args)
             },
             AiResolvedTool(TOOL_ASSIGN_CHARACTER_SPEECH_ROUTE, assignCharacterSpeechRouteDefinition()) { args ->
                 assignCharacterSpeechRoute(args)
@@ -210,6 +214,13 @@ object AiBookCharacterTool {
         "删除一个用户维护的发言人分组。只删除分组配置，不删除 TTS 引擎。"
     ) {
         put("groupId", intProp("发言人分组 ID。"))
+    }
+
+    private fun batchManageSpeechVoiceGroupsDefinition() = function(
+        TOOL_BATCH_MANAGE_SPEECH_VOICE_GROUPS,
+        "Batch manage TTS speaker groups. operationsJson is an array; action supports create/update/delete/addItems/replaceItems/merge/enable/disable. items/itemsJson uses the same item structure as upsert_speech_voice_group."
+    ) {
+        put("operationsJson", stringProp("JSON array. Each item may contain action, groupId, targetGroupId, sourceGroupIds, name, enabled, items/itemsJson."))
     }
 
     private fun assignCharacterSpeechRouteDefinition() = function(
@@ -478,6 +489,94 @@ object AiBookCharacterTool {
             put("ok", true)
             put("deletedGroupId", groupId)
         }.toString()
+    }
+
+    private suspend fun batchManageSpeechVoiceGroups(args: JSONObject?): String = withContext(IO) {
+        val operations = args?.optJSONArray("operations")
+            ?: args?.optString("operationsJson")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { JSONArray(it) }.getOrNull() }
+            ?: return@withContext errorJson("operationsJson 不能为空")
+        val results = JSONArray()
+        for (index in 0 until operations.length()) {
+            val op = operations.optJSONObject(index) ?: continue
+            val action = op.optString("action").trim().lowercase()
+            val result = runCatching {
+                when (action) {
+                    "create", "update", "upsert" -> JSONObject(upsertSpeechVoiceGroup(op))
+                    "additems" -> {
+                        op.put("replaceItems", false)
+                        JSONObject(upsertSpeechVoiceGroup(op))
+                    }
+                    "replaceitems" -> {
+                        op.put("replaceItems", true)
+                        JSONObject(upsertSpeechVoiceGroup(op))
+                    }
+                    "delete" -> JSONObject(deleteSpeechVoiceGroup(op))
+                    "enable", "disable" -> {
+                        val groupId = op.optLong("groupId", 0L)
+                        val group = appDb.readAloudSpeakerGroupDao.groups().firstOrNull { it.id == groupId }
+                            ?: return@runCatching errorJsonObject("groupId 不存在")
+                        appDb.readAloudSpeakerGroupDao.updateGroup(
+                            group.copy(enabled = action == "enable", updatedAt = System.currentTimeMillis())
+                        )
+                        JSONObject().put("ok", true).put("groupId", groupId).put("enabled", action == "enable")
+                    }
+                    "merge" -> mergeSpeechVoiceGroups(op)
+                    else -> errorJsonObject("unsupported action: $action")
+                }
+            }.getOrElse { throwable ->
+                errorJsonObject(throwable.localizedMessage ?: throwable.javaClass.simpleName)
+            }
+            results.put(JSONObject().apply {
+                put("index", index)
+                put("action", action)
+                put("result", result)
+            })
+        }
+        JSONObject().apply {
+            put("ok", true)
+            put("results", results)
+            put("groups", speechVoiceGroupsJson(includeDisabled = true, includeInvalid = true))
+        }.toString()
+    }
+
+    private fun mergeSpeechVoiceGroups(args: JSONObject): JSONObject {
+        val targetGroupId = args.optLong("targetGroupId", args.optLong("groupId", 0L))
+        if (targetGroupId <= 0L) return errorJsonObject("targetGroupId 不能为空")
+        val sourceIds = longArrayFromJson(args.optJSONArray("sourceGroupIds"))
+            .ifEmpty {
+                args.optString("sourceGroupIdsJson")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { runCatching { longArrayFromJson(JSONArray(it)) }.getOrDefault(emptyList()) }
+                    .orEmpty()
+            }
+            .filter { it > 0L && it != targetGroupId }
+            .distinct()
+        if (sourceIds.isEmpty()) return errorJsonObject("sourceGroupIds 不能为空")
+        val now = System.currentTimeMillis()
+        val existingKeys = appDb.readAloudSpeakerGroupDao.itemsByGroup(targetGroupId)
+            .mapTo(hashSetOf()) { SpeechVoiceGroupRepository.itemKey(it) }
+        var sortOrder = (appDb.readAloudSpeakerGroupDao.maxItemOrder(targetGroupId) ?: -1) + 1
+        val movingItems = sourceIds
+            .flatMap { appDb.readAloudSpeakerGroupDao.itemsByGroup(it) }
+            .mapNotNull { item ->
+                if (!existingKeys.add(SpeechVoiceGroupRepository.itemKey(item))) null
+                else item.copy(id = 0L, groupId = targetGroupId, sortOrder = sortOrder++, updatedAt = now)
+            }
+        if (movingItems.isNotEmpty()) {
+            appDb.readAloudSpeakerGroupDao.insertItems(movingItems)
+        }
+        sourceIds.forEach { sourceId ->
+            appDb.readAloudSpeakerGroupDao.deleteItemsByGroup(sourceId)
+            appDb.readAloudSpeakerGroupDao.deleteGroup(sourceId)
+        }
+        return JSONObject().apply {
+            put("ok", true)
+            put("targetGroupId", targetGroupId)
+            put("mergedGroupIds", JSONArray(sourceIds))
+            put("insertedItems", movingItems.size)
+        }
     }
 
     private suspend fun assignCharacterSpeechRoute(args: JSONObject?): String = withContext(IO) {
@@ -1072,6 +1171,22 @@ object AiBookCharacterTool {
                 }
             }
         }.getOrDefault(emptySet())
+    }
+
+    private fun longArrayFromJson(array: JSONArray?): List<Long> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                array.optLong(index, 0L).takeIf { it > 0L }?.let(::add)
+            }
+        }
+    }
+
+    private fun errorJsonObject(message: String): JSONObject {
+        return JSONObject().apply {
+            put("ok", false)
+            put("error", message)
+        }
     }
 
     private fun errorJson(message: String): String {

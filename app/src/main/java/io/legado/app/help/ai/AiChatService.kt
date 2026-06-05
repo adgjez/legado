@@ -22,6 +22,7 @@ import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 
 data class AiUsageStats(
@@ -43,7 +44,8 @@ data class AiUsageStats(
 data class AiSingleToolCallResult(
     val toolName: String = "",
     val arguments: String = "",
-    val content: String = ""
+    val content: String = "",
+    val modelConfig: AiModelConfig? = null
 ) {
     val hasToolCall: Boolean
         get() = toolName.isNotBlank() && arguments.isNotBlank()
@@ -54,11 +56,23 @@ object AiChatService {
     private const val NETWORK_ABORT_RETRY_COUNT = 1
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
+    private const val TOOL_ONLY_SYSTEM_PROMPT =
+        "You are a deterministic extraction worker. Read the user payload and call the provided tool with complete, valid JSON. Do not answer with prose unless the tool is impossible."
 
     private data class ToolCallBuilder(
         var id: String = "",
         var name: String = "",
         val arguments: StringBuilder = StringBuilder()
+    )
+
+    private data class CompletionEndpoint(
+        val modelConfig: AiModelConfig?,
+        val provider: AiProviderConfig?,
+        val baseUrl: String,
+        val model: String,
+        val apiMode: String,
+        val chatUrl: String,
+        val promptCacheKey: String?
     )
 
     suspend fun chat(messages: List<AiChatMessage>): String {
@@ -69,10 +83,119 @@ object AiChatService {
         messages: List<AiChatMessage>,
         tool: AiResolvedTool,
         modelConfigOverride: AiModelConfig? = null,
+        fallbackModelConfig: AiModelConfig? = null,
         promptCacheKeyOverride: String? = null,
+        firstResponseTimeoutMillis: Long = 0L,
         activeSkills: List<AiSkillConfig> = emptyList(),
+        includeChatContext: Boolean = true,
         onUsage: (AiUsageStats) -> Unit = {}
     ): AiSingleToolCallResult {
+        val systemPrompt = if (includeChatContext) {
+            AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        } else {
+            TOOL_ONLY_SYSTEM_PROMPT
+        }
+        val personaPrompt = if (includeChatContext) AppConfig.aiCurrentPersona?.prompt.orEmpty() else ""
+        val reserveTokens = estimateStaticRequestTokens(
+            messages = messages,
+            tools = listOf(tool),
+            activeSkills = if (includeChatContext) activeSkills else emptyList(),
+            systemPrompt = systemPrompt,
+            personaPrompt = personaPrompt
+        )
+        val preparedContext = if (includeChatContext) {
+            AiContextManager.prepare(messages, null, reserveTokens)
+        } else {
+            val clean = messages.filterNot { it.pending }.filter { it.content.isNotBlank() }
+            AiContextManager.PreparedContext(
+                messages = clean,
+                summary = null,
+                compressed = false,
+                inputTokens = AiContextManager.estimateMessagesTokens(clean),
+                limitTokens = AppConfig.aiContextWindowTokens
+            )
+        }
+        val conversation = if (includeChatContext) {
+            buildConversation(
+                messages = preparedContext.messages,
+                contextSummary = preparedContext.summary,
+                activeSkills = activeSkills,
+                systemPrompt = systemPrompt,
+                personaPrompt = personaPrompt
+            )
+        } else {
+            buildToolOnlyConversation(
+                messages = preparedContext.messages,
+                systemPrompt = systemPrompt
+            )
+        }
+        val endpoints = buildList {
+            add(resolveCompletionEndpoint(modelConfigOverride, promptCacheKeyOverride))
+            val primaryId = first().modelConfig?.id.orEmpty()
+            fallbackModelConfig
+                ?.takeIf { it.id != primaryId }
+                ?.let { add(resolveCompletionEndpoint(it, promptCacheKeyOverride)) }
+        }
+        var lastThrowable: Throwable? = null
+        endpoints.forEachIndexed { endpointIndex, endpoint ->
+            val requestLog = StringBuilder().apply {
+                append("url=${endpoint.chatUrl}").append('\n')
+                append("model=${endpoint.model}").append('\n')
+                append("apiMode=${endpoint.apiMode}").append('\n')
+                append("provider=${endpoint.provider?.name.orEmpty()}").append('\n')
+                append("singleTool=${tool.name}").append('\n')
+                if (endpointIndex > 0) append("fallbackAttempt=$endpointIndex").append('\n')
+            }
+            try {
+                val assistantTurn = requestCompletionStreamWithRetry(
+                    chatUrl = endpoint.chatUrl,
+                    apiMode = endpoint.apiMode,
+                    model = endpoint.model,
+                    providerApiKey = endpoint.provider?.apiKey.orEmpty(),
+                    providerHeaders = endpoint.provider?.headers.orEmpty(),
+                    messages = conversation,
+                    tools = listOf(tool),
+                    promptCacheKey = endpoint.promptCacheKey,
+                    requestLog = requestLog,
+                    round = 1,
+                    firstResponseTimeoutMillis = firstResponseTimeoutMillis,
+                    onPartial = {},
+                    onThinking = {},
+                    onUsage = onUsage
+                )
+                val toolCall = assistantTurn.toolCalls.firstOrNull { it.name == tool.name }
+                return AiSingleToolCallResult(
+                    toolName = toolCall?.name.orEmpty(),
+                    arguments = toolCall?.arguments.orEmpty(),
+                    content = assistantTurn.content,
+                    modelConfig = endpoint.modelConfig
+                )
+            } catch (throwable: Throwable) {
+                lastThrowable = throwable
+                val canTryFallback = endpointIndex < endpoints.lastIndex && throwable.isAiFastFallbackCandidate()
+                if (!canTryFallback) {
+                    if (throwable is AiChatException) throw throwable
+                    throw AiChatException(
+                        message = throwable.message ?: throwable.javaClass.simpleName,
+                        debugLog = requestLog.toSafeDebugLog(),
+                        cause = throwable
+                    )
+                }
+            }
+        }
+        val throwable = lastThrowable ?: IllegalStateException("AI request failed")
+        if (throwable is AiChatException) throw throwable
+        throw AiChatException(
+            message = throwable.message ?: throwable.javaClass.simpleName,
+            debugLog = "",
+            cause = throwable
+        )
+    }
+
+    private fun resolveCompletionEndpoint(
+        modelConfigOverride: AiModelConfig?,
+        promptCacheKeyOverride: String?
+    ): CompletionEndpoint {
         val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
         val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
             ?: AppConfig.aiCurrentProvider
@@ -88,63 +211,15 @@ object AiChatService {
                 ?.let { buildPromptCacheKey(it, model) }
         require(baseUrl.isNotBlank()) { "Base URL is empty" }
         require(model.isNotBlank()) { "Model is empty" }
-
-        val requestLog = StringBuilder().apply {
-            append("url=$chatUrl").append('\n')
-            append("model=$model").append('\n')
-            append("apiMode=$apiMode").append('\n')
-            append("provider=${provider?.name.orEmpty()}").append('\n')
-            append("singleTool=${tool.name}").append('\n')
-        }
-        val systemPrompt = AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
-        val personaPrompt = AppConfig.aiCurrentPersona?.prompt.orEmpty()
-        val reserveTokens = estimateStaticRequestTokens(
-            messages = messages,
-            tools = listOf(tool),
-            activeSkills = activeSkills,
-            systemPrompt = systemPrompt,
-            personaPrompt = personaPrompt
+        return CompletionEndpoint(
+            modelConfig = modelConfig,
+            provider = provider,
+            baseUrl = baseUrl,
+            model = model,
+            apiMode = apiMode,
+            chatUrl = chatUrl,
+            promptCacheKey = promptCacheKey
         )
-        val preparedContext = AiContextManager.prepare(messages, null, reserveTokens)
-        val conversation = buildConversation(
-            messages = preparedContext.messages,
-            contextSummary = preparedContext.summary,
-            activeSkills = activeSkills,
-            systemPrompt = systemPrompt,
-            personaPrompt = personaPrompt
-        )
-        return runCatching {
-            val assistantTurn = requestCompletionStreamWithRetry(
-                chatUrl = chatUrl,
-                apiMode = apiMode,
-                model = model,
-                providerApiKey = provider?.apiKey.orEmpty(),
-                providerHeaders = provider?.headers.orEmpty(),
-                messages = conversation,
-                tools = listOf(tool),
-                promptCacheKey = promptCacheKey,
-                requestLog = requestLog,
-                round = 1,
-                onPartial = {},
-                onThinking = {},
-                onUsage = onUsage
-            )
-            val toolCall = assistantTurn.toolCalls.firstOrNull { it.name == tool.name }
-            AiSingleToolCallResult(
-                toolName = toolCall?.name.orEmpty(),
-                arguments = toolCall?.arguments.orEmpty(),
-                content = assistantTurn.content
-            )
-        }.getOrElse { throwable ->
-            if (throwable is AiChatException) {
-                throw throwable
-            }
-            throw AiChatException(
-                message = throwable.message ?: throwable.javaClass.simpleName,
-                debugLog = requestLog.toSafeDebugLog(),
-                cause = throwable
-            )
-        }
     }
 
     suspend fun fetchModels(provider: AiProviderConfig): List<String> {
@@ -192,7 +267,9 @@ object AiChatService {
         toolOverride: List<AiResolvedTool>? = null,
         extraTools: List<AiResolvedTool> = emptyList(),
         modelConfigOverride: AiModelConfig? = null,
+        fallbackModelConfigOverride: AiModelConfig? = null,
         promptCacheKeyOverride: String? = null,
+        firstResponseTimeoutMillis: Long = 0L,
         activeSkills: List<AiSkillConfig> = emptyList(),
         onUsage: (AiUsageStats) -> Unit = {},
         agentRun: AiAgentStateStore.Run? = null,
@@ -339,17 +416,19 @@ object AiChatService {
                 extraToolNames = extraToolNames,
                 agentRun = agentRun
             ) { roundNo, roundMessages, roundTools ->
-                requestCompletionStreamWithRetry(
+                requestCompletionStreamWithFallback(
                     chatUrl = chatUrl,
                     apiMode = apiMode,
                     model = model,
-                    providerApiKey = provider?.apiKey.orEmpty(),
-                    providerHeaders = provider?.headers.orEmpty(),
+                    provider = provider,
+                    fallbackModelConfig = fallbackModelConfigOverride,
+                    promptCacheKeyOverride = promptCacheKeyOverride,
                     messages = roundMessages,
                     tools = roundTools,
                     promptCacheKey = promptCacheKey,
                     requestLog = requestLog,
                     round = roundNo,
+                    firstResponseTimeoutMillis = firstResponseTimeoutMillis,
                     onPartial = onPartial,
                     onThinking = onThinking,
                     onUsage = tracedUsage
@@ -386,12 +465,79 @@ object AiChatService {
         }
     }
 
-    private fun aiChatHttpClient() = okHttpClient.newBuilder()
+    private fun aiChatHttpClient(firstResponseTimeoutMillis: Long = 0L) = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(300, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(
+            if (firstResponseTimeoutMillis > 0L) firstResponseTimeoutMillis else 300_000L,
+            TimeUnit.MILLISECONDS
+        )
         .callTimeout(300, TimeUnit.SECONDS)
         .build()
+
+    private suspend fun requestCompletionStreamWithFallback(
+        chatUrl: String,
+        apiMode: String,
+        model: String,
+        provider: AiProviderConfig?,
+        fallbackModelConfig: AiModelConfig?,
+        promptCacheKeyOverride: String?,
+        messages: List<JSONObject>,
+        tools: List<AiResolvedTool>,
+        promptCacheKey: String?,
+        requestLog: StringBuilder,
+        round: Int,
+        firstResponseTimeoutMillis: Long,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit,
+        onUsage: (AiUsageStats) -> Unit
+    ): AiAgentAssistantTurn {
+        try {
+            return requestCompletionStreamWithRetry(
+                chatUrl = chatUrl,
+                apiMode = apiMode,
+                model = model,
+                providerApiKey = provider?.apiKey.orEmpty(),
+                providerHeaders = provider?.headers.orEmpty(),
+                messages = messages,
+                tools = tools,
+                promptCacheKey = promptCacheKey,
+                requestLog = requestLog,
+                round = round,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis,
+                onPartial = onPartial,
+                onThinking = onThinking,
+                onUsage = onUsage
+            )
+        } catch (throwable: Throwable) {
+            val fallback = fallbackModelConfig
+                ?.takeIf { throwable.isAiFastFallbackCandidate() }
+                ?.let { resolveCompletionEndpoint(it, promptCacheKeyOverride) }
+                ?.takeIf { it.chatUrl != chatUrl || it.model != model }
+                ?: throw throwable
+            requestLog.append("round=").append(round)
+                .append(" fallbackModel=").append(fallback.model)
+                .append(" reason=").append(throwable.message ?: throwable.javaClass.simpleName)
+                .append('\n')
+            onThinking("AI 请求超时，正在切换备用模型")
+            return requestCompletionStreamWithRetry(
+                chatUrl = fallback.chatUrl,
+                apiMode = fallback.apiMode,
+                model = fallback.model,
+                providerApiKey = fallback.provider?.apiKey.orEmpty(),
+                providerHeaders = fallback.provider?.headers.orEmpty(),
+                messages = messages,
+                tools = tools,
+                promptCacheKey = fallback.promptCacheKey,
+                requestLog = requestLog,
+                round = round,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis,
+                onPartial = onPartial,
+                onThinking = onThinking,
+                onUsage = onUsage
+            )
+        }
+    }
 
     private suspend fun requestCompletionStreamWithRetry(
         chatUrl: String,
@@ -404,6 +550,7 @@ object AiChatService {
         promptCacheKey: String?,
         requestLog: StringBuilder,
         round: Int,
+        firstResponseTimeoutMillis: Long = 0L,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onUsage: (AiUsageStats) -> Unit
@@ -429,6 +576,7 @@ object AiChatService {
                     promptCacheKey = promptCacheKey,
                     requestLog = requestLog,
                     round = round,
+                    firstResponseTimeoutMillis = firstResponseTimeoutMillis,
                     onPartial = onPartial,
                     onThinking = onThinking,
                     onUsage = onUsage
@@ -454,6 +602,7 @@ object AiChatService {
         promptCacheKey: String?,
         requestLog: StringBuilder,
         round: Int,
+        firstResponseTimeoutMillis: Long = 0L,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
         onUsage: (AiUsageStats) -> Unit
@@ -468,7 +617,7 @@ object AiChatService {
         )
         requestLog.append("round=").append(round).append('\n')
             .append("request=").append(safeDebugPayload(requestBody)).append('\n')
-        val response = aiChatHttpClient().newCallResponse {
+        val response = aiChatHttpClient(firstResponseTimeoutMillis).newCallResponse {
             url(chatUrl)
             addHeader("Accept", "text/event-stream, application/json")
             addHeader("Content-Type", "application/json")
@@ -501,10 +650,19 @@ object AiChatService {
             val reasoningRendered = StringBuilder()
             val rawPayload = StringBuilder()
             val toolCallBuilders = linkedMapOf<Int, ToolCallBuilder>()
-            body.byteStream().bufferedReader().use { reader ->
+            val source = body.source()
+            var firstPayloadReceived = false
+            if (firstResponseTimeoutMillis > 0L) {
+                source.timeout().timeout(firstResponseTimeoutMillis, TimeUnit.MILLISECONDS)
+            }
+            source.use {
                 while (true) {
-                    val rawLine = reader.readLine()?.trim() ?: break
+                    val rawLine = it.readUtf8Line()?.trim() ?: break
                     if (rawLine.isEmpty()) continue
+                    if (!firstPayloadReceived) {
+                        firstPayloadReceived = true
+                        it.timeout().timeout(300, TimeUnit.SECONDS)
+                    }
                     rawPayload.append(rawLine).append('\n')
                     if (rawLine.startsWith("data:")) {
                         val payload = rawLine.removePrefix("data:").trim()
@@ -1122,6 +1280,31 @@ object AiChatService {
         return conversation
     }
 
+    private fun buildToolOnlyConversation(
+        messages: List<AiChatMessage>,
+        systemPrompt: String
+    ): MutableList<JSONObject> {
+        val conversation = mutableListOf<JSONObject>()
+        systemPrompt.takeIf { it.isNotBlank() }?.let { prompt ->
+            conversation += JSONObject().apply {
+                put("role", "system")
+                put("content", prompt)
+            }
+        }
+        messages
+            .filter { (it.kind ?: AiChatMessage.Kind.TEXT) == AiChatMessage.Kind.TEXT }
+            .forEach { message ->
+                conversation += JSONObject().apply {
+                    put(
+                        "role",
+                        if (message.role == AiChatMessage.Role.USER) "user" else "assistant"
+                    )
+                    put("content", stripSearchResultBlocks(message.content))
+                }
+            }
+        return conversation
+    }
+
     private fun appendWorldBookInjections(
         conversation: MutableList<JSONObject>,
         worldBookContext: AiWorldBookContext,
@@ -1427,6 +1610,26 @@ object AiChatService {
         return raw.lowercase()
             .replace(Regex("[^a-z0-9._:-]"), "_")
             .take(128)
+    }
+
+    private fun Throwable.isAiFastFallbackCandidate(): Boolean {
+        if (isAiRetryableNetworkAbort()) return true
+        var current: Throwable? = this
+        while (current != null) {
+            val message = current.message.orEmpty().lowercase()
+            if (current is InterruptedIOException) return true
+            if (
+                "timeout" in message ||
+                "timed out" in message ||
+                "429" in message ||
+                "rate limit" in message ||
+                "too many requests" in message
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private fun resolveChatUrl(baseUrl: String, apiMode: String): String {

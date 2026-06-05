@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import splitties.init.appCtx
@@ -37,6 +38,8 @@ class AiChatViewModel : ViewModel() {
     private var currentSessionId: String = AppConfig.aiCurrentChatSessionId ?: UUID.randomUUID().toString()
     private var windowSkillIds: Set<String> = emptySet()
     private var windowMcpServerIds: Set<String> = emptySet()
+    private var lastTransientPublishAt: Long = 0L
+    private var pendingTransientPublishJob: Job? = null
 
     companion object {
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
@@ -54,6 +57,7 @@ class AiChatViewModel : ViewModel() {
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
         private const val MAX_STORED_TEXT_CHARS = 20_000
         private const val MAX_STORED_STATUS_CHARS = 4_000
+        private const val TRANSIENT_UI_PUBLISH_INTERVAL_MS = 66L
     }
 
     init {
@@ -233,7 +237,7 @@ class AiChatViewModel : ViewModel() {
             activePendingAssistantMessageId = newMessage.id
             messages.add(newMessage)
         }
-        publish()
+        publishTransient()
     }
 
     fun upsertThinkingStatus(thinkingTitle: String, thinking: String) {
@@ -251,7 +255,7 @@ class AiChatViewModel : ViewModel() {
                 statusLabel = thinkingTitle,
                 updatedAt = System.currentTimeMillis()
             )
-            publish()
+            publishTransient()
         }
     }
 
@@ -299,7 +303,7 @@ class AiChatViewModel : ViewModel() {
         )
         messages.add(message)
         activeThinkingMessageId = message.id
-        publish()
+        publish(saveHistory = false)
         return message.id
     }
 
@@ -364,7 +368,7 @@ class AiChatViewModel : ViewModel() {
             )
             messages.add(message)
             activeToolMessageIds[key] = message.id
-            publish()
+            publish(saveHistory = stage == "result")
             return
         }
         val index = messages.indexOfFirst { it.id == messageId }
@@ -393,6 +397,7 @@ class AiChatViewModel : ViewModel() {
     }
 
     private fun finishActiveTools(success: Boolean, label: String) {
+        var changed = false
         activeToolMessageIds.values.forEach { id ->
             val index = messages.indexOfFirst { it.id == id }
             if (index >= 0 && messages[index].pending) {
@@ -403,9 +408,12 @@ class AiChatViewModel : ViewModel() {
                     collapsed = true,
                     updatedAt = System.currentTimeMillis()
                 )
+                changed = true
             }
         }
-        publish()
+        if (changed) {
+            publish()
+        }
     }
 
     fun finishPendingAssistant() {
@@ -609,10 +617,32 @@ class AiChatViewModel : ViewModel() {
     }
 
     private fun publish(saveHistory: Boolean = true) {
+        pendingTransientPublishJob?.cancel()
+        pendingTransientPublishJob = null
         if (saveHistory) {
             saveCurrentSession()
         }
         messagesLiveData.postValue(messages.toList())
+        lastTransientPublishAt = System.currentTimeMillis()
+    }
+
+    private fun publishTransient() {
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastTransientPublishAt
+        if (elapsed >= TRANSIENT_UI_PUBLISH_INTERVAL_MS) {
+            pendingTransientPublishJob?.cancel()
+            pendingTransientPublishJob = null
+            messagesLiveData.postValue(messages.toList())
+            lastTransientPublishAt = now
+            return
+        }
+        if (pendingTransientPublishJob?.isActive == true) return
+        pendingTransientPublishJob = requestScope.launch {
+            delay(TRANSIENT_UI_PUBLISH_INTERVAL_MS - elapsed)
+            messagesLiveData.postValue(messages.toList())
+            lastTransientPublishAt = System.currentTimeMillis()
+            pendingTransientPublishJob = null
+        }
     }
 
     private fun saveCurrentSession() {

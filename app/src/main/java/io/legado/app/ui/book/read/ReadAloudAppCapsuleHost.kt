@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -46,6 +47,7 @@ object ReadAloudAppCapsuleHost {
     private val observedOwners = Collections.newSetFromMap(WeakHashMap<LifecycleOwner, Boolean>())
     private val overlays = WeakHashMap<Activity, CapsuleOverlay>()
     private var lastPlaybackState by mutableStateOf(ReadAloudPlaybackState())
+    private var themeRevision by mutableStateOf(0)
     private var capsulePosition by mutableStateOf(CapsulePositionState())
     private var readBookPanelActive by mutableStateOf(false)
     private var readMenuAvoidBounds by mutableStateOf<RectF?>(null)
@@ -155,10 +157,21 @@ object ReadAloudAppCapsuleHost {
                 lastPlaybackState = state
                 refreshAll()
             })
+        LiveEventBus.get(EventBus.RECREATE, String::class.java).observe(owner, Observer {
+            refreshThemeAll()
+        })
+        LiveEventBus.get(EventBus.UP_CONFIG, ArrayList::class.java).observe(owner, Observer {
+            refreshThemeAll()
+        })
     }
 
     private fun refreshAll() {
         overlays.values.toList().forEach { it.sync() }
+    }
+
+    private fun refreshThemeAll() {
+        themeRevision += 1
+        refreshAll()
     }
 
     private fun shouldShow(kind: HostKind): Boolean {
@@ -244,7 +257,9 @@ object ReadAloudAppCapsuleHost {
             )
             composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             composeView.setContent {
-                val colors = rememberPlayerColors(ReaderSheetStyle.resolve(activity))
+                val paletteRevision = themeRevision
+                val palette = remember(paletteRevision) { ReaderSheetStyle.resolve(activity) }
+                val colors = rememberPlayerColors(palette)
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (uiState.serviceRunning) {
                         ReadAloudCapsule(

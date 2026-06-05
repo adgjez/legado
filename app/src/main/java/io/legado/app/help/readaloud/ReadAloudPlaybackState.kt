@@ -2,6 +2,7 @@ package io.legado.app.help.readaloud
 
 data class ReadAloudPlaybackState(
     val phase: String = PHASE_STOPPED,
+    val bookUrl: String = "",
     val chapterIndex: Int = -1,
     val chapterUrl: String = "",
     val cueIndex: Int = -1,
@@ -13,7 +14,8 @@ data class ReadAloudPlaybackState(
     val message: String = "",
     val playing: Boolean? = null,
     val buffering: Boolean = false,
-    val serviceRunning: Boolean = false
+    val serviceRunning: Boolean = false,
+    val sessionId: Long = 0L
 ) {
     val busy: Boolean
         get() = buffering || phase == PHASE_PREPARING || phase == PHASE_BUFFERING

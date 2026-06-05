@@ -109,8 +109,16 @@ class ReadAloudDialog : BaseDialogFragment(R.layout.dialog_read_aloud) {
         llSetting.setOnClickListener {
             ReadAloudConfigDialog().show(childFragmentManager, "readAloudConfigDialog")
         }
-        tvPre.setOnClickListener { ReadBook.moveToPrevChapter(upContent = true, toLast = false) }
-        tvNext.setOnClickListener { ReadBook.moveToNextChapter(true) }
+        tvPre.setOnClickListener {
+            ReadBook.moveToPrevChapter(
+                upContent = true,
+                toLast = false,
+                fromReadAloud = BaseReadAloudService.isRun
+            )
+        }
+        tvNext.setOnClickListener {
+            ReadBook.moveToNextChapter(true, fromReadAloud = BaseReadAloudService.isRun)
+        }
         ivStop.setOnClickListener {
             ReadAloud.stop(requireContext())
             dismissAllowingStateLoss()

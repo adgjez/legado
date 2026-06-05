@@ -238,6 +238,9 @@
             android:name=".ui.book.read.config.ReadAloudBgmManageActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.book.read.config.SpeakerGroupManageActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.book.read.config.AiReadAloudUsageRecordActivity"
             android:launchMode="standard" />
         <activity

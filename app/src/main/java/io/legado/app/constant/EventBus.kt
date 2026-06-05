@@ -7,6 +7,7 @@ object EventBus {
     const val BOOKSHELF_REFRESH = "bookshelfRefresh"
     const val ALOUD_STATE = "aloud_state"
     const val TTS_PROGRESS = "ttsStart"
+    const val READ_ALOUD_PROGRESS = "readAloudProgress"
     const val AUDIO_DS = "audioDs"
     const val READ_ALOUD_DS = "readAloudDs"
     const val READ_ALOUD_PLAYBACK_STATE = "readAloudPlaybackState"

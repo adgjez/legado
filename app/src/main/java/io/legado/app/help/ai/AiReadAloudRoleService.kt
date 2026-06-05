@@ -29,6 +29,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONArray
@@ -824,7 +825,10 @@ object AiReadAloudRoleService {
         val character = when {
             segment.characterId > 0L -> appDb.bookCharacterDao.getCharacter(segment.characterId)
                 ?.takeIf { it.bookUrl == bookUrl }
-            segment.characterName.isNotBlank() -> appDb.bookCharacterDao.getCharacter(bookUrl, segment.characterName)
+            segment.characterName.isNotBlank() -> {
+                val byName = charactersByNormalizedName(appDb.bookCharacterDao.characters(bookUrl))
+                byName[characterNameKey(segment.characterName)]
+            }
             else -> null
         } ?: return null
         val route = SpeechRouteSanitizer.validOrNull(SpeechRoute.fromJson(character.speechRouteJson))
@@ -1144,7 +1148,7 @@ object AiReadAloudRoleService {
         if (segments.isEmpty()) return emptyList()
         val characters = appDb.bookCharacterDao.characters(bookUrl)
         val byId = characters.associateBy { it.id }
-        val byName = characters.associateBy { it.name }
+        val byName = charactersByNormalizedName(characters)
         return segments
             .sortedWith(compareBy<Segment> { it.paragraphIndex }.thenBy { it.start }.thenBy { it.end })
             .mapNotNull { segment ->
@@ -1155,7 +1159,7 @@ object AiReadAloudRoleService {
                 if (start >= end) return@mapNotNull null
                 val character = when {
                     segment.characterId > 0L -> byId[segment.characterId]
-                    segment.characterName.isNotBlank() -> byName[segment.characterName]
+                    segment.characterName.isNotBlank() -> byName[characterNameKey(segment.characterName)]
                     else -> null
                 }
                 val route = character
@@ -1309,8 +1313,8 @@ object AiReadAloudRoleService {
         resolutionMap: MutableMap<String, UnitResolution>,
         usageTracker: RoleUsageTracker,
         onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
-    ) = coroutineScope {
-        if (batches.isEmpty()) return@coroutineScope
+    ) = supervisorScope {
+        if (batches.isEmpty()) return@supervisorScope
         val semaphore = Semaphore(
             if (fullChapterMode) 1
             else AppConfig.aiReadAloudRoleThreadCount
@@ -1318,19 +1322,23 @@ object AiReadAloudRoleService {
         batches.map { batch ->
             async {
                 semaphore.withPermit {
-                    requestUnitAssignmentBatch(
-                        book = book,
-                        textChapter = textChapter,
-                        paragraphs = paragraphs,
-                        allUnits = allUnits,
-                        batch = batch,
-                        fullChapterMode = fullChapterMode,
-                        prompt = prompt,
-                        promptCacheKey = promptCacheKey,
-                        attempt = attempt,
-                        knownResolutions = knownResolutions,
-                        usageTracker = usageTracker
-                    )
+                    runCatching {
+                        requestUnitAssignmentBatch(
+                            book = book,
+                            textChapter = textChapter,
+                            paragraphs = paragraphs,
+                            allUnits = allUnits,
+                            batch = batch,
+                            fullChapterMode = fullChapterMode,
+                            prompt = prompt,
+                            promptCacheKey = promptCacheKey,
+                            attempt = attempt,
+                            knownResolutions = knownResolutions,
+                            usageTracker = usageTracker
+                        )
+                    }.getOrElse {
+                        UnitAssignmentResult(emptyList(), emptyList())
+                    }
                 }
             }
         }.awaitAll().forEach { result ->
@@ -1405,7 +1413,10 @@ object AiReadAloudRoleService {
                 ),
                 tool = tool,
                 modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
+                fallbackModelConfig = AppConfig.aiReadAloudRoleBackupModelConfig,
                 promptCacheKeyOverride = promptCacheKey,
+                firstResponseTimeoutMillis = AppConfig.aiReadAloudRoleFirstResponseTimeoutMillis,
+                includeChatContext = false,
                 onUsage = {
                     usageTracker.onUsage(it)
                     requestUsage.onUsage(it)
@@ -1418,7 +1429,7 @@ object AiReadAloudRoleService {
                     chapter = textChapter,
                     cacheKey = promptCacheKey,
                     batchName = if (fullChapterMode) "全文批处理" else "并发查找批次 ${batch.index + 1}",
-                    modelConfig = AppConfig.aiReadAloudRoleModelConfig,
+                    modelConfig = it.modelConfig ?: AppConfig.aiReadAloudRoleModelConfig,
                     snapshot = requestUsage.snapshot(),
                     summary = "targetUnits=${batch.units.size}, attempt=$attempt"
                 )
@@ -1861,7 +1872,9 @@ object AiReadAloudRoleService {
             includeStructuredBlocks = false,
             useAllTools = false,
             extraTools = listOf(tool),
-            modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig
+            modelConfigOverride = AppConfig.aiReadAloudRoleModelConfig,
+            fallbackModelConfigOverride = AppConfig.aiReadAloudRoleBackupModelConfig,
+            firstResponseTimeoutMillis = AppConfig.aiReadAloudRoleFirstResponseTimeoutMillis
         )
         if (collectedResolutions.isEmpty()) {
             val fallback = parseUnitFallbackResult(response, requestedUnitIds)
@@ -2667,16 +2680,34 @@ object AiReadAloudRoleService {
         segments: List<Segment>,
         characters: List<BookCharacter>
     ): List<Segment> {
-        val byName = characters.associateBy { it.name }
+        val byName = charactersByNormalizedName(characters)
         return segments.map { segment ->
             if (segment.characterId > 0 || segment.characterName.isBlank()) {
                 segment
             } else if (!isCreatableCharacterName(segment.characterName) && segment.characterName != "旁白") {
                 segment.copy(characterName = "", characterId = 0L)
             } else {
-                segment.copy(characterId = byName[segment.characterName]?.id ?: 0L)
+                segment.copy(characterId = byName[characterNameKey(segment.characterName)]?.id ?: 0L)
             }
         }
+    }
+
+    private fun charactersByNormalizedName(characters: List<BookCharacter>): Map<String, BookCharacter> {
+        val result = linkedMapOf<String, BookCharacter>()
+        characters.forEach { character ->
+            listOf(character.name, character.displayName())
+                .map(::characterNameKey)
+                .filter { it.isNotBlank() }
+                .forEach { key -> result.putIfAbsent(key, character) }
+        }
+        return result
+    }
+
+    private fun characterNameKey(value: String): String {
+        return value.trim()
+            .replace(Regex("\\s+"), "")
+            .trim('《', '》', '“', '”', '"', '\'', '：', ':')
+            .lowercase()
     }
 
     private fun isCreatableCharacterName(name: String): Boolean {

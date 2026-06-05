@@ -23,6 +23,7 @@ object AiReadAloudBgmService {
 
     const val TOOL_ASSIGN_BGM_RANGES = "assign_read_aloud_bgm_ranges"
     private const val SCHEMA_VERSION = 2
+    private const val RUNNING_CACHE_STALE_MILLIS = 180_000L
 
     data class Assignment(
         val fromCueIndex: Int,
@@ -101,7 +102,7 @@ object AiReadAloudBgmService {
         if (!AppConfig.aiReadAloudBgmEnabled) {
             return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "智能配乐未开启")
         }
-        val modelConfig = AppConfig.aiReadAloudRoleModelConfig
+        val modelConfig = AppConfig.aiReadAloudAudioModelConfig
             ?: return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "未配置多角色模型")
         if (AppConfig.aiProviderForModel(modelConfig)?.baseUrl.isNullOrBlank()) {
             return@withContext EnsureResult(ReadAloudBgmAssignmentCache.STATUS_FAILED, message = "模型供应商不可用")
@@ -134,15 +135,17 @@ object AiReadAloudBgmService {
                 cacheKey = cache.cacheKey
             )
         }
+        val now = System.currentTimeMillis()
         val old = appDb.readAloudBgmDao.assignmentCache(key.cacheKey)
-        if (old?.status == ReadAloudBgmAssignmentCache.STATUS_RUNNING) {
+        if (old?.status == ReadAloudBgmAssignmentCache.STATUS_RUNNING &&
+            now - old.updatedAt <= RUNNING_CACHE_STALE_MILLIS
+        ) {
             return@withContext EnsureResult(
                 status = ReadAloudBgmAssignmentCache.STATUS_RUNNING,
                 message = "智能配乐分析中",
                 cacheKey = key.cacheKey
             )
         }
-        val now = System.currentTimeMillis()
         appDb.readAloudBgmDao.upsertAssignmentCache(
             ReadAloudBgmAssignmentCache(
                 cacheKey = key.cacheKey,
@@ -172,7 +175,10 @@ object AiReadAloudBgmService {
                     JSONObject().put("ok", true).toString()
                 },
                 modelConfigOverride = modelConfig,
+                fallbackModelConfig = AppConfig.aiReadAloudAudioBackupModelConfig,
                 promptCacheKeyOverride = key.promptCacheKey,
+                firstResponseTimeoutMillis = AppConfig.aiReadAloudRoleFirstResponseTimeoutMillis,
+                includeChatContext = false,
                 onUsage = usageTracker::onUsage
             )
             val audio = when {
@@ -213,7 +219,7 @@ object AiReadAloudBgmService {
                 chapter = currentChapter,
                 cacheKey = key.cacheKey,
                 batchName = "配乐音效分析",
-                modelConfig = modelConfig,
+                modelConfig = response.modelConfig ?: modelConfig,
                 snapshot = usageTracker.snapshot(),
                 summary = "bgm=${audio.assignments.size}, sfx=${audio.soundEffects.size}, candidates=${sfxCandidates.size}"
             )
@@ -358,7 +364,7 @@ object AiReadAloudBgmService {
         val catalogHash = args?.optString("catalogHash").orEmpty().ifBlank { snapshot.hash }
         val persisted = if (bookUrl.isNotBlank() && chapterIndex >= 0 && contentHash.isNotBlank()) {
             val now = System.currentTimeMillis()
-            val modelId = AppConfig.aiReadAloudRoleModelConfig?.id.orEmpty()
+            val modelId = AppConfig.aiReadAloudAudioModelConfig?.id.orEmpty()
             val cacheKey = MD5Utils.md5Encode("read-aloud-bgm-tool|$bookUrl|$chapterIndex|$contentHash|$catalogHash|$modelId")
             appDb.readAloudBgmDao.upsertAssignmentCache(
                 ReadAloudBgmAssignmentCache(
@@ -442,7 +448,7 @@ object AiReadAloudBgmService {
         chapterIndex: Int
     ): CachedAudioInfo? {
         if (bookUrl.isNullOrBlank() || chapterIndex < 0) return null
-        val cache = appDb.readAloudBgmDao.latestAssignmentCacheByChapter(bookUrl, chapterIndex)
+        val cache = appDb.readAloudBgmDao.latestAnyAssignmentCacheByChapter(bookUrl, chapterIndex)
             ?: return null
         val audio = audioAssignmentsFromJson(cache.assignmentsJson)
         val bgmNames = audio.assignments

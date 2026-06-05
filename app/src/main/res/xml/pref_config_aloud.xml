@@ -75,6 +75,12 @@
             app:iconSpaceReserved="false" />
 
         <io.legado.app.lib.prefs.Preference
+            android:key="aiReadAloudModelRouting"
+            android:summary="多角色主模型、备用模型、首响超时、智能音频模型"
+            android:title="AI 模型与超时"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
             android:key="aiReadAloudRoleModelId"
             android:summary="未配置"
             android:title="多角色模型"
