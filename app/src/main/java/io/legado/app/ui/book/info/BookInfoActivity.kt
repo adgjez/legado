@@ -26,6 +26,11 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Space
 import android.widget.TextView
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -76,6 +81,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.BookInfoComponentConfig
 import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoComponentType
+import io.legado.app.help.config.BookInfoPageStyle
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -110,6 +116,10 @@ import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.info.edit.BookInfoEditActivity
+import io.legado.app.ui.book.info.compose.BookInfoActions
+import io.legado.app.ui.book.info.compose.BookInfoChapterUi
+import io.legado.app.ui.book.info.compose.BookInfoComposeRoute
+import io.legado.app.ui.book.info.compose.BookInfoUiState
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
@@ -272,6 +282,11 @@ class BookInfoActivity :
     private var detailIntroOnly = false
     private var bookInfoComponentsReady = false
     private var lastBookInfoBgPath: String? = null
+    private var useComposeBookInfo = false
+    private var composeReadTimeText = ""
+    private var composeGroupText = ""
+    private var composeBookInfoState by mutableStateOf(BookInfoUiState())
+    private var composeBookInfoView: ComposeView? = null
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
     override val viewModel by viewModels<BookInfoViewModel>()
@@ -465,6 +480,7 @@ class BookInfoActivity :
 
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        useComposeBookInfo = BookInfoComponentConfig.loadStyle() == BookInfoPageStyle.IMMERSIVE_COMPOSE
         binding.bgBook.setBackgroundColor(backgroundColor)
         binding.vwBg.alpha = 1f
         binding.titleBar.setBackgroundResource(R.color.transparent)
@@ -476,6 +492,21 @@ class BookInfoActivity :
         applyBookInfoTypography()
         binding.flAction.setBackgroundResource(R.color.transparent)
         normalizeDetailContentLayout()
+        if (useComposeBookInfo) {
+            initComposeBookInfo()
+            binding.vwBg.applyNavigationBarPadding()
+            viewModel.bookData.observe(this) {
+                showComposeBookInfo(it)
+                updateBookCloudEntryMenu()
+            }
+            viewModel.chapterListData.observe(this) {
+                upLoading(false, it)
+                updateComposeBookInfoState()
+            }
+            viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
+            viewModel.initData(intent)
+            return
+        }
         initBookInfoPager()
         applyBookInfoComponents()
         binding.vwBg.applyNavigationBarPadding()
@@ -497,6 +528,227 @@ class BookInfoActivity :
         viewModel.waitDialogData.observe(this) { upWaitDialogStatus(it) }
         viewModel.initData(intent)
         initViewEvent()
+    }
+
+    private fun initComposeBookInfo() = binding.run {
+        refreshLayout.visibility = View.GONE
+        flAction.visibility = View.GONE
+        llInfo.visibility = View.GONE
+        composeBookInfoView = ComposeView(this@BookInfoActivity).apply {
+            id = View.generateViewId()
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                BookInfoComposeRoute(
+                    state = composeBookInfoState,
+                    actions = composeBookInfoActions()
+                )
+            }
+        }
+        vwBg.addView(
+            composeBookInfoView,
+            ConstraintLayout.LayoutParams(0, 0).apply {
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                topToBottom = titleBar.id
+                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+            }
+        )
+    }
+
+    private fun composeBookInfoActions(): BookInfoActions {
+        return BookInfoActions(
+            onBack = ::finish,
+            onRefresh = ::refreshBook,
+            onRead = {
+                viewModel.getBook()?.let { book ->
+                    if (book.isWebFile) {
+                        showWebFileDownloadAlert { readBook(it) }
+                    } else {
+                        readBook(book)
+                    }
+                }
+            },
+            onShelf = {
+                viewModel.getBook()?.let { book ->
+                    if (viewModel.inBookshelf) {
+                        deleteBook()
+                    } else if (book.isWebFile) {
+                        showWebFileDownloadAlert()
+                    } else {
+                        viewModel.addToBookshelf {
+                            upTvBookshelf()
+                            updateComposeBookInfoState()
+                        }
+                    }
+                }
+            },
+            onChangeCover = {
+                viewModel.getBook()?.let {
+                    showDialogFragment(ChangeCoverDialog(it.name, it.author))
+                }
+            },
+            onPreviewCover = {
+                viewModel.getBook()?.getDisplayCover()?.let { path ->
+                    showDialogFragment(PhotoDialog(path, isBook = true))
+                }
+            },
+            onAuthorClick = {
+                viewModel.getBook(false)?.let { book ->
+                    SourceCallBack.callBackBtn(
+                        this@BookInfoActivity,
+                        SourceCallBack.CLICK_AUTHOR,
+                        viewModel.bookSource,
+                        book,
+                        null,
+                        result = book.author
+                    ) {
+                        SearchActivity.start(this@BookInfoActivity, book.author)
+                    }
+                }
+            },
+            onAuthorLongClick = {
+                viewModel.getBook(false)?.let { book ->
+                    SourceCallBack.callBackBtn(
+                        this@BookInfoActivity,
+                        SourceCallBack.LONG_CLICK_AUTHOR,
+                        viewModel.bookSource,
+                        book,
+                        null,
+                        result = book.author
+                    )
+                }
+            },
+            onNameClick = {
+                viewModel.getBook(false)?.let { book ->
+                    SourceCallBack.callBackBtn(
+                        this@BookInfoActivity,
+                        SourceCallBack.CLICK_BOOK_NAME,
+                        viewModel.bookSource,
+                        book,
+                        null,
+                        result = book.name
+                    ) {
+                        SearchActivity.start(this@BookInfoActivity, book.name)
+                    }
+                }
+            },
+            onNameLongClick = {
+                viewModel.getBook(false)?.let { book ->
+                    SourceCallBack.callBackBtn(
+                        this@BookInfoActivity,
+                        SourceCallBack.LONG_CLICK_BOOK_NAME,
+                        viewModel.bookSource,
+                        book,
+                        null,
+                        result = book.name
+                    )
+                }
+            },
+            onChangeSource = {
+                viewModel.getBook()?.let { book ->
+                    showDialogFragment(ChangeBookSourceDialog(book.name, book.author))
+                }
+            },
+            onEditSource = {
+                viewModel.getBook()?.let { book ->
+                    if (book.isLocal) return@let
+                    if (!appDb.bookSourceDao.has(book.origin)) {
+                        toastOnUi(R.string.error_no_source)
+                        return@let
+                    }
+                    editSourceResult.launch {
+                        putExtra("sourceUrl", book.origin)
+                    }
+                }
+            },
+            onChangeGroup = {
+                viewModel.getBook()?.let {
+                    showDialogFragment(GroupSelectDialog(it.group))
+                }
+            },
+            onOpenToc = ::openChapterListSafely,
+            onOpenChapter = { item ->
+                viewModel.chapterListData.value
+                    ?.firstOrNull { it.index == item.index }
+                    ?.takeIf { !it.isVolume }
+                    ?.let(::openChapterDirect)
+            },
+            onOpenAiGallery = ::openBookAiImageGallery,
+            onCustomButton = ::callSourceCustomButton,
+            onSetSourceVariable = ::setSourceVariable,
+            onSetBookVariable = ::setBookVariable
+        )
+    }
+
+    private fun showComposeBookInfo(book: Book) {
+        applyBookInfoBackground()
+        menuCustomBtn?.isVisible = viewModel.hasCustomBtn
+        upTvBookshelf()
+        updateComposeBookInfoState()
+        updateComposeReadTime(book)
+        updateComposeGroup(book)
+    }
+
+    private fun updateComposeReadTime(targetBook: Book) {
+        lifecycleScope.launch {
+            val readTime = withContext(IO) {
+                appDb.readRecordDao.getReadTime(targetBook.name) ?: 0L
+            }
+            if (viewModel.getBook(false)?.bookUrl == targetBook.bookUrl) {
+                composeReadTimeText = "${getString(R.string.reading_time_tag)} ${formatReadDuration(readTime)}"
+                updateComposeBookInfoState()
+            }
+        }
+    }
+
+    private fun updateComposeGroup(targetBook: Book) {
+        viewModel.loadGroup(targetBook.group) {
+            if (viewModel.getBook(false)?.bookUrl != targetBook.bookUrl) return@loadGroup
+            composeGroupText = if (it.isNullOrEmpty()) {
+                if (targetBook.isLocal) {
+                    getString(R.string.group_s, getString(R.string.local_no_group))
+                } else {
+                    getString(R.string.group_s, getString(R.string.no_group))
+                }
+            } else {
+                getString(R.string.group_s, it)
+            }
+            updateComposeBookInfoState()
+        }
+    }
+
+    private fun updateComposeBookInfoState() {
+        val safeBook = viewModel.getBook(false)
+        if (safeBook == null) {
+            composeBookInfoState = BookInfoUiState(loading = true)
+            return
+        }
+        val chapterList = viewModel.chapterListData.value.orEmpty()
+        val tocText = when {
+            safeBook.isWebFile -> getString(R.string.toc_s, getString(R.string.downloading))
+            chapterList.isEmpty() -> getString(R.string.toc_s, getString(R.string.error_load_toc))
+            else -> getString(R.string.toc_s, safeBook.durChapterTitle)
+        }
+        composeBookInfoState = BookInfoUiState(
+            name = safeBook.name,
+            author = safeBook.getRealAuthor(),
+            originName = getString(R.string.origin_show, safeBook.originName),
+            latestChapterTitle = getString(R.string.lasted_show, safeBook.latestChapterTitle),
+            readTimeText = composeReadTimeText,
+            coverPath = safeBook.getDisplayCover(),
+            intro = safeBook.getDisplayIntro().orEmpty(),
+            kinds = safeBook.getKindList(),
+            groupText = composeGroupText,
+            tocText = tocText,
+            chapterCount = chapterList.count { !it.isVolume },
+            chapterPreview = chapterList
+                .filter { !it.isVolume }
+                .take(12)
+                .map { BookInfoChapterUi(it.index, it.title, it.isVolume) },
+            inBookshelf = viewModel.inBookshelf,
+            hasCustomButton = viewModel.hasCustomBtn,
+            loading = false
+        )
     }
 
     override fun onResume() {
