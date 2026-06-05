@@ -109,7 +109,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
                     onSpeakMessage = { text, companion ->
-                        AiChatSpeechPlayer.speak(text, companion.ttsRouteJson)
+                        speakCompanionMessage(text, companion)
                     },
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
@@ -200,6 +200,27 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     private fun toggleAutoSpeak() {
         AppConfig.aiChatAutoSpeakEnabled = !AppConfig.aiChatAutoSpeakEnabled
         refreshToken.intValue += 1
+    }
+
+    private fun speakCompanionMessage(text: String, companion: AiChatCompanionConfig) {
+        lifecycleScope.launch {
+            val routeJson = withContext(Dispatchers.IO) {
+                resolveCompanionSpeechRouteJson(companion)
+            }
+            AiChatSpeechPlayer.speak(text, routeJson)
+        }
+    }
+
+    private fun resolveCompanionSpeechRouteJson(companion: AiChatCompanionConfig): String {
+        if (companion.type != AiChatCompanionConfig.TYPE_CHARACTER) {
+            return companion.ttsRouteJson
+        }
+        val characterId = companion.characterId.toLongOrNull() ?: return companion.ttsRouteJson
+        val character = appDb.bookCharacterDao.getCharacter(characterId) ?: return companion.ttsRouteJson
+        if (companion.bookKey.isNotBlank() && character.bookUrl != companion.bookKey) {
+            return companion.ttsRouteJson
+        }
+        return character.speechRouteJson.ifBlank { companion.ttsRouteJson }
     }
 
     private fun showAddCompanionDialog() {
