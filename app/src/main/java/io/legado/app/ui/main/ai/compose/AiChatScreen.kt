@@ -441,20 +441,6 @@ private fun AiChatTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!compactHeader) {
-                Text(
-                    text = buildString {
-                        append(modelLabel.ifBlank { stringResource(R.string.ai_current_model_summary_empty) })
-                        if (currentCompanion.type == AiChatCompanionConfig.TYPE_CHARACTER) {
-                            append(" · 角色")
-                        }
-                    },
-                    color = style.colors.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
         if (modelLabel.isNotBlank()) {
             Surface(
