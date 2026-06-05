@@ -285,6 +285,8 @@ class BookInfoActivity :
     private var useComposeBookInfo = false
     private var composeReadTimeText = ""
     private var composeGroupText = ""
+    private var composeAiImageCount = 0
+    private var composeAiImagePaths: List<String> = emptyList()
     private var composeBookInfoState by mutableStateOf(BookInfoUiState())
     private var composeBookInfoView: ComposeView? = null
 
@@ -687,6 +689,7 @@ class BookInfoActivity :
         updateComposeBookInfoState()
         updateComposeReadTime(book)
         updateComposeGroup(book)
+        updateComposeAiImages(book)
     }
 
     private fun updateComposeReadTime(targetBook: Book) {
@@ -714,6 +717,20 @@ class BookInfoActivity :
                 getString(R.string.group_s, it)
             }
             updateComposeBookInfoState()
+        }
+    }
+
+    private fun updateComposeAiImages(targetBook: Book) {
+        lifecycleScope.launch {
+            val images = withContext(IO) {
+                val key = AiImageGalleryManager.buildBookKey(targetBook.name, targetBook.author)
+                AiImageGalleryManager.listImages(AiImageGalleryManager.GalleryFilter.BOOK(key))
+            }
+            if (viewModel.getBook(false)?.bookUrl == targetBook.bookUrl) {
+                composeAiImageCount = images.size
+                composeAiImagePaths = images.take(12).map { it.localPath }
+                updateComposeBookInfoState()
+            }
         }
     }
 
@@ -745,6 +762,8 @@ class BookInfoActivity :
                 .filter { !it.isVolume }
                 .take(12)
                 .map { BookInfoChapterUi(it.index, it.title, it.isVolume) },
+            aiImageCount = composeAiImageCount,
+            aiImagePaths = composeAiImagePaths,
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
             loading = false
@@ -753,7 +772,11 @@ class BookInfoActivity :
 
     override fun onResume() {
         super.onResume()
-        updateBookAiImagesPanel()
+        if (useComposeBookInfo) {
+            viewModel.getBook(false)?.let { updateComposeAiImages(it) }
+        } else {
+            updateBookAiImagesPanel()
+        }
     }
 
     private fun applyUiCorners() = binding.run {

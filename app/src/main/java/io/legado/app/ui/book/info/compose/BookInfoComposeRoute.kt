@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.info.compose
 
 import android.content.Context
+import android.widget.TextView
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +41,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
@@ -45,7 +50,8 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
-import androidx.compose.ui.viewinterop.AndroidView
+import io.noties.markwon.Markwon
+import io.noties.markwon.html.HtmlPlugin
 
 @Immutable
 data class BookInfoChapterUi(
@@ -185,10 +191,13 @@ fun BookInfoComposeRoute(
         ) {
             BookInfoHero(state, actions, style)
             BookInfoMetaPanel(state, actions, style)
+            BookInfoQuickActionsPanel(state, actions, style)
             BookInfoIntroPanel(
                 intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
                 style = style
             )
+            BookInfoChapterPreviewPanel(state, actions, style)
+            BookInfoAiImagesPanel(state, actions, style)
         }
         BookInfoBottomActions(
             state = state,
@@ -359,12 +368,147 @@ private fun BookInfoIntroPanel(
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold
         )
+        BookInfoRichIntro(intro, style)
+    }
+}
+
+@Composable
+private fun BookInfoQuickActionsPanel(
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        BookInfoCommandChip(stringResource(R.string.refresh), style, actions.onRefresh)
+        BookInfoCommandChip(stringResource(R.string.set_source_variable), style, actions.onSetSourceVariable)
+        BookInfoCommandChip(stringResource(R.string.set_book_variable), style, actions.onSetBookVariable)
+        if (state.hasCustomButton) {
+            BookInfoCommandChip(stringResource(R.string.custom_button), style, actions.onCustomButton)
+        }
+        BookInfoCommandChip(stringResource(R.string.ai_image_gallery), style, actions.onOpenAiGallery)
+    }
+}
+
+@Composable
+private fun BookInfoChapterPreviewPanel(
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    if (state.chapterPreview.isEmpty()) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.panelRadius))
+            .background(style.colors.surface.copy(alpha = 0.96f))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.book_info_tab_toc),
+                color = style.colors.primaryText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = stringResource(R.string.catalog_page_indicator, state.chapterPreview.size, state.chapterCount),
+                color = style.colors.secondaryText,
+                fontSize = 12.5.sp
+            )
+        }
+        state.chapterPreview.forEach { chapter ->
+            Text(
+                text = chapter.title,
+                color = style.colors.secondaryText,
+                fontSize = 13.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(style.metrics.actionRadius))
+                    .clickable { actions.onOpenChapter(chapter) }
+                    .padding(vertical = 7.dp)
+            )
+        }
         Text(
-            text = intro,
-            color = style.colors.secondaryText,
-            fontSize = 13.5.sp,
-            lineHeight = 20.sp
+            text = stringResource(R.string.view_toc),
+            color = style.colors.accent,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .clip(RoundedCornerShape(style.metrics.actionRadius))
+                .clickable(onClick = actions.onOpenToc)
+                .padding(top = 2.dp, bottom = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun BookInfoAiImagesPanel(
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.panelRadius))
+            .background(style.colors.surface.copy(alpha = 0.96f))
+            .clickable(onClick = actions.onOpenAiGallery)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.book_info_component_ai_images),
+                color = style.colors.primaryText,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty),
+                color = style.colors.secondaryText,
+                fontSize = 12.5.sp,
+                maxLines = 1
+            )
+        }
+        if (state.aiImagePaths.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                state.aiImagePaths.forEach { path ->
+                    BookInfoImage(
+                        path = path,
+                        modifier = Modifier
+                            .size(width = 88.dp, height = 104.dp)
+                            .clip(RoundedCornerShape(style.metrics.actionRadius))
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = stringResource(R.string.book_info_component_ai_images_hint),
+                color = style.colors.secondaryText,
+                fontSize = 13.5.sp
+            )
+        }
     }
 }
 
@@ -415,6 +559,28 @@ private fun BookInfoChip(
             .clip(RoundedCornerShape(style.metrics.actionRadius))
             .background(style.colors.accentContainer)
             .padding(horizontal = 10.dp, vertical = 5.dp)
+    )
+}
+
+@Composable
+private fun BookInfoCommandChip(
+    text: String,
+    style: BookInfoComposeStyle,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = style.colors.primaryText,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .shadow(4.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     )
 }
 
@@ -513,4 +679,62 @@ private fun BookInfoImage(
             }
         }
     )
+}
+
+@Composable
+private fun BookInfoRichIntro(
+    rawIntro: String,
+    style: BookInfoComposeStyle
+) {
+    val context = LocalContext.current
+    val markwon = remember(context) {
+        Markwon.builder(context)
+            .usePlugin(HtmlPlugin.create())
+            .build()
+    }
+    AndroidView(
+        modifier = Modifier.fillMaxWidth(),
+        factory = {
+            TextView(it).apply {
+                includeFontPadding = true
+                textSize = 13.5f
+                setLineSpacing(4f, 1f)
+                setTextIsSelectable(false)
+            }
+        },
+        update = { textView ->
+            textView.setTextColor(style.colors.secondaryText.toArgb())
+            if (textView.tag != rawIntro) {
+                textView.tag = rawIntro
+                when {
+                    rawIntro.startsWith("<md>", ignoreCase = true) -> {
+                        markwon.setMarkdown(textView, rawIntro.extractWrappedIntro(4))
+                    }
+
+                    rawIntro.startsWith("<usehtml>", ignoreCase = true) -> {
+                        textView.text = HtmlCompat.fromHtml(
+                            rawIntro.extractWrappedIntro(9),
+                            HtmlCompat.FROM_HTML_MODE_LEGACY
+                        )
+                    }
+
+                    rawIntro.startsWith("<useweb>", ignoreCase = true) -> {
+                        textView.text = HtmlCompat.fromHtml(
+                            rawIntro.extractWrappedIntro(8),
+                            HtmlCompat.FROM_HTML_MODE_LEGACY
+                        )
+                    }
+
+                    else -> {
+                        textView.text = rawIntro
+                    }
+                }
+            }
+        }
+    )
+}
+
+private fun String.extractWrappedIntro(prefixLength: Int): String {
+    val endIndex = lastIndexOf("<").takeIf { it > prefixLength } ?: length
+    return substring(prefixLength.coerceAtMost(length), endIndex.coerceAtLeast(prefixLength).coerceAtMost(length))
 }
