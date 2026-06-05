@@ -30,6 +30,18 @@ data class BookInfoComponentItem(
     var enabled: Boolean
 )
 
+enum class BookInfoPageStyle(val key: String) {
+    CLASSIC("classic"),
+    IMMERSIVE_COMPOSE("immersive_compose");
+
+    companion object {
+        fun fromKey(key: String?): BookInfoPageStyle {
+            return entries.firstOrNull { it.key.equals(key, ignoreCase = true) }
+                ?: CLASSIC
+        }
+    }
+}
+
 object BookInfoComponentConfig {
 
     private val defaultOrder = listOf(
@@ -83,6 +95,14 @@ object BookInfoComponentConfig {
 
     fun reset() {
         save(defaultItems())
+    }
+
+    fun loadStyle(): BookInfoPageStyle {
+        return BookInfoPageStyle.fromKey(appCtx.getPrefString(PreferKey.bookInfoPageStyle))
+    }
+
+    fun saveStyle(style: BookInfoPageStyle) {
+        appCtx.putPrefString(PreferKey.bookInfoPageStyle, style.key)
     }
 
     private fun defaultItems(): MutableList<BookInfoComponentItem> {
