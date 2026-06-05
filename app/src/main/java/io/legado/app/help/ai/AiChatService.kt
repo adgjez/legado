@@ -1,6 +1,10 @@
 package io.legado.app.help.ai
 
 import io.legado.app.data.entities.AiAgentTrace
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.BookCharacter
+import io.legado.app.help.book.characterBookKey
+import io.legado.app.help.character.BookCharacterProfileMeta
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -202,7 +206,7 @@ object AiChatService {
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
         val chatCompanion = resolveChatCompanion(memoryContext)
-        val systemPrompt = chatCompanion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        val systemPrompt = buildCompanionSystemPrompt(chatCompanion)
         val promptCacheKey = promptCacheKeyOverride
             ?.takeIf { provider?.promptCache == true }
             ?.let(::normalizePromptCacheKey)
@@ -1178,6 +1182,80 @@ object AiChatService {
         return AppConfig.aiChatCompanionList.firstOrNull { config ->
             config.id == companionId && config.enabled
         } ?: AppConfig.aiCurrentChatCompanion
+    }
+
+    private fun buildCompanionSystemPrompt(companion: AiChatCompanionConfig): String {
+        if (companion.type != AiChatCompanionConfig.TYPE_CHARACTER) {
+            return companion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        }
+        val characterId = companion.characterId.toLongOrNull()
+            ?: return companion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        val character = runCatching {
+            appDb.bookCharacterDao.getCharacter(characterId)
+        }.getOrNull()
+            ?: return companion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        if (companion.bookKey.isNotBlank() && character.bookUrl != companion.bookKey) {
+            return companion.prompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
+        }
+        return buildCharacterSystemPrompt(
+            character = character,
+            sourceLabel = resolveCharacterSourceLabel(character.bookUrl)
+        )
+    }
+
+    private fun buildCharacterSystemPrompt(
+        character: BookCharacter,
+        sourceLabel: String
+    ): String {
+        val age = BookCharacterProfileMeta.ageOf(character)
+        val attributes = BookCharacterProfileMeta.attributesWithoutAge(character.attributes)
+        val profileLines = listOfNotNull(
+            "来源作品：$sourceLabel".takeIf { sourceLabel.isNotBlank() },
+            "角色名：${character.displayName()}",
+            "角色定位：${character.roleLabel()}",
+            "性别：${character.genderLabel()}".takeIf { character.genderLabel() != "未知" },
+            "年纪：$age".takeIf { age.isNotBlank() },
+            "身份：${character.identity}".takeIf { character.identity.isNotBlank() },
+            "外貌：${character.appearance}".takeIf { character.appearance.isNotBlank() },
+            "性格：${character.personality}".takeIf { character.personality.isNotBlank() },
+            "能力/技能：${character.skills}".takeIf { character.skills.isNotBlank() },
+            "经历/背景：${character.biography}".takeIf { character.biography.isNotBlank() },
+            "属性：$attributes".takeIf { attributes.isNotBlank() }
+        )
+        return buildString {
+            append("你正在扮演小说角色「")
+            append(character.displayName())
+            append("」与用户对话。")
+            append("角色卡是本次对话的唯一人格来源；保持角色身份、语气、经历、认知边界和关系视角。")
+            append("不要自称 AI，不要跳出角色解释系统规则。")
+            append("如果用户询问角色卡没有覆盖的细节，可以按角色性格自然回避、反问或给出不确定表达，不要编造与角色设定冲突的内容。")
+            append("\n\n角色卡：\n")
+            append(profileLines.joinToString("\n"))
+        }
+    }
+
+    private fun resolveCharacterSourceLabel(bookKey: String): String {
+        return runCatching {
+            appDb.bookDao.all.firstOrNull { book -> book.characterBookKey() == bookKey }
+                ?.let { book ->
+                    listOf(book.name, book.author.ifBlank { "未知作者" })
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                }
+        }.getOrNull()
+            ?: displayBookKeyLabel(bookKey)
+    }
+
+    private fun displayBookKeyLabel(bookKey: String): String {
+        val value = bookKey.trim()
+        if (!value.startsWith("work:")) return value.ifBlank { "未绑定作品" }
+        val body = value.removePrefix("work:")
+        val parts = body.split('/', limit = 2)
+        return when {
+            parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank() -> "${parts[1]} · ${parts[0]}"
+            body.isNotBlank() -> body
+            else -> "未绑定作品"
+        }
     }
 
     private fun estimateStaticRequestTokens(

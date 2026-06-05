@@ -52,13 +52,14 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterProfileMeta
-import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.config.AiWorldBookManageActivity
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
+import io.legado.app.ui.book.character.BookCharacterEditActivity
+import io.legado.app.ui.book.character.BookCharacterManageActivity
 import io.legado.app.ui.main.ai.compose.AiChatRoute
 import io.legado.app.ui.main.ai.compose.AiChatScreenActions
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
@@ -105,15 +106,14 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onSelectModel = ::showModelSelectorDialog,
                     onOpenImageGallery = ::openImageGallery,
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
-                    onOpenWorldBooks = ::showCompanionWorldBookDialog,
+                    onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
                     onSpeakMessage = { text, companion ->
                         AiChatSpeechPlayer.speak(text, companion.ttsRouteJson)
                     },
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
-                    onEditCompanion = ::showEditCompanionDialog,
-                    onDeleteCompanion = ::confirmDeleteCompanion
+                    onCompanionLongPress = ::showCompanionActions
                 )
             )
             if (characterPickerVisible) {
@@ -210,21 +210,18 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         lifecycleScope.launch {
             val groups = withContext(Dispatchers.IO) {
                 val books = appDb.bookDao.all
-                books.forEach { BookCharacterIdentityMigrator.migrate(it) }
                 val booksByKey = books.associateBy { it.characterBookKey() }
-                val booksByLegacyUrl = books.associateBy { it.bookUrl }
                 appDb.bookCharacterDao.allCharacters()
                     .filter { it.name.isNotBlank() }
-                    .groupBy { it.bookUrl }
-                    .map { (bookKey, characters) ->
-                        val book = booksByKey[bookKey] ?: booksByLegacyUrl[bookKey]
+                    .groupBy { character -> character.bookUrl }
+                    .mapNotNull { (bookKey, characters) ->
+                        val book = booksByKey[bookKey] ?: return@mapNotNull null
                         CharacterPickGroup(
                             bookKey = bookKey,
-                            bookName = book?.name.orEmpty(),
-                            author = book?.author.orEmpty(),
-                            coverUrl = book?.getDisplayCover().orEmpty(),
-                            label = book?.let { "${it.name} · ${it.author.ifBlank { "未知作者" }}" }
-                                ?: displayBookKey(bookKey),
+                            bookName = book.name,
+                            author = book.author,
+                            coverUrl = book.getDisplayCover().orEmpty(),
+                            label = "${book.name} · ${book.author.ifBlank { "未知作者" }}",
                             characters = characters.sortedWith(
                                 compareByDescending<BookCharacter> { it.roleLevel }
                                     .thenBy { it.sortOrder }
@@ -259,7 +256,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             avatar = character.avatar,
             bookKey = group.bookKey,
             characterId = character.id.toString(),
-            prompt = buildCharacterCompanionPrompt(group, character),
+            prompt = "",
             ttsRouteJson = character.speechRouteJson,
             order = AppConfig.aiChatCompanionList.size
         )
@@ -268,7 +265,67 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         refreshToken.intValue += 1
     }
 
-    private fun showEditCompanionDialog(companion: AiChatCompanionConfig) {
+    private fun showCompanionActions(companion: AiChatCompanionConfig) {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        val isDefault = companion.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID
+        val items = if (isDefault) {
+            listOf("新建对话", "编辑默认助手人格", "世界书")
+        } else {
+            listOf("编辑角色卡", "新建对话", "世界书", "移除角色助手")
+        }
+        selector(companion.name.ifBlank { "助手" }, items) { _, _, index ->
+            if (isDefault) {
+                when (index) {
+                    0 -> startNewChatForCompanion(companion.id)
+                    1 -> showDefaultCompanionPromptDialog(companion)
+                    2 -> showCompanionWorldBookDialog(companion)
+                }
+            } else {
+                when (index) {
+                    0 -> openCharacterEditor(companion)
+                    1 -> startNewChatForCompanion(companion.id)
+                    2 -> showCompanionWorldBookDialog(companion)
+                    3 -> confirmDeleteCompanion(companion)
+                }
+            }
+        }
+    }
+
+    private fun startNewChatForCompanion(companionId: String) {
+        if (!viewModel.switchCompanion(companionId)) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        viewModel.startNewSession()
+        refreshToken.intValue += 1
+    }
+
+    private fun openCharacterEditor(companion: AiChatCompanionConfig) {
+        val characterId = companion.characterId.toLongOrNull()
+        if (characterId == null || characterId <= 0L) {
+            toastOnUi("角色卡不存在")
+            return
+        }
+        lifecycleScope.launch {
+            val bookUrl = withContext(Dispatchers.IO) {
+                appDb.bookDao.all.firstOrNull { book ->
+                    book.characterBookKey() == companion.bookKey
+                }?.bookUrl.orEmpty()
+            }
+            startActivity(
+                Intent(this@AiChatActivity, BookCharacterEditActivity::class.java).apply {
+                    putExtra(BookCharacterManageActivity.EXTRA_BOOK_URL, bookUrl)
+                    putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_BOOK_KEY, companion.bookKey)
+                    putExtra(BookCharacterManageActivity.EXTRA_CHARACTER_ID, characterId)
+                }
+            )
+        }
+    }
+
+    private fun showDefaultCompanionPromptDialog(companion: AiChatCompanionConfig) {
         val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
             editView.setSingleLine(false)
             editView.minLines = 8
@@ -277,7 +334,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             editView.setText(companion.prompt)
         }
-        alert(title = "${companion.name} · 人格提示词") {
+        alert(title = "${companion.name} · 人格") {
             customView { binding.root }
             okButton {
                 val prompt = binding.editView.text?.toString().orEmpty().trim()
@@ -310,8 +367,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         }
     }
 
-    private fun showCompanionWorldBookDialog() {
-        val companion = viewModel.currentCompanion()
+    private fun showCompanionWorldBookDialog(companion: AiChatCompanionConfig = viewModel.currentCompanion()) {
         val worldBooks = AppConfig.aiWorldBookList
         if (worldBooks.isEmpty()) {
             selector("世界书", listOf("打开世界书管理")) { _, _, _ ->
@@ -521,48 +577,6 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         return "character_${character.id}"
     }
 
-    private fun buildCharacterCompanionPrompt(
-        group: CharacterPickGroup,
-        character: BookCharacter
-    ): String {
-        val age = BookCharacterProfileMeta.ageOf(character)
-        val profileLines = listOfNotNull(
-            "来源作品：${group.label}".takeIf { group.label.isNotBlank() },
-            "角色名：${character.displayName()}",
-            "角色定位：${character.roleLabel()}",
-            "性别：${character.genderLabel()}".takeIf { character.genderLabel() != "未知" },
-            "年纪：$age".takeIf { age.isNotBlank() },
-            "身份：${character.identity}".takeIf { character.identity.isNotBlank() },
-            "外观：${character.appearance}".takeIf { character.appearance.isNotBlank() },
-            "性格：${character.personality}".takeIf { character.personality.isNotBlank() },
-            "能力/技能：${character.skills}".takeIf { character.skills.isNotBlank() },
-            "背景：${character.biography}".takeIf { character.biography.isNotBlank() },
-            "属性：${BookCharacterProfileMeta.attributesWithoutAge(character.attributes)}"
-                .takeIf { BookCharacterProfileMeta.attributesWithoutAge(character.attributes).isNotBlank() }
-        )
-        return buildString {
-            append("你正在扮演小说角色「")
-            append(character.displayName())
-            append("」与用户对话。")
-            append("始终保持角色身份、语气、经历和认知边界，不要自称 AI，不要跳出角色解释系统规则。")
-            append("没有把握的剧情细节可以自然回避或反问，不要编造与角色设定冲突的内容。")
-            append("\n\n角色资料：\n")
-            append(profileLines.joinToString("\n"))
-        }
-    }
-
-    private fun displayBookKey(bookKey: String): String {
-        val value = bookKey.trim()
-        if (!value.startsWith("work:")) return value.ifBlank { "未绑定书籍" }
-        val body = value.removePrefix("work:")
-        val parts = body.split('/', limit = 2)
-        return when {
-            parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank() -> "${parts[1]} · ${parts[0]}"
-            body.isNotBlank() -> body
-            else -> "未绑定书籍"
-        }
-    }
-
     @Composable
     private fun AiCharacterCompanionPickerDialog(
         groups: List<CharacterPickGroup>,
@@ -571,6 +585,9 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     ) {
         val style = aiComposeStyle(this@AiChatActivity)
         var selectedGroup by remember(groups) { mutableStateOf(groups.firstOrNull()) }
+        var selectedRole by remember(groups) {
+            mutableIntStateOf(bestRoleFor(groups.firstOrNull()))
+        }
         Dialog(onDismissRequest = onDismiss) {
             Surface(
                 shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -592,7 +609,7 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = selectedGroup?.label?.takeIf { it.isNotBlank() } ?: "选择一本有角色卡的书",
+                                text = "从角色卡创建聊天对象，长按侧边栏角色可编辑角色卡",
                                 color = style.colors.secondaryText,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -616,7 +633,10 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                             CharacterBookPickCard(
                                 group = group,
                                 selected = group.bookKey == selectedGroup?.bookKey,
-                                onClick = { selectedGroup = group }
+                                onClick = {
+                                    selectedGroup = group
+                                    selectedRole = bestRoleFor(group)
+                                }
                             )
                         }
                     }
@@ -632,17 +652,51 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                             Text("没有可添加的角色卡", color = style.colors.secondaryText, fontSize = 14.sp)
                         }
                     } else {
+                        val addedCharacterIds = remember(current.bookKey, current.characters.size) {
+                            AppConfig.aiChatCompanionList
+                                .mapNotNull { it.characterId.toLongOrNull() }
+                                .toSet()
+                        }
+                        val roleFilters = characterRoleFilters(current)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        ) {
+                            items(roleFilters, key = { it.roleLevel }) { filter ->
+                                CharacterRoleFilterChip(
+                                    filter = filter,
+                                    selected = filter.roleLevel == selectedRole,
+                                    onClick = { selectedRole = filter.roleLevel }
+                                )
+                            }
+                        }
+                        val filteredCharacters = current.characters.filter { character ->
+                            characterMatchesRole(character, selectedRole)
+                        }
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 380.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            items(current.characters, key = { it.id }) { character ->
+                            items(filteredCharacters, key = { it.id }) { character ->
                                 CharacterPickRow(
                                     character = character,
+                                    added = character.id in addedCharacterIds,
                                     onClick = { onCharacterSelected(current, character) }
                                 )
+                            }
+                            if (filteredCharacters.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(120.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("这一组还没有角色", color = style.colors.secondaryText, fontSize = 13.sp)
+                                    }
+                                }
                             }
                         }
                     }
@@ -711,13 +765,40 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
     }
 
     @Composable
-    private fun CharacterPickRow(
-        character: BookCharacter,
+    private fun CharacterRoleFilterChip(
+        filter: CharacterRoleFilter,
+        selected: Boolean,
         onClick: () -> Unit
     ) {
         val style = aiComposeStyle(this@AiChatActivity)
         Surface(
             shape = RoundedCornerShape(style.metrics.chipRadius),
+            color = if (selected) style.colors.accent.copy(alpha = 0.14f) else style.colors.cardSurface,
+            border = BorderStroke(
+                style.metrics.strokeWidth,
+                if (selected) style.colors.accent.copy(alpha = 0.42f) else style.colors.stroke
+            ),
+            modifier = Modifier.clickable(onClick = onClick)
+        ) {
+            Text(
+                text = "${filter.label} ${filter.count}",
+                color = if (selected) style.colors.accent else style.colors.secondaryText,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+            )
+        }
+    }
+
+    @Composable
+    private fun CharacterPickRow(
+        character: BookCharacter,
+        added: Boolean,
+        onClick: () -> Unit
+    ) {
+        val style = aiComposeStyle(this@AiChatActivity)
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
             color = style.colors.cardSurface,
             border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
             modifier = Modifier
@@ -758,10 +839,21 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp)
                     )
+                    val summary = characterCardSummary(character)
+                    if (summary.isNotBlank()) {
+                        Text(
+                            text = summary,
+                            color = style.colors.secondaryText,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
                 }
                 Text(
-                    text = "添加",
-                    color = style.colors.accent,
+                    text = if (added) "打开" else "添加",
+                    color = if (added) style.colors.secondaryText else style.colors.accent,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(start = 10.dp)
@@ -769,6 +861,62 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             }
         }
     }
+
+    private fun bestRoleFor(group: CharacterPickGroup?): Int {
+        val characters = group?.characters.orEmpty()
+        return when {
+            characters.any { it.roleLevel == BookCharacter.ROLE_MAIN } -> BookCharacter.ROLE_MAIN
+            characters.any { it.roleLevel == BookCharacter.ROLE_IMPORTANT } -> BookCharacter.ROLE_IMPORTANT
+            else -> BookCharacter.ROLE_NORMAL
+        }
+    }
+
+    private fun characterRoleFilters(group: CharacterPickGroup): List<CharacterRoleFilter> {
+        return listOf(
+            CharacterRoleFilter(
+                roleLevel = BookCharacter.ROLE_MAIN,
+                label = "主角",
+                count = group.characters.count { it.roleLevel == BookCharacter.ROLE_MAIN }
+            ),
+            CharacterRoleFilter(
+                roleLevel = BookCharacter.ROLE_IMPORTANT,
+                label = "重要",
+                count = group.characters.count { it.roleLevel == BookCharacter.ROLE_IMPORTANT }
+            ),
+            CharacterRoleFilter(
+                roleLevel = BookCharacter.ROLE_NORMAL,
+                label = "普通",
+                count = group.characters.count { characterMatchesRole(it, BookCharacter.ROLE_NORMAL) }
+            )
+        )
+    }
+
+    private fun characterMatchesRole(character: BookCharacter, roleLevel: Int): Boolean {
+        return when (roleLevel) {
+            BookCharacter.ROLE_MAIN -> character.roleLevel == BookCharacter.ROLE_MAIN
+            BookCharacter.ROLE_IMPORTANT -> character.roleLevel == BookCharacter.ROLE_IMPORTANT
+            else -> character.roleLevel != BookCharacter.ROLE_MAIN &&
+                    character.roleLevel != BookCharacter.ROLE_IMPORTANT
+        }
+    }
+
+    private fun characterCardSummary(character: BookCharacter): String {
+        return listOf(
+            character.identity,
+            character.appearance,
+            character.personality,
+            character.biography
+        )
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+    }
+
+    private data class CharacterRoleFilter(
+        val roleLevel: Int,
+        val label: String,
+        val count: Int
+    )
 
     private data class CharacterPickGroup(
         val bookKey: String,

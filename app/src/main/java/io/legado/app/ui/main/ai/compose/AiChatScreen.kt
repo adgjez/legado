@@ -10,7 +10,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -121,8 +123,7 @@ data class AiChatScreenActions(
     val onSpeakMessage: ((String, AiChatCompanionConfig) -> Unit)? = null,
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
-    val onEditCompanion: ((AiChatCompanionConfig) -> Unit)? = null,
-    val onDeleteCompanion: ((AiChatCompanionConfig) -> Unit)? = null
+    val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null
 )
 
 @Composable
@@ -572,7 +573,7 @@ private fun AiCompanionDrawer(
             border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
             modifier = Modifier
                 .fillMaxHeight()
-                .width(304.dp)
+                .width(324.dp)
                 .align(Alignment.CenterStart)
                 .statusBarsPadding()
                 .navigationBarsPadding()
@@ -588,13 +589,13 @@ private fun AiCompanionDrawer(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "助手",
+                            text = "AI 酒馆",
                             color = style.colors.primaryText,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${companions.size} 个角色窗口",
+                            text = "${companions.size} 个会话角色",
                             color = style.colors.secondaryText,
                             fontSize = 12.sp
                         )
@@ -632,8 +633,12 @@ private fun AiCompanionDrawer(
                                 actions.onSelectCompanion?.invoke(companion.id)
                                 onDismiss()
                             },
-                            onEdit = actions.onEditCompanion,
-                            onDelete = actions.onDeleteCompanion
+                            onLongPress = actions.onCompanionLongPress?.let { action ->
+                                {
+                                    onDismiss()
+                                    action(companion)
+                                }
+                            }
                         )
                     }
                     item { Spacer(modifier = Modifier.height(18.dp)) }
@@ -644,13 +649,13 @@ private fun AiCompanionDrawer(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun AiCompanionDrawerItem(
     companion: AiChatCompanionConfig,
     selected: Boolean,
     style: AiComposeStyle,
     onSelect: () -> Unit,
-    onEdit: ((AiChatCompanionConfig) -> Unit)?,
-    onDelete: ((AiChatCompanionConfig) -> Unit)?
+    onLongPress: (() -> Unit)?
 ) {
     val isDefault = companion.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID
     Row(
@@ -663,10 +668,21 @@ private fun AiCompanionDrawerItem(
                 if (selected) style.colors.accent.copy(alpha = 0.35f) else style.colors.stroke,
                 RoundedCornerShape(style.metrics.cardRadius)
             )
-            .clickable { onSelect() }
-            .padding(10.dp),
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = onLongPress
+            )
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(38.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (selected) style.colors.accent else Color.Transparent)
+        )
+        Spacer(modifier = Modifier.width(9.dp))
         AiCompanionAvatar(companion, style, 42)
         Column(
             modifier = Modifier
@@ -692,19 +708,14 @@ private fun AiCompanionDrawerItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (!isDefault) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    onEdit?.let {
-                        AiDrawerTextAction("编辑", style) { it(companion) }
-                    }
-                    onDelete?.let {
-                        AiDrawerTextAction("删除", style, danger = true) { it(companion) }
-                    }
-                }
-            }
+        }
+        if (!isDefault) {
+            Icon(
+                painter = painterResource(R.drawable.ic_more_vert),
+                contentDescription = null,
+                tint = style.colors.secondaryText.copy(alpha = 0.66f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -755,24 +766,6 @@ private fun displayBookKeyLabel(bookKey: String): String {
         body.isNotBlank() -> body
         else -> value
     }
-}
-
-@Composable
-private fun AiDrawerTextAction(
-    text: String,
-    style: AiComposeStyle,
-    danger: Boolean = false,
-    onClick: () -> Unit
-) {
-    Text(
-        text = text,
-        color = if (danger) style.colors.danger else style.colors.accent,
-        fontSize = 12.sp,
-        modifier = Modifier
-            .clip(RoundedCornerShape(style.metrics.chipRadius))
-            .clickable { onClick() }
-            .padding(vertical = 2.dp)
-    )
 }
 
 @Composable
