@@ -2669,11 +2669,14 @@ private fun RoleAssignmentProgressDialog(
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
-                        RoleDialogAction("隐藏", colors, onHide)
-                        if (false && !state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             RoleDialogAction("重新分配", colors, onRetry)
+                            RoleDialogAction("隐藏", colors, onHide)
+                            if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
                         }
-                        if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
                     }
                     RoleAssignmentSummary(state, roleState, colors)
                     AudioAssignmentSummary(state.audioInfo, colors)
@@ -2683,16 +2686,6 @@ private fun RoleAssignmentProgressDialog(
                         colors = colors,
                         modifier = Modifier.padding(top = 12.dp)
                     )
-                    if (!state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            RoleDialogAction("閲嶆柊鍒嗛厤", colors, onRetry)
-                        }
-                    }
                 }
             }
         }
