@@ -168,6 +168,10 @@ class HttpReadAloudService : BaseReadAloudService(),
         val error: Throwable? = null
     )
 
+    private fun suppressRouteTtsError(route: SpeechRoute?): Boolean {
+        return AppConfig.aiReadAloudRoleEnabled && route?.isConfigured == true
+    }
+
     override fun onCreate() {
         super.onCreate()
         exoPlayer.addListener(this)
@@ -533,6 +537,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 httpTts = httpTtsForRoute(ReadAloud.httpTTS, route)
             )
             if (result.success) {
+                SpeechVoiceGroupRepository.markInvalidRoute(request.route, reason = "合成失败")
                 AppLog.putDebug("多角色 TTS 路由失败，已临时改用：${route.speakerName.ifBlank { route.engineType }}")
                 return result
             }
@@ -686,6 +691,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                 }
             }
             result.getOrNull()?.let { stream ->
+                SpeechVoiceGroupRepository.markInvalidRoute(route, reason = "合成失败")
                 AppLog.putDebug("多角色 TTS 路由失败，已临时改用：${fallbackRoute.speakerName.ifBlank { fallbackRoute.engineType }}")
                 return stream
             }
@@ -721,6 +727,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         speakText: String,
         route: SpeechRoute? = null
     ): InputStream? {
+        val suppressRouteError = suppressRouteTtsError(route)
         while (true) {
             try {
                 val analyzeUrl = AnalyzeUrl(
@@ -785,7 +792,11 @@ class HttpReadAloudService : BaseReadAloudService(),
                 when (e) {
                     is CancellationException -> throw e
                     is ScriptException, is WrappedException -> {
-                        AppLog.put("js错误\n${e.localizedMessage}", e, true)
+                        if (suppressRouteError) {
+                            AppLog.putDebug("多角色 TTS 脚本失败，准备尝试备用发言人：${route?.speakerName.orEmpty()}", e)
+                        } else {
+                            AppLog.put("js错误\n${e.localizedMessage}", e, true)
+                        }
                         e.printOnDebug()
                         throw e
                     }
@@ -794,7 +805,11 @@ class HttpReadAloudService : BaseReadAloudService(),
                         downloadErrorNo++
                         if (downloadErrorNo > 5) {
                             val msg = "tts超时或连接错误超过5次\n${e.localizedMessage}"
-                            AppLog.put(msg, e, true)
+                            if (suppressRouteError) {
+                                AppLog.putDebug("多角色 TTS 超时，准备尝试备用发言人：${route?.speakerName.orEmpty()}", e)
+                            } else {
+                                AppLog.put(msg, e, true)
+                            }
                             throw e
                         }
                     }
@@ -802,14 +817,24 @@ class HttpReadAloudService : BaseReadAloudService(),
                     else -> {
                         downloadErrorNo++
                         val msg = "tts下载错误\n${e.localizedMessage}"
-                        AppLog.put(msg, e)
+                        if (suppressRouteError) {
+                            AppLog.putDebug("多角色 $msg", e)
+                        } else {
+                            AppLog.put(msg, e)
+                        }
                         e.printOnDebug()
                         if (downloadErrorNo > 5) {
                             val msg1 = "TTS服务器连续5次错误，已暂停阅读。"
-                            AppLog.put(msg1, e, true)
+                            if (suppressRouteError) {
+                                AppLog.putDebug("多角色 TTS 连续失败，准备尝试备用发言人：${route?.speakerName.orEmpty()}", e)
+                            } else {
+                                AppLog.put(msg1, e, true)
+                            }
                             throw e
                         } else {
-                            AppLog.put("TTS下载音频出错，使用无声音频代替。\n朗读文本：$speakText")
+                            if (!suppressRouteError) {
+                                AppLog.put("TTS下载音频出错，使用无声音频代替。\n朗读文本：$speakText")
+                            }
                             delay((downloadErrorNo * 800L).coerceAtMost(4000L))
                             continue
                         }
@@ -864,6 +889,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
         return (candidates + defaultSystemRoute())
             .filter { it.isConfigured }
+            .filterNot(SpeechVoiceGroupRepository::isBlockedRoute)
             .distinctBy { it.fallbackKey() }
             .filter { it.fallbackKey() != originalKey }
     }
@@ -1048,7 +1074,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     && readAloudNumber + i > textChapter.getReadLength(pageIndex + 1)
                 ) {
                     pageIndex++
-                    ReadBook.moveToNextPage()
+                    ReadBook.moveToNextPage(fromReadAloud = true)
                     upTtsProgress(readAloudNumber + i.toInt())
                 }
                 delay(sleep)
