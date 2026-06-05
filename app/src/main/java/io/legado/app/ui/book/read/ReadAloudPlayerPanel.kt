@@ -456,6 +456,11 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 syncPlaybackUiState()
             }
             io.legado.app.constant.Status.STOP -> {
+                val keepVisibleForPendingStart = visibility == VISIBLE &&
+                        playbackPhase in setOf(
+                            ReadAloudPlaybackState.PHASE_PREPARING,
+                            ReadAloudPlaybackState.PHASE_BUFFERING
+                        )
                 if (switchingTtsEngine) {
                     val pendingSwitch = pendingTtsEngineSwitch
                     if (pendingSwitch?.wasPlaying == true) {
@@ -480,7 +485,12 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 playbackCueIndex = -1
                 playbackChapterIndex = -1
                 dismissedForCurrentRun = false
-                hidePanel()
+                if (keepVisibleForPendingStart) {
+                    syncPlaybackUiState()
+                    refresh()
+                } else {
+                    hidePanel()
+                }
             }
         }
     }
@@ -504,6 +514,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
     }
 
     fun onPlaybackState(state: ReadAloudPlaybackState) {
+        val currentBookUrl = ReadBook.book?.bookUrl.orEmpty()
+        if (state.bookUrl.isNotBlank() && currentBookUrl.isNotBlank() && state.bookUrl != currentBookUrl) return
         val currentChapterIndex = ReadBook.curTextChapter?.chapter?.index ?: ReadBook.durChapterIndex
         val currentChapterUrl = ReadBook.curTextChapter?.chapter?.url.orEmpty()
         if (state.chapterIndex >= 0 && state.chapterIndex != currentChapterIndex) return
@@ -590,9 +602,14 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val chapterCount = ReadBook.chapterSize
         if (chapterCount <= 0) return
         val targetIndex = index.coerceIn(0, chapterCount - 1)
+        val shouldContinueReadAloud = BaseReadAloudService.isRun
+        val shouldPlay = !BaseReadAloudService.pause
         prepareChapterNavigation(targetIndex)
         ReadBook.openChapter(targetIndex, upContent = true) {
             onChapterContentChanged()
+            if (shouldContinueReadAloud) {
+                ReadBook.readAloud(play = shouldPlay)
+            }
         }
     }
 
@@ -603,9 +620,13 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         if (targetIndex == ReadBook.durChapterIndex) return
         prepareChapterNavigation(targetIndex)
         val moved = if (delta < 0) {
-            ReadBook.moveToPrevChapter(upContent = true, toLast = false)
+            ReadBook.moveToPrevChapter(
+                upContent = true,
+                toLast = false,
+                fromReadAloud = BaseReadAloudService.isRun
+            )
         } else {
-            ReadBook.moveToNextChapter(true)
+            ReadBook.moveToNextChapter(true, fromReadAloud = BaseReadAloudService.isRun)
         }
         if (!moved) {
             refresh()
@@ -1981,6 +2002,7 @@ private data class LyricsTarget(
 )
 
 internal data class PlayerColors(
+    val night: Boolean,
     val background: Color,
     val panel: Color,
     val panelStrong: Color,
@@ -2037,16 +2059,30 @@ private data class PlayerChapterModel(
 @Composable
 internal fun rememberPlayerColors(palette: ReaderSheetStyle.Palette): PlayerColors {
     val accent = Color(palette.accentColor)
-    val panel = Color(ColorUtils.blendColors(palette.panel, android.graphics.Color.BLACK, 0.56f))
-    val panelStrong = Color(ColorUtils.blendColors(palette.panelStrong, android.graphics.Color.BLACK, 0.66f))
+    val night = AppConfig.isNightTheme || !ColorUtils.isColorLight(palette.surface)
+    val panel = if (night) {
+        Color(ColorUtils.blendColors(palette.panel, android.graphics.Color.BLACK, 0.50f))
+    } else {
+        Color(ColorUtils.blendColors(palette.panel, android.graphics.Color.WHITE, 0.82f))
+    }
+    val panelStrong = if (night) {
+        Color(ColorUtils.blendColors(palette.panelStrong, android.graphics.Color.BLACK, 0.62f))
+    } else {
+        Color(ColorUtils.blendColors(palette.panelStrong, android.graphics.Color.WHITE, 0.88f))
+    }
     return PlayerColors(
-        background = Color(ColorUtils.blendColors(palette.surface, android.graphics.Color.BLACK, 0.72f)),
+        night = night,
+        background = if (night) {
+            Color(ColorUtils.blendColors(palette.surface, android.graphics.Color.BLACK, 0.68f))
+        } else {
+            Color(ColorUtils.blendColors(palette.surface, android.graphics.Color.WHITE, 0.72f))
+        },
         panel = panel,
         panelStrong = panelStrong,
-        panelBorder = Color(ColorUtils.blendColors(palette.stroke, android.graphics.Color.WHITE, 0.24f)),
-        primaryText = Color.White.copy(alpha = 0.94f),
-        secondaryText = Color.White.copy(alpha = 0.68f),
-        subtleText = Color.White.copy(alpha = 0.42f),
+        panelBorder = Color.Transparent,
+        primaryText = if (night) Color.White.copy(alpha = 0.94f) else Color(palette.textColor).copy(alpha = 0.92f),
+        secondaryText = if (night) Color.White.copy(alpha = 0.68f) else Color(palette.secondaryTextColor).copy(alpha = 0.88f),
+        subtleText = if (night) Color.White.copy(alpha = 0.42f) else Color(palette.secondaryTextColor).copy(alpha = 0.66f),
         accent = accent,
         accentText = if (ColorUtils.isColorLight(palette.accentColor)) Color.Black else Color.White,
         fluidA = accent,
@@ -2079,11 +2115,19 @@ private fun CoverAtmosphereBackdrop(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color.Black.copy(alpha = 0.32f),
-                            colors.background.copy(alpha = 0.54f),
-                            Color.Black.copy(alpha = 0.66f)
-                        )
+                        if (colors.night) {
+                            listOf(
+                                Color.Black.copy(alpha = 0.32f),
+                                colors.background.copy(alpha = 0.54f),
+                                Color.Black.copy(alpha = 0.66f)
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.40f),
+                                colors.background.copy(alpha = 0.76f),
+                                Color.White.copy(alpha = 0.82f)
+                            )
+                        }
                     )
                 )
         )
@@ -2347,7 +2391,6 @@ internal fun ReadAloudCapsule(
                     modifier = Modifier.size(closeButtonSize),
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -2627,7 +2670,7 @@ private fun RoleAssignmentProgressDialog(
                             )
                         }
                         RoleDialogAction("隐藏", colors, onHide)
-                        if (!state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
+                        if (false && !state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
                             RoleDialogAction("重新分配", colors, onRetry)
                         }
                         if (!state.roleStatusRunning) RoleDialogAction("关闭", colors, onDismiss)
@@ -2640,6 +2683,16 @@ private fun RoleAssignmentProgressDialog(
                         colors = colors,
                         modifier = Modifier.padding(top = 12.dp)
                     )
+                    if (!state.roleStatusRunning && roleState.status == AiReadAloudRoleState.STATUS_FAILED) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            RoleDialogAction("閲嶆柊鍒嗛厤", colors, onRetry)
+                        }
+                    }
                 }
             }
         }
@@ -2935,7 +2988,7 @@ private fun RolePreviewParagraphGroup(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
         color = if (current) colors.accent.copy(alpha = 0.12f) else colors.panel.copy(alpha = 0.52f),
-        border = BorderStroke(1.dp, if (current) colors.accent.copy(alpha = 0.55f) else colors.panelBorder)
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2967,7 +3020,7 @@ private fun RolePreviewSegmentRow(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
         color = colors.panelStrong.copy(alpha = 0.58f),
-        border = BorderStroke(1.dp, if (danger) Color(0xFFFF8A9A).copy(alpha = 0.34f) else colors.panelBorder.copy(alpha = 0.7f))
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -3016,7 +3069,7 @@ private fun RoleTypeChip(
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = color.copy(alpha = 0.14f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.30f))
+        border = BorderStroke(1.dp, Color.Transparent)
     ) {
         Text(
             text = roleTypeLabel(roleType),
@@ -3089,7 +3142,6 @@ private fun HeaderIconButton(
         modifier = Modifier.size(42.dp),
         shape = CircleShape,
         color = Color.White.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f))
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -3699,16 +3751,17 @@ private fun SceneBubble(
         compact -> 460.dp
         else -> 520.dp
     }
-    Surface(
-        onClick = onClick,
+    Box(
         modifier = modifier
-            .widthIn(max = maxWidth),
-        shape = actionShape,
-        color = bubbleColor,
-        border = BorderStroke(
-            1.dp,
-            colors.panelBorder.copy(alpha = if (current) 0.28f else 0.45f)
-        )
+            .widthIn(max = maxWidth)
+            .shadow(
+                elevation = if (current) 8.dp else 4.dp,
+                shape = actionShape,
+                clip = false
+            )
+            .clip(actionShape)
+            .background(bubbleColor)
+            .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier.padding(
@@ -4253,7 +4306,11 @@ private fun MinimalProgress(
             .coerceIn(0f, 1f)
     }
     val progress = draggingProgress ?: state.progress
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp)
+    ) {
         Slider(
             value = progress.coerceIn(0f, 1f),
             onValueChange = { draggingProgress = snapProgress(it) },
@@ -4264,6 +4321,7 @@ private fun MinimalProgress(
             enabled = state.paragraphCount > 1,
             modifier = Modifier
                 .fillMaxWidth()
+                .height(28.dp)
                 .clip(actionShape),
             colors = SliderDefaults.colors(
                 thumbColor = colors.primaryText,
@@ -4274,6 +4332,7 @@ private fun MinimalProgress(
                 disabledInactiveTrackColor = colors.panel
             )
         )
+        if (false) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -4294,6 +4353,7 @@ private fun MinimalProgress(
                 fontSize = 11.sp,
                 maxLines = 1
             )
+        }
         }
     }
 }
@@ -4458,7 +4518,7 @@ private fun FeaturePill(
             .clickable(onClick = onClick),
         shape = actionShape,
         color = if (selected) colors.accent else colors.panel,
-        border = BorderStroke(1.dp, if (selected) colors.accent else colors.panelBorder),
+        border = BorderStroke(1.dp, colors.panelBorder),
         shadowElevation = if (selected) 8.dp else 0.dp
     ) {
         Row(
@@ -4660,7 +4720,7 @@ private fun ChapterPreviewRow(
             chapter.volume -> colors.panel
             else -> colors.panel
         },
-        border = BorderStroke(1.dp, if (chapter.current) colors.accent else colors.panelBorder)
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -4830,7 +4890,7 @@ private fun EngineRow(
             .clickable(onClick = onClick),
         shape = shape,
         color = if (engine.selected) colors.accent else colors.panel,
-        border = BorderStroke(1.dp, if (engine.selected) colors.accent else colors.panelBorder)
+        border = BorderStroke(1.dp, colors.panelBorder)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
