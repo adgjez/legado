@@ -99,6 +99,7 @@ import io.legado.app.help.glide.ImageLoader
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
+import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.book.character.compose.CharacterAvatar
@@ -123,6 +124,8 @@ data class AiChatScreenActions(
     val onSpeakMessage: ((String, AiChatCompanionConfig) -> Unit)? = null,
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
+    val onSelectSession: ((String) -> Unit)? = null,
+    val onDeleteSession: ((AiChatSession) -> Unit)? = null,
     val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null
 )
 
@@ -155,6 +158,12 @@ fun AiChatRoute(
     val currentCompanion = remember(refreshToken, messages.size, requesting) {
         viewModel.currentCompanion()
     }
+    val sessions = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
+        viewModel.historySessions()
+    }
+    val currentSessionId = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
+        viewModel.activeSessionId()
+    }
     val autoSpeakEnabled = remember(refreshToken) { AppConfig.aiChatAutoSpeakEnabled }
     val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
     AiChatScreen(
@@ -163,6 +172,8 @@ fun AiChatRoute(
         modelLabel = modelLabel,
         companions = companions,
         currentCompanion = currentCompanion,
+        sessions = sessions,
+        currentSessionId = currentSessionId,
         autoSpeakEnabled = autoSpeakEnabled,
         enterToSend = enterToSend,
         compactHeader = compactHeader,
@@ -177,6 +188,8 @@ fun AiChatScreen(
     modelLabel: String,
     companions: List<AiChatCompanionConfig>,
     currentCompanion: AiChatCompanionConfig,
+    sessions: List<AiChatSession>,
+    currentSessionId: String,
     autoSpeakEnabled: Boolean,
     enterToSend: Boolean,
     compactHeader: Boolean,
@@ -378,6 +391,8 @@ fun AiChatScreen(
             AiCompanionDrawer(
                 companions = companions,
                 currentCompanionId = currentCompanion.id,
+                sessions = sessions,
+                currentSessionId = currentSessionId,
                 style = style,
                 actions = actions,
                 onDismiss = { companionDrawerOpen = false }
@@ -551,6 +566,8 @@ private fun AiModernTopMenu(
 private fun AiCompanionDrawer(
     companions: List<AiChatCompanionConfig>,
     currentCompanionId: String,
+    sessions: List<AiChatSession>,
+    currentSessionId: String,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
     onDismiss: () -> Unit
@@ -595,7 +612,7 @@ private fun AiCompanionDrawer(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${companions.size} 个会话角色",
+                            text = "点击角色查看会话",
                             color = style.colors.secondaryText,
                             fontSize = 12.sp
                         )
@@ -624,6 +641,9 @@ private fun AiCompanionDrawer(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    item {
+                        DrawerSectionTitle("助手", style)
+                    }
                     items(companions, key = { it.id }) { companion ->
                         AiCompanionDrawerItem(
                             companion = companion,
@@ -631,7 +651,6 @@ private fun AiCompanionDrawer(
                             style = style,
                             onSelect = {
                                 actions.onSelectCompanion?.invoke(companion.id)
-                                onDismiss()
                             },
                             onLongPress = actions.onCompanionLongPress?.let { action ->
                                 {
@@ -641,11 +660,82 @@ private fun AiCompanionDrawer(
                             }
                         )
                     }
+                    item {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            DrawerSectionTitle("会话", style, modifier = Modifier.weight(1f))
+                            Surface(
+                                onClick = { actions.onNewChat() },
+                                shape = RoundedCornerShape(style.metrics.chipRadius),
+                                color = style.colors.accent.copy(alpha = 0.10f)
+                            ) {
+                                Text(
+                                    text = "新建",
+                                    color = style.colors.accent,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (sessions.isEmpty()) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(style.metrics.cardRadius),
+                                color = style.colors.cardSurface,
+                                border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "还没有历史会话",
+                                    color = style.colors.secondaryText,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        items(sessions, key = { it.id }) { session ->
+                            AiSessionDrawerItem(
+                                session = session,
+                                selected = session.id == currentSessionId,
+                                style = style,
+                                onSelect = {
+                                    actions.onSelectSession?.invoke(session.id)
+                                    onDismiss()
+                                },
+                                onLongPress = actions.onDeleteSession?.let { action ->
+                                    { action(session) }
+                                }
+                            )
+                        }
+                    }
                     item { Spacer(modifier = Modifier.height(18.dp)) }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun DrawerSectionTitle(
+    text: String,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text,
+        color = style.colors.secondaryText,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier.padding(horizontal = 2.dp, vertical = 4.dp)
+    )
 }
 
 @Composable
@@ -715,6 +805,62 @@ private fun AiCompanionDrawerItem(
                 contentDescription = null,
                 tint = style.colors.secondaryText.copy(alpha = 0.66f),
                 modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun AiSessionDrawerItem(
+    session: AiChatSession,
+    selected: Boolean,
+    style: AiComposeStyle,
+    onSelect: () -> Unit,
+    onLongPress: (() -> Unit)?
+) {
+    val timeFormat = remember { java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.cardRadius))
+            .background(if (selected) style.colors.accent.copy(alpha = 0.10f) else style.colors.cardSurface)
+            .border(
+                style.metrics.strokeWidth,
+                if (selected) style.colors.accent.copy(alpha = 0.30f) else style.colors.stroke,
+                RoundedCornerShape(style.metrics.cardRadius)
+            )
+            .combinedClickable(onClick = onSelect, onLongClick = onLongPress)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(32.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (selected) style.colors.accent else Color.Transparent)
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp)
+        ) {
+            Text(
+                text = session.title.ifBlank { "未命名会话" },
+                color = style.colors.primaryText,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${timeFormat.format(java.util.Date(session.updatedAt))} · ${session.messages.size} 条消息",
+                color = style.colors.secondaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
     }

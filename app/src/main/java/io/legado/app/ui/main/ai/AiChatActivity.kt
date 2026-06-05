@@ -113,6 +113,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     },
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
+                    onSelectSession = ::loadSessionFromDrawer,
+                    onDeleteSession = ::confirmDeleteHistorySession,
                     onCompanionLongPress = ::showCompanionActions
                 )
             )
@@ -194,6 +196,15 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             toastOnUi(R.string.ai_chat_wait_current)
             return
         }
+        refreshToken.intValue += 1
+    }
+
+    private fun loadSessionFromDrawer(sessionId: String) {
+        if (viewModel.isRequesting) {
+            toastOnUi(R.string.ai_chat_wait_current)
+            return
+        }
+        viewModel.loadSession(sessionId)
         refreshToken.intValue += 1
     }
 
