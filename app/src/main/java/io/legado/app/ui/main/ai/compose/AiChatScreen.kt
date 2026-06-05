@@ -8,6 +8,12 @@ import android.text.style.URLSpan
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -135,6 +141,8 @@ data class AiChatScreenActions(
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
     val onSelectSession: ((String) -> Unit)? = null,
+    val onSelectCompanionSession: ((String, String) -> Unit)? = null,
+    val onNewCompanionChat: ((String) -> Unit)? = null,
     val onDeleteSession: ((AiChatSession) -> Unit)? = null,
     val onCompanionLongPress: ((AiChatCompanionConfig) -> Unit)? = null
 )
@@ -168,8 +176,10 @@ fun AiChatRoute(
     val currentCompanion = remember(refreshToken, messages.size, requesting) {
         viewModel.currentCompanion()
     }
-    val sessions = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
-        viewModel.historySessions()
+    val sessionsByCompanion = remember(refreshToken, messages.size, requesting, companions) {
+        companions.associate { companion ->
+            companion.id to viewModel.historySessions(companion.id)
+        }
     }
     val currentSessionId = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
         viewModel.activeSessionId()
@@ -183,7 +193,7 @@ fun AiChatRoute(
         modelLabel = modelLabel,
         companions = companions,
         currentCompanion = currentCompanion,
-        sessions = sessions,
+        sessionsByCompanion = sessionsByCompanion,
         currentSessionId = currentSessionId,
         autoSpeakEnabled = autoSpeakEnabled,
         thinkingToolbarEnabled = thinkingToolbarEnabled,
@@ -200,7 +210,7 @@ fun AiChatScreen(
     modelLabel: String,
     companions: List<AiChatCompanionConfig>,
     currentCompanion: AiChatCompanionConfig,
-    sessions: List<AiChatSession>,
+    sessionsByCompanion: Map<String, List<AiChatSession>>,
     currentSessionId: String,
     autoSpeakEnabled: Boolean,
     thinkingToolbarEnabled: Boolean,
@@ -216,6 +226,7 @@ fun AiChatScreen(
     var toolPreviewPayload by remember { mutableStateOf<AiToolDisplayPayload?>(null) }
     var processExpandSignal by remember { mutableStateOf(0) }
     var companionDrawerOpen by rememberSaveable { mutableStateOf(false) }
+    var expandedCompanionId by rememberSaveable { mutableStateOf(currentCompanion.id) }
     var lastAutoSpokenMessageId by rememberSaveable { mutableStateOf("") }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
@@ -296,6 +307,11 @@ fun AiChatScreen(
             actions.onSpeakMessage?.invoke(last.content, currentCompanion, last.id)
         }
     }
+    LaunchedEffect(currentCompanion.id) {
+        if (expandedCompanionId.isBlank()) {
+            expandedCompanionId = currentCompanion.id
+        }
+    }
     val drawerOpenDistancePx = remember(density) { with(density) { 72.dp.toPx() } }
     var drawerDragDistance by remember { mutableStateOf(0f) }
     var drawerDragging by remember { mutableStateOf(false) }
@@ -315,9 +331,7 @@ fun AiChatScreen(
             else -> (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
         }
         val animatedDrawerProgress by animateFloatAsState(
-            targetValue = if (drawerDragging) {
-                drawerProgress
-            } else if (companionDrawerOpen) {
+            targetValue = if (companionDrawerOpen) {
                 1f
             } else {
                 0f
@@ -328,7 +342,8 @@ fun AiChatScreen(
             ),
             label = "aiCompanionDrawerProgress"
         )
-        val drawerVisible = drawerDragging || animatedDrawerProgress > 0.002f
+        val visibleDrawerProgress = if (drawerDragging) drawerProgress else animatedDrawerProgress
+        val drawerVisible = drawerDragging || visibleDrawerProgress > 0.002f
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -485,12 +500,20 @@ fun AiChatScreen(
             AiCompanionDrawer(
                 companions = companions,
                 currentCompanionId = currentCompanion.id,
-                sessions = sessions,
+                expandedCompanionId = expandedCompanionId,
+                sessionsByCompanion = sessionsByCompanion,
                 currentSessionId = currentSessionId,
                 style = style,
                 actions = actions,
-                animatedProgress = animatedDrawerProgress,
+                animatedProgress = visibleDrawerProgress,
                 drawerWidthPx = drawerWidthPx,
+                onToggleCompanion = { companionId ->
+                    expandedCompanionId = if (expandedCompanionId == companionId) {
+                        ""
+                    } else {
+                        companionId
+                    }
+                },
                 onDismiss = { companionDrawerOpen = false }
             )
         }
@@ -649,12 +672,14 @@ private fun AiModernTopMenu(
 private fun AiCompanionDrawer(
     companions: List<AiChatCompanionConfig>,
     currentCompanionId: String,
-    sessions: List<AiChatSession>,
+    expandedCompanionId: String,
+    sessionsByCompanion: Map<String, List<AiChatSession>>,
     currentSessionId: String,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
     animatedProgress: Float,
     drawerWidthPx: Float,
+    onToggleCompanion: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val clampedProgress = animatedProgress.coerceIn(0f, 1f)
@@ -748,13 +773,21 @@ private fun AiCompanionDrawer(
                         DrawerSectionTitle("助手", style)
                     }
                     items(companions, key = { it.id }) { companion ->
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val expanded = companion.id == expandedCompanionId
+                        val companionSessions = sessionsByCompanion[companion.id].orEmpty()
+                        Column(
+                            modifier = Modifier.animateContentSize(
+                                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             AiCompanionDrawerItem(
                                 companion = companion,
                                 selected = companion.id == currentCompanionId,
+                                expanded = expanded,
                                 style = style,
                                 onSelect = {
-                                    actions.onSelectCompanion?.invoke(companion.id)
+                                    onToggleCompanion(companion.id)
                                 },
                                 onLongPress = actions.onCompanionLongPress?.let { action ->
                                     {
@@ -763,17 +796,32 @@ private fun AiCompanionDrawer(
                                     }
                                 }
                             )
-                            if (companion.id == currentCompanionId) {
+                            AnimatedVisibility(
+                                visible = expanded,
+                                enter = expandVertically(
+                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                ) + fadeIn(animationSpec = tween(durationMillis = 140)),
+                                exit = shrinkVertically(
+                                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
+                                ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                            ) {
                                 AiCompanionSessionPanel(
-                                    sessions = sessions,
+                                    sessions = companionSessions,
                                     currentSessionId = currentSessionId,
                                     style = style,
                                     onNewChat = {
-                                        actions.onNewChat()
+                                        actions.onNewCompanionChat?.invoke(companion.id)
+                                            ?: actions.onNewChat()
                                         onDismiss()
                                     },
                                     onSelect = { session ->
-                                        actions.onSelectSession?.invoke(session.id)
+                                        actions.onSelectCompanionSession?.invoke(companion.id, session.id)
+                                            ?: run {
+                                                if (companion.id != currentCompanionId) {
+                                                    actions.onSelectCompanion?.invoke(companion.id)
+                                                }
+                                                actions.onSelectSession?.invoke(session.id)
+                                            }
                                         onDismiss()
                                     },
                                     onLongPress = actions.onDeleteSession
@@ -881,6 +929,7 @@ private fun DrawerSectionTitle(
 private fun AiCompanionDrawerItem(
     companion: AiChatCompanionConfig,
     selected: Boolean,
+    expanded: Boolean,
     style: AiComposeStyle,
     onSelect: () -> Unit,
     onLongPress: (() -> Unit)?
@@ -937,14 +986,12 @@ private fun AiCompanionDrawerItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (!isDefault) {
-            Icon(
-                painter = painterResource(R.drawable.ic_more_vert),
-                contentDescription = null,
-                tint = style.colors.secondaryText.copy(alpha = 0.66f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
+        Icon(
+            painter = painterResource(if (expanded) R.drawable.ic_expand_less else R.drawable.ic_expand_more),
+            contentDescription = null,
+            tint = style.colors.secondaryText.copy(alpha = 0.72f),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 

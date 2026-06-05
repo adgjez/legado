@@ -442,6 +442,11 @@ class AiChatViewModel : ViewModel() {
     }
 
     fun startNewSession() {
+        startNewSession(currentCompanionId)
+    }
+
+    fun startNewSession(companionId: String) {
+        if (!selectCompanionForSession(companionId)) return
         currentSessionId = UUID.randomUUID().toString()
         AppConfig.aiCurrentChatSessionId = currentSessionId
         messages.clear()
@@ -449,12 +454,17 @@ class AiChatViewModel : ViewModel() {
         publish(saveHistory = false)
     }
 
-    fun historySessions(): List<AiChatSession> {
-        return sessionsForCurrentCompanion().sortedByDescending { it.updatedAt }
+    fun historySessions(companionId: String = currentCompanionId): List<AiChatSession> {
+        return sessionsForCompanion(companionId).sortedByDescending { it.updatedAt }
     }
 
     fun loadSession(sessionId: String) {
-        val session = sessionsForCurrentCompanion().firstOrNull { it.id == sessionId } ?: return
+        loadSession(currentCompanionId, sessionId)
+    }
+
+    fun loadSession(companionId: String, sessionId: String): Boolean {
+        if (!selectCompanionForSession(companionId)) return false
+        val session = sessionsForCurrentCompanion().firstOrNull { it.id == sessionId } ?: return false
         currentSessionId = session.id
         AppConfig.aiCurrentChatSessionId = session.id
         messages.clear()
@@ -463,6 +473,7 @@ class AiChatViewModel : ViewModel() {
                 activeSessionId == currentSessionId &&
                 activeCompanionId == currentCompanionId)
         publish(saveHistory = false)
+        return true
     }
 
     fun deleteSession(sessionId: String) {
@@ -539,11 +550,7 @@ class AiChatViewModel : ViewModel() {
 
     fun switchCompanion(companionId: String): Boolean {
         if (isRequesting || activeJob?.isActive == true) return false
-        val target = AppConfig.aiChatCompanionList.firstOrNull {
-            it.id == companionId && it.enabled
-        } ?: return false
-        currentCompanionId = target.id
-        AppConfig.aiCurrentChatCompanionId = target.id
+        if (!selectCompanionForSession(companionId)) return false
         currentSessionId = AppConfig.aiCurrentChatSessionId ?: UUID.randomUUID().toString()
         restoreCurrentSession()
         return true
@@ -683,10 +690,23 @@ class AiChatViewModel : ViewModel() {
         }?.contextSummary
 
     private fun sessionsForCurrentCompanion(): List<AiChatSession> {
-        val companionId = currentCompanionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+        return sessionsForCompanion(currentCompanionId)
+    }
+
+    private fun sessionsForCompanion(companionId: String): List<AiChatSession> {
+        val normalizedCompanionId = companionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID }
         return AppConfig.aiChatSessionList.filter { session ->
-            session.companionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID } == companionId
+            session.companionId.ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID } == normalizedCompanionId
         }
+    }
+
+    private fun selectCompanionForSession(companionId: String): Boolean {
+        val target = AppConfig.aiChatCompanionList.firstOrNull {
+            it.id == companionId && it.enabled
+        } ?: return false
+        currentCompanionId = target.id
+        AppConfig.aiCurrentChatCompanionId = target.id
+        return true
     }
 
     private fun activeWindowSkills(): List<AiSkillConfig> {
