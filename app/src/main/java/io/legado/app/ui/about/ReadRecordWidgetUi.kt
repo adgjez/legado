@@ -1,7 +1,6 @@
 package io.legado.app.ui.about
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.LayoutInflater
@@ -30,7 +29,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.BookCover
 import io.legado.app.help.glide.ImageLoader
-import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.ColorUtils
@@ -66,15 +65,7 @@ fun Context.openReadRecordBookInfo(
         toastOnUi(getString(R.string.read_record_goal_open_missing))
         return
     }
-    startActivity(
-        Intent(this, BookInfoActivity::class.java).apply {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-            putExtra("origin", book.origin)
-            putExtra("originName", book.originName)
-        }
-    )
+    BookInfoNavigator.open(this, book)
 }
 
 fun Context.showReadRecordBookActionDialog(

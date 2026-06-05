@@ -49,7 +49,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.SearchBookOpenHelper
-import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.ColorUtils
@@ -700,11 +700,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             startActivityForBook(book)
             return
         }
-        startActivity<BookInfoActivity> {
-            putExtra("name", book.name)
-            putExtra("author", book.author)
-            putExtra("bookUrl", book.bookUrl)
-        }
+        BookInfoNavigator.open(this, book)
     }
 
     /**

@@ -6,7 +6,7 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.ui.video.VideoPlayerActivity
 
 object SearchBookOpenHelper {
@@ -18,7 +18,9 @@ object SearchBookOpenHelper {
             openVideo(context, book)
             return
         }
-        openActivity(context, book, BookInfoActivity::class.java, false)
+        context.startActivity(BookInfoNavigator.intent(context, book).apply {
+            putExtra("videoTitle", book.name)
+        })
     }
 
     private fun openVideo(context: Context, book: SearchBook) {

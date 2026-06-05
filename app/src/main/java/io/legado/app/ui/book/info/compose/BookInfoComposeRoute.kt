@@ -20,21 +20,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -179,14 +184,14 @@ fun BookInfoComposeRoute(
             style = style,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
+                .height(360.dp)
         )
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp)
-                .padding(top = 22.dp, bottom = 112.dp),
+                .padding(top = 86.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             BookInfoHero(state, actions, style)
@@ -204,6 +209,88 @@ fun BookInfoComposeRoute(
             actions = actions,
             style = style,
             modifier = Modifier.fillMaxWidth()
+        )
+        BookInfoFloatingTopBar(
+            title = state.name,
+            style = style,
+            actions = actions,
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+        )
+        if (state.loading) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .align(Alignment.TopEnd)
+                    .padding(top = 58.dp, end = 24.dp)
+                    .size(22.dp),
+                color = style.colors.accent,
+                strokeWidth = 2.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookInfoFloatingTopBar(
+    title: String,
+    style: BookInfoComposeStyle,
+    actions: BookInfoActions,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .statusBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        BookInfoTopIcon(
+            iconRes = R.drawable.ic_back,
+            contentDescription = stringResource(R.string.back),
+            style = style,
+            onClick = actions.onBack
+        )
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        BookInfoTopIcon(
+            iconRes = R.drawable.ic_refresh_white_24dp,
+            contentDescription = stringResource(R.string.refresh),
+            style = style,
+            onClick = actions.onRefresh
+        )
+    }
+}
+
+@Composable
+private fun BookInfoTopIcon(
+    iconRes: Int,
+    contentDescription: String,
+    style: BookInfoComposeStyle,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .shadow(8.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(Color.Black.copy(alpha = 0.30f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(22.dp)
         )
     }
 }

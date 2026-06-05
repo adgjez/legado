@@ -482,7 +482,7 @@ class BookInfoActivity :
 
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        useComposeBookInfo = BookInfoComponentConfig.loadStyle() == BookInfoPageStyle.IMMERSIVE_COMPOSE
+        useComposeBookInfo = false
         binding.bgBook.setBackgroundColor(backgroundColor)
         binding.vwBg.alpha = 1f
         binding.titleBar.setBackgroundResource(R.color.transparent)

@@ -19,12 +19,11 @@ import io.legado.app.databinding.DialogAddToBookshelfBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.ui.book.info.BookInfoActivity
+import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.utils.GSON
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.setLayout
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -70,11 +69,7 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
         }
         appDb.bookDao.getBook(bookUrl)?.let { //已在书架时直接跳转到书籍详情页
             AppLog.put("${it.name} 已在书架", null, true)
-            startActivity<BookInfoActivity> {
-                putExtra("name", it.name)
-                putExtra("author", it.author)
-                putExtra("bookUrl", it.bookUrl)
-            }
+            BookInfoNavigator.open(requireContext(), it)
             dismiss()
             return
         }
@@ -91,11 +86,7 @@ class AddToBookshelfDialog() : BaseDialogFragment(R.layout.dialog_add_to_bookshe
         }
         viewModel.load(bookUrl) {
             viewModel.saveSearchBook(it) {
-                startActivity<BookInfoActivity> {
-                    putExtra("name", it.name)
-                    putExtra("author", it.author)
-                    putExtra("bookUrl", it.bookUrl)
-                }
+                BookInfoNavigator.open(requireContext(), it)
                 dismiss()
             }
         }
