@@ -3749,6 +3749,7 @@ private fun SceneBubble(
         compact -> 460.dp
         else -> 520.dp
     }
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .widthIn(max = maxWidth)
@@ -3759,7 +3760,11 @@ private fun SceneBubble(
             )
             .clip(actionShape)
             .background(bubbleColor)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
     ) {
         Column(
             modifier = Modifier.padding(
