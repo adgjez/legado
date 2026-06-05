@@ -40,6 +40,8 @@ data class SpeechRoute(
     val toneID: String = "",
     val emotionName: String = "",
     val emotionTag: String = "",
+    val groupId: String = "",
+    val groupName: String = "",
     val source: String = ""
 ) {
     val isConfigured: Boolean
@@ -62,6 +64,8 @@ data class SpeechRoute(
             put("toneID", toneID)
             put("emotionName", emotionName)
             put("emotionTag", emotionTag)
+            put("groupId", groupId)
+            put("groupName", groupName)
             put("source", source)
         }.toString()
     }
@@ -84,6 +88,8 @@ data class SpeechRoute(
                     toneID = obj.optString("toneID").ifBlank { obj.optString("toneId") },
                     emotionName = obj.optString("emotionName"),
                     emotionTag = obj.optString("emotionTag"),
+                    groupId = obj.optString("groupId"),
+                    groupName = obj.optString("groupName"),
                     source = obj.optString("source")
                 )
             }.getOrDefault(SpeechRoute())
@@ -295,8 +301,9 @@ object SpeechVoiceAssigner {
         val catalogCandidates = SpeechVoiceCatalogRepository.httpGroups(httpTtsList)
             .flatMap { group ->
                 group.options.map { option ->
+                    val route = option.toRoute(group.emotions.firstOrNull(), SpeechRoute.SOURCE_AUTO)
                     RouteCandidate(
-                        route = option.toRoute(group.emotions.firstOrNull(), SpeechRoute.SOURCE_AUTO),
+                        route = route,
                         searchableText = listOf(
                             group.title,
                             option.speakerName,
@@ -307,6 +314,7 @@ object SpeechVoiceAssigner {
                     )
                 }
             }
+            .filterNot { SpeechVoiceGroupRepository.isBlockedRoute(it.route) }
         rankedRoutes(catalogCandidates, gender, ageKeywords)?.let { return it }
 
         val inferredGender = BookCharacter.inferGender(

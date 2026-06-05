@@ -25,6 +25,8 @@ data class SpeechVoiceOption(
             toneID = toneID,
             emotionName = emotion?.emotionName.orEmpty(),
             emotionTag = emotion?.emotionTag.orEmpty(),
+            groupId = groupId,
+            groupName = groupName,
             source = source
         )
     }
@@ -152,17 +154,18 @@ object SpeechVoiceCatalogRepository {
             .flatMap { group -> group.options.map { it to group.emotions.firstOrNull() } }
             .filter { (option, _) -> option.explicitSpeaker }
             .map { (option, emotion) -> option.toRoute(emotion, SpeechRoute.SOURCE_AUTO) }
+            .filterNot(SpeechVoiceGroupRepository::isBlockedRoute)
         if (explicitHttp.isNotEmpty()) return explicitHttp
         val httpDefaults = httpGroups
             .flatMap { group -> group.options.map { it.toRoute(group.emotions.firstOrNull(), SpeechRoute.SOURCE_AUTO) } }
+            .filterNot(SpeechVoiceGroupRepository::isBlockedRoute)
         if (httpDefaults.isNotEmpty()) return httpDefaults
-        return listOf(
-            SpeechRoute(
-                engineType = SpeechRoute.ENGINE_SYSTEM,
-                engineValue = GSON.toJson(SelectItem("系统默认", "")),
-                speakerName = "系统默认",
-                source = SpeechRoute.SOURCE_AUTO
-            )
+        val systemDefault = SpeechRoute(
+            engineType = SpeechRoute.ENGINE_SYSTEM,
+            engineValue = GSON.toJson(SelectItem("系统默认", "")),
+            speakerName = "系统默认",
+            source = SpeechRoute.SOURCE_AUTO
         )
+        return listOf(systemDefault).filterNot(SpeechVoiceGroupRepository::isBlockedRoute)
     }
 }

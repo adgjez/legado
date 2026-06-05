@@ -148,7 +148,7 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
             val now = System.currentTimeMillis()
             val saved = (group ?: ReadAloudSpeakerGroup()).copy(
                 name = value,
-                enabled = enabled,
+                enabled = if (SpeechVoiceGroupRepository.isInvalidGroupName(value)) false else enabled,
                 sortOrder = group?.sortOrder ?: ((appDb.readAloudSpeakerGroupDao.maxGroupOrder() ?: -1) + 1),
                 createdAt = group?.createdAt?.takeIf { it > 0L } ?: now,
                 updatedAt = now
@@ -164,6 +164,7 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
     }
 
     override fun toggleGroup(group: ReadAloudSpeakerGroup) {
+        if (SpeechVoiceGroupRepository.isInvalidGroup(group)) return
         lifecycleScope.launch(IO) {
             appDb.readAloudSpeakerGroupDao.updateGroup(
                 group.copy(enabled = !group.enabled, updatedAt = System.currentTimeMillis())
@@ -355,6 +356,7 @@ private fun SpeakerGroupCard(
     colors: SpeakerManageColors,
     actions: SpeakerGroupManageActions
 ) {
+    val invalidGroup = SpeechVoiceGroupRepository.isInvalidGroup(group)
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = colors.card,
@@ -366,16 +368,26 @@ private fun SpeakerGroupCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(group.displayName(), color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "${items.size} 个发言人 · ${if (group.enabled) "已启用" else "已停用"}",
+                        if (invalidGroup) {
+                            "${items.size} 个失效发言人 · 不参与自动分配"
+                        } else {
+                            "${items.size} 个发言人 · ${if (group.enabled) "已启用" else "已停用"}"
+                        },
                         color = colors.subText,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(top = 3.dp)
                     )
                 }
-                Switch(checked = group.enabled, onCheckedChange = { actions.toggleGroup(group) })
+                if (!invalidGroup) {
+                    Switch(checked = group.enabled, onCheckedChange = { actions.toggleGroup(group) })
+                }
             }
             if (items.isEmpty()) {
-                Text("这个分组还没有发言人", color = colors.subText, fontSize = 12.sp)
+                Text(
+                    if (invalidGroup) "没有被标记失效的发言人" else "这个分组还没有发言人",
+                    color = colors.subText,
+                    fontSize = 12.sp
+                )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items.take(8).forEach { item ->
@@ -387,8 +399,10 @@ private fun SpeakerGroupCard(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SpeakerActionButton("添加发言人", colors, Modifier.weight(1f)) { actions.openSpeakerPicker(group) }
-                SpeakerSubActionButton("重命名", colors, Modifier.weight(1f)) { actions.openGroupEditor(group) }
+                if (!invalidGroup) {
+                    SpeakerActionButton("添加发言人", colors, Modifier.weight(1f)) { actions.openSpeakerPicker(group) }
+                    SpeakerSubActionButton("重命名", colors, Modifier.weight(1f)) { actions.openGroupEditor(group) }
+                }
                 SpeakerSubActionButton("删除", colors, Modifier.weight(1f), danger = true) {
                     actions.requestDeleteGroup(group)
                 }
@@ -408,6 +422,7 @@ private fun SpeakerItemRow(
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
+        val blocked = SpeechVoiceGroupRepository.isBlockedItem(item)
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -415,7 +430,12 @@ private fun SpeakerItemRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(item.displayName(), color = colors.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    listOf(item.engineName, item.sourceGroupName, item.toneID).filter { it.isNotBlank() }.joinToString(" · "),
+                    listOf(
+                        "已失效".takeIf { blocked },
+                        item.engineName,
+                        item.sourceGroupName,
+                        item.toneID
+                    ).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
                     color = colors.subText,
                     fontSize = 11.sp,
                     maxLines = 1,

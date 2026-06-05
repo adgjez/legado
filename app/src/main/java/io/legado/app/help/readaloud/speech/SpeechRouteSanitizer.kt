@@ -40,6 +40,10 @@ object SpeechRouteSanitizer {
         appDb.bookCharacterDao.allCharacters()
             .filter { routeReferencesHttpTts(it.speechRouteJson, deletedId) }
             .forEach { character ->
+                SpeechVoiceGroupRepository.markInvalidRoute(
+                    SpeechRoute.fromJson(character.speechRouteJson),
+                    reason = "HTTP TTS 已删除"
+                )
                 appDb.bookCharacterDao.updateCharacter(
                     character.copy(
                         speechRouteJson = "",
@@ -52,6 +56,10 @@ object SpeechRouteSanitizer {
         appDb.bookDao.all
             .filter { routeReferencesHttpTts(it.getTtsEngine(), deletedId) }
             .forEach { book ->
+                SpeechVoiceGroupRepository.markInvalidRoute(
+                    SpeechRoute.fromTtsEngineValue(book.getTtsEngine()),
+                    reason = "HTTP TTS 已删除"
+                )
                 book.setTtsEngine(null)
                 appDb.bookDao.update(book)
                 bookCount++
@@ -59,23 +67,26 @@ object SpeechRouteSanitizer {
 
         val globalCleared = routeReferencesHttpTts(AppConfig.ttsEngine, deletedId)
         if (globalCleared) {
+            SpeechVoiceGroupRepository.markInvalidRoute(
+                SpeechRoute.fromTtsEngineValue(AppConfig.ttsEngine),
+                reason = "HTTP TTS 已删除"
+            )
             AppConfig.ttsEngine = null
         }
         ReadBook.book?.takeIf { routeReferencesHttpTts(it.getTtsEngine(), deletedId) }?.setTtsEngine(null)
-        val speakerItemIds = appDb.readAloudSpeakerGroupDao.items()
+        val groupsById = appDb.readAloudSpeakerGroupDao.groups().associateBy { it.id }
+        val speakerItems = appDb.readAloudSpeakerGroupDao.items()
             .filter {
                 it.engineType == SpeechRoute.ENGINE_HTTP &&
-                    it.engineValue == deletedId
+                    it.engineValue == deletedId &&
+                    groupsById[it.groupId]?.let(SpeechVoiceGroupRepository::isInvalidGroup) != true
             }
-            .map { it.id }
-        if (speakerItemIds.isNotEmpty()) {
-            appDb.readAloudSpeakerGroupDao.deleteItems(speakerItemIds)
-        }
+        SpeechVoiceGroupRepository.markInvalidItems(speakerItems, reason = "HTTP TTS 已删除")
 
         return CleanupResult(
             characterCount = characterCount,
             bookCount = bookCount,
-            speakerGroupItemCount = speakerItemIds.size,
+            speakerGroupItemCount = speakerItems.size,
             globalCleared = globalCleared
         )
     }
@@ -89,6 +100,10 @@ object SpeechRouteSanitizer {
             .filter { it.speechRouteJson.isNotBlank() }
             .filter { validOrNull(SpeechRoute.fromJson(it.speechRouteJson), httpTtsList) == null }
             .forEach { character ->
+                SpeechVoiceGroupRepository.markInvalidRoute(
+                    SpeechRoute.fromJson(character.speechRouteJson),
+                    reason = "发言人已失效"
+                )
                 appDb.bookCharacterDao.updateCharacter(
                     character.copy(
                         speechRouteJson = "",
@@ -102,6 +117,10 @@ object SpeechRouteSanitizer {
             .filter { it.getTtsEngine().isNullOrBlank().not() }
             .filter { validOrNull(SpeechRoute.fromTtsEngineValue(it.getTtsEngine()), httpTtsList) == null }
             .forEach { book ->
+                SpeechVoiceGroupRepository.markInvalidRoute(
+                    SpeechRoute.fromTtsEngineValue(book.getTtsEngine()),
+                    reason = "发言人已失效"
+                )
                 book.setTtsEngine(null)
                 appDb.bookDao.update(book)
                 bookCount++
@@ -111,15 +130,27 @@ object SpeechRouteSanitizer {
             validOrNull(SpeechRoute.fromTtsEngineValue(it), httpTtsList) == null
         } ?: false
         if (globalCleared) {
+            SpeechVoiceGroupRepository.markInvalidRoute(
+                SpeechRoute.fromTtsEngineValue(AppConfig.ttsEngine),
+                reason = "发言人已失效"
+            )
             AppConfig.ttsEngine = null
         }
         ReadBook.book?.takeIf {
             validOrNull(SpeechRoute.fromTtsEngineValue(it.getTtsEngine()), httpTtsList) == null
         }?.setTtsEngine(null)
+        val groupsById = appDb.readAloudSpeakerGroupDao.groups().associateBy { it.id }
+        val invalidSpeakerItems = appDb.readAloudSpeakerGroupDao.items()
+            .filter { item ->
+                groupsById[item.groupId]?.let(SpeechVoiceGroupRepository::isInvalidGroup) != true &&
+                    !SpeechVoiceGroupRepository.isValidItem(item, httpTtsList)
+            }
+        SpeechVoiceGroupRepository.markInvalidItems(invalidSpeakerItems, reason = "发言人已失效")
 
         return CleanupResult(
             characterCount = characterCount,
             bookCount = bookCount,
+            speakerGroupItemCount = invalidSpeakerItems.size,
             globalCleared = globalCleared
         )
     }

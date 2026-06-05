@@ -346,6 +346,18 @@ object AiBookCharacterTool {
                                 put("groupName", group.groupName)
                                 put("items", JSONArray().apply {
                                     group.items.forEach { speaker ->
+                                        val route = SpeechRoute(
+                                            engineType = SpeechRoute.ENGINE_HTTP,
+                                            engineValue = httpTts.id.toString(),
+                                            speakerName = speaker.speakerName,
+                                            toneID = speaker.toneID,
+                                            groupId = group.groupId,
+                                            groupName = group.groupName,
+                                            source = SpeechRoute.SOURCE_AUTO
+                                        )
+                                        if (SpeechVoiceGroupRepository.isBlockedRoute(route)) {
+                                            return@forEach
+                                        }
                                         put(JSONObject().apply {
                                             put("speakerName", speaker.speakerName)
                                             put("toneID", speaker.toneID)
@@ -396,7 +408,7 @@ object AiBookCharacterTool {
                 })
                 engines.forEach { put(it) }
             })
-            put("managedGroups", speechVoiceGroupsJson(includeDisabled = true))
+            put("managedGroups", speechVoiceGroupsJson(includeDisabled = true, includeInvalid = false))
         }.toString()
     }
 
@@ -404,7 +416,7 @@ object AiBookCharacterTool {
         val includeDisabled = args?.optBoolean("includeDisabled", true) ?: true
         JSONObject().apply {
             put("ok", true)
-            put("groups", speechVoiceGroupsJson(includeDisabled = includeDisabled))
+            put("groups", speechVoiceGroupsJson(includeDisabled = includeDisabled, includeInvalid = true))
         }.toString()
     }
 
@@ -415,11 +427,16 @@ object AiBookCharacterTool {
             ?.let { id -> appDb.readAloudSpeakerGroupDao.groups().firstOrNull { it.id == id } }
         val name = optText(args, "name") ?: old?.name.orEmpty()
         if (name.isBlank()) return@withContext errorJson("name 不能为空")
+        val invalidGroup = SpeechVoiceGroupRepository.isInvalidGroupName(name)
         val group = (old ?: ReadAloudSpeakerGroup()).copy(
             name = name,
-            enabled = args?.takeIf { it.has("enabled") }?.optBoolean("enabled")
-                ?: old?.enabled
-                ?: true,
+            enabled = if (invalidGroup) {
+                false
+            } else {
+                args?.takeIf { it.has("enabled") }?.optBoolean("enabled")
+                    ?: old?.enabled
+                    ?: true
+            },
             sortOrder = old?.sortOrder ?: ((appDb.readAloudSpeakerGroupDao.maxGroupOrder() ?: -1) + 1),
             createdAt = old?.createdAt?.takeIf { it > 0L } ?: now,
             updatedAt = now
@@ -812,9 +829,10 @@ object AiBookCharacterTool {
         }
     }
 
-    private fun speechVoiceGroupsJson(includeDisabled: Boolean): JSONArray {
+    private fun speechVoiceGroupsJson(includeDisabled: Boolean, includeInvalid: Boolean): JSONArray {
         val groups = appDb.readAloudSpeakerGroupDao.groups()
             .filter { includeDisabled || it.enabled }
+            .filter { includeInvalid || !SpeechVoiceGroupRepository.isInvalidGroup(it) }
         return JSONArray().apply {
             groups.forEach { group ->
                 put(speechVoiceGroupJson(group, includeItems = true))
@@ -830,6 +848,8 @@ object AiBookCharacterTool {
             put("id", group.id)
             put("name", group.name)
             put("enabled", group.enabled)
+            put("invalidGroup", SpeechVoiceGroupRepository.isInvalidGroup(group))
+            put("assignable", group.enabled && !SpeechVoiceGroupRepository.isInvalidGroup(group))
             put("sortOrder", group.sortOrder)
             put("updatedAt", group.updatedAt)
             if (includeItems) {
@@ -859,6 +879,7 @@ object AiBookCharacterTool {
             put("sourceGroupName", item.sourceGroupName)
             put("sortOrder", item.sortOrder)
             put("valid", valid)
+            put("blocked", SpeechVoiceGroupRepository.isBlockedItem(item))
         }
     }
 
