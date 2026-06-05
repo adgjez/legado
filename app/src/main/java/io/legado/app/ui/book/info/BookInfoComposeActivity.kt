@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,11 +23,13 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
@@ -36,6 +39,10 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.webView.WebJsExtensions
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
+import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.SourceCallBack
@@ -322,8 +329,20 @@ class BookInfoComposeActivity :
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
             onSetSourceVariable = ::setSourceVariable,
-            onSetBookVariable = ::setBookVariable
+            onSetBookVariable = ::setBookVariable,
+            onSetupWebIntro = ::setupWebIntro
         )
+    }
+
+    private fun setupWebIntro(webView: WebView) {
+        val setupKey = viewModel.bookSource?.bookSourceUrl.orEmpty()
+        if (webView.getTag(R.id.tag1) == setupKey) return
+        webView.setTag(R.id.tag1, setupKey)
+        webView.addJavascriptInterface(WebCacheManager, nameCache)
+        viewModel.bookSource?.let { source ->
+            webView.addJavascriptInterface(source as BaseSource, nameSource)
+            webView.addJavascriptInterface(WebJsExtensions(source, null, webView), nameJava)
+        }
     }
 
     private fun showBook(book: Book) {
@@ -346,6 +365,7 @@ class BookInfoComposeActivity :
             else -> getString(R.string.toc_s, book.durChapterTitle)
         }
         uiState = BookInfoUiState(
+            bookUrl = book.bookUrl,
             name = book.name,
             author = book.getRealAuthor(),
             originName = getString(R.string.origin_show, book.originName),

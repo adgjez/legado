@@ -1,6 +1,14 @@
 package io.legado.app.ui.book.info.compose
 
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -37,6 +45,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,10 +70,14 @@ import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.webView.WebViewPool
+import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 
@@ -77,6 +90,7 @@ data class BookInfoChapterUi(
 
 @Immutable
 data class BookInfoUiState(
+    val bookUrl: String = "",
     val name: String = "",
     val author: String = "",
     val originName: String = "",
@@ -117,7 +131,8 @@ data class BookInfoActions(
     val onOpenAiGallery: () -> Unit = {},
     val onCustomButton: () -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
-    val onSetBookVariable: () -> Unit = {}
+    val onSetBookVariable: () -> Unit = {},
+    val onSetupWebIntro: (WebView) -> Unit = {}
 )
 
 @Immutable
@@ -218,6 +233,8 @@ fun BookInfoComposeRoute(
             item {
                 BookInfoIntroPanel(
                     intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
+                    state = state,
+                    actions = actions,
                     style = style
                 )
             }
@@ -729,6 +746,8 @@ private fun BookInfoMetaPanel(
 @Composable
 private fun BookInfoIntroPanel(
     intro: String,
+    state: BookInfoUiState,
+    actions: BookInfoActions,
     style: BookInfoComposeStyle
 ) {
     Column(
@@ -740,7 +759,12 @@ private fun BookInfoIntroPanel(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         BookInfoSectionHeader(title = stringResource(R.string.book_info_tab_intro), style = style)
-        BookInfoRichIntro(intro, style)
+        BookInfoIntroContent(
+            rawIntro = intro,
+            state = state,
+            actions = actions,
+            style = style
+        )
     }
 }
 
@@ -1094,13 +1118,6 @@ private fun BookInfoRichIntro(
                         )
                     }
 
-                    rawIntro.startsWith("<useweb>", ignoreCase = true) -> {
-                        textView.text = HtmlCompat.fromHtml(
-                            rawIntro.extractWrappedIntro(8),
-                            HtmlCompat.FROM_HTML_MODE_LEGACY
-                        )
-                    }
-
                     else -> {
                         textView.text = rawIntro
                     }
@@ -1108,6 +1125,143 @@ private fun BookInfoRichIntro(
             }
         }
     )
+}
+
+@Composable
+private fun BookInfoIntroContent(
+    rawIntro: String,
+    state: BookInfoUiState,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    if (rawIntro.startsWith("<useweb>", ignoreCase = true)) {
+        BookInfoWebIntro(
+            rawIntro = rawIntro,
+            bookUrl = state.bookUrl,
+            actions = actions,
+            style = style
+        )
+    } else {
+        BookInfoRichIntro(rawIntro, style)
+    }
+}
+
+@Composable
+private fun BookInfoWebIntro(
+    rawIntro: String,
+    bookUrl: String,
+    actions: BookInfoActions,
+    style: BookInfoComposeStyle
+) {
+    val context = LocalContext.current
+    val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
+    val baseUrl = remember(bookUrl) {
+        bookUrl
+            .takeIf { it.startsWith("http", ignoreCase = true) }
+            ?.substringBefore(",")
+    }
+    val textColor = style.colors.secondaryText.toCssHex()
+    val transparentHtml = remember(html, textColor) {
+        """
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                html, body {
+                  background: transparent !important;
+                  color: $textColor;
+                  margin: 0;
+                  padding: 0;
+                  font-size: 14px;
+                  line-height: 1.72;
+                  word-break: break-word;
+                }
+                img, video, iframe {
+                  max-width: 100%;
+                  height: auto;
+                }
+              </style>
+            </head>
+            <body>$html</body>
+            </html>
+        """.trimIndent()
+    }
+    val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
+    val pooledWebView = remember(context, rawIntro, bookUrl) {
+        WebViewPool.acquire(context)
+    }
+    DisposableEffect(pooledWebView) {
+        onDispose {
+            WebViewPool.release(pooledWebView)
+        }
+    }
+    AndroidView(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(360.dp)
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(Color.Transparent),
+        factory = {
+            pooledWebView.realWebView.apply {
+                (parent as? ViewGroup)?.removeView(this)
+                onResume()
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                webViewClient = BookInfoIntroWebViewClient(context)
+                actions.onSetupWebIntro(this)
+            }
+        },
+        update = { webView ->
+            actions.onSetupWebIntro(webView)
+            webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            if (webView.getTag(R.id.tag) != loadKey) {
+                webView.setTag(R.id.tag, loadKey)
+                webView.loadDataWithBaseURL(
+                    baseUrl,
+                    transparentHtml,
+                    "text/html",
+                    "utf-8",
+                    baseUrl
+                )
+            }
+        }
+    )
+}
+
+private class BookInfoIntroWebViewClient(
+    private val context: Context
+) : WebViewClient() {
+    private val jsStr = getInjectionString
+
+    override fun shouldOverrideUrlLoading(
+        view: WebView?,
+        request: WebResourceRequest?
+    ): Boolean {
+        val uri = request?.url ?: return true
+        return when (uri.scheme) {
+            "http", "https" -> false
+            "legado", "yuedu" -> {
+                context.startActivity(Intent(context, OnLineImportActivity::class.java).apply {
+                    data = uri
+                })
+                true
+            }
+
+            else -> {
+                context.openUrl(uri)
+                true
+            }
+        }
+    }
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        super.onPageStarted(view, url, favicon)
+        view?.evaluateJavascript(jsStr, null)
+    }
+}
+
+private fun Color.toCssHex(): String {
+    return "#%06X".format(0xFFFFFF and toArgb())
 }
 
 private fun String.extractWrappedIntro(prefixLength: Int): String {
