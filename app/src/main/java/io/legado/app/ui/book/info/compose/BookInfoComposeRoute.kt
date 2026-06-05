@@ -3,7 +3,6 @@ package io.legado.app.ui.book.info.compose
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
@@ -249,7 +248,9 @@ fun BookInfoComposeRoute(
             state = state,
             actions = actions,
             style = style,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
         )
         BookInfoFloatingTopBar(
             title = state.name,
@@ -361,7 +362,7 @@ private fun BookInfoMoreActionSheet(
                 onDismiss()
                 actions.onRefresh()
             }
-            BookInfoMoreActionItem("刷新目录", style) {
+            BookInfoMoreActionItem(stringResource(R.string.update_toc), style) {
                 onDismiss()
                 actions.onRefreshToc()
             }
@@ -991,30 +992,41 @@ private fun BookInfoBottomActions(
     style: BookInfoComposeStyle,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Box(
         modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.45f to style.colors.background.copy(alpha = 0.88f),
+                    1f to style.colors.background
+                )
+            )
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
     ) {
-        BookInfoActionButton(
-            text = if (state.inBookshelf) {
-                stringResource(R.string.remove_from_bookshelf)
-            } else {
-                stringResource(R.string.add_to_bookshelf)
-            },
-            primary = false,
-            style = style,
-            onClick = actions.onShelf,
-            modifier = Modifier.weight(1f)
-        )
-        BookInfoActionButton(
-            text = stringResource(R.string.reading),
-            primary = true,
-            style = style,
-            onClick = actions.onRead,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            BookInfoActionButton(
+                text = if (state.inBookshelf) {
+                    stringResource(R.string.remove_from_bookshelf)
+                } else {
+                    stringResource(R.string.add_to_bookshelf)
+                },
+                primary = false,
+                style = style,
+                onClick = actions.onShelf,
+                modifier = Modifier.weight(1f)
+            )
+            BookInfoActionButton(
+                text = stringResource(R.string.reading),
+                primary = true,
+                style = style,
+                onClick = actions.onRead,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
