@@ -29,6 +29,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
@@ -359,8 +360,8 @@ class ReadAloudBgmManageActivity : BaseActivity<ActivityThemeManageBinding>() {
         val bgmSelected = currentAssetType == ReadAloudBgmTrack.TYPE_BGM
         btnDay.isSelected = bgmSelected
         btnNight.isSelected = !bgmSelected
-        btnDay.setTextColor(if (bgmSelected) primaryTextColor else secondaryTextColor)
-        btnNight.setTextColor(if (!bgmSelected) primaryTextColor else secondaryTextColor)
+        btnDay.setTextColor(if (bgmSelected) accentColor else secondaryTextColor)
+        btnNight.setTextColor(if (!bgmSelected) accentColor else secondaryTextColor)
     }
 
     private fun updateBatchActionBar() {
