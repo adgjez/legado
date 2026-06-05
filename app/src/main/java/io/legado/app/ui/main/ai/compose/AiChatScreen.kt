@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -278,10 +280,40 @@ fun AiChatScreen(
             actions.onSpeakMessage?.invoke(last.content, currentCompanion)
         }
     }
+    val drawerEdgeWidthPx = remember(density) { with(density) { 34.dp.toPx() } }
+    val drawerOpenDistancePx = remember(density) { with(density) { 72.dp.toPx() } }
+    var drawerDragFromEdge by remember { mutableStateOf(false) }
+    var drawerDragDistance by remember { mutableStateOf(0f) }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(style.colors.pageBackground)
+            .pointerInput(companionDrawerOpen) {
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        drawerDragFromEdge = !companionDrawerOpen && offset.x <= drawerEdgeWidthPx
+                        drawerDragDistance = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (drawerDragFromEdge) {
+                            drawerDragDistance = (drawerDragDistance + dragAmount).coerceAtLeast(0f)
+                            if (drawerDragDistance >= drawerOpenDistancePx) {
+                                companionDrawerOpen = true
+                                drawerDragFromEdge = false
+                                drawerDragDistance = 0f
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        drawerDragFromEdge = false
+                        drawerDragDistance = 0f
+                    },
+                    onDragCancel = {
+                        drawerDragFromEdge = false
+                        drawerDragDistance = 0f
+                    }
+                )
+            }
     ) {
         Column(
             modifier = Modifier
@@ -573,17 +605,19 @@ private fun AiCompanionDrawer(
                 bottomEnd = style.metrics.cardRadius
             ),
             color = style.colors.pageBackground,
+            shadowElevation = 14.dp,
             border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
             modifier = Modifier
                 .fillMaxHeight()
-                .width(324.dp)
+                .fillMaxWidth(0.88f)
+                .widthIn(max = 340.dp)
                 .align(Alignment.CenterStart)
-                .statusBarsPadding()
-                .navigationBarsPadding()
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Row(
@@ -598,7 +632,7 @@ private fun AiCompanionDrawer(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "点击角色查看会话",
+                            text = "角色与会话",
                             color = style.colors.secondaryText,
                             fontSize = 12.sp
                         )
@@ -631,78 +665,113 @@ private fun AiCompanionDrawer(
                         DrawerSectionTitle("助手", style)
                     }
                     items(companions, key = { it.id }) { companion ->
-                        AiCompanionDrawerItem(
-                            companion = companion,
-                            selected = companion.id == currentCompanionId,
-                            style = style,
-                            onSelect = {
-                                actions.onSelectCompanion?.invoke(companion.id)
-                            },
-                            onLongPress = actions.onCompanionLongPress?.let { action ->
-                                {
-                                    onDismiss()
-                                    action(companion)
-                                }
-                            }
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            DrawerSectionTitle("会话", style, modifier = Modifier.weight(1f))
-                            Surface(
-                                onClick = { actions.onNewChat() },
-                                shape = RoundedCornerShape(style.metrics.chipRadius),
-                                color = style.colors.accent.copy(alpha = 0.10f)
-                            ) {
-                                Text(
-                                    text = "新建",
-                                    color = style.colors.accent,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                    if (sessions.isEmpty()) {
-                        item {
-                            Surface(
-                                shape = RoundedCornerShape(style.metrics.cardRadius),
-                                color = style.colors.cardSurface,
-                                border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "还没有历史会话",
-                                    color = style.colors.secondaryText,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        items(sessions, key = { it.id }) { session ->
-                            AiSessionDrawerItem(
-                                session = session,
-                                selected = session.id == currentSessionId,
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AiCompanionDrawerItem(
+                                companion = companion,
+                                selected = companion.id == currentCompanionId,
                                 style = style,
                                 onSelect = {
-                                    actions.onSelectSession?.invoke(session.id)
-                                    onDismiss()
+                                    actions.onSelectCompanion?.invoke(companion.id)
                                 },
-                                onLongPress = actions.onDeleteSession?.let { action ->
-                                    { action(session) }
+                                onLongPress = actions.onCompanionLongPress?.let { action ->
+                                    {
+                                        onDismiss()
+                                        action(companion)
+                                    }
                                 }
                             )
+                            if (companion.id == currentCompanionId) {
+                                AiCompanionSessionPanel(
+                                    sessions = sessions,
+                                    currentSessionId = currentSessionId,
+                                    style = style,
+                                    onNewChat = {
+                                        actions.onNewChat()
+                                        onDismiss()
+                                    },
+                                    onSelect = { session ->
+                                        actions.onSelectSession?.invoke(session.id)
+                                        onDismiss()
+                                    },
+                                    onLongPress = actions.onDeleteSession
+                                )
+                            }
                         }
                     }
                     item { Spacer(modifier = Modifier.height(18.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiCompanionSessionPanel(
+    sessions: List<AiChatSession>,
+    currentSessionId: String,
+    style: AiComposeStyle,
+    onNewChat: () -> Unit,
+    onSelect: (AiChatSession) -> Unit,
+    onLongPress: ((AiChatSession) -> Unit)?
+) {
+    Surface(
+        shape = RoundedCornerShape(style.metrics.cardRadius),
+        color = style.colors.assistantBubble.copy(alpha = 0.72f),
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 14.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "会话",
+                    color = style.colors.secondaryText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    onClick = onNewChat,
+                    shape = RoundedCornerShape(style.metrics.chipRadius),
+                    color = style.colors.accent.copy(alpha = 0.10f)
+                ) {
+                    Text(
+                        text = "新建",
+                        color = style.colors.accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            }
+            if (sessions.isEmpty()) {
+                Text(
+                    text = "还没有历史会话",
+                    color = style.colors.secondaryText,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 5.dp)
+                )
+            } else {
+                sessions.take(8).forEach { session ->
+                    AiSessionDrawerItem(
+                        session = session,
+                        selected = session.id == currentSessionId,
+                        style = style,
+                        onSelect = { onSelect(session) },
+                        onLongPress = onLongPress?.let { action -> { action(session) } }
+                    )
+                }
+                if (sessions.size > 8) {
+                    Text(
+                        text = "还有 ${sessions.size - 8} 个会话",
+                        color = style.colors.secondaryText,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
                 }
             }
         }
