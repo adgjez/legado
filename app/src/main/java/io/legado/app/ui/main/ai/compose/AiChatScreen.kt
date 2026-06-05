@@ -110,6 +110,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
@@ -184,6 +185,9 @@ fun AiChatRoute(
     val currentSessionId = remember(refreshToken, messages.size, requesting, currentCompanion.id) {
         viewModel.activeSessionId()
     }
+    val userAvatar = remember(refreshToken) {
+        ReadRecordWidgetStore.loadGoalConfig().avatar
+    }
     val autoSpeakEnabled = remember(refreshToken) { AppConfig.aiChatAutoSpeakEnabled }
     val thinkingToolbarEnabled = remember(refreshToken) { AppConfig.aiThinkingToolbarEnabled }
     val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
@@ -195,6 +199,7 @@ fun AiChatRoute(
         currentCompanion = currentCompanion,
         sessionsByCompanion = sessionsByCompanion,
         currentSessionId = currentSessionId,
+        userAvatar = userAvatar,
         autoSpeakEnabled = autoSpeakEnabled,
         thinkingToolbarEnabled = thinkingToolbarEnabled,
         enterToSend = enterToSend,
@@ -212,6 +217,7 @@ fun AiChatScreen(
     currentCompanion: AiChatCompanionConfig,
     sessionsByCompanion: Map<String, List<AiChatSession>>,
     currentSessionId: String,
+    userAvatar: String?,
     autoSpeakEnabled: Boolean,
     thinkingToolbarEnabled: Boolean,
     enterToSend: Boolean,
@@ -440,6 +446,7 @@ fun AiChatScreen(
                             AiMessageRow(
                                 item = item,
                                 currentCompanion = currentCompanion,
+                                userAvatar = userAvatar,
                                 style = style,
                                 speechState = speechState,
                                 onSpeak = actions.onSpeakMessage,
@@ -1137,6 +1144,7 @@ private fun AiEmptyState(style: AiComposeStyle) {
 private fun AiMessageRow(
     item: AiChatUiItem,
     currentCompanion: AiChatCompanionConfig,
+    userAvatar: String?,
     style: AiComposeStyle,
     speechState: AiChatSpeechPlayer.PlaybackState,
     onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
@@ -1144,7 +1152,7 @@ private fun AiMessageRow(
     onProcessExpanded: () -> Unit
 ) {
     when (item) {
-        is AiChatUiItem.User -> AiUserMessageRow(item, style)
+        is AiChatUiItem.User -> AiUserMessageRow(item, userAvatar, style)
         is AiChatUiItem.Assistant -> AiAssistantMessageRow(
             message = item,
             companion = currentCompanion,
@@ -1158,39 +1166,46 @@ private fun AiMessageRow(
 }
 
 @Composable
-private fun AiUserMessageRow(message: AiChatUiItem.User, style: AiComposeStyle) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.Top
-    ) {
-        Surface(
-            shape = RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = 20.dp,
-                bottomEnd = 8.dp
-            ),
-            color = style.colors.userBubble,
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                style.colors.userBubbleStroke
-            ),
-            modifier = Modifier.fillMaxWidth(0.76f)
+private fun AiUserMessageRow(
+    message: AiChatUiItem.User,
+    userAvatar: String?,
+    style: AiComposeStyle
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val bubbleMaxWidth = maxWidth * 0.76f
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.Top
         ) {
-            AiPlainSelectableText(
-                content = message.content,
-                color = style.colors.userText,
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = 20.dp,
+                    bottomEnd = 8.dp
+                ),
+                color = style.colors.userBubble,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    style.colors.userBubbleStroke.copy(alpha = 0.42f)
+                ),
+                shadowElevation = 1.dp,
+                modifier = Modifier.widthIn(max = bubbleMaxWidth)
+            ) {
+                AiPlainSelectableText(
+                    content = message.content,
+                    color = style.colors.userText,
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 10.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            AiUserAvatar(
+                avatar = userAvatar,
+                style = style,
+                sizeDp = 34
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        AiFallbackAvatar(
-            iconRes = R.drawable.ic_bottom_person_e,
-            style = style,
-            sizeDp = 34,
-            accent = false
-        )
     }
 }
 
@@ -1204,30 +1219,33 @@ private fun AiAssistantMessageRow(
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.Top
-    ) {
-        AiCompanionAvatar(companion, style, 36)
-        Spacer(modifier = Modifier.width(8.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val bubbleMaxWidth = maxWidth * 0.78f
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.Top
         ) {
-            message.parts.forEach { part ->
-                key(part.id) {
-                    when (part) {
-                        is AiMessagePartUi.Text -> AiAssistantTextPart(
-                            part = part,
-                            companion = companion,
-                            style = style,
-                            speechState = speechState,
-                            onSpeak = onSpeak
-                        )
-                        is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
-                        is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
-                        is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
+            AiCompanionAvatar(companion, style, 36)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(
+                modifier = Modifier.widthIn(max = bubbleMaxWidth),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                message.parts.forEach { part ->
+                    key(part.id) {
+                        when (part) {
+                            is AiMessagePartUi.Text -> AiAssistantTextPart(
+                                part = part,
+                                companion = companion,
+                                style = style,
+                                speechState = speechState,
+                                onSpeak = onSpeak
+                            )
+                            is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
+                            is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
+                            is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
+                        }
                     }
                 }
             }
@@ -1245,10 +1263,13 @@ private fun AiAssistantTextPart(
 ) {
     Surface(
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = style.colors.toolSurface,
+        color = style.colors.assistantBubble,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            style.metrics.strokeWidth,
+            style.colors.assistantBubbleStroke.copy(alpha = 0.62f)
+        )
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (part.pending) {
@@ -1274,9 +1295,9 @@ private fun AiAssistantTextPart(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(30.dp)
+                            .size(28.dp)
                             .clip(CircleShape)
-                            .background(style.colors.accent.copy(alpha = if (isSpeaking) 0.16f else 0.10f))
+                            .background(style.colors.accent.copy(alpha = if (isSpeaking) 0.20f else 0.10f))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1291,13 +1312,40 @@ private fun AiAssistantTextPart(
                             ),
                             contentDescription = null,
                             tint = style.colors.accent,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(if (isSpeaking) 15.dp else 16.dp)
                         )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AiUserAvatar(
+    avatar: String?,
+    style: AiComposeStyle,
+    sizeDp: Int
+) {
+    val context = LocalContext.current
+    AndroidView(
+        modifier = Modifier
+            .size(sizeDp.dp)
+            .clip(CircleShape)
+            .background(style.colors.toolSurface),
+        factory = {
+            ImageView(it).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+        },
+        update = { imageView ->
+            ImageLoader.load(context, avatar)
+                .placeholder(R.drawable.ic_read_record_default_avatar)
+                .error(R.drawable.ic_read_record_default_avatar)
+                .centerCrop()
+                .into(imageView)
+        }
+    )
 }
 
 @Composable
