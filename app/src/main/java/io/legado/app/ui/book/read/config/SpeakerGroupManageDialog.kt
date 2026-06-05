@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +57,7 @@ import io.legado.app.help.readaloud.speech.SpeechVoiceCatalogRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceEngineGroup
 import io.legado.app.help.readaloud.speech.SpeechVoiceGroupRepository
 import io.legado.app.help.readaloud.speech.SpeechVoiceOption
+import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
@@ -666,10 +668,20 @@ private fun SpeakerMultiSelectDialog(
 ) {
     val initialGroup = engineGroups.firstOrNull()
     var selectedEngineKey by remember(engineGroups) { mutableStateOf(initialGroup?.key.orEmpty()) }
-    var selectedKeys by remember(targetGroup.id) { mutableStateOf(setOf<String>()) }
+    var selectedKeys by remember(targetGroup.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var searchText by remember(targetGroup.id) { mutableStateOf("") }
+    var expandedGroupKeys by remember(selectedEngineKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedEngine = engineGroups.firstOrNull { it.key == selectedEngineKey } ?: initialGroup
     val existingKeys = remember(existingItems) {
         existingItems.map { speakerItemKey(it.engineType, it.engineValue, it.toneID, it.speakerName) }.toSet()
+    }
+    val sourceGroups = remember(selectedEngine, searchText) {
+        buildSpeakerSourceGroups(selectedEngine, searchText)
+    }
+    LaunchedEffect(selectedEngineKey, sourceGroups.firstOrNull()?.key) {
+        if (expandedGroupKeys.isEmpty()) {
+            expandedGroupKeys = sourceGroups.firstOrNull()?.let { setOf(it.key) }.orEmpty()
+        }
     }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -702,26 +714,82 @@ private fun SpeakerMultiSelectDialog(
                         )
                     }
                 }
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = { searchText = it },
+                    label = { Text("搜索发言人 / 分组 / toneID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                )
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 180.dp, max = 430.dp)
+                        .heightIn(min = 220.dp, max = 430.dp)
                         .padding(top = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val options = selectedEngine?.options.orEmpty()
-                    items(options, key = { it.key }) { option ->
-                        val key = speakerItemKey(option.engineType, option.engineValue, option.toneID, option.speakerName)
-                        val exists = key in existingKeys
-                        val selected = key in selectedKeys
-                        SpeakerOptionSelectRow(
-                            option = option,
-                            selected = selected,
-                            exists = exists,
-                            colors = colors
-                        ) {
-                            if (!exists) {
-                                selectedKeys = if (selected) selectedKeys - key else selectedKeys + key
+                    if (sourceGroups.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("没有匹配的发言人", color = colors.subText, fontSize = 14.sp)
+                            }
+                        }
+                    } else {
+                        sourceGroups.forEach { sourceGroup ->
+                            val visibleKeys = sourceGroup.options.map {
+                                speakerItemKey(it.engineType, it.engineValue, it.toneID, it.speakerName)
+                            }
+                            val selectableKeys = visibleKeys.filterNot { it in existingKeys }
+                            val allSelected = selectableKeys.isNotEmpty() && selectableKeys.all { it in selectedKeys }
+                            val expanded = searchText.isNotBlank() || sourceGroup.key in expandedGroupKeys
+                            item(key = "group:${sourceGroup.key}") {
+                                SpeakerSourceGroupHeaderRow(
+                                    sourceGroup = sourceGroup,
+                                    expanded = expanded,
+                                    allSelected = allSelected,
+                                    selectableCount = selectableKeys.size,
+                                    selectedCount = selectableKeys.count { it in selectedKeys },
+                                    colors = colors,
+                                    onExpandToggle = {
+                                        expandedGroupKeys = if (expanded) {
+                                            expandedGroupKeys - sourceGroup.key
+                                        } else {
+                                            expandedGroupKeys + sourceGroup.key
+                                        }
+                                    },
+                                    onSelectToggle = {
+                                        selectedKeys = if (allSelected) {
+                                            selectedKeys - selectableKeys.toSet()
+                                        } else {
+                                            selectedKeys + selectableKeys
+                                        }
+                                    }
+                                )
+                            }
+                            if (expanded) {
+                                items(
+                                    sourceGroup.options,
+                                    key = { option ->
+                                        "speaker:${sourceGroup.key}:${speakerItemKey(option.engineType, option.engineValue, option.toneID, option.speakerName)}"
+                                    }
+                                ) { option ->
+                                    val key = speakerItemKey(option.engineType, option.engineValue, option.toneID, option.speakerName)
+                                    val exists = key in existingKeys
+                                    val selected = key in selectedKeys
+                                    SpeakerOptionSelectRow(
+                                        option = option,
+                                        selected = selected,
+                                        exists = exists,
+                                        colors = colors
+                                    ) {
+                                        if (!exists) {
+                                            selectedKeys = if (selected) selectedKeys - key else selectedKeys + key
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -737,6 +805,72 @@ private fun SpeakerMultiSelectDialog(
                         onConfirm(picked)
                     }
                 }
+            }
+        }
+    }
+}
+
+private data class SpeakerSourceGroupUi(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val options: List<SpeechVoiceOption>
+)
+
+@Composable
+private fun SpeakerSourceGroupHeaderRow(
+    sourceGroup: SpeakerSourceGroupUi,
+    expanded: Boolean,
+    allSelected: Boolean,
+    selectableCount: Int,
+    selectedCount: Int,
+    colors: SpeakerManageColors,
+    onExpandToggle: () -> Unit,
+    onSelectToggle: () -> Unit
+) {
+    Surface(
+        onClick = onExpandToggle,
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.card,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    sourceGroup.title,
+                    color = colors.text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    buildList {
+                        add(if (expanded) "已展开" else "已收起")
+                        add(sourceGroup.subtitle)
+                        if (selectedCount > 0) add("已选 $selectedCount")
+                    }.filter { it.isNotBlank() }.joinToString(" · "),
+                    color = colors.subText,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            TextButton(
+                enabled = selectableCount > 0,
+                onClick = onSelectToggle
+            ) {
+                Text(
+                    if (allSelected) "取消全选" else "全选",
+                    color = if (selectableCount > 0) colors.accent else colors.subText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
@@ -908,4 +1042,41 @@ private fun speakerItemKey(
     speakerName: String
 ): String {
     return "$engineType|$engineValue|$toneID|$speakerName"
+}
+
+private fun buildSpeakerSourceGroups(
+    engine: SpeechVoiceEngineGroup?,
+    query: String
+): List<SpeakerSourceGroupUi> {
+    if (engine == null) return emptyList()
+    val normalizedQuery = query.trim()
+    return engine.options
+        .asSequence()
+        .filter { option -> option.matchesSpeakerQuery(normalizedQuery) }
+        .groupBy { option ->
+            option.groupId.ifBlank { option.groupName.ifBlank { "default" } }
+        }
+        .map { (sourceGroupId, options) ->
+            val sourceName = options.firstOrNull()?.groupName?.takeIf { it.isNotBlank() }
+                ?: if (engine.engineType == SpeechRoute.ENGINE_SYSTEM) "系统默认" else "默认分组"
+            SpeakerSourceGroupUi(
+                key = "${engine.key}:$sourceGroupId",
+                title = sourceName,
+                subtitle = buildList {
+                    add("${options.size} 个发言人")
+                    engine.title.takeIf { it.isNotBlank() && it != sourceName }?.let(::add)
+                }.joinToString(" · "),
+                options = options.sortedWith(
+                    compareBy<SpeechVoiceOption> { it.speakerName }
+                        .thenBy { it.toneID }
+                )
+            )
+        }
+        .sortedWith(compareBy<SpeakerSourceGroupUi> { it.title == "默认分组" }.thenBy { it.title })
+}
+
+private fun SpeechVoiceOption.matchesSpeakerQuery(query: String): Boolean {
+    if (query.isBlank()) return true
+    return listOf(speakerName, groupName, groupId, toneID, engineName)
+        .any { it.contains(query, ignoreCase = true) }
 }
