@@ -532,10 +532,10 @@ class BookInfoActivity :
         initViewEvent()
     }
 
-    private fun initComposeBookInfo() = binding.run {
-        refreshLayout.visibility = View.GONE
-        flAction.visibility = View.GONE
-        llInfo.visibility = View.GONE
+    private fun initComposeBookInfo() {
+        binding.refreshLayout.visibility = View.GONE
+        binding.flAction.visibility = View.GONE
+        binding.llInfo.visibility = View.GONE
         composeBookInfoView = ComposeView(this@BookInfoActivity).apply {
             id = View.generateViewId()
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -546,12 +546,12 @@ class BookInfoActivity :
                 )
             }
         }
-        vwBg.addView(
+        (binding.vwBg as ConstraintLayout).addView(
             composeBookInfoView,
             ConstraintLayout.LayoutParams(0, 0).apply {
                 startToStart = ConstraintLayout.LayoutParams.PARENT_ID
                 endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
-                topToBottom = titleBar.id
+                topToBottom = binding.titleBar.id
                 bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             }
         )
