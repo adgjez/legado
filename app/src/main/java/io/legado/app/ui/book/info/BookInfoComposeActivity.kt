@@ -205,6 +205,7 @@ class BookInfoComposeActivity :
         return BookInfoActions(
             onBack = ::finish,
             onRefresh = ::refreshBook,
+            onRefreshToc = ::refreshToc,
             onRead = {
                 viewModel.getBook()?.let { book ->
                     if (book.isWebFile) {

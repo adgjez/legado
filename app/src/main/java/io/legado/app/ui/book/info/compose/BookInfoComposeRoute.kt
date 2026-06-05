@@ -29,12 +29,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -94,6 +100,7 @@ data class BookInfoUiState(
 data class BookInfoActions(
     val onBack: () -> Unit = {},
     val onRefresh: () -> Unit = {},
+    val onRefreshToc: () -> Unit = {},
     val onRead: () -> Unit = {},
     val onShelf: () -> Unit = {},
     val onChangeCover: () -> Unit = {},
@@ -182,6 +189,7 @@ fun BookInfoComposeRoute(
 ) {
     val context = LocalContext.current
     val style = remember(context) { bookInfoComposeStyle(context) }
+    var showMoreMenu by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
         BookInfoCoverBackdrop(
             coverPath = state.coverPath,
@@ -226,7 +234,8 @@ fun BookInfoComposeRoute(
         BookInfoFloatingTopBar(
             title = state.name,
             style = style,
-            actions = actions,
+            onBack = actions.onBack,
+            onMore = { showMoreMenu = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -242,14 +251,115 @@ fun BookInfoComposeRoute(
                 strokeWidth = 2.dp
             )
         }
+        if (showMoreMenu) {
+            BookInfoMoreActionSheet(
+                state = state,
+                style = style,
+                actions = actions,
+                onDismiss = { showMoreMenu = false }
+            )
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BookInfoMoreActionSheet(
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle,
+    actions: BookInfoActions,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = style.metrics.panelRadius, topEnd = style.metrics.panelRadius),
+        containerColor = style.colors.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.more),
+                color = style.colors.primaryText,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+            BookInfoMoreActionItem(stringResource(R.string.refresh), style) {
+                onDismiss()
+                actions.onRefresh()
+            }
+            BookInfoMoreActionItem("刷新目录", style) {
+                onDismiss()
+                actions.onRefreshToc()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.change_book_source_action), style) {
+                onDismiss()
+                actions.onChangeSource()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.edit_source), style) {
+                onDismiss()
+                actions.onEditSource()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.change_group), style) {
+                onDismiss()
+                actions.onChangeGroup()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.set_source_variable), style) {
+                onDismiss()
+                actions.onSetSourceVariable()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.set_book_variable), style) {
+                onDismiss()
+                actions.onSetBookVariable()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.ai_image_gallery), style) {
+                onDismiss()
+                actions.onOpenAiGallery()
+            }
+            if (state.hasCustomButton) {
+                BookInfoMoreActionItem(stringResource(R.string.custom_button), style) {
+                    onDismiss()
+                    actions.onCustomButton()
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun BookInfoMoreActionItem(
+    text: String,
+    style: BookInfoComposeStyle,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = style.colors.primaryText,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surfaceVariant.copy(alpha = 0.72f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp)
+    )
 }
 
 @Composable
 private fun BookInfoFloatingTopBar(
     title: String,
     style: BookInfoComposeStyle,
-    actions: BookInfoActions,
+    onBack: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -263,7 +373,7 @@ private fun BookInfoFloatingTopBar(
             iconRes = R.drawable.ic_back,
             contentDescription = stringResource(R.string.back),
             style = style,
-            onClick = actions.onBack
+            onClick = onBack
         )
         Text(
             text = title,
@@ -275,10 +385,10 @@ private fun BookInfoFloatingTopBar(
             modifier = Modifier.weight(1f)
         )
         BookInfoTopIcon(
-            iconRes = R.drawable.ic_refresh_white_24dp,
-            contentDescription = stringResource(R.string.refresh),
+            iconRes = R.drawable.ic_more_vert,
+            contentDescription = stringResource(R.string.more),
             style = style,
-            onClick = actions.onRefresh
+            onClick = onMore
         )
     }
 }
