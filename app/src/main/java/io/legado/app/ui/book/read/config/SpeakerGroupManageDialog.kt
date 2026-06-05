@@ -76,6 +76,7 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
     private var editingNew by mutableStateOf(false)
     private var pickerTarget by mutableStateOf<ReadAloudSpeakerGroup?>(null)
     private var deleteTarget by mutableStateOf<ReadAloudSpeakerGroup?>(null)
+    private var sourceGroupPickerOpen by mutableStateOf(false)
 
     override fun onStart() {
         super.onStart()
@@ -98,6 +99,7 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
                     editingNew = editingNew,
                     pickerTarget = pickerTarget,
                     deleteTarget = deleteTarget,
+                    sourceGroupPickerOpen = sourceGroupPickerOpen,
                     actions = this@SpeakerGroupManageDialog
                 )
             }
@@ -181,6 +183,47 @@ class SpeakerGroupManageDialog : BaseDialogFragment(0), SpeakerGroupManageAction
         deleteTarget = null
     }
 
+    override fun openSourceGroupPicker() {
+        sourceGroupPickerOpen = true
+    }
+
+    override fun closeSourceGroupPicker() {
+        sourceGroupPickerOpen = false
+    }
+
+    override fun importSourceGroup(name: String, options: List<SpeechVoiceOption>) {
+        val validOptions = options.distinctBy {
+            speakerItemKey(it.engineType, it.engineValue, it.toneID, it.speakerName)
+        }
+        if (validOptions.isEmpty()) {
+            requireContext().toastOnUi("这个 TTS 分组没有可引用的发言人")
+            return
+        }
+        val currentGroups = groups
+        lifecycleScope.launch(IO) {
+            val now = System.currentTimeMillis()
+            val savedName = uniqueGroupName(name.ifBlank { "TTS 分组" }, currentGroups)
+            val groupId = appDb.readAloudSpeakerGroupDao.insertGroup(
+                ReadAloudSpeakerGroup(
+                    name = savedName,
+                    enabled = true,
+                    sortOrder = (appDb.readAloudSpeakerGroupDao.maxGroupOrder() ?: -1) + 1,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+            val items = validOptions.mapIndexed { index, option ->
+                SpeechVoiceGroupRepository.itemFromOption(groupId, option, index, now)
+            }
+            appDb.readAloudSpeakerGroupDao.insertItems(items)
+            notifyConfigChanged()
+            launch(kotlinx.coroutines.Dispatchers.Main) {
+                closeSourceGroupPicker()
+                requireContext().toastOnUi("已引用 ${items.size} 个发言人")
+            }
+        }
+    }
+
     override fun deleteGroup(group: ReadAloudSpeakerGroup) {
         lifecycleScope.launch(IO) {
             appDb.readAloudSpeakerGroupDao.deleteItemsByGroup(group.id)
@@ -252,6 +295,9 @@ private interface SpeakerGroupManageActions {
     fun toggleGroup(group: ReadAloudSpeakerGroup)
     fun requestDeleteGroup(group: ReadAloudSpeakerGroup)
     fun closeDeleteGroup()
+    fun openSourceGroupPicker()
+    fun closeSourceGroupPicker()
+    fun importSourceGroup(name: String, options: List<SpeechVoiceOption>)
     fun deleteGroup(group: ReadAloudSpeakerGroup)
     fun openSpeakerPicker(group: ReadAloudSpeakerGroup)
     fun closeSpeakerPicker()
@@ -259,6 +305,13 @@ private interface SpeakerGroupManageActions {
     fun deleteItem(item: ReadAloudSpeakerGroupItem)
     fun close()
 }
+
+private data class NativeSpeakerGroupOption(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val options: List<SpeechVoiceOption>
+)
 
 @Composable
 private fun SpeakerGroupManageScreen(
@@ -269,12 +322,16 @@ private fun SpeakerGroupManageScreen(
     editingNew: Boolean,
     pickerTarget: ReadAloudSpeakerGroup?,
     deleteTarget: ReadAloudSpeakerGroup?,
+    sourceGroupPickerOpen: Boolean,
     actions: SpeakerGroupManageActions
 ) {
     val colors = rememberSpeakerManageColors()
     val context = LocalContext.current
     val engineGroups = remember(httpTtsList) {
         SpeechVoiceCatalogRepository.allGroups(context, httpTtsList, includeSystem = true)
+    }
+    val sourceGroups = remember(engineGroups) {
+        buildNativeSpeakerGroupOptions(engineGroups)
     }
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -299,6 +356,7 @@ private fun SpeakerGroupManageScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SpeakerActionButton("新建分组", colors, modifier = Modifier.weight(1f), onClick = actions::openNewGroupEditor)
+                SpeakerSubActionButton("引用 TTS 分组", colors, modifier = Modifier.weight(1f), onClick = actions::openSourceGroupPicker)
             }
             if (groups.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -344,6 +402,14 @@ private fun SpeakerGroupManageScreen(
                 colors = colors,
                 onDismiss = actions::closeDeleteGroup,
                 onConfirm = { actions.deleteGroup(group) }
+            )
+        }
+        if (sourceGroupPickerOpen) {
+            NativeSpeakerGroupPickerDialog(
+                sourceGroups = sourceGroups,
+                colors = colors,
+                onDismiss = actions::closeSourceGroupPicker,
+                onImport = { source -> actions.importSourceGroup(source.title, source.options) }
             )
         }
     }
@@ -573,6 +639,87 @@ private fun SpeakerMultiSelectDialog(
 }
 
 @Composable
+private fun NativeSpeakerGroupPickerDialog(
+    sourceGroups: List<NativeSpeakerGroupOption>,
+    colors: SpeakerManageColors,
+    onDismiss: () -> Unit,
+    onImport: (NativeSpeakerGroupOption) -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().widthIn(max = 540.dp),
+            color = colors.page,
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(22.dp)),
+            border = BorderStroke(1.dp, colors.stroke)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("引用 TTS 分组", color = colors.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "删除引用分组不会删除 TTS 源内发言人",
+                            color = colors.subText,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 3.dp)
+                        )
+                    }
+                    TextButton(onClick = onDismiss) { Text("关闭", color = colors.subText) }
+                }
+                if (sourceGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 160.dp)
+                            .padding(top = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("没有可引用的 TTS 发言人分组", color = colors.subText, fontSize = 14.sp)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 220.dp, max = 480.dp)
+                            .padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(sourceGroups, key = { it.key }) { source ->
+                            NativeSpeakerGroupRow(source, colors) { onImport(source) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NativeSpeakerGroupRow(
+    source: NativeSpeakerGroupOption,
+    colors: SpeakerManageColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.card,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        border = BorderStroke(1.dp, colors.stroke)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(source.title, color = colors.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(source.subtitle, color = colors.subText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("引用", color = colors.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 private fun SpeakerOptionSelectRow(
     option: SpeechVoiceOption,
     selected: Boolean,
@@ -738,4 +885,51 @@ private fun speakerItemKey(
     speakerName: String
 ): String {
     return "$engineType|$engineValue|$toneID|$speakerName"
+}
+
+private fun buildNativeSpeakerGroupOptions(
+    engineGroups: List<SpeechVoiceEngineGroup>
+): List<NativeSpeakerGroupOption> {
+    return engineGroups.flatMap { engine ->
+        engine.options
+            .groupBy { option ->
+                option.groupId.ifBlank {
+                    option.groupName.ifBlank { "default" }
+                }
+            }
+            .map { (sourceGroupId, options) ->
+                val first = options.firstOrNull()
+                val sourceName = first?.groupName
+                    ?.takeIf { it.isNotBlank() }
+                    ?: if (engine.engineType == io.legado.app.help.readaloud.speech.SpeechRoute.ENGINE_SYSTEM) {
+                        "系统默认"
+                    } else {
+                        "默认"
+                    }
+                val title = if (engine.title == sourceName) sourceName else "${engine.title} / $sourceName"
+                NativeSpeakerGroupOption(
+                    key = "${engine.key}:$sourceGroupId",
+                    title = title,
+                    subtitle = buildList {
+                        add("${options.size} 个发言人")
+                        engine.subtitle.takeIf { it.isNotBlank() }?.let(::add)
+                    }.joinToString(" · "),
+                    options = options
+                )
+            }
+    }.filter { it.options.isNotEmpty() }
+}
+
+private fun uniqueGroupName(
+    baseName: String,
+    groups: List<ReadAloudSpeakerGroup>
+): String {
+    val used = groups.mapTo(hashSetOf()) { it.displayName() }
+    if (baseName !in used) return baseName
+    var index = 2
+    while (true) {
+        val candidate = "$baseName $index"
+        if (candidate !in used) return candidate
+        index += 1
+    }
 }
