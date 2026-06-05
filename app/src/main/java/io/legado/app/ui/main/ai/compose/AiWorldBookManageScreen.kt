@@ -56,6 +56,7 @@ import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
 import io.legado.app.utils.postEvent
@@ -255,7 +256,7 @@ fun AiWorldBookManageRoute(
                     )
                 },
                 onToggleBook = { book ->
-                    persist(books.map { if (it.id == book.id) it.copy(enabled = !it.enabled) else it })
+                    persist(books.map { if (it.id == book.id) it.toggleGlobalBinding() else it })
                 },
                 onAddEntry = { book ->
                     editingEntry = WorldBookEntryEditState(
@@ -350,7 +351,7 @@ private fun WorldBookMainScreen(
     ) {
         WorldBookTopBar(
             title = "世界书",
-            subtitle = "${books.count { it.enabled }} 个启用 · ${books.sumOf { it.entries.size }} 条条目",
+            subtitle = "${books.count { it.isGloballyEnabled() }} 个全局启用 · ${books.sumOf { it.entries.size }} 条条目",
             style = style,
             onBack = onBack,
             onAdd = onAddBook,
@@ -561,7 +562,7 @@ private fun WorldBookCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Switch(checked = book.enabled, onCheckedChange = { onToggle() })
+            Switch(checked = book.isGloballyEnabled(), onCheckedChange = { onToggle() })
         }
         Row(
             modifier = Modifier
@@ -569,9 +570,10 @@ private fun WorldBookCard(
                 .padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            InfoChip(if (book.enabled) "已启用" else "已停用", style, selected = book.enabled)
+            InfoChip(if (book.isGloballyEnabled()) "全局启用" else "可角色绑定", style, selected = book.isGloballyEnabled())
+            if (!book.enabled) InfoChip("资料库停用", style)
             InfoChip("${book.entries.size} 条目", style)
-            InfoChip("${book.bindings.size} 启用场景", style)
+            InfoChip("${book.activeBindingCount()} 个绑定", style)
             InfoChip("最多 ${book.maxEntries} 条", style)
         }
         Row(
@@ -729,7 +731,7 @@ private fun WorldBookEditor(
         )
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
-                LabeledSwitch("启用世界书", enabled, style) { enabled = it }
+                LabeledSwitch("资料库可用", enabled, style) { enabled = it }
                 LabeledField("名称", name, style, onValueChange = { name = it })
                 LabeledField("描述", description, style, minLines = 3, onValueChange = { description = it })
                 LabeledField(
@@ -1111,6 +1113,43 @@ private fun SmallAction(
             .clip(RoundedCornerShape(style.metrics.chipRadius))
             .clickable { onClick() }
             .padding(horizontal = 2.dp, vertical = 4.dp)
+    )
+}
+
+private fun AiWorldBookConfig.globalBinding(): AiWorldBookBinding? {
+    return bindings.firstOrNull { it.targetType == AiWorldBookBinding.TARGET_GLOBAL }
+}
+
+private fun AiWorldBookConfig.isGloballyEnabled(): Boolean {
+    return enabled && globalBinding()?.enabled == true
+}
+
+private fun AiWorldBookConfig.activeBindingCount(): Int {
+    return bindings.count { it.enabled }
+}
+
+private fun AiWorldBookConfig.toggleGlobalBinding(): AiWorldBookConfig {
+    val oldBinding = globalBinding()
+    val updatedBindings = if (oldBinding == null) {
+        bindings + AiWorldBookBinding(
+            targetType = AiWorldBookBinding.TARGET_GLOBAL,
+            targetKey = "",
+            enabled = true,
+            order = bindings.size
+        )
+    } else {
+        bindings.map { binding ->
+            if (binding.id == oldBinding.id) {
+                binding.copy(enabled = !oldBinding.enabled)
+            } else {
+                binding
+            }
+        }
+    }
+    return copy(
+        enabled = true,
+        bindingVersion = 1,
+        bindings = updatedBindings
     )
 }
 

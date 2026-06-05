@@ -407,19 +407,32 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
             }
             return
         }
+        val visibleWorldBooks = worldBooks.filter { it.enabled || it.id in companion.worldBookIds }
         val selected = companion.worldBookIds.toMutableSet()
         alert(title = "${companion.name} · 世界书") {
             multiChoiceItems(
-                items = worldBooks.map { book ->
-                    "${book.name}${if (book.enabled) "" else "（停用）"}"
+                items = visibleWorldBooks.map { book ->
+                    buildString {
+                        append(book.name)
+                        if (book.bindings.any { it.enabled && it.targetType == AiWorldBookBinding.TARGET_GLOBAL }) {
+                            append("（全局）")
+                        }
+                        if (!book.enabled) {
+                            append("（资料库停用）")
+                        }
+                    }
                 }.toTypedArray(),
-                checkedItems = BooleanArray(worldBooks.size) { index -> worldBooks[index].id in selected }
+                checkedItems = BooleanArray(visibleWorldBooks.size) { index ->
+                    visibleWorldBooks[index].id in selected
+                }
             ) { _, which, isChecked ->
-                if (isChecked) selected += worldBooks[which].id else selected -= worldBooks[which].id
+                if (isChecked) selected += visibleWorldBooks[which].id else selected -= visibleWorldBooks[which].id
             }
             okButton {
                 AppConfig.upsertAiChatCompanion(
-                    companion.copy(worldBookIds = selected.filter { id -> worldBooks.any { it.id == id } })
+                    companion.copy(worldBookIds = selected.filter { id ->
+                        worldBooks.any { it.id == id && it.enabled }
+                    })
                 )
                 refreshToken.intValue += 1
             }
