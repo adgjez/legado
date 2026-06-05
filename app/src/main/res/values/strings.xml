@@ -2102,6 +2102,11 @@ Selected text or question:
     <string name="bubble_manage">Bubble manager</string>
     <string name="bubble_manage_summary">Manage paragraph comment bubble SVG, colors, size, and sync</string>
     <string name="book_info_components_hint">Enable components and drag to reorder. Changes apply when the detail page is opened again.</string>
+    <string name="book_info_style_classic">Classic</string>
+    <string name="book_info_style_immersive">Immersive</string>
+    <string name="book_info_style_immersive_hint">The immersive detail page uses a fixed Compose layout. Component editing applies to Classic only.</string>
+    <string name="book_info_style_immersive_title">Immersive cover detail page</string>
+    <string name="book_info_style_immersive_desc">A modern detail page with cover backdrop, compact actions, intro, chapter preview and image gallery. Switch back to Classic to customize component order.</string>
     <string name="book_info_component_header">Main book card</string>
     <string name="book_info_component_header_hint">Cover, title, author, latest chapter and tags.</string>
     <string name="book_info_component_meta">Group and source card</string>
