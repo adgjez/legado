@@ -69,6 +69,7 @@ object PreferKey {
     const val aiChatCompanionList = "aiChatCompanionList"
     const val aiCurrentChatCompanionId = "aiCurrentChatCompanionId"
     const val aiChatAutoSpeakEnabled = "aiChatAutoSpeakEnabled"
+    const val aiThinkingToolbarEnabled = "aiThinkingToolbarEnabled"
     const val aiSystemPrompt = "aiSystemPrompt"
     const val aiSkillPrompt = "aiSkillPrompt"
     const val aiSkillList = "aiSkillList"

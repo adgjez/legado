@@ -114,7 +114,8 @@ data class AiImageResultUi(
 
 fun buildAiChatUiItems(
     context: Context,
-    messages: List<AiChatMessage>
+    messages: List<AiChatMessage>,
+    showProcessChain: Boolean = true
 ): List<AiChatUiItem> {
     val result = mutableListOf<AiChatUiItem>()
     var assistantId: String? = null
@@ -130,7 +131,7 @@ fun buildAiChatUiItems(
                 .flatMap { it.payload?.images.orEmpty() }
                 .distinctBy { it.imageKey() }
             val assistantParts = mutableListOf<AiMessagePartUi>()
-            if (processSteps.isNotEmpty()) {
+            if (showProcessChain && processSteps.isNotEmpty()) {
                 assistantParts += AiMessagePartUi.ProcessChain(
                     id = "process-${processSteps.first().id}",
                     steps = processSteps

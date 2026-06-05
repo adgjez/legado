@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -102,6 +104,7 @@ import io.legado.app.ui.book.SearchBookOpenHelper
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
+import io.legado.app.ui.main.ai.AiChatSpeechPlayer
 import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.book.character.compose.CharacterAvatar
@@ -110,6 +113,7 @@ import io.legado.app.utils.parseToUri
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.launch
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 @Stable
 data class AiChatScreenActions(
@@ -123,7 +127,7 @@ data class AiChatScreenActions(
     val onOpenWindowAbilities: (() -> Unit)? = null,
     val onOpenWorldBooks: (() -> Unit)? = null,
     val onToggleAutoSpeak: (() -> Unit)? = null,
-    val onSpeakMessage: ((String, AiChatCompanionConfig) -> Unit)? = null,
+    val onSpeakMessage: ((String, AiChatCompanionConfig, String) -> Unit)? = null,
     val onAddCompanion: (() -> Unit)? = null,
     val onSelectCompanion: ((String) -> Unit)? = null,
     val onSelectSession: ((String) -> Unit)? = null,
@@ -167,6 +171,7 @@ fun AiChatRoute(
         viewModel.activeSessionId()
     }
     val autoSpeakEnabled = remember(refreshToken) { AppConfig.aiChatAutoSpeakEnabled }
+    val thinkingToolbarEnabled = remember(refreshToken) { AppConfig.aiThinkingToolbarEnabled }
     val enterToSend = remember(refreshToken) { AppConfig.aiEnterToSend }
     AiChatScreen(
         messages = messages,
@@ -177,6 +182,7 @@ fun AiChatRoute(
         sessions = sessions,
         currentSessionId = currentSessionId,
         autoSpeakEnabled = autoSpeakEnabled,
+        thinkingToolbarEnabled = thinkingToolbarEnabled,
         enterToSend = enterToSend,
         compactHeader = compactHeader,
         actions = actions
@@ -193,6 +199,7 @@ fun AiChatScreen(
     sessions: List<AiChatSession>,
     currentSessionId: String,
     autoSpeakEnabled: Boolean,
+    thinkingToolbarEnabled: Boolean,
     enterToSend: Boolean,
     compactHeader: Boolean,
     actions: AiChatScreenActions
@@ -208,8 +215,13 @@ fun AiChatScreen(
     var lastAutoSpokenMessageId by rememberSaveable { mutableStateOf("") }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
-    val uiItems = remember(context, messages) {
-        buildAiChatUiItems(context, messages)
+    val speechState by AiChatSpeechPlayer.playbackState.collectAsState()
+    val uiItems = remember(context, messages, thinkingToolbarEnabled) {
+        buildAiChatUiItems(
+            context = context,
+            messages = messages,
+            showProcessChain = thinkingToolbarEnabled
+        )
     }
     val displayItems = remember(uiItems) {
         uiItems.asReversed()
@@ -277,38 +289,75 @@ fun AiChatScreen(
             System.currentTimeMillis() - last.updatedAt <= 60_000
         ) {
             lastAutoSpokenMessageId = last.id
-            actions.onSpeakMessage?.invoke(last.content, currentCompanion)
+            actions.onSpeakMessage?.invoke(last.content, currentCompanion, last.id)
         }
     }
     val drawerOpenDistancePx = remember(density) { with(density) { 72.dp.toPx() } }
     var drawerDragDistance by remember { mutableStateOf(0f) }
-    Box(
+    var drawerDragging by remember { mutableStateOf(false) }
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(style.colors.pageBackground)
-            .pointerInput(companionDrawerOpen) {
+    ) {
+        val drawerWidthPx = remember(maxWidth, density) {
+            min(
+                with(density) { maxWidth.toPx() * 0.88f },
+                with(density) { 340.dp.toPx() }
+            ).coerceAtLeast(1f)
+        }
+        val drawerProgress = when {
+            companionDrawerOpen -> (1f + drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
+            else -> (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
+        }
+        val drawerVisible = companionDrawerOpen || drawerDragging || drawerProgress > 0f
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(companionDrawerOpen, drawerWidthPx) {
                 detectHorizontalDragGestures(
                     onDragStart = {
                         drawerDragDistance = 0f
+                        drawerDragging = true
                     },
-                    onHorizontalDrag = { _, dragAmount ->
-                        if (!companionDrawerOpen) {
-                            drawerDragDistance = (drawerDragDistance + dragAmount).coerceAtLeast(0f)
-                            if (drawerDragDistance >= drawerOpenDistancePx) {
-                                companionDrawerOpen = true
-                                drawerDragDistance = 0f
-                            }
+                    onHorizontalDrag = { change, dragAmount ->
+                        val next = if (companionDrawerOpen) {
+                            (drawerDragDistance + dragAmount).coerceIn(-drawerWidthPx, 0f)
+                        } else {
+                            (drawerDragDistance + dragAmount).coerceIn(0f, drawerWidthPx)
+                        }
+                        if (next != drawerDragDistance) {
+                            change.consume()
+                            drawerDragDistance = next
                         }
                     },
                     onDragEnd = {
+                        val endProgress = if (companionDrawerOpen) {
+                            (1f + drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
+                        } else {
+                            (drawerDragDistance / drawerWidthPx).coerceIn(0f, 1f)
+                        }
+                        if (companionDrawerOpen) {
+                            if (-drawerDragDistance >= drawerOpenDistancePx ||
+                                endProgress < 0.72f
+                            ) {
+                                companionDrawerOpen = false
+                            }
+                        } else if (drawerDragDistance >= drawerOpenDistancePx ||
+                            endProgress >= 0.25f
+                        ) {
+                            companionDrawerOpen = true
+                        }
                         drawerDragDistance = 0f
+                        drawerDragging = false
                     },
                     onDragCancel = {
                         drawerDragDistance = 0f
+                        drawerDragging = false
                     }
                 )
             }
-    ) {
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -359,6 +408,7 @@ fun AiChatScreen(
                                 item = item,
                                 currentCompanion = currentCompanion,
                                 style = style,
+                                speechState = speechState,
                                 onSpeak = actions.onSpeakMessage,
                                 onToolPreview = { toolPreviewPayload = it },
                                 onProcessExpanded = {
@@ -413,7 +463,7 @@ fun AiChatScreen(
                 onDismiss = { toolPreviewPayload = null }
             )
         }
-        if (companionDrawerOpen) {
+        if (drawerVisible) {
             AiCompanionDrawer(
                 companions = companions,
                 currentCompanionId = currentCompanion.id,
@@ -421,9 +471,12 @@ fun AiChatScreen(
                 currentSessionId = currentSessionId,
                 style = style,
                 actions = actions,
+                progress = drawerProgress,
+                drawerWidthPx = drawerWidthPx,
                 onDismiss = { companionDrawerOpen = false }
             )
         }
+    }
     }
 }
 
@@ -582,14 +635,23 @@ private fun AiCompanionDrawer(
     currentSessionId: String,
     style: AiComposeStyle,
     actions: AiChatScreenActions,
+    progress: Float,
+    drawerWidthPx: Float,
     onDismiss: () -> Unit
 ) {
+    val clampedProgress = progress.coerceIn(0f, 1f)
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.22f))
-                .clickable { onDismiss() }
+                .background(Color.Black.copy(alpha = 0.22f * clampedProgress))
+                .then(
+                    if (clampedProgress >= 0.98f) {
+                        Modifier.clickable { onDismiss() }
+                    } else {
+                        Modifier
+                    }
+                )
         )
         Surface(
             shape = RoundedCornerShape(
@@ -606,6 +668,15 @@ private fun AiCompanionDrawer(
                 .fillMaxWidth(0.88f)
                 .widthIn(max = 340.dp)
                 .align(Alignment.CenterStart)
+                .offset {
+                    IntOffset(
+                        x = (-drawerWidthPx * (1f - clampedProgress)).roundToInt(),
+                        y = 0
+                    )
+                }
+                .graphicsLayer {
+                    alpha = clampedProgress.coerceAtLeast(0.001f)
+                }
         ) {
             Column(
                 modifier = Modifier
@@ -1002,7 +1073,8 @@ private fun AiMessageRow(
     item: AiChatUiItem,
     currentCompanion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?,
+    speechState: AiChatSpeechPlayer.PlaybackState,
+    onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
@@ -1012,6 +1084,7 @@ private fun AiMessageRow(
             message = item,
             companion = currentCompanion,
             style = style,
+            speechState = speechState,
             onSpeak = onSpeak,
             onToolPreview = onToolPreview,
             onProcessExpanded = onProcessExpanded
@@ -1061,7 +1134,8 @@ private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?,
+    speechState: AiChatSpeechPlayer.PlaybackState,
+    onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
     onProcessExpanded: () -> Unit
 ) {
@@ -1079,7 +1153,13 @@ private fun AiAssistantMessageRow(
             message.parts.forEach { part ->
                 key(part.id) {
                     when (part) {
-                        is AiMessagePartUi.Text -> AiAssistantTextPart(part, companion, style, onSpeak)
+                        is AiMessagePartUi.Text -> AiAssistantTextPart(
+                            part = part,
+                            companion = companion,
+                            style = style,
+                            speechState = speechState,
+                            onSpeak = onSpeak
+                        )
                         is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                         is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
                         is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
@@ -1095,7 +1175,8 @@ private fun AiAssistantTextPart(
     part: AiMessagePartUi.Text,
     companion: AiChatCompanionConfig,
     style: AiComposeStyle,
-    onSpeak: ((String, AiChatCompanionConfig) -> Unit)?
+    speechState: AiChatSpeechPlayer.PlaybackState,
+    onSpeak: ((String, AiChatCompanionConfig, String) -> Unit)?
 ) {
     Surface(
         shape = RoundedCornerShape(style.metrics.cardRadius),
@@ -1119,6 +1200,7 @@ private fun AiAssistantTextPart(
                 )
             }
             if (!part.pending && onSpeak != null && part.content.isNotBlank()) {
+                val isSpeaking = speechState.key == part.id && speechState.active
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1126,17 +1208,20 @@ private fun AiAssistantTextPart(
                     horizontalArrangement = Arrangement.End
                 ) {
                     Surface(
-                        onClick = { onSpeak(part.content, companion) },
+                        onClick = { onSpeak(part.content, companion, part.id) },
                         shape = CircleShape,
-                        color = style.colors.accent.copy(alpha = 0.10f)
+                        color = style.colors.accent.copy(alpha = if (isSpeaking) 0.18f else 0.10f),
+                        shadowElevation = if (isSpeaking) 3.dp else 0.dp
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_play_24dp),
+                            painter = painterResource(
+                                if (isSpeaking) R.drawable.ic_pause_24dp else R.drawable.ic_play_24dp
+                            ),
                             contentDescription = null,
                             tint = style.colors.accent,
                             modifier = Modifier
-                                .size(28.dp)
-                                .padding(6.dp)
+                                .size(30.dp)
+                                .padding(6.5.dp)
                         )
                     }
                 }

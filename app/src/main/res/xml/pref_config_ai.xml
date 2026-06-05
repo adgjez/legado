@@ -47,6 +47,13 @@
             android:title="@string/ai_enter_to_send"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:key="aiThinkingToolbarEnabled"
+            android:defaultValue="true"
+            android:summary="关闭后聊天页不显示思考和工具调用过程卡片，不影响后台执行"
+            android:title="显示思考工具栏"
+            app:iconSpaceReserved="false" />
+
         <io.legado.app.lib.prefs.Preference
             android:key="aiContextCompression"
             android:summary="@string/ai_context_compression_summary_default"

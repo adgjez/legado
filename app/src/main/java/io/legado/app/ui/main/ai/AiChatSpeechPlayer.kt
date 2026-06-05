@@ -3,6 +3,7 @@ package io.legado.app.ui.main.ai
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import com.script.ScriptException
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -24,6 +25,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.Response
 import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
@@ -35,29 +39,53 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
 
     private const val AI_CHAT_SPEECH_SPEED = 10
 
+    data class PlaybackState(
+        val key: String = "",
+        val loading: Boolean = false,
+        val playing: Boolean = false
+    ) {
+        val active: Boolean get() = loading || playing
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _playbackState = MutableStateFlow(PlaybackState())
     private var tts: TextToSpeech? = null
     private var mediaPlayer: MediaPlayer? = null
     private var speakJob: Job? = null
     private var ready = false
     private var pendingText: String = ""
     private var pendingRouteJson: String = ""
+    private var pendingPlaybackKey: String = ""
     private var enginePackage: String? = null
 
-    fun speak(text: String, routeJson: String = "") {
+    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+
+    fun stopIfActive(key: String): Boolean {
+        if (key.isBlank()) return false
+        val state = _playbackState.value
+        if (state.key == key && state.active) {
+            stop()
+            return true
+        }
+        return false
+    }
+
+    fun speak(text: String, routeJson: String = "", playbackKey: String = playbackKeyFor(text)) {
         val clean = sanitize(text)
         if (clean.isBlank()) return
         val route = SpeechRoute.fromJson(routeJson)
         if (route.engineType == SpeechRoute.ENGINE_HTTP) {
-            speakHttp(clean, route)
+            speakHttp(clean, route, playbackKey)
             return
         }
         stopHttpPlayback()
+        _playbackState.value = PlaybackState(key = playbackKey, loading = true)
         val targetEnginePackage = systemEnginePackage(routeJson)
         val engine = tts
         if (engine == null || enginePackage != targetEnginePackage) {
             pendingText = clean
             pendingRouteJson = routeJson
+            pendingPlaybackKey = playbackKey
             ready = false
             engine?.stop()
             engine?.shutdown()
@@ -72,26 +100,56 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
         if (!ready) {
             pendingText = clean
             pendingRouteJson = routeJson
+            pendingPlaybackKey = playbackKey
             return
         }
-        engine.speak(clean, TextToSpeech.QUEUE_FLUSH, Bundle.EMPTY, "ai_chat_${System.currentTimeMillis()}")
+        val utteranceId = "ai_chat_${System.currentTimeMillis()}"
+        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                _playbackState.value = PlaybackState(key = playbackKey, playing = true)
+            }
+
+            override fun onDone(utteranceId: String?) {
+                clearPlaybackState(playbackKey)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) {
+                clearPlaybackState(playbackKey)
+            }
+        })
+        val result = engine.speak(clean, TextToSpeech.QUEUE_FLUSH, Bundle.EMPTY, utteranceId)
+        if (result == TextToSpeech.ERROR) {
+            clearPlaybackState(playbackKey)
+        }
     }
 
     fun stop() {
         pendingText = ""
         pendingRouteJson = ""
+        pendingPlaybackKey = ""
         tts?.stop()
         stopHttpPlayback()
+        _playbackState.value = PlaybackState()
     }
 
     override fun onInit(status: Int) {
         ready = status == TextToSpeech.SUCCESS
-        if (ready && pendingText.isNotBlank()) {
-            val text = pendingText
-            val routeJson = pendingRouteJson
+        if (!ready) {
             pendingText = ""
             pendingRouteJson = ""
-            speak(text, routeJson)
+            pendingPlaybackKey = ""
+            _playbackState.value = PlaybackState()
+            return
+        }
+        if (pendingText.isNotBlank()) {
+            val text = pendingText
+            val routeJson = pendingRouteJson
+            val playbackKey = pendingPlaybackKey
+            pendingText = ""
+            pendingRouteJson = ""
+            pendingPlaybackKey = ""
+            speak(text, routeJson, playbackKey.ifBlank { playbackKeyFor(text) })
         }
     }
 
@@ -105,20 +163,27 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
             .take(4_000)
     }
 
-    private fun speakHttp(text: String, route: SpeechRoute) {
+    private fun playbackKeyFor(text: String): String {
+        return MD5Utils.md5Encode(sanitize(text))
+    }
+
+    private fun speakHttp(text: String, route: SpeechRoute, playbackKey: String) {
         stopHttpPlayback()
         tts?.stop()
+        _playbackState.value = PlaybackState(key = playbackKey, loading = true)
         speakJob = scope.launch {
             val result = withContext(Dispatchers.IO) {
                 synthesizeHttp(text, route)
             }
             val file = result.file
             if (file != null) {
-                playFile(file)
+                playFile(file, playbackKey)
             } else {
                 val fallback = result.fallbackRoute
                 if (fallback != null) {
-                    speak(text, fallback.toJson())
+                    speak(text, fallback.toJson(), playbackKey)
+                } else {
+                    clearPlaybackState(playbackKey)
                 }
             }
         }
@@ -222,8 +287,8 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
         }
     }
 
-    private fun playFile(file: File) {
-        stopHttpPlayback(cancelJob = false)
+    private fun playFile(file: File, playbackKey: String) {
+        stopHttpPlayback(cancelJob = false, clearState = false)
         mediaPlayer = MediaPlayer().apply {
             setOnCompletionListener { stopHttpPlayback(cancelJob = false) }
             setOnErrorListener { _, _, _ ->
@@ -232,11 +297,14 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
             }
             setDataSource(file.absolutePath)
             prepareAsync()
-            setOnPreparedListener { it.start() }
+            setOnPreparedListener {
+                _playbackState.value = PlaybackState(key = playbackKey, playing = true)
+                it.start()
+            }
         }
     }
 
-    private fun stopHttpPlayback(cancelJob: Boolean = true) {
+    private fun stopHttpPlayback(cancelJob: Boolean = true, clearState: Boolean = true) {
         if (cancelJob) {
             speakJob?.cancel()
             speakJob = null
@@ -248,6 +316,15 @@ object AiChatSpeechPlayer : TextToSpeech.OnInitListener {
             }
         }
         mediaPlayer = null
+        if (clearState) {
+            _playbackState.value = PlaybackState()
+        }
+    }
+
+    private fun clearPlaybackState(key: String) {
+        if (_playbackState.value.key == key) {
+            _playbackState.value = PlaybackState()
+        }
     }
 
     private fun speechCacheDir(): File {

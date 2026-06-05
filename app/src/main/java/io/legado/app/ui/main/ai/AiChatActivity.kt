@@ -108,8 +108,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onOpenWindowAbilities = ::showWindowAbilityDialog,
                     onOpenWorldBooks = { showCompanionWorldBookDialog() },
                     onToggleAutoSpeak = ::toggleAutoSpeak,
-                    onSpeakMessage = { text, companion ->
-                        speakCompanionMessage(text, companion)
+                    onSpeakMessage = { text, companion, playbackKey ->
+                        speakCompanionMessage(text, companion, playbackKey)
                     },
                     onAddCompanion = ::showAddCompanionDialog,
                     onSelectCompanion = ::selectCompanion,
@@ -213,12 +213,19 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
         refreshToken.intValue += 1
     }
 
-    private fun speakCompanionMessage(text: String, companion: AiChatCompanionConfig) {
+    private fun speakCompanionMessage(
+        text: String,
+        companion: AiChatCompanionConfig,
+        playbackKey: String
+    ) {
+        if (AiChatSpeechPlayer.stopIfActive(playbackKey)) {
+            return
+        }
         lifecycleScope.launch {
             val routeJson = withContext(Dispatchers.IO) {
                 resolveCompanionSpeechRouteJson(companion)
             }
-            AiChatSpeechPlayer.speak(text, routeJson)
+            AiChatSpeechPlayer.speak(text, routeJson, playbackKey)
         }
     }
 

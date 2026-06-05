@@ -774,6 +774,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.aiChatAutoSpeakEnabled)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiChatAutoSpeakEnabled, value)
 
+    var aiThinkingToolbarEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiThinkingToolbarEnabled, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiThinkingToolbarEnabled, value)
+
     fun upsertAiChatCompanion(config: AiChatCompanionConfig) {
         val companions = aiChatCompanionList.toMutableList()
         val index = companions.indexOfFirst { it.id == config.id }
