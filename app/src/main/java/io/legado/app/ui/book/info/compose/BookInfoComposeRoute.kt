@@ -188,42 +188,42 @@ fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoCom
     val pageBackground = if (night) {
         coverAccent.coverTone(saturation = 0.34f, value = 0.09f)
     } else {
-        coverAccent.coverTone(saturation = 0.24f, value = 0.90f)
+        coverAccent.coverTone(saturation = 0.24f, value = 0.86f)
     }
     val contentBackground = if (night) {
         coverAccent.coverTone(saturation = 0.30f, value = 0.13f)
     } else {
-        coverAccent.coverTone(saturation = 0.28f, value = 0.88f)
+        coverAccent.coverTone(saturation = 0.30f, value = 0.82f)
     }
     val contentTop = if (night) {
         coverAccent.coverTone(saturation = 0.42f, value = 0.20f)
     } else {
-        coverAccent.coverTone(saturation = 0.36f, value = 0.76f)
+        coverAccent.coverTone(saturation = 0.38f, value = 0.68f)
     }
     val surface = if (night) {
         coverAccent.coverTone(saturation = 0.26f, value = 0.18f)
     } else {
-        coverAccent.coverTone(saturation = 0.18f, value = 0.93f)
+        coverAccent.coverTone(saturation = 0.20f, value = 0.86f)
     }
     val variant = if (night) {
         coverAccent.coverTone(saturation = 0.28f, value = 0.22f)
     } else {
-        coverAccent.coverTone(saturation = 0.24f, value = 0.84f)
+        coverAccent.coverTone(saturation = 0.26f, value = 0.76f)
     }
     val accentContainer = if (night) {
         coverAccent.coverTone(saturation = 0.38f, value = 0.24f)
     } else {
-        coverAccent.coverTone(saturation = 0.30f, value = 0.82f)
+        coverAccent.coverTone(saturation = 0.32f, value = 0.72f)
     }
     val metricTop = if (night) {
         coverAccent.coverTone(saturation = 0.34f, value = 0.24f)
     } else {
-        coverAccent.coverTone(saturation = 0.30f, value = 0.92f)
+        coverAccent.coverTone(saturation = 0.30f, value = 0.80f)
     }
     val metricBottom = if (night) {
         coverAccent.coverTone(saturation = 0.30f, value = 0.18f)
     } else {
-        coverAccent.coverTone(saturation = 0.36f, value = 0.82f)
+        coverAccent.coverTone(saturation = 0.36f, value = 0.68f)
     }
     val actionText = if (ColorUtils.isColorLight(accent)) 0xff202124.toInt() else 0xffffffff.toInt()
     val scrim = if (night) {
@@ -439,28 +439,22 @@ private fun BookInfoMetricBox(
     val shape = RoundedCornerShape(style.metrics.actionRadius)
     Box(
         modifier = modifier
-            .height(76.dp)
-            .shadow(3.dp, shape, clip = false)
+            .height(74.dp)
+            .shadow(2.dp, shape, clip = false)
             .clip(shape)
             .background(
-                Brush.verticalGradient(
-                    0f to style.colors.metricTop,
-                    0.48f to style.colors.metricTop.copy(alpha = 0.94f),
-                    1f to style.colors.metricBottom
+                Brush.linearGradient(
+                    0f to style.colors.metricTop.copy(alpha = 0.94f),
+                    0.58f to style.colors.accentContainer.copy(alpha = 0.88f),
+                    1f to style.colors.metricBottom.copy(alpha = 0.90f)
                 )
             )
             .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(style.colors.metricHighlight)
-        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 11.dp, vertical = 9.dp),
+                .padding(horizontal = 12.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.Center
         ) {
             Row(
@@ -1264,12 +1258,12 @@ private fun BookInfoActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val background = if (primary) style.colors.accent else style.colors.surface
+    val background = if (primary) style.colors.accent else style.colors.accentContainer
     val textColor = if (primary) style.colors.actionText else style.colors.primaryText
     Box(
         modifier = modifier
             .height(50.dp)
-            .shadow(8.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .shadow(4.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
             .clip(RoundedCornerShape(style.metrics.actionRadius))
             .background(background)
             .clickable(onClick = onClick),
