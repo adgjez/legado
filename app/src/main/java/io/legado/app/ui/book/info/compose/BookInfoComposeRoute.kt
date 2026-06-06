@@ -130,6 +130,7 @@ data class BookInfoActions(
     val onAuthorLongClick: () -> Unit = {},
     val onNameClick: () -> Unit = {},
     val onNameLongClick: () -> Unit = {},
+    val onEditBookInfo: () -> Unit = {},
     val onChangeSource: () -> Unit = {},
     val onEditSource: () -> Unit = {},
     val onChangeGroup: () -> Unit = {},
@@ -525,6 +526,10 @@ private fun BookInfoMoreActionSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
+            BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
+                onDismiss()
+                actions.onEditBookInfo()
+            }
             BookInfoMoreActionItem(stringResource(R.string.refresh), style) {
                 onDismiss()
                 actions.onRefresh()

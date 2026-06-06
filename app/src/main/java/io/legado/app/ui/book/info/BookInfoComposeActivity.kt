@@ -57,6 +57,7 @@ import io.legado.app.ui.book.info.compose.BookInfoActions
 import io.legado.app.ui.book.info.compose.BookInfoChapterUi
 import io.legado.app.ui.book.info.compose.BookInfoComposeRoute
 import io.legado.app.ui.book.info.compose.BookInfoUiState
+import io.legado.app.ui.book.info.edit.BookInfoEditActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
@@ -158,6 +159,15 @@ class BookInfoComposeActivity :
                 setResult(Activity.RESULT_OK)
                 finish()
             }
+        }
+    }
+
+    private val infoEditResult = registerForActivityResult(
+        StartActivityContract(BookInfoEditActivity::class.java)
+    ) {
+        if (it.resultCode == Activity.RESULT_OK) {
+            viewModel.upEditBook()
+            updateUiState()
         }
     }
 
@@ -310,6 +320,13 @@ class BookInfoComposeActivity :
                         null,
                         result = book.name
                     )
+                }
+            },
+            onEditBookInfo = {
+                viewModel.getBook()?.let { book ->
+                    infoEditResult.launch {
+                        putExtra("bookUrl", book.bookUrl)
+                    }
                 }
             },
             onChangeSource = {
