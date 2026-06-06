@@ -9,7 +9,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -55,8 +56,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
@@ -161,6 +165,9 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 onTopDrag = ::handleDrag,
                 onSelectModel = ::selectModel,
                 onOpenAbilities = ::showWindowAbilityDialog,
+                onOpenSkills = ::showWindowSkillDialog,
+                onOpenMcp = ::showWindowMcpDialog,
+                onOpenWorldBooks = ::showReadAiWorldBookDialog,
                 onNewChat = ::startNewChat,
                 onToggleHistory = ::toggleHistory,
                 onClose = ::close,
@@ -921,6 +928,9 @@ private fun ReadAiPanelContent(
     onTopDrag: (MotionEvent) -> Boolean,
     onSelectModel: () -> Unit,
     onOpenAbilities: () -> Unit,
+    onOpenSkills: () -> Unit,
+    onOpenMcp: () -> Unit,
+    onOpenWorldBooks: () -> Unit,
     onNewChat: () -> Unit,
     onToggleHistory: () -> Unit,
     onClose: () -> Unit,
@@ -933,6 +943,7 @@ private fun ReadAiPanelContent(
 ) {
     val context = LocalContext.current
     val style = aiComposeStyle(context)
+    var menuExpanded by remember { mutableStateOf(false) }
     val panelShape = RoundedCornerShape(20.dp)
     Surface(
         modifier = Modifier
@@ -950,44 +961,75 @@ private fun ReadAiPanelContent(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
+                    .height(48.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    onClick = onSelectModel,
-                    enabled = !requesting,
-                    shape = RoundedCornerShape(style.metrics.chipRadius),
-                    color = style.colors.accent.copy(alpha = if (requesting) 0.06f else 0.10f)
-                ) {
-                    Text(
-                        text = modelLabel.ifBlank { stringResource(R.string.ai_current_model_summary_empty) },
-                        color = if (requesting) style.colors.secondaryText else style.colors.accent,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .widthIn(max = 132.dp)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-                Box(
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .pointerInteropFilter(onTouchEvent = onTopDrag)
-                )
-                ReadAiIconButton(R.drawable.ic_settings, R.string.menu, style, onOpenAbilities)
+                        .height(48.dp)
+                        .pointerInteropFilter(onTouchEvent = onTopDrag),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.ask_ai),
+                        color = style.colors.primaryText,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = contextLabel,
+                        color = style.colors.secondaryText,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                if (modelLabel.isNotBlank()) {
+                    Surface(
+                        onClick = onSelectModel,
+                        enabled = !requesting,
+                        shape = RoundedCornerShape(style.metrics.chipRadius),
+                        color = style.colors.accent.copy(alpha = if (requesting) 0.06f else 0.10f)
+                    ) {
+                        Text(
+                            text = modelLabel,
+                            color = if (requesting) style.colors.secondaryText else style.colors.accent,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .widthIn(max = 118.dp)
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                Box {
+                    ReadAiIconButton(R.drawable.ic_settings, R.string.menu, style) {
+                        menuExpanded = true
+                    }
+                    if (menuExpanded) {
+                        ReadAiTopMenu(
+                            style = style,
+                            actions = buildList {
+                                add(ReadAiMenuAction(stringResource(R.string.ai_new_chat), onNewChat))
+                                add(ReadAiMenuAction(stringResource(R.string.ai_chat_history), onToggleHistory))
+                                add(ReadAiMenuAction("Skill", onOpenSkills))
+                                add(ReadAiMenuAction("MCP", onOpenMcp))
+                                add(ReadAiMenuAction("世界书", onOpenWorldBooks))
+                                add(ReadAiMenuAction("窗口能力", onOpenAbilities))
+                                add(ReadAiMenuAction(stringResource(R.string.ai_current_model), onSelectModel))
+                            },
+                            onDismiss = { menuExpanded = false }
+                        )
+                    }
+                }
                 ReadAiIconButton(R.drawable.ic_close_x, R.string.close, style, onClose)
             }
-            Text(
-                text = contextLabel,
-                color = style.colors.secondaryText,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
             if (showingHistory) {
                 ReadAiHistoryList(
                     sessions = historySessions,
@@ -1037,6 +1079,58 @@ private fun ReadAiIconButton(
                 tint = style.colors.primaryText,
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+@Immutable
+private data class ReadAiMenuAction(
+    val title: String,
+    val invoke: () -> Unit
+)
+
+@Composable
+private fun ReadAiTopMenu(
+    style: AiComposeStyle,
+    actions: List<ReadAiMenuAction>,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        alignment = Alignment.TopEnd,
+        offset = IntOffset(0, 44),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = style.colors.composerSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp,
+            modifier = Modifier.widthIn(min = 132.dp)
+        ) {
+            Column(modifier = Modifier.padding(6.dp)) {
+                actions.forEach { action ->
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = 132.dp)
+                            .clip(RoundedCornerShape(style.metrics.chipRadius))
+                            .clickable {
+                                onDismiss()
+                                action.invoke()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = action.title,
+                            color = style.colors.primaryText,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }
