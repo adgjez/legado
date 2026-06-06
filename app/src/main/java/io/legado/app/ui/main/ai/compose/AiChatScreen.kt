@@ -1,13 +1,7 @@
 package io.legado.app.ui.main.ai.compose
 
 import android.net.Uri
-import android.text.Spannable
-import android.text.TextPaint
-import android.text.style.ClickableSpan
-import android.text.style.URLSpan
-import android.view.View
 import android.widget.ImageView
-import android.widget.TextView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -55,6 +49,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -80,10 +75,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -118,12 +113,12 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiChatSpeechPlayer
-import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.book.character.compose.CharacterAvatar
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.parseToUri
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -1275,12 +1270,21 @@ private fun AiUserMessageRow(
             style = style,
             modifier = Modifier.widthIn(max = bubbleMaxWidth)
         ) {
-            AiMarkdownRichText(
-                text = message.content,
-                style = style,
-                color = style.colors.userText,
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp)
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                AiMarkdownRichText(
+                    text = message.content,
+                    style = style,
+                    color = style.colors.userText
+                )
+                AiCopyTextButton(
+                    text = message.content,
+                    style = style,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
         }
         Spacer(modifier = Modifier.width(8.dp))
         AiUserAvatar(
@@ -1341,32 +1345,41 @@ private fun AiAssistantTextPart(
     AiChatBubbleSurface(isUser = false, style = style) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             if (part.pending) {
-                Text(
-                    text = part.content,
-                    color = style.colors.primaryText,
-                    fontSize = 15.sp,
-                    lineHeight = 21.sp
-                )
+                SelectionContainer {
+                    Text(
+                        text = part.content,
+                        color = style.colors.primaryText,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp
+                    )
+                }
             } else {
                 AiComposeMarkdownText(
                     content = part.content,
                     style = style
                 )
             }
-            if (!part.pending && onSpeak != null && part.content.isNotBlank()) {
+            if (!part.pending && part.content.isNotBlank()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    AiMessageSpeakButton(
-                        partId = part.id,
-                        content = part.content,
-                        companion = companion,
-                        style = style,
-                        onSpeak = onSpeak
+                    AiCopyTextButton(
+                        text = part.content,
+                        style = style
                     )
+                    if (onSpeak != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AiMessageSpeakButton(
+                            partId = part.id,
+                            content = part.content,
+                            companion = companion,
+                            style = style,
+                            onSpeak = onSpeak
+                        )
+                    }
                 }
             }
         }
@@ -1405,6 +1418,35 @@ private fun AiMessageSpeakButton(
             modifier = Modifier.size(if (isSpeaking) 15.dp else 16.dp)
         )
     }
+}
+
+@Composable
+private fun AiCopyTextButton(
+    text: String,
+    style: AiComposeStyle,
+    modifier: Modifier = Modifier,
+    label: String = "复制"
+) {
+    if (text.isBlank()) return
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    Text(
+        text = label,
+        color = style.colors.accent,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = modifier
+            .clip(RoundedCornerShape(style.metrics.chipRadius))
+            .background(style.colors.accent.copy(alpha = 0.09f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                clipboardManager.setText(AnnotatedString(text))
+                context.toastOnUi(R.string.copy_complete)
+            }
+            .padding(horizontal = 9.dp, vertical = 5.dp)
+    )
 }
 
 @Composable
@@ -1564,82 +1606,6 @@ private fun AiInfoPill(
 }
 
 @Composable
-private fun AiMarkdownText(
-    content: String,
-    style: AiComposeStyle,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val markwon = remember(context) {
-        AiMarkdownRender.createMarkwon(context)
-    }
-    val normalizedContent = remember(content) { normalizeAiMarkdownContent(content) }
-    val markdown = remember(markwon, normalizedContent) { markwon.toMarkdown(normalizedContent) }
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val widthBucket = maxWidth.value.toInt()
-        AndroidView(
-            modifier = Modifier.fillMaxWidth(),
-            factory = {
-                TextView(it).apply {
-                    includeFontPadding = true
-                    setLineSpacing(2f, 1.05f)
-                    AiMarkdownRender.setNativeSelectionWithLinkTap(this)
-                }
-            },
-            update = { textView ->
-                val textColor = style.colors.primaryText.toArgb()
-                val linkColor = style.colors.accent.toArgb()
-                textView.setTextColor(textColor)
-                textView.textSize = 15f
-                textView.setLinkTextColor(linkColor)
-                val renderKey = buildString {
-                    append(AiMarkdownRender.renderKey("compose", normalizedContent, false, textView, context))
-                    append(':')
-                    append(widthBucket)
-                    append(':')
-                    append(textColor)
-                    append(':')
-                    append(linkColor)
-                }
-                if (textView.tag != renderKey) {
-                    markwon.setParsedMarkdown(textView, markdown)
-                    installSearchBookLinks(textView, linkColor)
-                    textView.tag = renderKey
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun AiPlainSelectableText(
-    content: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    AndroidView(
-        modifier = modifier.fillMaxWidth(),
-        factory = {
-            TextView(it).apply {
-                includeFontPadding = true
-                setLineSpacing(2f, 1.05f)
-                AiMarkdownRender.setNativeSelectionWithLinkTap(this)
-            }
-        },
-        update = { textView ->
-            val textColor = color.toArgb()
-            textView.setTextColor(textColor)
-            textView.textSize = 15f
-            val renderKey = "plain:${content.hashCode()}:$textColor"
-            if (textView.tag != renderKey) {
-                textView.text = content
-                textView.tag = renderKey
-            }
-        }
-    )
-}
-
-@Composable
 private fun AiComposeMarkdownText(
     content: String,
     style: AiComposeStyle,
@@ -1767,16 +1733,32 @@ private fun AiMarkdownCodeBlock(
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
-        Text(
-            text = text,
-            color = style.colors.primaryText,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 9.dp)
-        )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, top = 8.dp, end = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                AiCopyTextButton(
+                    text = text,
+                    style = style,
+                    label = "复制代码"
+                )
+            }
+            SelectionContainer {
+                Text(
+                    text = text,
+                    color = style.colors.primaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 9.dp)
+                )
+            }
+        }
     }
 }
 
@@ -1796,14 +1778,16 @@ private fun AiMarkdownRichText(
         buildAiInlineMarkdown(text, color, style.colors.accent)
     }
     if (annotated.getStringAnnotations(AI_LINK_TAG, 0, annotated.length).isEmpty()) {
-        Text(
-            text = annotated,
-            color = color,
-            fontSize = fontSize,
-            lineHeight = lineHeight,
-            fontWeight = fontWeight,
-            modifier = modifier
-        )
+        SelectionContainer {
+            Text(
+                text = annotated,
+                color = color,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                fontWeight = fontWeight,
+                modifier = modifier
+            )
+        }
     } else {
         ClickableText(
             text = annotated,
@@ -2244,35 +2228,6 @@ private fun buildAiInlineMarkdown(text: String, color: Color, accent: Color): An
             }
             index = match.range.last + 1
         }
-    }
-}
-
-private fun installSearchBookLinks(textView: TextView, accentColor: Int) {
-    val spannable = textView.text as? Spannable ?: return
-    val spans = spannable.getSpans(0, spannable.length, URLSpan::class.java)
-    spans.forEach { span ->
-        val url = span.url
-        if (!url.startsWith(searchBookScheme)) return@forEach
-        val start = spannable.getSpanStart(span)
-        val end = spannable.getSpanEnd(span)
-        val flags = spannable.getSpanFlags(span)
-        spannable.removeSpan(span)
-        spannable.setSpan(
-            object : ClickableSpan() {
-                override fun onClick(widget: View) {
-                    openSearchBookLink(widget.context, url)
-                }
-
-                override fun updateDrawState(ds: TextPaint) {
-                    super.updateDrawState(ds)
-                    ds.color = accentColor
-                    ds.isUnderlineText = false
-                }
-            },
-            start,
-            end,
-            flags
-        )
     }
 }
 
