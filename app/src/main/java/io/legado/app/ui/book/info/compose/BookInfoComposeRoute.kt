@@ -10,6 +10,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1411,9 +1412,6 @@ private fun BookInfoWebIntro(
                   line-height: 1.72;
                   word-break: break-word;
                 }
-                div, p, section, article, table, tbody, tr, td, th {
-                  background-color: transparent !important;
-                }
                 img, video, iframe {
                   max-width: 100%;
                   height: auto;
@@ -1444,6 +1442,14 @@ private fun BookInfoWebIntro(
             overScrollMode = View.OVER_SCROLL_NEVER
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            addJavascriptInterface(
+                BookInfoHeightBridge(this) { contentHeightPx ->
+                    webHeight = with(density) {
+                        contentHeightPx.toDp().coerceAtLeast(240.dp)
+                    }
+                },
+                "legadoBookInfoHeight"
+            )
         }
     }
     DisposableEffect(webView) {
@@ -1521,19 +1527,97 @@ private class BookInfoIntroWebViewClient(
 
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
-        view?.postDelayed({
-            view.evaluateJavascript(
-                "Math.max(document.body.scrollHeight,document.documentElement.scrollHeight).toString()"
-            ) { result ->
-                val jsHeight = result
-                    ?.trim('"')
-                    ?.toFloatOrNull()
-                    ?.let { it * view.scale }
-                    ?.toInt()
-                val nativeHeight = (view.contentHeight * view.scale).toInt()
-                onContentHeight((jsHeight ?: nativeHeight).coerceAtLeast(nativeHeight))
-            }
-        }, 80L)
+        view ?: return
+        view.installDynamicHeightObserver()
+        listOf(80L, 240L, 600L, 1200L, 2200L).forEach { delay ->
+            view.postDelayed({ view.measureContentHeight() }, delay)
+        }
+    }
+
+    private fun WebView.measureContentHeight() {
+        evaluateJavascript(
+            """
+                (function(){
+                  var b=document.body||{};
+                  var e=document.documentElement||{};
+                  return String(Math.max(
+                    b.scrollHeight||0,b.offsetHeight||0,b.clientHeight||0,
+                    e.scrollHeight||0,e.offsetHeight||0,e.clientHeight||0
+                  ));
+                })()
+            """.trimIndent()
+        ) { result ->
+            val jsHeight = result
+                ?.trim('"')
+                ?.toFloatOrNull()
+                ?.let { it * scale }
+                ?.toInt()
+            val nativeHeight = (contentHeight * scale).toInt()
+            onContentHeight((jsHeight ?: nativeHeight).coerceAtLeast(nativeHeight))
+        }
+    }
+
+    private fun WebView.installDynamicHeightObserver() {
+        evaluateJavascript(
+            """
+                (function(){
+                  if (window.__legadoBookInfoHeightObserverInstalled) return;
+                  window.__legadoBookInfoHeightObserverInstalled = true;
+                  var report = function(){
+                    try {
+                      var b=document.body||{};
+                      var e=document.documentElement||{};
+                      var h=Math.max(
+                        b.scrollHeight||0,b.offsetHeight||0,b.clientHeight||0,
+                        e.scrollHeight||0,e.offsetHeight||0,e.clientHeight||0
+                      );
+                      legadoBookInfoHeight.reportHeight(String(h));
+                    } catch(e) {}
+                  };
+                  if (window.ResizeObserver) {
+                    try {
+                      new ResizeObserver(report).observe(document.documentElement);
+                      if (document.body) new ResizeObserver(report).observe(document.body);
+                    } catch(e) {}
+                  }
+                  if (window.MutationObserver && document.body) {
+                    try {
+                      new MutationObserver(report).observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        characterData: true
+                      });
+                    } catch(e) {}
+                  }
+                  Array.prototype.forEach.call(document.images || [], function(img) {
+                    if (!img.complete) img.addEventListener('load', report, { once: true });
+                  });
+                  var count = 0;
+                  var timer = setInterval(function(){
+                    report();
+                    count++;
+                    if (count > 12) clearInterval(timer);
+                  }, 300);
+                  report();
+                })()
+            """.trimIndent(),
+            null
+        )
+    }
+}
+
+private class BookInfoHeightBridge(
+    private val webView: WebView,
+    private val onContentHeight: (Int) -> Unit
+) {
+    @JavascriptInterface
+    fun reportHeight(value: String?) {
+        val height = value?.toFloatOrNull()?.let { it * webView.scale }?.toInt() ?: return
+        webView.post {
+            val nativeHeight = (webView.contentHeight * webView.scale).toInt()
+            onContentHeight(height.coerceAtLeast(nativeHeight))
+        }
     }
 }
 
