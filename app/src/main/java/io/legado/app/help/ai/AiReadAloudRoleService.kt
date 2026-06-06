@@ -171,6 +171,23 @@ object AiReadAloudRoleService {
             get() = segmentCount > 0
     }
 
+    data class ManualSegmentAssignment(
+        val paragraphIndex: Int,
+        val start: Int,
+        val end: Int,
+        val roleType: String,
+        val characterId: Long = 0L,
+        val characterName: String = "",
+        val emotionName: String = "",
+        val emotionTag: String = ""
+    )
+
+    data class ManualSegmentAssignmentResult(
+        val success: Boolean,
+        val message: String,
+        val previewSegments: List<AiReadAloudRolePreviewSegment> = emptyList()
+    )
+
     fun cacheKeyFor(
         book: Book?,
         textChapter: TextChapter?,
@@ -197,6 +214,94 @@ object AiReadAloudRoleService {
         return appDb.aiReadAloudRoleCacheDao.get(roleKey.cacheKey)
             ?.takeIf { it.status == AiReadAloudRoleCache.STATUS_SUCCESS && it.segmentsJson.isNotBlank() }
             ?: latestSuccessCache(currentBook, currentChapter, roleKey)
+    }
+
+    fun updateCachedSegmentAssignment(
+        book: Book?,
+        textChapter: TextChapter?,
+        paragraphs: List<String>,
+        assignment: ManualSegmentAssignment
+    ): ManualSegmentAssignmentResult {
+        val currentBook = book
+            ?: return ManualSegmentAssignmentResult(false, "书籍不存在")
+        val currentChapter = textChapter
+            ?: return ManualSegmentAssignmentResult(false, "章节不存在")
+        val cleanParagraphs = paragraphs.map { it.trimEnd() }.filter { it.isNotBlank() }
+        if (cleanParagraphs.isEmpty()) {
+            return ManualSegmentAssignmentResult(false, "章节内容为空")
+        }
+        val roleKey = buildRoleCacheKey(currentBook, currentChapter, cleanParagraphs)
+            ?: return ManualSegmentAssignmentResult(false, "多角色模型未配置")
+        val characterBookKey = roleKey.bookKey
+        val cache = appDb.aiReadAloudRoleCacheDao.get(roleKey.cacheKey)
+            ?.takeIf { it.segmentsJson.isNotBlank() }
+            ?: cacheForPlayback(currentBook, currentChapter, cleanParagraphs)
+            ?: appDb.aiReadAloudRoleCacheDao.latestUsableByChapter(
+                characterBookKey,
+                currentChapter.chapter.index
+            )
+            ?: return ManualSegmentAssignmentResult(false, "当前章节没有可修改的分配缓存")
+        val segments = segmentsFromJson(cache.segmentsJson).toMutableList()
+        val targetIndex = segments.indexOfFirst {
+            it.paragraphIndex == assignment.paragraphIndex &&
+                    it.start == assignment.start &&
+                    it.end == assignment.end
+        }
+        if (targetIndex < 0) {
+            return ManualSegmentAssignmentResult(false, "没有找到对应片段")
+        }
+        val safeRoleType = assignment.roleType
+            .takeIf { it in setOf("narrator", "character", "thought", "other") }
+            ?: "character"
+        val characters = appDb.bookCharacterDao.characters(characterBookKey)
+        val selectedCharacter = if (safeRoleType == "narrator") {
+            null
+        } else {
+            when {
+                assignment.characterId > 0L -> characters.firstOrNull { it.id == assignment.characterId }
+                assignment.characterName.isNotBlank() -> {
+                    val byName = charactersByNormalizedName(characters)
+                    byName[characterNameKey(assignment.characterName)]
+                }
+                else -> null
+            }
+        }
+        val old = segments[targetIndex]
+        val updated = old.copy(
+            roleType = safeRoleType,
+            characterId = selectedCharacter?.id ?: 0L,
+            characterName = when {
+                safeRoleType == "narrator" -> ""
+                selectedCharacter != null -> selectedCharacter.name
+                else -> assignment.characterName.trim().take(80)
+            },
+            emotionName = assignment.emotionName.trim().take(40),
+            emotionTag = assignment.emotionTag.trim().take(40),
+            confidence = 1.0
+        )
+        segments[targetIndex] = updated
+        val now = System.currentTimeMillis()
+        appDb.aiReadAloudRoleCacheDao.upsert(
+            cache.copy(
+                status = AiReadAloudRoleCache.STATUS_SUCCESS,
+                retryCount = 0,
+                lastError = "",
+                segmentsJson = replaceSegmentsInCacheJson(cache.segmentsJson, segments),
+                characterHash = characterHash(characterBookKey),
+                voiceHash = voiceHash(characterBookKey),
+                updatedAt = now
+            )
+        )
+        return ManualSegmentAssignmentResult(
+            success = true,
+            message = "已更新片段分配",
+            previewSegments = buildPreviewSegments(
+                characterBookKey,
+                segments,
+                cleanParagraphs,
+                AiReadAloudRoleState.SOURCE_RESOLVED
+            )
+        )
     }
 
     fun isRunningCacheActive(cacheKey: String?, updatedAt: Long): Boolean {

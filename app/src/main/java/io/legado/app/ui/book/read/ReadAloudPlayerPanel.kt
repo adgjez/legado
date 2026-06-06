@@ -72,6 +72,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -131,6 +132,8 @@ import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.ReadAloudSpeakerLoudnessManager
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanItem
 import io.legado.app.help.readaloud.ReadAloudSpeechPlanner
@@ -406,7 +409,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 onHideRoleDetail = ::hideRoleDetail,
                 onOpenRoleDetail = ::openRoleDetail,
                 onDismissRoleStatus = ::dismissRoleStatus,
-                onRetryRoleAssignment = ::retryRoleAssignment
+                onRetryRoleAssignment = ::retryRoleAssignment,
+                onRoleSegmentAssign = ::updateRoleSegmentAssignment
             )
         }
     }
@@ -597,6 +601,64 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val startPos = (ReadBook.durChapterPos - chapter.getReadLength(pageIndex)).coerceAtLeast(0)
         ReadAloud.play(context, play = true, pageIndex = pageIndex, startPos = startPos)
         refresh()
+    }
+
+    private fun updateRoleSegmentAssignment(
+        segment: AiReadAloudRolePreviewSegment,
+        roleType: String,
+        characterId: Long,
+        characterName: String
+    ) {
+        Coroutine.async {
+            val book = ReadBook.book
+                ?: return@async AiReadAloudRoleService.ManualSegmentAssignmentResult(false, "书籍不存在")
+            val chapter = ReadBook.curTextChapter
+                ?: return@async AiReadAloudRoleService.ManualSegmentAssignmentResult(false, "章节不存在")
+            val baseCues = chapter.buildReadAloudCues(context.getPrefBoolean(PreferKey.readAloudByPage))
+            AiReadAloudRoleService.updateCachedSegmentAssignment(
+                book = book,
+                textChapter = chapter,
+                paragraphs = baseCues.map { it.text },
+                assignment = AiReadAloudRoleService.ManualSegmentAssignment(
+                    paragraphIndex = segment.paragraphIndex,
+                    start = segment.start,
+                    end = segment.end,
+                    roleType = roleType,
+                    characterId = characterId,
+                    characterName = characterName,
+                    emotionName = segment.emotionName,
+                    emotionTag = segment.emotionTag
+                )
+            )
+        }.onSuccess { result ->
+            roleStatusText = result.message
+            roleStatusRunning = false
+            roleStatusError = !result.success
+            roleStatusUntil = System.currentTimeMillis() + 4_000L
+            roleDetailCollapsed = false
+            roleDetailClosed = false
+            if (result.success) {
+                roleState = roleState?.copy(
+                    status = AiReadAloudRoleState.STATUS_SUCCESS,
+                    message = result.message,
+                    segmentCount = result.previewSegments.size,
+                    previewSource = AiReadAloudRoleState.SOURCE_RESOLVED,
+                    previewSegments = result.previewSegments,
+                    error = ""
+                )
+                chapterModelCache = null
+                ReadAloudConfigChangeNotifier.notifySpeech()
+            }
+            refresh()
+        }.onError {
+            roleStatusText = it.localizedMessage ?: it.javaClass.simpleName
+            roleStatusRunning = false
+            roleStatusError = true
+            roleStatusUntil = System.currentTimeMillis() + 4_000L
+            roleDetailCollapsed = false
+            roleDetailClosed = false
+            refresh()
+        }
     }
 
     private fun selectChapterFromPanel(index: Int) {
@@ -1735,7 +1797,8 @@ private fun ReadAloudPlayerContent(
     onHideRoleDetail: () -> Unit,
     onOpenRoleDetail: () -> Unit,
     onDismissRoleStatus: () -> Unit,
-    onRetryRoleAssignment: () -> Unit
+    onRetryRoleAssignment: () -> Unit,
+    onRoleSegmentAssign: (AiReadAloudRolePreviewSegment, String, Long, String) -> Unit
 ) {
     val palette = ReaderSheetStyle.resolve(LocalContext.current)
     val colors = rememberPlayerColors(palette)
@@ -1746,6 +1809,7 @@ private fun ReadAloudPlayerContent(
     val animatePanelChanges = !AppConfig.isEInkMode && state.foregroundActive
     var sceneFullscreen by remember { mutableStateOf(false) }
     var sceneFullscreenTopBarHeight by remember { mutableStateOf(0.dp) }
+    var editingRoleSegment by remember { mutableStateOf<AiReadAloudRolePreviewSegment?>(null) }
     val sceneFullscreenActive = sceneFullscreen &&
             state.mode == ReadAloudPlayerPanel.DisplayMode.Scene &&
             state.panelPhase == ReadAloudPlayerPanel.PanelPhase.Expanded &&
@@ -1983,8 +2047,21 @@ private fun ReadAloudPlayerContent(
             colors = colors,
             onHide = onHideRoleDetail,
             onDismiss = onDismissRoleStatus,
-            onRetry = onRetryRoleAssignment
+            onRetry = onRetryRoleAssignment,
+            onEditSegment = { editingRoleSegment = it }
         )
+        editingRoleSegment?.let { segment ->
+            RoleSegmentEditDialog(
+                state = state,
+                segment = segment,
+                colors = colors,
+                onDismiss = { editingRoleSegment = null },
+                onSave = { roleType, characterId, characterName ->
+                    editingRoleSegment = null
+                    onRoleSegmentAssign(segment, roleType, characterId, characterName)
+                }
+            )
+        }
     }
 }
 
@@ -2622,7 +2699,8 @@ private fun RoleAssignmentProgressDialog(
     colors: PlayerColors,
     onHide: () -> Unit,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onEditSegment: (AiReadAloudRolePreviewSegment) -> Unit
 ) {
     val roleState = state.roleState ?: return
     PlayerBackHandler(enabled = state.roleDetailVisible, onBack = onHide)
@@ -2685,6 +2763,7 @@ private fun RoleAssignmentProgressDialog(
                         state = state,
                         roleState = roleState,
                         colors = colors,
+                        onEditSegment = onEditSegment,
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
@@ -2913,6 +2992,7 @@ private fun RolePreviewList(
     state: ReadAloudPlayerPanel.PlayerUiState,
     roleState: AiReadAloudRoleState,
     colors: PlayerColors,
+    onEditSegment: (AiReadAloudRolePreviewSegment) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val preview = roleState.previewSegments
@@ -2965,7 +3045,8 @@ private fun RolePreviewList(
                 paragraphIndex = paragraphIndex,
                 segments = segments,
                 current = paragraphIndex == state.currentCueIndex,
-                colors = colors
+                colors = colors,
+                onEditSegment = onEditSegment
             )
         }
     }
@@ -2976,7 +3057,8 @@ private fun RolePreviewParagraphGroup(
     paragraphIndex: Int,
     segments: List<AiReadAloudRolePreviewSegment>,
     current: Boolean,
-    colors: PlayerColors
+    colors: PlayerColors,
+    onEditSegment: (AiReadAloudRolePreviewSegment) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -2998,7 +3080,7 @@ private fun RolePreviewParagraphGroup(
                 }
             }
             segments.forEach { segment ->
-                RolePreviewSegmentRow(segment, colors)
+                RolePreviewSegmentRow(segment, colors, onClick = { onEditSegment(segment) })
             }
         }
     }
@@ -3007,10 +3089,12 @@ private fun RolePreviewParagraphGroup(
 @Composable
 private fun RolePreviewSegmentRow(
     segment: AiReadAloudRolePreviewSegment,
-    colors: PlayerColors
+    colors: PlayerColors,
+    onClick: () -> Unit
 ) {
     val danger = segment.roleType in setOf("character", "thought") && !segment.matchedCharacter
     Surface(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
         color = colors.panelStrong.copy(alpha = 0.58f),
@@ -3043,6 +3127,247 @@ private fun RolePreviewSegmentRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 7.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun RoleSegmentEditDialog(
+    state: ReadAloudPlayerPanel.PlayerUiState,
+    segment: AiReadAloudRolePreviewSegment,
+    colors: PlayerColors,
+    onDismiss: () -> Unit,
+    onSave: (String, Long, String) -> Unit
+) {
+    PlayerBackHandler(enabled = true, onBack = onDismiss)
+    val characters by produceState<List<BookCharacter>>(initialValue = emptyList(), state.bookName, state.author) {
+        value = withContext(Dispatchers.IO) {
+            val bookKey = ReadBook.book?.characterBookKey().orEmpty()
+            if (bookKey.isBlank()) emptyList() else appDb.bookCharacterDao.characters(bookKey)
+        }
+    }
+    var roleType by remember(segment.key) {
+        mutableStateOf(
+            segment.roleType.takeIf { it in setOf("narrator", "character", "thought") }
+                ?: "character"
+        )
+    }
+    var query by remember(segment.key) { mutableStateOf("") }
+    var selectedCharacterId by remember(segment.key) { mutableStateOf(segment.characterId) }
+    var selectedCharacterName by remember(segment.key) { mutableStateOf(segment.characterName) }
+    val filteredCharacters = remember(characters, query) {
+        val keyword = query.trim()
+        if (keyword.isBlank()) {
+            characters
+        } else {
+            characters.filter { character ->
+                character.displayName().contains(keyword, ignoreCase = true) ||
+                        character.name.contains(keyword, ignoreCase = true) ||
+                        character.identity.contains(keyword, ignoreCase = true)
+            }
+        }
+    }
+    val canSave = roleType == "narrator" || selectedCharacterId > 0L || selectedCharacterName.isNotBlank()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.22f))
+            .systemBarsPadding()
+            .padding(22.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 560.dp),
+            shape = LocalContext.current.composePanelShape(),
+            color = colors.panelStrong.copy(alpha = 0.98f),
+            border = BorderStroke(1.dp, colors.panelBorder),
+            shadowElevation = 16.dp
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "修改片段分配",
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "段落 ${segment.paragraphIndex + 1}",
+                            color = colors.subtleText,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    RoleDialogAction("取消", colors, onDismiss)
+                }
+                Text(
+                    text = segment.text,
+                    color = colors.primaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("narrator", "character", "thought").forEach { type ->
+                        RoleEditChoice(
+                            text = roleTypeLabel(type),
+                            selected = roleType == type,
+                            colors = colors,
+                            onClick = {
+                                roleType = type
+                                if (type == "narrator") {
+                                    selectedCharacterId = 0L
+                                    selectedCharacterName = ""
+                                }
+                            }
+                        )
+                    }
+                }
+                AnimatedVisibility(visible = roleType != "narrator") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            singleLine = true,
+                            label = { Text("搜索角色") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (filteredCharacters.isEmpty()) {
+                                item {
+                                    Text(
+                                        text = "没有可选角色",
+                                        color = colors.secondaryText,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(vertical = 12.dp)
+                                    )
+                                }
+                            } else {
+                                items(filteredCharacters, key = { it.id }) { character ->
+                                    RoleCharacterChoiceRow(
+                                        character = character,
+                                        selected = selectedCharacterId == character.id,
+                                        colors = colors,
+                                        onClick = {
+                                            selectedCharacterId = character.id
+                                            selectedCharacterName = character.name
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        onClick = {
+                            if (canSave) {
+                                onSave(roleType, selectedCharacterId, selectedCharacterName)
+                            }
+                        },
+                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+                        color = if (canSave) colors.accent.copy(alpha = 0.20f) else colors.panel.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, if (canSave) colors.accent.copy(alpha = 0.35f) else colors.panelBorder)
+                    ) {
+                        Text(
+                            text = "保存",
+                            color = if (canSave) colors.accent else colors.subtleText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoleEditChoice(
+    text: String,
+    selected: Boolean,
+    colors: PlayerColors,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        color = if (selected) colors.accent.copy(alpha = 0.18f) else colors.panel.copy(alpha = 0.58f),
+        border = BorderStroke(1.dp, if (selected) colors.accent.copy(alpha = 0.35f) else colors.panelBorder)
+    ) {
+        Text(
+            text = text,
+            color = if (selected) colors.accent else colors.secondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun RoleCharacterChoiceRow(
+    character: BookCharacter,
+    selected: Boolean,
+    colors: PlayerColors,
+    onClick: () -> Unit
+) {
+    val route = remember(character.speechRouteJson) { SpeechRoute.fromJson(character.speechRouteJson) }
+    val voice = route.speakerName
+        .ifBlank { route.toneID }
+        .ifBlank { route.groupName }
+        .ifBlank { if (route.isConfigured) "已绑定发言人" else "未绑定发言人" }
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        color = if (selected) colors.accent.copy(alpha = 0.16f) else colors.panel.copy(alpha = 0.52f),
+        border = BorderStroke(1.dp, if (selected) colors.accent.copy(alpha = 0.36f) else colors.panelBorder)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = character.displayName(),
+                    color = colors.primaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val detail = listOf(character.genderLabel(), character.identity, voice)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                if (detail.isNotBlank()) {
+                    Text(
+                        text = detail,
+                        color = colors.secondaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            if (selected) {
+                Text("已选", color = colors.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
