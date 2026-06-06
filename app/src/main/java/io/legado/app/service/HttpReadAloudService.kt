@@ -205,7 +205,9 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     override fun playStop() {
+        downloadTask?.cancel()
         exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         exoPlayer.volume = 1f
         loudnessAudioProcessor.setGain(1f)
         playIndexJob?.cancel()
@@ -849,6 +851,10 @@ class HttpReadAloudService : BaseReadAloudService(),
     private fun speechRouteForIndex(index: Int): SpeechRoute? {
         val defaultRoute = ReadAloud.speechRoute.takeIf { it.isConfigured }
         if (!AppConfig.aiReadAloudRoleEnabled) return defaultRoute
+        val speechItem = speechItems.getOrNull(index)
+        if (speechItem?.roleType == "character" || speechItem?.roleType == "thought") {
+            return freshSpeechRouteForItem(speechItem) ?: defaultRoute
+        }
         if (index in speechRoutes.indices) {
             return speechRoutes[index] ?: defaultRoute
         }
@@ -860,6 +866,27 @@ class HttpReadAloudService : BaseReadAloudService(),
             cueIndex = index,
             cueText = contentList.getOrNull(index)
         ) ?: defaultRoute
+    }
+
+    private fun freshSpeechRouteForItem(item: ReadAloudSpeechPlanItem?): SpeechRoute? {
+        val speechItem = item ?: return null
+        if (speechItem.roleType != "character" && speechItem.roleType != "thought") return null
+        val bookKey = ReadBook.book?.characterBookKey() ?: return null
+        val route = AiReadAloudRoleService.routeForSegment(
+            bookUrl = bookKey,
+            segment = AiReadAloudRoleService.Segment(
+                paragraphIndex = speechItem.sourceCueIndex,
+                start = speechItem.sourceStart,
+                end = speechItem.sourceEnd.coerceAtLeast(speechItem.sourceStart + 1),
+                roleType = speechItem.roleType,
+                characterName = speechItem.characterName,
+                characterId = speechItem.characterId,
+                emotionName = speechItem.emotionName,
+                emotionTag = speechItem.route?.emotionTag.orEmpty(),
+                confidence = 1.0
+            )
+        )
+        return route ?: speechItem.route?.takeIf { it.isConfigured && speechItem.characterId <= 0L }
     }
 
     private fun httpTtsForRoute(defaultHttpTts: HttpTTS?, route: SpeechRoute?): HttpTTS? {
