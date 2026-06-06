@@ -92,9 +92,60 @@ interface JsExtensions : JsEncodeUtils {
 
     fun getSource(): BaseSource?
     fun getTag(): String?
+    fun isWebSocketAllowed(): Boolean = false
 
     private val context: CoroutineContext
         get() = rhinoContextOrNull?.coroutineContext ?: EmptyCoroutineContext
+
+    private fun webSocketScopeKey(): String {
+        val source = getSource()
+        return source?.getKey()?.takeIf { it.isNotBlank() }
+            ?: getTag()?.takeIf { it.isNotBlank() }
+            ?: "default"
+    }
+
+    private fun requireWebSocketAllowed() {
+        if (!isWebSocketAllowed()) {
+            throw NoStackTraceException("WebSocket is only available in read aloud synthesis JS")
+        }
+    }
+
+    fun wsOpen(id: String, url: String): String {
+        return wsOpen(id, url, null, 15_000L)
+    }
+
+    fun wsOpen(id: String, url: String, headerJson: String?): String {
+        return wsOpen(id, url, headerJson, 15_000L)
+    }
+
+    fun wsOpen(id: String, url: String, headerJson: String?, timeoutMs: Long): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.open(webSocketScopeKey(), id, url, headerJson, timeoutMs)
+    }
+
+    fun wsSend(id: String, text: String): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.sendText(webSocketScopeKey(), id, text)
+    }
+
+    fun wsSendBase64(id: String, base64: String): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.sendBase64(webSocketScopeKey(), id, base64)
+    }
+
+    fun wsRead(id: String): String {
+        return wsRead(id, 30_000L)
+    }
+
+    fun wsRead(id: String, timeoutMs: Long): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.read(webSocketScopeKey(), id, timeoutMs)
+    }
+
+    fun wsClose(id: String): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.close(webSocketScopeKey(), id)
+    }
 
     /**
      * 访问网络,返回String

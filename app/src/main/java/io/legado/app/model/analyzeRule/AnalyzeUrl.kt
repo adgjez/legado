@@ -16,6 +16,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.CacheManager
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.JsExtensions
@@ -97,6 +98,7 @@ class AnalyzeUrl(
     private val readTimeout: Long? = null,
     private val callTimeout: Long? = null,
     private var coroutineContext: CoroutineContext = EmptyCoroutineContext,
+    private val allowWebSocket: Boolean = false,
     headerMapF: Map<String, String>? = null,
     hasLoginHeader: Boolean = true,
     private val infoMap: MutableMap<String, String>? = null,
@@ -776,6 +778,10 @@ class AnalyzeUrl(
 
     override fun getTag(): String? {
         return source?.getTag()
+    }
+
+    override fun isWebSocketAllowed(): Boolean {
+        return allowWebSocket && speakText != null && source is HttpTTS
     }
 
     companion object {

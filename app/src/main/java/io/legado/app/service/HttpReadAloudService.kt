@@ -741,6 +741,7 @@ class HttpReadAloudService : BaseReadAloudService(),
                     currentSpeechRouteJson = route?.toJson(),
                     source = httpTts,
                     readTimeout = 300 * 1000L,
+                    allowWebSocket = true,
                     coroutineContext = currentCoroutineContext()
                 )
                 val checkJs = httpTts.loginCheckJs
