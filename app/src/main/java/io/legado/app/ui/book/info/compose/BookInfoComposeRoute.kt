@@ -84,6 +84,8 @@ import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Immutable
 data class BookInfoChapterUi(
@@ -173,25 +175,25 @@ data class BookInfoComposeStyle(
 )
 
 @Stable
-fun bookInfoComposeStyle(context: Context): BookInfoComposeStyle {
+fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoComposeStyle {
     val night = AppConfig.isNightTheme
-    val accent = context.accentColor
+    val accent = coverColor ?: context.accentColor
     val pageBackground = if (night) {
         0xff111318.toInt()
     } else {
-        0xfff4f6f8.toInt()
+        ColorUtils.blendColors(0xfff6f7f9.toInt(), accent, 0.16f)
     }
     val surface = if (night) 0xff20232a.toInt() else 0xffffffff.toInt()
     val variant = if (night) 0xff292d35.toInt() else 0xfff0f3f6.toInt()
     val contentBackground = ColorUtils.blendColors(
         pageBackground,
         accent,
-        if (night) 0.08f else 0.055f
+        if (night) 0.22f else 0.30f
     )
     val contentTop = ColorUtils.blendColors(
         contentBackground,
-        if (night) surface else 0xffffffff.toInt(),
-        if (night) 0.18f else 0.34f
+        accent,
+        if (night) 0.24f else 0.24f
     )
     val accentContainer = ColorUtils.blendColors(
         surface,
@@ -199,14 +201,14 @@ fun bookInfoComposeStyle(context: Context): BookInfoComposeStyle {
         if (night) 0.22f else 0.14f
     )
     val metricTop = if (night) {
-        ColorUtils.blendColors(surface, accent, 0.18f)
+        ColorUtils.blendColors(surface, accent, 0.28f)
     } else {
-        ColorUtils.blendColors(0xffffffff.toInt(), accent, 0.13f)
+        ColorUtils.blendColors(0xffffffff.toInt(), accent, 0.42f)
     }
     val metricBottom = if (night) {
-        ColorUtils.blendColors(variant, accent, 0.14f)
+        ColorUtils.blendColors(variant, accent, 0.22f)
     } else {
-        ColorUtils.blendColors(0xfff5f7fa.toInt(), accent, 0.08f)
+        ColorUtils.blendColors(0xfff7f8fa.toInt(), accent, 0.34f)
     }
     val actionText = if (ColorUtils.isColorLight(accent)) 0xff202124.toInt() else 0xffffffff.toInt()
     return BookInfoComposeStyle(
@@ -242,7 +244,11 @@ fun BookInfoComposeRoute(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val style = remember(context) { bookInfoComposeStyle(context) }
+    var coverColor by remember(state.coverPath) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(state.coverPath) {
+        coverColor = loadCoverThemeColor(context, state.coverPath)
+    }
+    val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
     val pageScrollState = rememberScrollState()
     val topTitleAlpha by remember {
@@ -395,11 +401,12 @@ private fun BookInfoMetricBox(
     Box(
         modifier = modifier
             .height(76.dp)
-            .shadow(3.dp, shape, clip = false)
+            .shadow(5.dp, shape, clip = false)
             .clip(shape)
             .background(
                 Brush.verticalGradient(
                     0f to style.colors.metricTop,
+                    0.48f to style.colors.metricTop.copy(alpha = 0.94f),
                     1f to style.colors.metricBottom
                 )
             )
@@ -408,7 +415,7 @@ private fun BookInfoMetricBox(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(1.dp)
+                .height(2.dp)
                 .background(style.colors.metricHighlight)
         )
         Column(
@@ -629,7 +636,7 @@ private fun BookInfoCoverBackdrop(
     modifier: Modifier = Modifier
 ) {
     val blurRadius = (scrollOffset / 72f).coerceIn(0f, 10f).dp
-    val imageDarkenAlpha = (0.28f + scrollOffset / 1400f).coerceIn(0.28f, 0.50f)
+    val imageDarkenAlpha = (0.20f + scrollOffset / 1500f).coerceIn(0.20f, 0.46f)
     val parallaxOffset = scrollOffset * 0.22f
     Box(modifier = modifier.background(Color.Black)) {
         BookInfoImage(
@@ -655,8 +662,8 @@ private fun BookInfoCoverBackdrop(
                     Brush.verticalGradient(
                         0f to Color.Black.copy(alpha = 0.22f),
                         0.36f to Color.Transparent,
-                        0.70f to Color.Black.copy(alpha = 0.62f),
-                        0.90f to Color.Black.copy(alpha = 0.74f),
+                        0.70f to Color.Black.copy(alpha = 0.54f),
+                        0.90f to Color.Black.copy(alpha = 0.62f),
                         1f to style.colors.contentTop
                     )
                 )
@@ -684,7 +691,7 @@ private fun BookInfoPosterHero(
             modifier = Modifier
                 .width(126.dp)
                 .aspectRatio(0.72f)
-                .shadow(18.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
+                .shadow(10.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
                 .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
                     onClick = actions.onChangeCover,
@@ -924,7 +931,11 @@ private fun BookInfoIntroPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = if (isWebIntro) 0.dp else 22.dp),
+            .padding(
+                start = if (isWebIntro) 0.dp else 22.dp,
+                end = if (isWebIntro) 0.dp else 22.dp,
+                bottom = 12.dp
+            ),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         BookInfoIntroContent(
@@ -1483,6 +1494,71 @@ private class BookInfoIntroWebViewClient(
 
 private fun Color.toCssHex(): String {
     return "#%06X".format(0xFFFFFF and toArgb())
+}
+
+private suspend fun loadCoverThemeColor(context: Context, coverPath: String?): Int? {
+    if (coverPath.isNullOrBlank()) return null
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val bitmap = ImageLoader.loadBitmap(context, coverPath)
+                .submit(48, 72)
+                .get()
+            bitmap.extractThemeColor()
+        }.getOrNull()
+    }
+}
+
+private fun Bitmap.extractThemeColor(): Int? {
+    if (width <= 0 || height <= 0) return null
+    var red = 0L
+    var green = 0L
+    var blue = 0L
+    var weightSum = 0L
+    val stepX = (width / 12).coerceAtLeast(1)
+    val stepY = (height / 16).coerceAtLeast(1)
+    val centerLeft = width * 0.18f
+    val centerRight = width * 0.82f
+    val centerTop = height * 0.12f
+    val centerBottom = height * 0.88f
+    var y = 0
+    while (y < height) {
+        var x = 0
+        while (x < width) {
+            val pixel = getPixel(x, y)
+            val alpha = android.graphics.Color.alpha(pixel)
+            val r = android.graphics.Color.red(pixel)
+            val g = android.graphics.Color.green(pixel)
+            val b = android.graphics.Color.blue(pixel)
+            val max = maxOf(r, g, b)
+            val min = minOf(r, g, b)
+            val brightness = (r + g + b) / 3
+            val chroma = max - min
+            if (alpha > 180 && brightness in 34..232 && chroma > 12) {
+                val centerWeight = if (
+                    x in centerLeft.toInt()..centerRight.toInt() &&
+                    y in centerTop.toInt()..centerBottom.toInt()
+                ) 3L else 1L
+                val colorWeight = centerWeight * (1L + chroma / 36L)
+                red += r * colorWeight
+                green += g * colorWeight
+                blue += b * colorWeight
+                weightSum += colorWeight
+            }
+            x += stepX
+        }
+        y += stepY
+    }
+    if (weightSum <= 0L) return null
+    val avg = android.graphics.Color.rgb(
+        (red / weightSum).toInt().coerceIn(0, 255),
+        (green / weightSum).toInt().coerceIn(0, 255),
+        (blue / weightSum).toInt().coerceIn(0, 255)
+    )
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(avg, hsv)
+    hsv[1] = hsv[1].coerceAtLeast(0.28f).coerceAtMost(0.72f)
+    hsv[2] = hsv[2].coerceIn(0.34f, 0.76f)
+    return android.graphics.Color.HSVToColor(hsv)
 }
 
 private fun String.cleanBookInfoValue(): String {
