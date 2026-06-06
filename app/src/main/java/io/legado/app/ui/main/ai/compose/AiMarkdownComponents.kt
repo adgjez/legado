@@ -92,7 +92,8 @@ internal fun AiCopyTextButton(
 internal fun AiComposeMarkdownText(
     content: String,
     style: AiComposeStyle,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    color: Color = style.colors.primaryText
 ) {
     val normalizedContent = remember(content) { normalizeAiMarkdownContent(content) }
     val blocks = remember(normalizedContent) { parseAiMarkdownBlocks(normalizedContent) }
@@ -104,12 +105,13 @@ internal fun AiComposeMarkdownText(
             when (block) {
                 is AiSharedMarkdownBlock.Paragraph -> AiMarkdownInlineContent(
                     text = block.text,
-                    style = style
+                    style = style,
+                    color = color
                 )
                 is AiSharedMarkdownBlock.Heading -> AiMarkdownRichText(
                     text = block.text,
                     style = style,
-                    color = style.colors.primaryText,
+                    color = color,
                     fontSize = when {
                         block.level <= 2 -> 17.sp
                         block.level == 3 -> 16.sp
@@ -126,12 +128,14 @@ internal fun AiComposeMarkdownText(
                 is AiSharedMarkdownBlock.Bullet -> AiMarkdownListLine(
                     prefix = "-",
                     text = block.text,
-                    style = style
+                    style = style,
+                    color = color
                 )
                 is AiSharedMarkdownBlock.Numbered -> AiMarkdownListLine(
                     prefix = "${block.number}.",
                     text = block.text,
-                    style = style
+                    style = style,
+                    color = color
                 )
                 is AiSharedMarkdownBlock.Quote -> AiMarkdownQuote(
                     text = block.text,
@@ -209,7 +213,8 @@ internal fun AiMarkdownRichText(
 private fun AiMarkdownListLine(
     prefix: String,
     text: String,
-    style: AiComposeStyle
+    style: AiComposeStyle,
+    color: Color
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -225,6 +230,7 @@ private fun AiMarkdownListLine(
         AiMarkdownInlineContent(
             text = text,
             style = style,
+            color = color,
             modifier = Modifier.weight(1f)
         )
     }

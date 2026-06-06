@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.read
+﻿package io.legado.app.ui.book.read
 
 import android.content.Intent
 import android.content.Context
@@ -7,9 +7,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,7 +57,6 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.LifecycleOwner
@@ -74,16 +73,15 @@ import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.config.AiWorldBookManageActivity
 import io.legado.app.ui.main.ai.AiChatMessage
-import io.legado.app.ui.main.ai.AiMarkdownRender
 import io.legado.app.ui.main.ai.AiWorldBookBinding
+import io.legado.app.ui.main.ai.compose.AiComposeMarkdownText
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
+import io.legado.app.ui.main.ai.compose.AiCopyTextButton
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.toastOnUi
-import io.noties.markwon.Markwon
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
@@ -120,9 +118,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     )
 
     private val composeView = ComposeView(context)
-    private val markwon: Markwon by lazy {
-        AiMarkdownRender.createMarkwon(context)
-    }
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     private var readContext: ReadContext? = null
     private var currentSessionId: String = ""
@@ -162,7 +157,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 showingHistory = showingHistory,
                 requesting = requesting,
                 modelLabel = modelLabel,
-                markwon = markwon,
                 timeFormat = timeFormat,
                 onTopDrag = ::handleDrag,
                 onSelectModel = ::selectModel,
@@ -915,7 +909,6 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         private const val READ_AI_COMPANION_ID = "read_ai"
     }
 }
-
 @Composable
 private fun ReadAiPanelContent(
     messages: List<ReadAiMessage>,
@@ -924,7 +917,6 @@ private fun ReadAiPanelContent(
     showingHistory: Boolean,
     requesting: Boolean,
     modelLabel: String,
-    markwon: Markwon,
     timeFormat: SimpleDateFormat,
     onTopDrag: (MotionEvent) -> Boolean,
     onSelectModel: () -> Unit,
@@ -1009,8 +1001,7 @@ private fun ReadAiPanelContent(
                 ReadAiMessageList(
                     messages = messages,
                     requesting = requesting,
-                    style = style,
-                    markwon = markwon
+                    style = style
                 )
             }
             ReadAiComposer(
@@ -1054,8 +1045,7 @@ private fun ReadAiIconButton(
 private fun ReadAiMessageList(
     messages: List<ReadAiMessage>,
     requesting: Boolean,
-    style: AiComposeStyle,
-    markwon: Markwon
+    style: AiComposeStyle
 ) {
     val listState = rememberLazyListState()
     var stickToBottom by remember { mutableStateOf(true) }
@@ -1088,8 +1078,7 @@ private fun ReadAiMessageList(
             ReadAiMessageRow(
                 message = message,
                 streaming = requesting && message == messages.lastOrNull(),
-                style = style,
-                markwon = markwon
+                style = style
             )
         }
     }
@@ -1099,8 +1088,7 @@ private fun ReadAiMessageList(
 private fun ReadAiMessageRow(
     message: ReadAiMessage,
     streaming: Boolean,
-    style: AiComposeStyle,
-    markwon: Markwon
+    style: AiComposeStyle
 ) {
     val isUser = message.role == ReadAiMessage.Role.USER
     Row(
@@ -1109,78 +1097,30 @@ private fun ReadAiMessageRow(
     ) {
         Surface(
             modifier = Modifier.widthIn(min = 72.dp, max = 280.dp),
-            shape = RoundedCornerShape(
-                topStart = 18.dp,
-                topEnd = 18.dp,
-                bottomEnd = if (isUser) 7.dp else 18.dp,
-                bottomStart = if (isUser) 18.dp else 7.dp
-            ),
-            color = if (isUser) style.colors.userBubble else style.colors.assistantBubble,
-            border = BorderStroke(
-                style.metrics.strokeWidth,
-                if (isUser) style.colors.userBubbleStroke else style.colors.assistantBubbleStroke
-            )
+            shape = RoundedCornerShape(style.metrics.cardRadius),
+            color = if (isUser) style.colors.userBubble else style.colors.composerSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
-            ReadAiMarkdownText(
-                messageId = message.id,
-                content = message.content,
-                streaming = streaming,
-                markwon = markwon,
-                textColor = if (isUser) style.colors.userText else style.colors.primaryText,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+            ) {
+                AiComposeMarkdownText(
+                    content = message.content,
+                    style = style,
+                    color = if (isUser) style.colors.userText else style.colors.primaryText
+                )
+                if (!streaming && message.content.isNotBlank()) {
+                    AiCopyTextButton(
+                        text = message.content,
+                        style = style,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
         }
     }
-}
-
-@Composable
-private fun ReadAiMarkdownText(
-    messageId: String,
-    content: String,
-    streaming: Boolean,
-    markwon: Markwon,
-    textColor: Color,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    AndroidView(
-        modifier = modifier.fillMaxWidth(),
-        factory = {
-            TextView(it).apply {
-                includeFontPadding = true
-                setLineSpacing(2.dpToPx().toFloat(), 1f)
-                textSize = 14f
-                typeface = it.uiTypeface()
-            }
-        },
-        update = { textView ->
-            textView.setTextColor(textColor.toArgbCompat())
-            textView.typeface = context.uiTypeface()
-            if (streaming) {
-                AiMarkdownRender.clearNativeSelectionWithLinkTap(textView)
-                if (textView.text?.toString() != content) {
-                    textView.text = content
-                }
-                textView.tag = null
-            } else {
-                val renderKey = AiMarkdownRender.renderKey(
-                    messageId,
-                    content,
-                    pending = false,
-                    textView = textView,
-                    context = context
-                )
-                if (textView.tag != renderKey) {
-                    markwon.setParsedMarkdown(
-                        textView,
-                        markwon.toMarkdown(content.ifBlank { " " })
-                    )
-                    textView.tag = renderKey
-                }
-                AiMarkdownRender.setNativeSelectionWithLinkTap(textView)
-            }
-        }
-    )
 }
 
 @Composable
@@ -1380,13 +1320,4 @@ private fun ReadAiComposer(
             }
         }
     }
-}
-
-private fun Color.toArgbCompat(): Int {
-    return android.graphics.Color.argb(
-        (alpha * 255).toInt(),
-        (red * 255).toInt(),
-        (green * 255).toInt(),
-        (blue * 255).toInt()
-    )
 }
