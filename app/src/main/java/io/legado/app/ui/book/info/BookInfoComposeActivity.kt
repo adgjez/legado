@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.LinearLayout
@@ -17,6 +18,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -88,10 +90,20 @@ class BookInfoComposeActivity :
     VariableDialog.Callback {
 
     private lateinit var composeView: ComposeView
+    private lateinit var refreshLayout: SwipeRefreshLayout
     override val binding: ViewBinding by lazy {
         composeView = ComposeView(this)
+        refreshLayout = SwipeRefreshLayout(this).apply {
+            addView(
+                composeView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
         object : ViewBinding {
-            override fun getRoot(): View = composeView
+            override fun getRoot(): View = refreshLayout
         }
     }
     override val viewModel by viewModels<BookInfoViewModel>()
@@ -162,6 +174,9 @@ class BookInfoComposeActivity :
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        refreshLayout.setOnRefreshListener {
+            refreshBook()
+        }
         composeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
@@ -335,9 +350,6 @@ class BookInfoComposeActivity :
     }
 
     private fun setupWebIntro(webView: WebView) {
-        val setupKey = viewModel.bookSource?.bookSourceUrl.orEmpty()
-        if (webView.getTag(R.id.tag1) == setupKey) return
-        webView.setTag(R.id.tag1, setupKey)
         webView.addJavascriptInterface(WebCacheManager, nameCache)
         viewModel.bookSource?.let { source ->
             webView.addJavascriptInterface(source as BaseSource, nameSource)
@@ -355,6 +367,9 @@ class BookInfoComposeActivity :
     private fun updateUiState() {
         val book = viewModel.getBook(false)
         if (book == null) {
+            if (::refreshLayout.isInitialized) {
+                refreshLayout.isRefreshing = false
+            }
             uiState = BookInfoUiState(loading = true)
             return
         }
@@ -387,6 +402,9 @@ class BookInfoComposeActivity :
             hasCustomButton = viewModel.hasCustomBtn,
             loading = false
         )
+        if (::refreshLayout.isInitialized) {
+            refreshLayout.isRefreshing = false
+        }
     }
 
     private fun updateReadTime(targetBook: Book) {
@@ -449,6 +467,9 @@ class BookInfoComposeActivity :
 
     private fun refreshBook() {
         val book = viewModel.getBook(false) ?: return
+        if (::refreshLayout.isInitialized) {
+            refreshLayout.isRefreshing = true
+        }
         uiState = uiState.copy(loading = true)
         viewModel.refreshBook(book)
     }
