@@ -921,10 +921,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private fun activeWindowSkills() = AppConfig.aiSkillList.filter { it.id in windowSkillIds }
 
     private fun buildContextLabel(context: ReadContext): String {
-        return buildString {
-            append(context.bookName.ifBlank { resources.getString(R.string.book_name) })
-            if (context.chapterTitle.isNotBlank()) append(" - ").append(context.chapterTitle)
-        }
+        return context.bookName.ifBlank { resources.getString(R.string.book_name) }
     }
 
     private fun buildPrompt(context: ReadContext, question: String): String {
@@ -1035,9 +1032,7 @@ private fun ReadAiPanelContent(
     val panelModifier = if (fullscreen) {
         Modifier.fillMaxSize()
     } else {
-        Modifier
-            .fillMaxWidth()
-            .shadow(12.dp, panelShape, clip = false)
+        Modifier.fillMaxWidth()
     }
     Surface(
         modifier = panelModifier.clip(panelShape),
