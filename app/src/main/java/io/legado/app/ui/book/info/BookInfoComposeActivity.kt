@@ -345,7 +345,12 @@ class BookInfoComposeActivity :
             onCustomButton = ::callSourceCustomButton,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
-            onSetupWebIntro = ::setupWebIntro
+            onSetupWebIntro = ::setupWebIntro,
+            onRefreshEnabledChanged = { enabled ->
+                if (::refreshLayout.isInitialized) {
+                    refreshLayout.isEnabled = enabled
+                }
+            }
         )
     }
 
