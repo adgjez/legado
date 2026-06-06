@@ -154,6 +154,12 @@ object AiReadAloudRoleService {
         val units: List<ReadAloudRoleUnit>
     )
 
+    private data class UnitAssignmentBatchRunResult(
+        val batch: UnitAssignmentBatch,
+        val result: UnitAssignmentResult,
+        val failed: Boolean
+    )
+
     private data class UnitAssignmentResult(
         val resolutions: List<UnitResolution> = emptyList(),
         val candidates: List<CharacterCandidate> = emptyList()
@@ -1343,7 +1349,7 @@ object AiReadAloudRoleService {
             contextParagraphs,
             mergeGapParagraphs
         )
-        requestUnitAssignmentBatches(
+        var failedBatches = requestUnitAssignmentBatches(
             book = book,
             textChapter = textChapter,
             paragraphs = paragraphs,
@@ -1362,17 +1368,25 @@ object AiReadAloudRoleService {
 
         repeat(UNKNOWN_RETRY_ATTEMPTS) { retryIndex ->
             val unresolved = unresolvedUnits(uncertainUnits, resolutionMap)
-            if (unresolved.isEmpty()) {
+            val failedUnits = failedBatches.flatMap { it.units }
+            val retryUnits = (unresolved + failedUnits)
+                .distinctBy { it.id }
+                .sortedWith(compareBy<ReadAloudRoleUnit> { it.firstParagraphIndex }.thenBy { it.firstStart })
+            if (retryUnits.isEmpty()) {
                 return@repeat
             }
+            val retryContextParagraphs = expandedRetryContextParagraphs(
+                contextParagraphs = contextParagraphs,
+                fullChapterMode = fullChapterMode
+            )
             val retryBatches = buildUnitAssignmentBatches(
-                unresolved,
+                retryUnits,
                 paragraphs,
                 fullChapterMode,
-                contextParagraphs,
+                retryContextParagraphs,
                 mergeGapParagraphs
             )
-            requestUnitAssignmentBatches(
+            failedBatches = requestUnitAssignmentBatches(
                 book = book,
                 textChapter = textChapter,
                 paragraphs = paragraphs,
@@ -1418,35 +1432,46 @@ object AiReadAloudRoleService {
         resolutionMap: MutableMap<String, UnitResolution>,
         usageTracker: RoleUsageTracker,
         onPreview: (List<AiReadAloudRolePreviewSegment>, Int, String) -> Unit
-    ) = supervisorScope {
-        if (batches.isEmpty()) return@supervisorScope
+    ): List<UnitAssignmentBatch> = supervisorScope {
+        if (batches.isEmpty()) return@supervisorScope emptyList()
         val semaphore = Semaphore(
             if (fullChapterMode) 1
             else AppConfig.aiReadAloudRoleThreadCount
         )
-        batches.map { batch ->
+        val results = batches.map { batch ->
             async {
                 semaphore.withPermit {
                     runCatching {
-                        requestUnitAssignmentBatch(
-                            book = book,
-                            textChapter = textChapter,
-                            paragraphs = paragraphs,
-                            allUnits = allUnits,
+                        UnitAssignmentBatchRunResult(
                             batch = batch,
-                            fullChapterMode = fullChapterMode,
-                            prompt = prompt,
-                            promptCacheKey = promptCacheKey,
-                            attempt = attempt,
-                            knownResolutions = knownResolutions,
-                            usageTracker = usageTracker
+                            result = requestUnitAssignmentBatch(
+                                book = book,
+                                textChapter = textChapter,
+                                paragraphs = paragraphs,
+                                allUnits = allUnits,
+                                batch = batch,
+                                fullChapterMode = fullChapterMode,
+                                prompt = prompt,
+                                promptCacheKey = promptCacheKey,
+                                attempt = attempt,
+                                knownResolutions = knownResolutions,
+                                usageTracker = usageTracker
+                            ),
+                            failed = false
                         )
                     }.getOrElse {
-                        UnitAssignmentResult(emptyList(), emptyList())
+                        AppLog.putDebug("多角色分配批次失败，将只重试该批次：batch=${batch.index}", it)
+                        UnitAssignmentBatchRunResult(
+                            batch = batch,
+                            result = UnitAssignmentResult(emptyList(), emptyList()),
+                            failed = true
+                        )
                     }
                 }
             }
-        }.awaitAll().forEach { result ->
+        }.awaitAll()
+        results.forEach { batchResult ->
+            val result = batchResult.result
             result.resolutions.forEach { resolution ->
                 resolutionMap[resolution.unitId] = resolution
             }
@@ -1466,6 +1491,18 @@ object AiReadAloudRoleService {
                 AiReadAloudRoleState.SOURCE_AI_CONFIRM
             )
         }
+        return@supervisorScope results
+            .filter { it.failed }
+            .map { it.batch }
+    }
+
+    private fun expandedRetryContextParagraphs(
+        contextParagraphs: Int,
+        fullChapterMode: Boolean
+    ): Int {
+        if (fullChapterMode) return contextParagraphs
+        val safeContext = contextParagraphs.coerceIn(0, 20)
+        return (safeContext * 2 + 2).coerceAtMost(20).coerceAtLeast(safeContext)
     }
 
     private suspend fun requestUnitAssignmentBatch(
