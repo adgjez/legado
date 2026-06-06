@@ -143,12 +143,19 @@ data class BookInfoActions(
 @Immutable
 data class BookInfoComposeColors(
     val background: Color,
+    val contentBackground: Color,
+    val contentTop: Color,
     val surface: Color,
     val surfaceVariant: Color,
     val primaryText: Color,
     val secondaryText: Color,
     val accent: Color,
     val accentContainer: Color,
+    val metricTop: Color,
+    val metricBottom: Color,
+    val metricText: Color,
+    val metricSecondaryText: Color,
+    val metricHighlight: Color,
     val actionText: Color,
     val scrim: Color
 )
@@ -176,21 +183,48 @@ fun bookInfoComposeStyle(context: Context): BookInfoComposeStyle {
     }
     val surface = if (night) 0xff20232a.toInt() else 0xffffffff.toInt()
     val variant = if (night) 0xff292d35.toInt() else 0xfff0f3f6.toInt()
+    val contentBackground = ColorUtils.blendColors(
+        pageBackground,
+        accent,
+        if (night) 0.08f else 0.055f
+    )
+    val contentTop = ColorUtils.blendColors(
+        contentBackground,
+        if (night) surface else 0xffffffff.toInt(),
+        if (night) 0.18f else 0.34f
+    )
     val accentContainer = ColorUtils.blendColors(
         surface,
         accent,
         if (night) 0.22f else 0.14f
     )
+    val metricTop = if (night) {
+        ColorUtils.blendColors(surface, accent, 0.18f)
+    } else {
+        ColorUtils.blendColors(0xffffffff.toInt(), accent, 0.13f)
+    }
+    val metricBottom = if (night) {
+        ColorUtils.blendColors(variant, accent, 0.14f)
+    } else {
+        ColorUtils.blendColors(0xfff5f7fa.toInt(), accent, 0.08f)
+    }
     val actionText = if (ColorUtils.isColorLight(accent)) 0xff202124.toInt() else 0xffffffff.toInt()
     return BookInfoComposeStyle(
         colors = BookInfoComposeColors(
             background = Color(pageBackground),
+            contentBackground = Color(contentBackground),
+            contentTop = Color(contentTop),
             surface = Color(surface),
             surfaceVariant = Color(variant),
             primaryText = Color(if (night) 0xfff5f6f8.toInt() else 0xff202124.toInt()),
             secondaryText = Color(if (night) 0xffaeb4bc.toInt() else 0xff68707a.toInt()),
             accent = Color(accent),
             accentContainer = Color(accentContainer),
+            metricTop = Color(metricTop),
+            metricBottom = Color(metricBottom),
+            metricText = Color(if (night) 0xfff5f6f8.toInt() else 0xff202124.toInt()),
+            metricSecondaryText = Color(if (night) 0xffb8bec8.toInt() else 0xff5f6670.toInt()),
+            metricHighlight = Color(if (night) 0x3dffffff else 0x80ffffff),
             actionText = Color(actionText),
             scrim = Color(if (night) 0x99000000.toInt() else 0x66ffffff)
         ),
@@ -220,7 +254,7 @@ fun BookInfoComposeRoute(
     LaunchedEffect(refreshAtTop) {
         actions.onRefreshEnabledChanged(refreshAtTop)
     }
-    Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
+    Box(modifier = modifier.fillMaxSize().background(style.colors.contentBackground)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -323,14 +357,14 @@ private fun BookInfoStatusStrip(
         horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         BookInfoMetricBox(
-            label = stringResource(R.string.change_book_source_action),
+            label = "书源",
             value = sourceValue,
             modifier = Modifier.weight(1f),
             style = style,
             onClick = actions.onChangeSource
         )
         BookInfoMetricBox(
-            label = stringResource(R.string.book_info_tab_toc),
+            label = "目录",
             value = tocValue,
             suffix = if (state.chapterCount > 0) "章" else "",
             modifier = Modifier.weight(1f),
@@ -338,7 +372,7 @@ private fun BookInfoStatusStrip(
             onClick = actions.onOpenToc
         )
         BookInfoMetricBox(
-            label = stringResource(R.string.book_info_component_ai_images),
+            label = "图库",
             value = galleryValue,
             suffix = if (state.aiImageCount > 0) "" else "",
             modifier = Modifier.weight(1f),
@@ -357,45 +391,63 @@ private fun BookInfoMetricBox(
     style: BookInfoComposeStyle,
     onClick: () -> Unit
 ) {
-    Column(
+    val shape = RoundedCornerShape(style.metrics.actionRadius)
+    Box(
         modifier = modifier
-            .height(72.dp)
-            .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Black.copy(alpha = 0.42f))
+            .height(76.dp)
+            .shadow(3.dp, shape, clip = false)
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    0f to style.colors.metricTop,
+                    1f to style.colors.metricBottom
+                )
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 11.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(style.colors.metricHighlight)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 11.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.Center
         ) {
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = value,
+                    color = style.colors.metricText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (suffix.isNotBlank()) {
+                    Text(
+                        text = suffix,
+                        color = style.colors.metricSecondaryText,
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+            }
             Text(
-                text = value,
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
+                text = label,
+                color = style.colors.metricSecondaryText,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier.padding(top = 4.dp)
             )
-            if (suffix.isNotBlank()) {
-                Text(
-                    text = suffix,
-                    color = Color.White.copy(alpha = 0.76f),
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
-            }
         }
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.68f),
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp)
-        )
     }
 }
 
@@ -605,7 +657,7 @@ private fun BookInfoCoverBackdrop(
                         0.36f to Color.Transparent,
                         0.70f to Color.Black.copy(alpha = 0.62f),
                         0.90f to Color.Black.copy(alpha = 0.74f),
-                        1f to style.colors.background
+                        1f to style.colors.contentTop
                     )
                 )
         )
@@ -848,8 +900,14 @@ private fun BookInfoContentPanel(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(style.colors.background)
-            .padding(top = 18.dp)
+            .background(
+                Brush.verticalGradient(
+                    0f to style.colors.contentTop,
+                    0.22f to style.colors.contentBackground,
+                    1f to style.colors.contentBackground
+                )
+            )
+            .padding(top = 22.dp)
     ) {
         content()
     }
@@ -1106,8 +1164,8 @@ private fun BookInfoBottomActions(
             .background(
                 Brush.verticalGradient(
                     0f to Color.Transparent,
-                    0.45f to style.colors.background.copy(alpha = 0.88f),
-                    1f to style.colors.background
+                    0.45f to style.colors.contentBackground.copy(alpha = 0.90f),
+                    1f to style.colors.contentBackground
                 )
             )
             .navigationBarsPadding()
