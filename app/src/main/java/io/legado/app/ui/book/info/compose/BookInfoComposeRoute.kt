@@ -18,7 +18,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,7 +30,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -204,6 +202,7 @@ fun BookInfoComposeRoute(
     val context = LocalContext.current
     val style = remember(context) { bookInfoComposeStyle(context) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    val pageScrollState = rememberScrollState()
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
         BookInfoCoverBackdrop(
             coverPath = state.coverPath,
@@ -212,37 +211,23 @@ fun BookInfoComposeRoute(
                 .fillMaxWidth()
                 .height(430.dp)
         )
-        LazyColumn(
+        Column(
             modifier = Modifier
-                .fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 18.dp,
-                end = 18.dp,
-                top = 132.dp,
-                bottom = 116.dp
-            ),
+                .fillMaxSize()
+                .verticalScroll(pageScrollState)
+                .padding(start = 18.dp, end = 18.dp, top = 132.dp, bottom = 116.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                BookInfoPosterHero(state, actions, style)
-            }
-            item {
-                BookInfoStatusStrip(state, actions, style)
-            }
-            item {
-                BookInfoIntroPanel(
-                    intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
-                    state = state,
-                    actions = actions,
-                    style = style
-                )
-            }
-            item {
-                BookInfoChapterPreviewPanel(state, actions, style)
-            }
-            item {
-                BookInfoAiImagesPanel(state, actions, style)
-            }
+            BookInfoPosterHero(state, actions, style)
+            BookInfoStatusStrip(state, actions, style)
+            BookInfoIntroPanel(
+                intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
+                state = state,
+                actions = actions,
+                style = style
+            )
+            BookInfoChapterPreviewPanel(state, actions, style)
+            BookInfoAiImagesPanel(state, actions, style)
         }
         BookInfoBottomActions(
             state = state,
