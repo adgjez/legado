@@ -40,6 +40,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.DisposableEffect
@@ -203,13 +204,16 @@ fun BookInfoComposeRoute(
     val style = remember(context) { bookInfoComposeStyle(context) }
     var showMoreMenu by remember { mutableStateOf(false) }
     val pageScrollState = rememberScrollState()
+    val topTitleAlpha by remember {
+        derivedStateOf { (pageScrollState.value / 220f).coerceIn(0f, 1f) }
+    }
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
         BookInfoCoverBackdrop(
             coverPath = state.coverPath,
             style = style,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(430.dp)
+                .height(520.dp)
         )
         Column(
             modifier = Modifier
@@ -237,8 +241,14 @@ fun BookInfoComposeRoute(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
         )
+        BookInfoTopGradient(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+        )
         BookInfoFloatingTopBar(
             title = state.name,
+            titleAlpha = topTitleAlpha,
             style = style,
             onBack = actions.onBack,
             onMore = { showMoreMenu = true },
@@ -302,13 +312,13 @@ private fun BookInfoStatusPill(
 ) {
     Text(
         text = text,
-        color = style.colors.primaryText,
+        color = Color.White.copy(alpha = 0.90f),
         fontSize = 12.5.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(style.colors.surface.copy(alpha = 0.78f))
+            .background(Color.White.copy(alpha = 0.16f))
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 10.dp)
     )
@@ -409,6 +419,7 @@ private fun BookInfoMoreActionItem(
 @Composable
 private fun BookInfoFloatingTopBar(
     title: String,
+    titleAlpha: Float,
     style: BookInfoComposeStyle,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -429,7 +440,7 @@ private fun BookInfoFloatingTopBar(
         )
         Text(
             text = title,
-            color = Color.White,
+            color = Color.White.copy(alpha = 0.92f * titleAlpha),
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -446,6 +457,23 @@ private fun BookInfoFloatingTopBar(
 }
 
 @Composable
+private fun BookInfoTopGradient(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(132.dp)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.42f),
+                    0.58f to Color.Black.copy(alpha = 0.12f),
+                    1f to Color.Transparent
+                )
+            )
+    )
+}
+
+@Composable
 private fun BookInfoTopIcon(
     iconRes: Int,
     contentDescription: String,
@@ -454,10 +482,9 @@ private fun BookInfoTopIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(42.dp)
-            .shadow(8.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .size(40.dp)
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Black.copy(alpha = 0.30f))
+            .background(Color.White.copy(alpha = 0.15f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -465,7 +492,7 @@ private fun BookInfoTopIcon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = Color.White,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(21.dp)
         )
     }
 }
@@ -484,16 +511,16 @@ private fun BookInfoCoverBackdrop(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.42f))
+                .background(Color.Black.copy(alpha = 0.30f))
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.18f),
-                        0.48f to Color.Transparent,
-                        0.78f to style.colors.background.copy(alpha = 0.70f),
+                        0f to Color.Black.copy(alpha = 0.08f),
+                        0.42f to Color.Transparent,
+                        0.76f to style.colors.background.copy(alpha = 0.58f),
                         1f to style.colors.background
                     )
                 )
