@@ -10,7 +10,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.JavascriptInterface
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -62,8 +61,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -88,7 +87,6 @@ import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
-import kotlin.math.abs
 
 @Immutable
 data class BookInfoChapterUi(
@@ -1388,20 +1386,8 @@ private fun BookInfoWebIntro(
     style: BookInfoComposeStyle
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    var webHeight by remember(rawIntro) { mutableStateOf(360.dp) }
-    var webHeightPx by remember(rawIntro) { mutableStateOf(0) }
-    val updateWebHeight: (Int) -> Unit = updateHeight@{ contentHeightPx ->
-        if (contentHeightPx <= 0) return@updateHeight
-        val minHeightPx = with(density) { 240.dp.roundToPx() }
-        val maxHeightPx = with(density) { 12000.dp.roundToPx() }
-        val thresholdPx = with(density) { 10.dp.roundToPx() }
-        val targetHeightPx = contentHeightPx.coerceIn(minHeightPx, maxHeightPx)
-        if (webHeightPx == 0 || abs(targetHeightPx - webHeightPx) >= thresholdPx) {
-            webHeightPx = targetHeightPx
-            webHeight = with(density) { targetHeightPx.toDp() }
-        }
-    }
+    val configuration = LocalConfiguration.current
+    val webHeight = configuration.screenHeightDp.dp.coerceAtLeast(520.dp)
     val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
     val baseUrl = remember(bookUrl) {
         bookUrl
@@ -1457,10 +1443,6 @@ private fun BookInfoWebIntro(
             overScrollMode = View.OVER_SCROLL_NEVER
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
-            addJavascriptInterface(
-                BookInfoHeightBridge(this, updateWebHeight),
-                "legadoBookInfoHeight"
-            )
         }
     }
     DisposableEffect(webView) {
@@ -1479,7 +1461,7 @@ private fun BookInfoWebIntro(
                 (parent as? ViewGroup)?.removeView(this)
                 setTag(R.id.tag, null)
                 onResume()
-                webViewClient = BookInfoIntroWebViewClient(context, updateWebHeight)
+                webViewClient = BookInfoIntroWebViewClient(context)
                 actions.onSetupWebIntro(this)
             }
         },
@@ -1501,8 +1483,7 @@ private fun BookInfoWebIntro(
 }
 
 private class BookInfoIntroWebViewClient(
-    private val context: Context,
-    private val onContentHeight: (Int) -> Unit
+    private val context: Context
 ) : WebViewClient() {
     private val jsStr = getInjectionString
 
@@ -1530,193 +1511,6 @@ private class BookInfoIntroWebViewClient(
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
         view?.evaluateJavascript(jsStr, null)
-    }
-
-    override fun onPageFinished(view: WebView?, url: String?) {
-        super.onPageFinished(view, url)
-        view ?: return
-        view.installDynamicHeightObserver()
-        listOf(80L, 240L, 600L, 1200L, 2200L).forEach { delay ->
-            view.postDelayed({ view.measureContentHeight() }, delay)
-        }
-    }
-
-    private fun WebView.measureContentHeight() {
-        evaluateJavascript(
-            """
-                (function(){
-                  if (window.__legadoBookInfoMeasureHeight) {
-                    return String(window.__legadoBookInfoMeasureHeight());
-                  }
-                  var b = document.body || {};
-                  var e = document.documentElement || {};
-                  return String(Math.max(
-                    b.scrollHeight || 0, b.offsetHeight || 0, b.clientHeight || 0,
-                    e.scrollHeight || 0, e.offsetHeight || 0, e.clientHeight || 0
-                  ));
-                })()
-            """.trimIndent()
-        ) { result ->
-            val jsHeight = result
-                ?.trim('"')
-                ?.toFloatOrNull()
-                ?.let { it * scale }
-                ?.toInt()
-            val nativeHeight = (contentHeight * scale).toInt()
-            onContentHeight((jsHeight ?: nativeHeight).coerceAtLeast(nativeHeight))
-        }
-    }
-
-    private fun WebView.installDynamicHeightObserver() {
-        evaluateJavascript(
-            """
-                (function(){
-                  window.__legadoBookInfoMeasureHeight = function(){
-                    var body = document.body;
-                    var doc = document.documentElement;
-                    var scrollY = window.scrollY || window.pageYOffset || 0;
-                    var max = Math.max(
-                      body ? (body.scrollHeight || 0) : 0,
-                      body ? (body.offsetHeight || 0) : 0,
-                      doc ? (doc.scrollHeight || 0) : 0,
-                      doc ? (doc.offsetHeight || 0) : 0,
-                      doc ? (doc.clientHeight || 0) : 0
-                    );
-                    if (!body) return Math.ceil(max);
-                    var nodes = body.querySelectorAll('*');
-                    for (var i = 0; i < nodes.length; i++) {
-                      var el = nodes[i];
-                      var tag = (el.tagName || '').toLowerCase();
-                      if (tag === 'script' || tag === 'style' || tag === 'meta' || tag === 'link') continue;
-                      var style = window.getComputedStyle ? getComputedStyle(el) : null;
-                      if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
-                      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-                      if (rect && (rect.width > 0 || rect.height > 0)) {
-                        if (style && style.position === 'fixed') {
-                          max = Math.max(max, rect.bottom, rect.top + (el.scrollHeight || rect.height || 0));
-                        } else {
-                          max = Math.max(max, rect.bottom + scrollY);
-                        }
-                      }
-                      if (el.offsetTop != null) {
-                        max = Math.max(max, el.offsetTop + (el.scrollHeight || el.offsetHeight || 0));
-                      }
-                    }
-                    var expanded = body.querySelectorAll('.show,[open],.expanded,.active');
-                    for (var j = 0; j < expanded.length; j++) {
-                      var ex = expanded[j];
-                      var exRect = ex.getBoundingClientRect ? ex.getBoundingClientRect() : null;
-                      var exTop = exRect ? (exRect.top + scrollY) : (ex.offsetTop || 0);
-                      max = Math.max(max, exTop + (ex.scrollHeight || ex.offsetHeight || 0));
-                    }
-                    return Math.ceil(max + 8);
-                  };
-                  if (window.__legadoBookInfoHeightObserverInstalled) return;
-                  window.__legadoBookInfoHeightObserverInstalled = true;
-                  var scheduled = false;
-                  var attachImageLoad = function(root) {
-                    try {
-                      Array.prototype.forEach.call((root || document).querySelectorAll('img'), function(img) {
-                        if (!img.__legadoBookInfoLoadBound) {
-                          img.__legadoBookInfoLoadBound = true;
-                          img.addEventListener('load', reportLater, { passive: true });
-                          img.addEventListener('error', reportLater, { passive: true });
-                        }
-                      });
-                    } catch(e) {}
-                  };
-                  var reportNow = function(){
-                    try {
-                      var h = window.__legadoBookInfoMeasureHeight();
-                      legadoBookInfoHeight.reportHeight(String(h));
-                    } catch(e) {}
-                  };
-                  var report = function(){
-                    if (scheduled) return;
-                    scheduled = true;
-                    var run = function(){
-                      scheduled = false;
-                      reportNow();
-                    };
-                    if (window.requestAnimationFrame) requestAnimationFrame(run);
-                    else setTimeout(run, 16);
-                  };
-                  var reportLater = function(){
-                    report();
-                    setTimeout(report, 70);
-                    setTimeout(report, 180);
-                    setTimeout(report, 420);
-                  };
-                  ['click','touchend','input','change','toggle','transitionend','animationend'].forEach(function(name){
-                    try { document.addEventListener(name, reportLater, true); } catch(e) {}
-                  });
-                  if (window.ResizeObserver) {
-                    try {
-                      var resizeObserver = new ResizeObserver(reportLater);
-                      resizeObserver.observe(document.documentElement);
-                      if (document.body) resizeObserver.observe(document.body);
-                    } catch(e) {}
-                  }
-                  if (window.MutationObserver && document.body) {
-                    try {
-                      new MutationObserver(function(mutations){
-                        for (var i = 0; i < mutations.length; i++) {
-                          for (var j = 0; j < mutations[i].addedNodes.length; j++) {
-                            var node = mutations[i].addedNodes[j];
-                            if (node && node.querySelectorAll) attachImageLoad(node);
-                          }
-                        }
-                        reportLater();
-                      }).observe(document.body, {
-                        childList: true,
-                        subtree: true,
-                        attributes: true,
-                        characterData: true
-                      });
-                    } catch(e) {}
-                  }
-                  attachImageLoad(document);
-                  var count = 0;
-                  var timer = setInterval(function(){
-                    reportLater();
-                    count++;
-                    if (count > 12) clearInterval(timer);
-                  }, 300);
-                  reportLater();
-                })()
-            """.trimIndent(),
-            null
-        )
-    }
-}
-
-private class BookInfoHeightBridge(
-    private val webView: WebView,
-    private val onContentHeight: (Int) -> Unit
-) {
-    private var lastHeight = 0
-    private var pendingHeight = 0
-    private var scheduled = false
-
-    @JavascriptInterface
-    fun reportHeight(value: String?) {
-        val height = value?.toFloatOrNull()?.let { it * webView.scale }?.toInt() ?: return
-        webView.post {
-            pendingHeight = height
-            if (scheduled) return@post
-            scheduled = true
-            webView.postDelayed({
-                scheduled = false
-                val nativeHeight = (webView.contentHeight * webView.scale).toInt()
-                val targetHeight = maxOf(pendingHeight, nativeHeight)
-                pendingHeight = 0
-                if (targetHeight <= 0) return@postDelayed
-                if (lastHeight == 0 || abs(targetHeight - lastHeight) >= 12) {
-                    lastHeight = targetHeight
-                    onContentHeight(targetHeight)
-                }
-            }, 48L)
-        }
     }
 }
 
