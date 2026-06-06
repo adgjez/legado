@@ -133,6 +133,20 @@ interface JsExtensions : JsEncodeUtils {
         return JsWebSocketManager.sendBase64(webSocketScopeKey(), id, base64)
     }
 
+    fun wsLock(id: String): String {
+        return wsLock(id, 30_000L)
+    }
+
+    fun wsLock(id: String, timeoutMs: Long): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.lock(webSocketScopeKey(), id, timeoutMs)
+    }
+
+    fun wsUnlock(id: String): String {
+        requireWebSocketAllowed()
+        return JsWebSocketManager.unlock(webSocketScopeKey(), id)
+    }
+
     fun wsRead(id: String): String {
         return wsRead(id, 30_000L)
     }

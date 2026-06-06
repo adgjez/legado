@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 object JsWebSocketManager {
 
@@ -83,6 +84,25 @@ object JsWebSocketManager {
             } else {
                 error("WebSocket send failed")
             }
+        }.getOrElse {
+            error(it.message ?: it.javaClass.simpleName)
+        }
+    }
+
+    fun lock(scopeKey: String, id: String, timeoutMs: Long): String {
+        val connection = connections[key(scopeKey, id)] ?: return error("WebSocket not opened")
+        connection.touch()
+        val locked = connection.lock.tryLock(timeoutMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
+        return if (locked) ok() else error("WebSocket lock timeout")
+    }
+
+    fun unlock(scopeKey: String, id: String): String {
+        val connection = connections[key(scopeKey, id)] ?: return ok()
+        return runCatching {
+            if (connection.lock.isHeldByCurrentThread) {
+                connection.lock.unlock()
+            }
+            ok()
         }.getOrElse {
             error(it.message ?: it.javaClass.simpleName)
         }
@@ -173,6 +193,7 @@ object JsWebSocketManager {
 
         val openLatch = CountDownLatch(1)
         val events = LinkedBlockingQueue<Event>()
+        val lock = ReentrantLock()
         @Volatile
         var webSocket: WebSocket? = null
         @Volatile
