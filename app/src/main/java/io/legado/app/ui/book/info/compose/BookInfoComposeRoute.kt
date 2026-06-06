@@ -87,6 +87,7 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 @Immutable
 data class BookInfoChapterUi(
@@ -1396,7 +1397,10 @@ private fun BookInfoWebIntro(
             ?.substringBefore(",")
     }
     val textColor = style.colors.primaryText.toCssHex()
-    val transparentHtml = remember(html, textColor) {
+    val themeCss = remember(style) {
+        bookInfoUseWebThemeCss(style)
+    }
+    val transparentHtml = remember(html, textColor, themeCss) {
         """
             <html>
             <head>
@@ -1417,7 +1421,7 @@ private fun BookInfoWebIntro(
                 }
               </style>
             </head>
-            <body>$html</body>
+            <body>$html<style id="legado-book-info-theme">$themeCss</style></body>
             </html>
         """.trimIndent()
     }
@@ -1622,6 +1626,60 @@ private class BookInfoHeightBridge(
 
 private fun Color.toCssHex(): String {
     return "#%06X".format(0xFFFFFF and toArgb())
+}
+
+private fun Color.toCssRgba(alpha: Float = this.alpha): String {
+    val color = copy(alpha = alpha.coerceIn(0f, 1f)).toArgb()
+    val red = android.graphics.Color.red(color)
+    val green = android.graphics.Color.green(color)
+    val blue = android.graphics.Color.blue(color)
+    val finalAlpha = android.graphics.Color.alpha(color) / 255f
+    return "rgba($red,$green,$blue,${String.format(Locale.US, "%.3f", finalAlpha)})"
+}
+
+private fun bookInfoUseWebThemeCss(style: BookInfoComposeStyle): String {
+    val night = AppConfig.isNightTheme
+    val pageBackground = "transparent"
+    val cardBackground = style.colors.surface.copy(alpha = if (night) 0.92f else 0.86f).toCssRgba()
+    val subtleBackground = style.colors.surfaceVariant.copy(alpha = if (night) 0.82f else 0.72f).toCssRgba()
+    val primaryText = style.colors.primaryText.toCssHex()
+    val secondaryText = style.colors.secondaryText.toCssHex()
+    val mutedText = style.colors.secondaryText.copy(alpha = if (night) 0.78f else 0.86f).toCssRgba()
+    val border = style.colors.accentContainer.copy(alpha = if (night) 0.42f else 0.48f).toCssRgba()
+    val divider = style.colors.accentContainer.copy(alpha = if (night) 0.28f else 0.34f).toCssRgba()
+    val accent = style.colors.accent.toCssHex()
+    val accentSoft = style.colors.accent.copy(alpha = if (night) 0.18f else 0.14f).toCssRgba()
+    val cardShadow = if (night) {
+        "0 14px 30px rgba(0,0,0,0.22)"
+    } else {
+        "0 10px 24px rgba(40,48,64,0.10)"
+    }
+    val hoverShadow = if (night) {
+        "0 18px 36px rgba(0,0,0,0.28)"
+    } else {
+        "0 14px 30px rgba(40,48,64,0.14)"
+    }
+    val scheme = if (night) "dark" else "light"
+    return """
+        :root, body {
+          color-scheme: $scheme !important;
+          --bg-body: $pageBackground !important;
+          --bg-soft: $subtleBackground !important;
+          --card-bg: $cardBackground !important;
+          --text-primary: $primaryText !important;
+          --text-secondary: $secondaryText !important;
+          --text-muted: $mutedText !important;
+          --border-light: $border !important;
+          --border-divider: $divider !important;
+          --accent: $accent !important;
+          --accent-soft: $accentSoft !important;
+          --shadow-sm: $cardShadow !important;
+          --shadow-md: $hoverShadow !important;
+        }
+        html, body {
+          background: transparent !important;
+        }
+    """.trimIndent()
 }
 
 private suspend fun loadCoverThemeColor(context: Context, coverPath: String?): Int? {
