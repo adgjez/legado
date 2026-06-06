@@ -51,12 +51,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -208,7 +211,16 @@ fun BookInfoComposeRoute(
     val topTitleAlpha by remember {
         derivedStateOf { (pageScrollState.value / 220f).coerceIn(0f, 1f) }
     }
+    val blurredBackdropAlpha by remember {
+        derivedStateOf { (pageScrollState.value / 520f).coerceIn(0f, 0.22f) }
+    }
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
+        BookInfoBlurredPageBackdrop(
+            coverPath = state.coverPath,
+            style = style,
+            alpha = blurredBackdropAlpha,
+            modifier = Modifier.fillMaxSize()
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -218,11 +230,12 @@ fun BookInfoComposeRoute(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(520.dp)
+                    .height(560.dp)
             ) {
                 BookInfoCoverBackdrop(
                     coverPath = state.coverPath,
                     style = style,
+                    scrollOffset = pageScrollState.value,
                     modifier = Modifier.fillMaxSize()
                 )
                 Column(
@@ -230,7 +243,7 @@ fun BookInfoComposeRoute(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 18.dp)
-                        .padding(bottom = 22.dp),
+                        .padding(bottom = 64.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     BookInfoPosterHero(state, actions, style)
@@ -302,27 +315,25 @@ private fun BookInfoStatusStrip(
         stringResource(R.string.book_info_component_ai_images)
     }
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         BookInfoStatusPill(
             text = state.originName,
             style = style,
-            modifier = Modifier.width(168.dp),
+            modifier = Modifier.weight(1f),
             onClick = actions.onChangeSource
         )
         BookInfoStatusPill(
             text = state.tocText.ifBlank { stringResource(R.string.view_toc) },
             style = style,
-            modifier = Modifier.width(168.dp),
+            modifier = Modifier.weight(1f),
             onClick = actions.onOpenToc
         )
         BookInfoStatusPill(
             text = galleryText,
             style = style,
-            modifier = Modifier.width(112.dp),
+            modifier = Modifier.weight(1f),
             onClick = actions.onOpenAiGallery
         )
     }
@@ -337,15 +348,15 @@ private fun BookInfoStatusPill(
 ) {
     Text(
         text = text,
-        color = Color.White.copy(alpha = 0.90f),
-        fontSize = 12.5.sp,
+        color = Color.White.copy(alpha = 0.94f),
+        fontSize = 12.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Black.copy(alpha = 0.28f))
+            .background(Color.Black.copy(alpha = 0.34f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp)
+            .padding(horizontal = 10.dp, vertical = 10.dp)
     )
 }
 
@@ -520,29 +531,69 @@ private fun BookInfoTopIcon(
 }
 
 @Composable
-private fun BookInfoCoverBackdrop(
+private fun BookInfoBlurredPageBackdrop(
     coverPath: String?,
     style: BookInfoComposeStyle,
+    alpha: Float,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.background(Color.Black)) {
+    if (alpha <= 0.01f) return
+    Box(modifier = modifier.background(style.colors.background)) {
         BookInfoImage(
             path = coverPath,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    this.alpha = alpha
+                    scaleX = 1.12f
+                    scaleY = 1.12f
+                }
+                .blur(26.dp)
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.30f))
+                .background(style.colors.background.copy(alpha = 0.78f))
+        )
+    }
+}
+
+@Composable
+private fun BookInfoCoverBackdrop(
+    coverPath: String?,
+    style: BookInfoComposeStyle,
+    scrollOffset: Int,
+    modifier: Modifier = Modifier
+) {
+    val blurRadius = (scrollOffset / 36f).coerceIn(0f, 18f).dp
+    val imageDarkenAlpha = (0.24f + scrollOffset / 900f).coerceIn(0.24f, 0.58f)
+    val parallaxOffset = scrollOffset * 0.38f
+    Box(modifier = modifier.background(Color.Black)) {
+        BookInfoImage(
+            path = coverPath,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = parallaxOffset
+                    scaleX = 1.06f
+                    scaleY = 1.06f
+                }
+                .blur(blurRadius)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = imageDarkenAlpha))
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.08f),
-                        0.42f to Color.Transparent,
-                        0.76f to style.colors.background.copy(alpha = 0.58f),
+                        0f to Color.Black.copy(alpha = 0.18f),
+                        0.36f to Color.Transparent,
+                        0.68f to Color.Black.copy(alpha = 0.66f),
+                        0.88f to Color.Black.copy(alpha = 0.70f),
                         1f to style.colors.background
                     )
                 )
@@ -787,11 +838,9 @@ private fun BookInfoIntroPanel(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        BookInfoSectionHeader(title = stringResource(R.string.book_info_tab_intro), style = style)
         BookInfoIntroContent(
             rawIntro = intro,
             state = state,
@@ -1147,7 +1196,7 @@ private fun BookInfoRichIntro(
             }
         },
         update = { textView ->
-            textView.setTextColor(style.colors.secondaryText.toArgb())
+            textView.setTextColor(style.colors.primaryText.toArgb())
             if (textView.tag != rawIntro) {
                 textView.tag = rawIntro
                 when {
@@ -1198,13 +1247,15 @@ private fun BookInfoWebIntro(
     style: BookInfoComposeStyle
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    var webHeight by remember(rawIntro) { mutableStateOf(320.dp) }
     val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
     val baseUrl = remember(bookUrl) {
         bookUrl
             .takeIf { it.startsWith("http", ignoreCase = true) }
             ?.substringBefore(",")
     }
-    val textColor = style.colors.secondaryText.toCssHex()
+    val textColor = style.colors.primaryText.toCssHex()
     val transparentHtml = remember(html, textColor) {
         """
             <html>
@@ -1242,14 +1293,19 @@ private fun BookInfoWebIntro(
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp),
+            .height(webHeight),
         factory = {
             pooledWebView.realWebView.apply {
                 (parent as? ViewGroup)?.removeView(this)
+                setTag(R.id.tag, null)
                 onResume()
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
-                webViewClient = BookInfoIntroWebViewClient(context)
+                webViewClient = BookInfoIntroWebViewClient(context) { contentHeightPx ->
+                    webHeight = with(density) {
+                        contentHeightPx.toDp().coerceAtLeast(240.dp)
+                    }
+                }
                 actions.onSetupWebIntro(this)
             }
         },
@@ -1271,7 +1327,8 @@ private fun BookInfoWebIntro(
 }
 
 private class BookInfoIntroWebViewClient(
-    private val context: Context
+    private val context: Context,
+    private val onContentHeight: (Int) -> Unit
 ) : WebViewClient() {
     private val jsStr = getInjectionString
 
@@ -1299,6 +1356,23 @@ private class BookInfoIntroWebViewClient(
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
         view?.evaluateJavascript(jsStr, null)
+    }
+
+    override fun onPageFinished(view: WebView?, url: String?) {
+        super.onPageFinished(view, url)
+        view?.postDelayed({
+            view.evaluateJavascript(
+                "Math.max(document.body.scrollHeight,document.documentElement.scrollHeight).toString()"
+            ) { result ->
+                val jsHeight = result
+                    ?.trim('"')
+                    ?.toFloatOrNull()
+                    ?.let { it * view.scale }
+                    ?.toInt()
+                val nativeHeight = (view.contentHeight * view.scale).toInt()
+                onContentHeight((jsHeight ?: nativeHeight).coerceAtLeast(nativeHeight))
+            }
+        }, 80L)
     }
 }
 
