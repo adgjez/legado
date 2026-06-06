@@ -1,11 +1,13 @@
 package io.legado.app.ui.book.info.compose
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
@@ -41,6 +43,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -72,7 +75,6 @@ import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
-import io.legado.app.help.webView.WebViewPool
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
@@ -134,7 +136,8 @@ data class BookInfoActions(
     val onCustomButton: () -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
     val onSetBookVariable: () -> Unit = {},
-    val onSetupWebIntro: (WebView) -> Unit = {}
+    val onSetupWebIntro: (WebView) -> Unit = {},
+    val onRefreshEnabledChanged: (Boolean) -> Unit = {}
 )
 
 @Immutable
@@ -211,26 +214,23 @@ fun BookInfoComposeRoute(
     val topTitleAlpha by remember {
         derivedStateOf { (pageScrollState.value / 220f).coerceIn(0f, 1f) }
     }
-    val blurredBackdropAlpha by remember {
-        derivedStateOf { (pageScrollState.value / 520f).coerceIn(0f, 0.22f) }
+    val refreshAtTop by remember {
+        derivedStateOf { pageScrollState.value == 0 }
+    }
+    LaunchedEffect(refreshAtTop) {
+        actions.onRefreshEnabledChanged(refreshAtTop)
     }
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
-        BookInfoBlurredPageBackdrop(
-            coverPath = state.coverPath,
-            style = style,
-            alpha = blurredBackdropAlpha,
-            modifier = Modifier.fillMaxSize()
-        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(pageScrollState),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(560.dp)
+                    .height(548.dp)
             ) {
                 BookInfoCoverBackdrop(
                     coverPath = state.coverPath,
@@ -243,19 +243,21 @@ fun BookInfoComposeRoute(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 18.dp)
-                        .padding(bottom = 64.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .padding(bottom = 34.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     BookInfoPosterHero(state, actions, style)
                     BookInfoStatusStrip(state, actions, style)
                 }
             }
-            BookInfoIntroPanel(
-                intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
-                state = state,
-                actions = actions,
-                style = style
-            )
+            BookInfoContentPanel(style = style) {
+                BookInfoIntroPanel(
+                    intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
+                    state = state,
+                    actions = actions,
+                    style = style
+                )
+            }
             Spacer(modifier = Modifier.height(116.dp))
         }
         BookInfoBottomActions(
@@ -309,55 +311,92 @@ private fun BookInfoStatusStrip(
     actions: BookInfoActions,
     style: BookInfoComposeStyle
 ) {
-    val galleryText = if (state.aiImageCount > 0) {
-        "${stringResource(R.string.book_info_component_ai_images)} ${state.aiImageCount}"
+    val sourceValue = state.originName.cleanBookInfoValue()
+    val tocValue = if (state.chapterCount > 0) {
+        "${state.chapterCount}"
     } else {
-        stringResource(R.string.book_info_component_ai_images)
+        stringResource(R.string.view_toc)
     }
+    val galleryValue = if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty)
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        BookInfoStatusPill(
-            text = state.originName,
-            style = style,
+        BookInfoMetricBox(
+            label = stringResource(R.string.change_book_source_action),
+            value = sourceValue,
             modifier = Modifier.weight(1f),
+            style = style,
             onClick = actions.onChangeSource
         )
-        BookInfoStatusPill(
-            text = state.tocText.ifBlank { stringResource(R.string.view_toc) },
-            style = style,
+        BookInfoMetricBox(
+            label = stringResource(R.string.book_info_tab_toc),
+            value = tocValue,
+            suffix = if (state.chapterCount > 0) "章" else "",
             modifier = Modifier.weight(1f),
+            style = style,
             onClick = actions.onOpenToc
         )
-        BookInfoStatusPill(
-            text = galleryText,
-            style = style,
+        BookInfoMetricBox(
+            label = stringResource(R.string.book_info_component_ai_images),
+            value = galleryValue,
+            suffix = if (state.aiImageCount > 0) "" else "",
             modifier = Modifier.weight(1f),
+            style = style,
             onClick = actions.onOpenAiGallery
         )
     }
 }
 
 @Composable
-private fun BookInfoStatusPill(
-    text: String,
-    style: BookInfoComposeStyle,
+private fun BookInfoMetricBox(
+    label: String,
+    value: String,
+    suffix: String = "",
     modifier: Modifier = Modifier,
+    style: BookInfoComposeStyle,
     onClick: () -> Unit
 ) {
-    Text(
-        text = text,
-        color = Color.White.copy(alpha = 0.94f),
-        fontSize = 12.sp,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    Column(
         modifier = modifier
+            .height(72.dp)
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Black.copy(alpha = 0.34f))
+            .background(Color.Black.copy(alpha = 0.42f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp)
-    )
+            .padding(horizontal = 11.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = value,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (suffix.isNotBlank()) {
+                Text(
+                    text = suffix,
+                    color = Color.White.copy(alpha = 0.76f),
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+            }
+        }
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.68f),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -531,43 +570,15 @@ private fun BookInfoTopIcon(
 }
 
 @Composable
-private fun BookInfoBlurredPageBackdrop(
-    coverPath: String?,
-    style: BookInfoComposeStyle,
-    alpha: Float,
-    modifier: Modifier = Modifier
-) {
-    if (alpha <= 0.01f) return
-    Box(modifier = modifier.background(style.colors.background)) {
-        BookInfoImage(
-            path = coverPath,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    this.alpha = alpha
-                    scaleX = 1.12f
-                    scaleY = 1.12f
-                }
-                .blur(26.dp)
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(style.colors.background.copy(alpha = 0.78f))
-        )
-    }
-}
-
-@Composable
 private fun BookInfoCoverBackdrop(
     coverPath: String?,
     style: BookInfoComposeStyle,
     scrollOffset: Int,
     modifier: Modifier = Modifier
 ) {
-    val blurRadius = (scrollOffset / 36f).coerceIn(0f, 18f).dp
-    val imageDarkenAlpha = (0.24f + scrollOffset / 900f).coerceIn(0.24f, 0.58f)
-    val parallaxOffset = scrollOffset * 0.38f
+    val blurRadius = (scrollOffset / 72f).coerceIn(0f, 10f).dp
+    val imageDarkenAlpha = (0.28f + scrollOffset / 1400f).coerceIn(0.28f, 0.50f)
+    val parallaxOffset = scrollOffset * 0.22f
     Box(modifier = modifier.background(Color.Black)) {
         BookInfoImage(
             path = coverPath,
@@ -590,10 +601,10 @@ private fun BookInfoCoverBackdrop(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.18f),
+                        0f to Color.Black.copy(alpha = 0.22f),
                         0.36f to Color.Transparent,
-                        0.68f to Color.Black.copy(alpha = 0.66f),
-                        0.88f to Color.Black.copy(alpha = 0.70f),
+                        0.70f to Color.Black.copy(alpha = 0.62f),
+                        0.90f to Color.Black.copy(alpha = 0.74f),
                         1f to style.colors.background
                     )
                 )
@@ -830,15 +841,32 @@ private fun BookInfoMetaPanel(
 }
 
 @Composable
+private fun BookInfoContentPanel(
+    style: BookInfoComposeStyle,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(style.colors.background)
+            .padding(top = 18.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
 private fun BookInfoIntroPanel(
     intro: String,
     state: BookInfoUiState,
     actions: BookInfoActions,
     style: BookInfoComposeStyle
 ) {
+    val isWebIntro = intro.startsWith("<useweb>", ignoreCase = true)
     Column(
         modifier = Modifier
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .padding(horizontal = if (isWebIntro) 0.dp else 22.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         BookInfoIntroContent(
@@ -1240,6 +1268,7 @@ private fun BookInfoIntroContent(
 }
 
 @Composable
+@SuppressLint("SetJavaScriptEnabled")
 private fun BookInfoWebIntro(
     rawIntro: String,
     bookUrl: String,
@@ -1282,12 +1311,32 @@ private fun BookInfoWebIntro(
         """.trimIndent()
     }
     val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
-    val pooledWebView = remember(context, rawIntro, bookUrl) {
-        WebViewPool.acquire(context)
+    val webView = remember(context, rawIntro, bookUrl) {
+        WebView(context).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                allowContentAccess = true
+                builtInZoomControls = false
+                displayZoomControls = false
+                textZoom = 100
+            }
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        }
     }
-    DisposableEffect(pooledWebView) {
+    DisposableEffect(webView) {
         onDispose {
-            WebViewPool.release(pooledWebView)
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            webView.stopLoading()
+            webView.destroy()
         }
     }
     AndroidView(
@@ -1295,12 +1344,10 @@ private fun BookInfoWebIntro(
             .fillMaxWidth()
             .height(webHeight),
         factory = {
-            pooledWebView.realWebView.apply {
+            webView.apply {
                 (parent as? ViewGroup)?.removeView(this)
                 setTag(R.id.tag, null)
                 onResume()
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 webViewClient = BookInfoIntroWebViewClient(context) { contentHeightPx ->
                     webHeight = with(density) {
                         contentHeightPx.toDp().coerceAtLeast(240.dp)
@@ -1378,6 +1425,13 @@ private class BookInfoIntroWebViewClient(
 
 private fun Color.toCssHex(): String {
     return "#%06X".format(0xFFFFFF and toArgb())
+}
+
+private fun String.cleanBookInfoValue(): String {
+    return substringAfter("：")
+        .substringAfter(":")
+        .trim()
+        .ifBlank { this }
 }
 
 private fun String.extractWrappedIntro(prefixLength: Int): String {
