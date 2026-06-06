@@ -1302,6 +1302,8 @@ object AiReadAloudRoleService {
                     emotionTag = segment.emotionTag.ifBlank { route?.emotionTag.orEmpty() },
                     speakerName = route?.speakerName.orEmpty(),
                     toneID = route?.toneID.orEmpty(),
+                    groupName = route?.groupName.orEmpty(),
+                    engineType = route?.engineType.orEmpty(),
                     confidence = segment.confidence,
                     source = source
                 )

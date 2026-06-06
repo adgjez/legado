@@ -13,6 +13,8 @@ data class AiReadAloudRolePreviewSegment(
     val emotionTag: String = "",
     val speakerName: String = "",
     val toneID: String = "",
+    val groupName: String = "",
+    val engineType: String = "",
     val confidence: Double = 0.0,
     val source: String = ""
 ) {

@@ -2890,7 +2890,10 @@ private fun RoleAssignmentSummary(
 ) {
     val preview = roleState.previewSegments
     val unmatchedCount = preview.count {
-        it.roleType in setOf("character", "thought") && !it.matchedCharacter
+        roleSegmentNeedsVoice(it) && !it.matchedCharacter
+    }
+    val unboundVoiceCount = preview.count {
+        roleSegmentNeedsVoice(it) && it.matchedCharacter && roleSegmentVoiceLabel(it).isBlank()
     }
     Row(
         modifier = Modifier
@@ -2939,6 +2942,9 @@ private fun RoleAssignmentSummary(
         }
         if (unmatchedCount > 0) {
             RoleSummaryChip("$unmatchedCount 未匹配", colors, danger = true)
+        }
+        if (unboundVoiceCount > 0) {
+            RoleSummaryChip("$unboundVoiceCount 未绑定发言人", colors, danger = true)
         }
     }
     Text(
@@ -3092,7 +3098,10 @@ private fun RolePreviewSegmentRow(
     colors: PlayerColors,
     onClick: () -> Unit
 ) {
-    val danger = segment.roleType in setOf("character", "thought") && !segment.matchedCharacter
+    val danger = roleSegmentNeedsVoice(segment) && !segment.matchedCharacter
+    val unboundVoice = roleSegmentNeedsVoice(segment) &&
+            segment.matchedCharacter &&
+            roleSegmentVoiceLabel(segment).isBlank()
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -3105,7 +3114,11 @@ private fun RolePreviewSegmentRow(
                 RoleTypeChip(segment.roleType, colors, danger)
                 Text(
                     text = roleSpeakerLine(segment),
-                    color = if (danger) Color(0xFFFFB3BB) else colors.secondaryText,
+                    color = when {
+                        danger -> Color(0xFFFFB3BB)
+                        unboundVoice -> Color(0xFFFFC46B)
+                        else -> colors.secondaryText
+                    },
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -3438,13 +3451,31 @@ private fun roleSpeakerLine(segment: AiReadAloudRolePreviewSegment): String {
         segment.matchedCharacter -> segment.characterName
         else -> "${segment.characterName}（未匹配）"
     }
-    val voice = segment.speakerName.takeIf { it.isNotBlank() }
+    val voice = roleSegmentVoiceLabel(segment).takeIf { it.isNotBlank() }
+        ?: if (roleSegmentNeedsVoice(segment) && segment.matchedCharacter) "未绑定发言人" else null
     val emotion = segment.emotionName.takeIf { it.isNotBlank() }
     return buildList {
         add(roleName)
         voice?.let(::add)
         emotion?.let(::add)
     }.joinToString(" · ")
+}
+
+private fun roleSegmentNeedsVoice(segment: AiReadAloudRolePreviewSegment): Boolean {
+    return segment.roleType == "character" || segment.roleType == "thought"
+}
+
+private fun roleSegmentVoiceLabel(segment: AiReadAloudRolePreviewSegment): String {
+    return segment.speakerName
+        .ifBlank { segment.toneID }
+        .ifBlank { segment.groupName }
+        .ifBlank {
+            when (segment.engineType) {
+                SpeechRoute.ENGINE_SYSTEM -> "系统语音"
+                SpeechRoute.ENGINE_HTTP -> "HTTP TTS"
+                else -> ""
+            }
+        }
 }
 
 @Composable
