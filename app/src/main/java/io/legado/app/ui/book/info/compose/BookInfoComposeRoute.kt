@@ -281,9 +281,6 @@ fun BookInfoComposeRoute(
     val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
     val pageScrollState = rememberScrollState()
-    val topTitleAlpha by remember {
-        derivedStateOf { (pageScrollState.value / 220f).coerceIn(0f, 1f) }
-    }
     val refreshAtTop by remember {
         derivedStateOf { pageScrollState.value == 0 }
     }
@@ -323,7 +320,7 @@ fun BookInfoComposeRoute(
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                         .padding(horizontal = 18.dp)
-                        .padding(bottom = 34.dp),
+                        .padding(bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     BookInfoPosterHero(state, actions, style)
@@ -355,8 +352,6 @@ fun BookInfoComposeRoute(
                 .align(Alignment.TopCenter)
         )
         BookInfoFloatingTopBar(
-            title = state.name,
-            titleAlpha = topTitleAlpha,
             style = style,
             onBack = actions.onBack,
             onMore = { showMoreMenu = true },
@@ -587,8 +582,6 @@ private fun BookInfoMoreActionItem(
 
 @Composable
 private fun BookInfoFloatingTopBar(
-    title: String,
-    titleAlpha: Float,
     style: BookInfoComposeStyle,
     onBack: () -> Unit,
     onMore: () -> Unit,
@@ -607,15 +600,7 @@ private fun BookInfoFloatingTopBar(
             style = style,
             onClick = onBack
         )
-        Text(
-            text = title,
-            color = Color.White.copy(alpha = 0.92f * titleAlpha),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
+        Spacer(modifier = Modifier.weight(1f))
         BookInfoTopIcon(
             iconRes = R.drawable.ic_more_vert,
             contentDescription = stringResource(R.string.more),
@@ -949,12 +934,12 @@ private fun BookInfoContentPanel(
             .background(
                 Brush.verticalGradient(
                     0f to style.colors.contentTop,
-                    0.14f to style.colors.contentBackground,
-                    0.68f to style.colors.contentBackground,
+                    0.24f to style.colors.contentBackground,
+                    0.72f to style.colors.contentBackground,
                     1f to style.colors.background
                 )
             )
-            .padding(top = 22.dp)
+            .padding(top = 10.dp)
     ) {
         content()
     }
@@ -978,12 +963,29 @@ private fun BookInfoIntroPanel(
             ),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        BookInfoIntroContent(
-            rawIntro = intro,
-            state = state,
-            actions = actions,
-            style = style
-        )
+        if (isWebIntro) {
+            BookInfoIntroContent(
+                rawIntro = intro,
+                state = state,
+                actions = actions,
+                style = style
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(style.metrics.panelRadius))
+                    .background(style.colors.surface.copy(alpha = 0.28f))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                BookInfoIntroContent(
+                    rawIntro = intro,
+                    state = state,
+                    actions = actions,
+                    style = style
+                )
+            }
+        }
     }
 }
 
@@ -1236,14 +1238,14 @@ private fun BookInfoBottomActions(
                 primary = false,
                 style = style,
                 onClick = actions.onShelf,
-                modifier = Modifier.weight(0.88f)
+                modifier = Modifier.weight(1f)
             )
             BookInfoActionButton(
                 text = stringResource(R.string.reading),
                 primary = true,
                 style = style,
                 onClick = actions.onRead,
-                modifier = Modifier.weight(1.12f)
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -1257,22 +1259,12 @@ private fun BookInfoActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val background = if (primary) {
-        Brush.verticalGradient(
-            0f to style.colors.accent.copy(alpha = 0.98f),
-            1f to style.colors.accent.copy(alpha = 0.82f)
-        )
-    } else {
-        Brush.verticalGradient(
-            0f to style.colors.surface.copy(alpha = 0.92f),
-            1f to style.colors.accentContainer.copy(alpha = 0.78f)
-        )
-    }
+    val background = if (primary) style.colors.accent else style.colors.accentContainer
     val textColor = if (primary) style.colors.actionText else style.colors.primaryText
     Box(
         modifier = modifier
-            .height(if (primary) 54.dp else 50.dp)
-            .shadow(if (primary) 8.dp else 3.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .height(52.dp)
+            .shadow(if (primary) 7.dp else 4.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
             .clip(RoundedCornerShape(style.metrics.actionRadius))
             .background(background)
             .clickable(onClick = onClick),
