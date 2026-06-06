@@ -5,6 +5,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -101,6 +103,7 @@ import io.legado.app.ui.main.ai.AiChatSpeechPlayer
 import io.legado.app.ui.main.ai.AiChatViewModel
 import io.legado.app.ui.book.character.compose.CharacterAvatar
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -297,6 +300,7 @@ fun AiChatScreen(
     var lastAutoSpokenMessageId by rememberSaveable { mutableStateOf("") }
     var stickToBottom by rememberSaveable { mutableStateOf(true) }
     var positionedConversationKey by rememberSaveable { mutableStateOf("") }
+    var jumpButtonsVisible by rememberSaveable { mutableStateOf(false) }
     val uiItems = remember(context, messages, thinkingToolbarEnabled) {
         buildAiChatUiItems(
             context = context,
@@ -337,6 +341,18 @@ fun AiChatScreen(
             stickToBottom = true
         } else if (listState.isScrollInProgress) {
             stickToBottom = false
+        }
+    }
+    LaunchedEffect(listState.isScrollInProgress, displayItems.size) {
+        if (displayItems.size <= 1) {
+            jumpButtonsVisible = false
+            return@LaunchedEffect
+        }
+        if (listState.isScrollInProgress) {
+            jumpButtonsVisible = true
+        } else {
+            delay(900L)
+            jumpButtonsVisible = false
         }
     }
     LaunchedEffect(messages.lastOrNull()?.id, messages.lastOrNull()?.role) {
@@ -528,24 +544,38 @@ fun AiChatScreen(
                 .padding(horizontal = 16.dp, vertical = 14.dp)
         )
         if (uiItems.size > 1) {
-            AiJumpButtons(
-                style = style,
+            AnimatedVisibility(
+                visible = jumpButtonsVisible,
+                enter = slideInHorizontally(
+                    animationSpec = tween(180, easing = LinearOutSlowInEasing),
+                    initialOffsetX = { it + 24 }
+                ) + fadeIn(tween(100)),
+                exit = slideOutHorizontally(
+                    animationSpec = tween(150, easing = FastOutLinearInEasing),
+                    targetOffsetX = { it + 24 }
+                ) + fadeOut(tween(90)),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
                     .imePadding()
-                    .padding(end = 16.dp, bottom = 92.dp),
-                onPrevious = {
-                    val current = listState.firstVisibleItemIndex
-                    val target = (current + 1).coerceAtMost(displayItems.lastIndex)
-                    coroutineScope.launch { listState.animateScrollToItem(target) }
-                },
-                onNext = {
-                    val current = listState.firstVisibleItemIndex
-                    val target = (current - 1).coerceAtLeast(0)
-                    coroutineScope.launch { listState.animateScrollToItem(target) }
-                }
-            )
+                    .padding(end = 16.dp, bottom = 92.dp)
+            ) {
+                AiJumpButtons(
+                    style = style,
+                    onPrevious = {
+                        jumpButtonsVisible = true
+                        val current = listState.firstVisibleItemIndex
+                        val target = (current + 1).coerceAtMost(displayItems.lastIndex)
+                        coroutineScope.launch { listState.animateScrollToItem(target) }
+                    },
+                    onNext = {
+                        jumpButtonsVisible = true
+                        val current = listState.firstVisibleItemIndex
+                        val target = (current - 1).coerceAtLeast(0)
+                        coroutineScope.launch { listState.animateScrollToItem(target) }
+                    }
+                )
+            }
         }
         toolPreviewPayload?.let { payload ->
             AiToolPreviewDialog(

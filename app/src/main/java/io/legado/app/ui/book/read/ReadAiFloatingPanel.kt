@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,7 +47,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInteropFilter
@@ -87,6 +87,9 @@ import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.compose.AiComposeMarkdownText
 import io.legado.app.ui.main.ai.compose.AiComposeStyle
 import io.legado.app.ui.main.ai.compose.AiCopyTextButton
+import io.legado.app.ui.main.ai.compose.AiProcessStepType
+import io.legado.app.ui.main.ai.compose.AiProcessStepUi
+import io.legado.app.ui.main.ai.compose.AiProcessTimelineCard
 import io.legado.app.ui.main.ai.compose.aiComposeStyle
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.toastOnUi
@@ -133,6 +136,10 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var activeAgentRun: AiAgentStateStore.Run? = null
     private var streamingAssistantContent: String? = null
     private var streamingAssistantMessageId: String? = null
+    private var activeThinkingMessageId: String? = null
+    private var activeThinkingKey: String? = null
+    private var activeThinkingLabel: String? = null
+    private val activeToolMessageIds = linkedMapOf<String, String>()
     private var downRawX = 0f
     private var downRawY = 0f
     private var startX = 0f
@@ -255,6 +262,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
+        finishActiveProcessMessages(currentSessionId, success = false)
         if (context != null) {
             val pending = currentBookHistory(context).sessions
                 .firstOrNull { it.id == currentSessionId }
@@ -277,6 +285,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         activeAgentRun = null
         streamingAssistantContent = null
         streamingAssistantMessageId = null
+        finishActiveProcessMessages(currentSessionId, success = false)
         currentSessionId = ensureSession(context, createNew = true).id
         showingHistory = false
         contextLabel = buildContextLabel(context)
@@ -295,6 +304,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         val context = readContext ?: return
         answerJob?.cancel()
         AiAgentStateStore.cancel(activeAgentRun, "Superseded by next read ai question")
+        finishActiveProcessMessages(currentSessionId, success = false)
         val requestSessionId = currentSessionId
         appendMessage(context, ReadAiMessage.Role.USER, question)
         val pendingAssistantId = appendMessage(
@@ -347,6 +357,15 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                                     }
                                 }
                             },
+                            onThinking = { thinking ->
+                                if (thinking.isNotBlank()) {
+                                    AiTaskKeepAlive.update(keepAliveId, progressText = thinking)
+                                    post { upsertThinkingStatus(requestSessionId, thinking) }
+                                }
+                            },
+                            onStatus = { status ->
+                                post { upsertStatus(requestSessionId, status) }
+                            },
                             includeStructuredBlocks = false,
                             toolOverride = AiToolRegistry.resolveReadTools(),
                             extraTools = AiToolRegistry.resolveMcpTools(windowMcpServerIds),
@@ -393,6 +412,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                         }
                     )
                     replaceMessage(context, pendingAssistantId, content, requestSessionId)
+                    finishActiveProcessMessages(requestSessionId, success = result.isSuccess)
                     answerJob = null
                     activeAgentRun = null
                     updateRequestingState()
@@ -942,6 +962,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
             .firstOrNull { it.id == currentSessionId }
             ?.messages
             .orEmpty()
+            .filterNot { it.isProcessMessage() }
             .dropLast(2)
             .takeLast(12)
             .mapNotNull { message ->
@@ -982,6 +1003,239 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 }
             })
         }
+    }
+
+    private fun upsertThinkingStatus(sessionId: String, thinking: String) {
+        val context = readContext ?: return
+        if (thinking.isBlank()) return
+        val messageId = activeThinkingMessageId
+            ?: createThinkingMessage(context, sessionId, activeThinkingKey ?: "thinking", activeThinkingLabel)
+        updateSession(context, sessionId) { session ->
+            session.copy(
+                updatedAt = System.currentTimeMillis(),
+                messages = session.messages.map { message ->
+                    if (message.id == messageId) {
+                        message.copy(
+                            content = mergeThinkingContent(message.content, thinking),
+                            pending = true,
+                            collapsed = false,
+                            statusLabel = resources.getString(R.string.ai_chat_thinking),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else {
+                        message
+                    }
+                }
+            )
+        }
+        if (!showingHistory) renderCurrentSession()
+    }
+
+    private fun upsertStatus(sessionId: String, status: JSONObject) {
+        when (status.optString("kind")) {
+            "thinking" -> upsertThinkingEvent(sessionId, status)
+            "tool" -> upsertToolEvent(sessionId, status)
+        }
+    }
+
+    private fun upsertThinkingEvent(sessionId: String, status: JSONObject) {
+        val key = status.optString("key").ifBlank { "thinking" }
+        when (status.optString("stage")) {
+            "start" -> {
+                activeThinkingKey = key
+                activeThinkingLabel = status.optString("label")
+                    .ifBlank { resources.getString(R.string.ai_chat_thinking) }
+            }
+            "finish" -> {
+                val content = status.optString("content")
+                val label = status.optString("label").ifBlank {
+                    resources.getString(R.string.ai_chat_thinking_done)
+                }
+                if (activeThinkingMessageId == null && content.isNotBlank()) {
+                    createThinkingMessage(readContext ?: return, sessionId, key, label)
+                }
+                finishActiveThinking(
+                    sessionId = sessionId,
+                    fallback = status.optString("fallback"),
+                    content = content,
+                    removeIfBlank = status.optBoolean("removeIfBlank", false),
+                    label = label
+                )
+            }
+        }
+    }
+
+    private fun createThinkingMessage(
+        context: ReadContext,
+        sessionId: String,
+        key: String,
+        label: String?
+    ): String {
+        activeThinkingMessageId?.let { return it }
+        val message = ReadAiMessage(
+            role = ReadAiMessage.Role.ASSISTANT,
+            content = "",
+            pending = true,
+            kind = ReadAiMessage.Kind.THINKING,
+            statusKey = key,
+            statusLabel = label?.takeIf { it.isNotBlank() } ?: resources.getString(R.string.ai_chat_thinking),
+            collapsed = false
+        )
+        activeThinkingMessageId = message.id
+        insertProcessMessageBeforePendingAnswer(context, sessionId, message)
+        return message.id
+    }
+
+    private fun finishActiveThinking(
+        sessionId: String,
+        fallback: String? = null,
+        content: String = "",
+        removeIfBlank: Boolean = false,
+        label: String? = null
+    ) {
+        val context = readContext ?: return
+        val messageId = activeThinkingMessageId ?: run {
+            activeThinkingKey = null
+            activeThinkingLabel = null
+            return
+        }
+        updateSession(context, sessionId) { session ->
+            val current = session.messages.firstOrNull { it.id == messageId }
+            val finalContent = content.takeIf { it.isNotBlank() }
+                ?: current?.content?.takeIf { it.isNotBlank() }
+                ?: fallback.orEmpty()
+            val mapped = if (removeIfBlank && finalContent.isBlank()) {
+                session.messages.filterNot { it.id == messageId }
+            } else {
+                session.messages.map { message ->
+                    if (message.id == messageId) {
+                        message.copy(
+                            content = finalContent,
+                            pending = false,
+                            collapsed = true,
+                            statusLabel = label ?: message.statusLabel,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else {
+                        message
+                    }
+                }
+            }
+            session.copy(updatedAt = System.currentTimeMillis(), messages = mapped)
+        }
+        activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
+        if (!showingHistory) renderCurrentSession()
+    }
+
+    private fun upsertToolEvent(sessionId: String, status: JSONObject) {
+        val context = readContext ?: return
+        val key = status.optString("key").ifBlank { status.optString("name").ifBlank { "tool" } }
+        val name = status.optString("name").ifBlank { resources.getString(R.string.ai_tool_default_name) }
+        val stage = status.optString("stage")
+        val content = status.optString("content")
+        val existingId = activeToolMessageIds[key]
+        if (stage == "call" || existingId == null) {
+            val message = ReadAiMessage(
+                role = ReadAiMessage.Role.ASSISTANT,
+                content = content,
+                pending = stage != "result",
+                kind = ReadAiMessage.Kind.TOOL,
+                statusName = name,
+                statusStage = stage,
+                statusSuccess = status.optBoolean("success", true),
+                statusLabel = status.optString("label"),
+                statusDetail = content,
+                statusKey = key,
+                collapsed = stage == "result"
+            )
+            activeToolMessageIds[key] = message.id
+            insertProcessMessageBeforePendingAnswer(context, sessionId, message)
+            if (!showingHistory) renderCurrentSession()
+            return
+        }
+        updateSession(context, sessionId) { session ->
+            session.copy(
+                updatedAt = System.currentTimeMillis(),
+                messages = session.messages.map { message ->
+                    if (message.id == existingId) {
+                        val detail = buildString {
+                            message.statusDetail?.takeIf { it.isNotBlank() }?.let {
+                                append(it)
+                                append("\n\n")
+                            }
+                            append(content)
+                        }
+                        message.copy(
+                            content = content,
+                            pending = false,
+                            kind = ReadAiMessage.Kind.TOOL,
+                            statusName = name,
+                            statusStage = stage,
+                            statusSuccess = status.optBoolean("success", true),
+                            statusLabel = status.optString("label"),
+                            statusDetail = detail,
+                            collapsed = true,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else {
+                        message
+                    }
+                }
+            )
+        }
+        if (!showingHistory) renderCurrentSession()
+    }
+
+    private fun insertProcessMessageBeforePendingAnswer(
+        context: ReadContext,
+        sessionId: String,
+        message: ReadAiMessage
+    ) {
+        updateSession(context, sessionId) { session ->
+            val pendingAnswerId = streamingAssistantMessageId
+            val index = pendingAnswerId?.let { id -> session.messages.indexOfFirst { it.id == id } } ?: -1
+            val nextMessages = if (index >= 0) {
+                session.messages.take(index) + message + session.messages.drop(index)
+            } else {
+                session.messages + message
+            }
+            session.copy(updatedAt = System.currentTimeMillis(), messages = nextMessages)
+        }
+    }
+
+    private fun finishActiveProcessMessages(sessionId: String, success: Boolean) {
+        val context = readContext ?: return
+        updateSession(context, sessionId) { session ->
+            session.copy(
+                updatedAt = System.currentTimeMillis(),
+                messages = session.messages.map { message ->
+                    if (message.pending && message.isProcessMessage()) {
+                        message.copy(
+                            pending = false,
+                            statusSuccess = if (message.kind == ReadAiMessage.Kind.TOOL) {
+                                success
+                            } else {
+                                message.statusSuccess
+                            },
+                            collapsed = true,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else {
+                        message
+                    }
+                }
+            )
+        }
+        clearActiveProcessMessages()
+    }
+
+    private fun clearActiveProcessMessages() {
+        activeThinkingMessageId = null
+        activeThinkingKey = null
+        activeThinkingLabel = null
+        activeToolMessageIds.clear()
     }
 
     companion object {
@@ -1136,34 +1390,43 @@ private fun ReadAiPanelContent(
                 }
                 ReadAiIconButton(R.drawable.ic_close_x, R.string.close, style, onClose)
             }
-            if (showingHistory) {
-                ReadAiHistoryList(
-                    sessions = historySessions,
-                    style = style,
-                    timeFormat = timeFormat,
-                    onOpenSession = onOpenSession,
-                    onDeleteSession = onDeleteSession,
-                    onClearHistory = onClearHistory,
-                    modifier = if (fullscreen) Modifier.weight(1f) else Modifier.height(220.dp)
-                )
-            } else {
-                ReadAiMessageList(
-                    messages = messages,
+            Box(
+                modifier = if (fullscreen) Modifier.weight(1f) else Modifier.height(if (showingHistory) 300.dp else 340.dp)
+            ) {
+                if (showingHistory) {
+                    ReadAiHistoryList(
+                        sessions = historySessions,
+                        style = style,
+                        timeFormat = timeFormat,
+                        onOpenSession = onOpenSession,
+                        onDeleteSession = onDeleteSession,
+                        onClearHistory = onClearHistory,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 88.dp)
+                    )
+                } else {
+                    ReadAiMessageList(
+                        messages = messages,
+                        requesting = requesting,
+                        style = style,
+                        fullscreen = fullscreen,
+                        showProcessChain = AppConfig.aiThinkingToolbarEnabled,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 88.dp)
+                    )
+                }
+                ReadAiComposer(
                     requesting = requesting,
+                    enterToSend = AppConfig.aiEnterToSend,
                     style = style,
-                    fullscreen = fullscreen,
-                    modifier = if (fullscreen) Modifier.weight(1f) else Modifier.height(260.dp)
+                    onStop = onStop,
+                    onSend = onSend,
+                    onInputFocused = onInputFocused,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = if (fullscreen) 2.dp else 0.dp)
                 )
             }
-            ReadAiComposer(
-                requesting = requesting,
-                enterToSend = AppConfig.aiEnterToSend,
-                style = style,
-                onStop = onStop,
-                onSend = onSend,
-                onInputFocused = onInputFocused,
-                modifier = Modifier.padding(top = 10.dp)
-            )
         }
     }
 }
@@ -1250,7 +1513,9 @@ private fun ReadAiMessageList(
     requesting: Boolean,
     style: AiComposeStyle,
     fullscreen: Boolean,
-    modifier: Modifier = Modifier
+    showProcessChain: Boolean,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues()
 ) {
     val listState = rememberLazyListState()
     var stickToBottom by remember { mutableStateOf(true) }
@@ -1267,24 +1532,99 @@ private fun ReadAiMessageList(
             stickToBottom = false
         }
     }
-    LaunchedEffect(messages.size, messages.lastOrNull()?.content, requesting) {
-        if (messages.isNotEmpty() && stickToBottom && !listState.isScrollInProgress) {
-            listState.scrollToItem(messages.lastIndex)
+    val uiItems = remember(messages, showProcessChain) {
+        buildReadAiMessageItems(messages, showProcessChain)
+    }
+    LaunchedEffect(uiItems.size, uiItems.lastOrNull()?.id, messages.lastOrNull()?.content, requesting) {
+        if (uiItems.isNotEmpty() && stickToBottom && !listState.isScrollInProgress) {
+            listState.scrollToItem(uiItems.lastIndex)
         }
     }
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxWidth(),
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(messages, key = { it.id }) { message ->
-            ReadAiMessageRow(
-                message = message,
-                streaming = requesting && message == messages.lastOrNull(),
-                style = style,
-                fullscreen = fullscreen
-            )
+        items(uiItems, key = { it.id }) { item ->
+            when (item) {
+                is ReadAiMessageItem.Message -> ReadAiMessageRow(
+                    message = item.message,
+                    streaming = requesting && item.message == messages.lastOrNull(),
+                    style = style,
+                    fullscreen = fullscreen
+                )
+                is ReadAiMessageItem.Process -> ReadAiProcessRow(
+                    steps = item.steps,
+                    style = style,
+                    fullscreen = fullscreen
+                )
+            }
         }
+    }
+}
+
+@Immutable
+private sealed class ReadAiMessageItem {
+    abstract val id: String
+
+    data class Message(val message: ReadAiMessage) : ReadAiMessageItem() {
+        override val id: String = message.id
+    }
+
+    data class Process(
+        override val id: String,
+        val steps: List<AiProcessStepUi>
+    ) : ReadAiMessageItem()
+}
+
+private fun buildReadAiMessageItems(
+    messages: List<ReadAiMessage>,
+    showProcessChain: Boolean
+): List<ReadAiMessageItem> {
+    val result = mutableListOf<ReadAiMessageItem>()
+    val processBuffer = mutableListOf<ReadAiMessage>()
+
+    fun flushProcess() {
+        if (processBuffer.isNotEmpty()) {
+            if (showProcessChain) {
+                val steps = processBuffer.map { it.toProcessStep() }
+                result += ReadAiMessageItem.Process(
+                    id = "process-${processBuffer.first().id}",
+                    steps = steps
+                )
+            }
+            processBuffer.clear()
+        }
+    }
+
+    messages.forEach { message ->
+        if (message.isProcessMessage()) {
+            processBuffer += message
+        } else {
+            flushProcess()
+            result += ReadAiMessageItem.Message(message)
+        }
+    }
+    flushProcess()
+    return result
+}
+
+@Composable
+private fun ReadAiProcessRow(
+    steps: List<AiProcessStepUi>,
+    style: AiComposeStyle,
+    fullscreen: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        AiProcessTimelineCard(
+            steps = steps,
+            style = style,
+            modifier = Modifier.widthIn(min = 72.dp, max = if (fullscreen) 640.dp else 280.dp)
+        )
     }
 }
 
@@ -1328,6 +1668,66 @@ private fun ReadAiMessageRow(
     }
 }
 
+private fun ReadAiMessage.isProcessMessage(): Boolean {
+    return when (kind ?: ReadAiMessage.Kind.TEXT) {
+        ReadAiMessage.Kind.THINKING,
+        ReadAiMessage.Kind.TOOL -> true
+        else -> false
+    }
+}
+
+private fun ReadAiMessage.toProcessStep(): AiProcessStepUi {
+    val messageKind = kind ?: ReadAiMessage.Kind.TEXT
+    val detail = statusDetail?.takeIf { it.isNotBlank() } ?: content
+    return when (messageKind) {
+        ReadAiMessage.Kind.TOOL -> AiProcessStepUi(
+            id = id,
+            type = AiProcessStepType.Tool,
+            title = statusName?.takeIf { it.isNotBlank() }
+                ?: statusLabel?.takeIf { it.isNotBlank() }
+                ?: "工具调用",
+            subtitle = summarizeReadAiProcessDetail(
+                detail,
+                statusLabel?.takeIf { it.isNotBlank() } ?: if (pending) "调用中" else "已完成"
+            ),
+            detail = detail,
+            pending = pending,
+            success = statusSuccess,
+            collapsed = collapsed,
+            payload = null
+        )
+        else -> AiProcessStepUi(
+            id = id,
+            type = AiProcessStepType.Thinking,
+            title = statusLabel?.takeIf { it.isNotBlank() } ?: if (pending) "思考中" else "思考完成",
+            subtitle = summarizeReadAiProcessDetail(detail, if (pending) "思考中" else "思考完成"),
+            detail = detail,
+            pending = pending,
+            success = true,
+            collapsed = collapsed,
+            payload = null
+        )
+    }
+}
+
+private fun summarizeReadAiProcessDetail(raw: String, fallback: String): String {
+    return raw
+        .lineSequence()
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+        .replace(Regex("\\s+"), " ")
+        .ifBlank { fallback }
+        .let { if (it.length > 96) "${it.take(96)}..." else it }
+}
+
+private fun mergeThinkingContent(current: String, incoming: String): String {
+    if (incoming.isBlank()) return current
+    if (current.isBlank()) return incoming
+    if (current.endsWith(incoming)) return current
+    if (incoming.startsWith(current)) return incoming
+    return current + incoming
+}
+
 @Composable
 private fun ReadAiHistoryList(
     sessions: List<ReadAiSession>,
@@ -1336,11 +1736,12 @@ private fun ReadAiHistoryList(
     onOpenSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
     onClearHistory: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues()
 ) {
     if (sessions.isEmpty()) {
         Box(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().padding(contentPadding),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -1353,6 +1754,7 @@ private fun ReadAiHistoryList(
     }
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(sessions, key = { it.id }) { session ->
@@ -1446,10 +1848,10 @@ private fun ReadAiComposer(
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(style.metrics.cardRadius),
         color = style.colors.composerSurface,
-        shadowElevation = 8.dp,
-        border = BorderStroke(style.metrics.strokeWidth, style.colors.composerStroke)
+        tonalElevation = 0.dp,
+        shadowElevation = 8.dp
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

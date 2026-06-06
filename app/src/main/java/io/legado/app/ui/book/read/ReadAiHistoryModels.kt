@@ -28,11 +28,29 @@ data class ReadAiMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: Role,
     val content: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val pending: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val kind: Kind? = Kind.TEXT,
+    val statusName: String? = null,
+    val statusStage: String? = null,
+    val statusSuccess: Boolean = true,
+    val statusLabel: String? = null,
+    val statusDetail: String? = null,
+    val statusKey: String? = null,
+    val collapsed: Boolean = false,
+    val updatedAt: Long = createdAt
 ) {
     @Keep
     enum class Role {
         USER,
         ASSISTANT
+    }
+
+    @Keep
+    enum class Kind {
+        TEXT,
+        STATUS,
+        THINKING,
+        TOOL
     }
 }
