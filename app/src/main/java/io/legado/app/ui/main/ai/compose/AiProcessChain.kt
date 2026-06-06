@@ -72,14 +72,13 @@ fun AiProcessTimelineCard(
     var expanded by remember(steps.first().id) { mutableStateOf(false) }
     var expandedStepIds by remember(steps.first().id) { mutableStateOf(emptySet<String>()) }
     val activeStep = steps.firstOrNull { it.pending } ?: steps.last()
-    val hasFailedStep = steps.any { it.isRealFailure() }
     Surface(
         modifier = modifier
             .fillMaxWidth(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = if (hasFailedStep) style.colors.danger.copy(alpha = 0.08f) else style.colors.composerSurface,
+        color = style.colors.composerSurface,
         tonalElevation = 0.dp,
-        shadowElevation = if (hasFailedStep) 3.dp else 2.dp
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
@@ -243,8 +242,6 @@ private fun AiProcessTimelineRow(
                 Box(
                     modifier = Modifier
                         .padding(top = 7.dp)
-                        .clip(RoundedCornerShape(style.metrics.chipRadius))
-                        .background(style.colors.primaryText.copy(alpha = 0.045f))
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     SelectionContainer {
@@ -270,7 +267,6 @@ fun AiProcessChainCard(
     modifier: Modifier = Modifier
 ) {
     if (steps.isEmpty()) return
-    val hasFailedStep = steps.any { it.isRealFailure() }
     val surface = if (steps.any { it.type == AiProcessStepType.Tool }) {
         style.colors.toolSurface
     } else {
@@ -281,9 +277,9 @@ fun AiProcessChainCard(
             .fillMaxWidth()
             .animateContentSize(),
         shape = RoundedCornerShape(style.metrics.cardRadius),
-        color = if (hasFailedStep) style.colors.danger.copy(alpha = 0.08f) else surface,
+        color = surface,
         tonalElevation = 0.dp,
-        shadowElevation = if (hasFailedStep) 3.dp else 2.dp
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -368,8 +364,6 @@ private fun AiProcessStepRow(
                 Box(
                     modifier = Modifier
                         .padding(top = 7.dp)
-                        .clip(RoundedCornerShape(style.metrics.chipRadius))
-                        .background(style.colors.primaryText.copy(alpha = 0.045f))
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     SelectionContainer {
@@ -393,7 +387,6 @@ private fun TimelineMarker(
     style: AiComposeStyle
 ) {
     val markerColor = when {
-        step.isRealFailure() -> style.colors.danger
         step.type == AiProcessStepType.Tool -> style.colors.accent
         else -> style.colors.secondaryText.copy(alpha = 0.72f)
     }
@@ -417,14 +410,6 @@ private fun TimelineMarker(
             )
         }
     }
-}
-
-private fun AiProcessStepUi.isRealFailure(): Boolean {
-    return !pending && type == AiProcessStepType.Tool && !success
-}
-
-private fun AiProcessChainStep.isRealFailure(): Boolean {
-    return !pending && type == AiProcessStepType.Tool && !success
 }
 
 @Composable
