@@ -286,7 +286,17 @@ fun BookInfoComposeRoute(
     LaunchedEffect(refreshAtTop) {
         actions.onRefreshEnabledChanged(refreshAtTop)
     }
-    Box(modifier = modifier.fillMaxSize().background(style.colors.contentBackground)) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to style.colors.contentTop,
+                    0.34f to style.colors.contentBackground,
+                    1f to style.colors.background
+                )
+            )
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -335,6 +345,7 @@ fun BookInfoComposeRoute(
                 .align(Alignment.BottomCenter)
         )
         BookInfoTopGradient(
+            style = style,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
@@ -427,7 +438,7 @@ private fun BookInfoMetricBox(
     Box(
         modifier = modifier
             .height(76.dp)
-            .shadow(5.dp, shape, clip = false)
+            .shadow(3.dp, shape, clip = false)
             .clip(shape)
             .background(
                 Brush.verticalGradient(
@@ -595,6 +606,7 @@ private fun BookInfoFloatingTopBar(
         BookInfoTopIcon(
             iconRes = R.drawable.ic_back,
             contentDescription = stringResource(R.string.back),
+            style = style,
             onClick = onBack
         )
         Text(
@@ -609,6 +621,7 @@ private fun BookInfoFloatingTopBar(
         BookInfoTopIcon(
             iconRes = R.drawable.ic_more_vert,
             contentDescription = stringResource(R.string.more),
+            style = style,
             onClick = onMore
         )
     }
@@ -616,6 +629,7 @@ private fun BookInfoFloatingTopBar(
 
 @Composable
 private fun BookInfoTopGradient(
+    style: BookInfoComposeStyle,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -623,8 +637,8 @@ private fun BookInfoTopGradient(
             .height(132.dp)
             .background(
                 Brush.verticalGradient(
-                    0f to Color.Black.copy(alpha = 0.42f),
-                    0.58f to Color.Black.copy(alpha = 0.12f),
+                    0f to style.colors.scrim.copy(alpha = 0.38f),
+                    0.58f to style.colors.scrim.copy(alpha = 0.10f),
                     1f to Color.Transparent
                 )
             )
@@ -635,13 +649,14 @@ private fun BookInfoTopGradient(
 private fun BookInfoTopIcon(
     iconRes: Int,
     contentDescription: String,
+    style: BookInfoComposeStyle,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(40.dp)
             .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.20f))
+            .background(style.colors.scrim.copy(alpha = 0.30f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -662,9 +677,9 @@ private fun BookInfoCoverBackdrop(
     modifier: Modifier = Modifier
 ) {
     val blurRadius = (scrollOffset / 72f).coerceIn(0f, 10f).dp
-    val imageDarkenAlpha = (0.20f + scrollOffset / 1500f).coerceIn(0.20f, 0.46f)
+    val imageDarkenAlpha = (0.15f + scrollOffset / 1800f).coerceIn(0.15f, 0.34f)
     val parallaxOffset = scrollOffset * 0.22f
-    Box(modifier = modifier.background(Color.Black)) {
+    Box(modifier = modifier.background(style.colors.contentTop)) {
         BookInfoImage(
             path = coverPath,
             modifier = Modifier
@@ -679,17 +694,17 @@ private fun BookInfoCoverBackdrop(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = imageDarkenAlpha))
+                .background(style.colors.scrim.copy(alpha = imageDarkenAlpha))
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.22f),
-                        0.36f to Color.Transparent,
-                        0.70f to Color.Black.copy(alpha = 0.54f),
-                        0.90f to Color.Black.copy(alpha = 0.62f),
+                        0f to style.colors.scrim.copy(alpha = 0.22f),
+                        0.36f to style.colors.scrim.copy(alpha = 0.04f),
+                        0.70f to style.colors.contentTop.copy(alpha = 0.62f),
+                        0.90f to style.colors.contentTop.copy(alpha = 0.90f),
                         1f to style.colors.contentTop
                     )
                 )
@@ -717,7 +732,7 @@ private fun BookInfoPosterHero(
             modifier = Modifier
                 .width(126.dp)
                 .aspectRatio(0.72f)
-                .shadow(10.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
+                .shadow(6.dp, RoundedCornerShape(style.metrics.panelRadius), clip = false)
                 .clip(RoundedCornerShape(style.metrics.panelRadius))
                 .combinedClickable(
                     onClick = actions.onChangeCover,
@@ -798,7 +813,7 @@ private fun BookInfoPosterChip(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Black.copy(alpha = 0.26f))
+            .background(style.colors.scrim.copy(alpha = 0.28f))
             .padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }
@@ -936,8 +951,9 @@ private fun BookInfoContentPanel(
             .background(
                 Brush.verticalGradient(
                     0f to style.colors.contentTop,
-                    0.22f to style.colors.contentBackground,
-                    1f to style.colors.contentBackground
+                    0.14f to style.colors.contentBackground,
+                    0.68f to style.colors.contentBackground,
+                    1f to style.colors.background
                 )
             )
             .padding(top = 22.dp)
@@ -1394,6 +1410,9 @@ private fun BookInfoWebIntro(
                   font-size: 14px;
                   line-height: 1.72;
                   word-break: break-word;
+                }
+                div, p, section, article, table, tbody, tr, td, th {
+                  background-color: transparent !important;
                 }
                 img, video, iframe {
                   max-width: 100%;
