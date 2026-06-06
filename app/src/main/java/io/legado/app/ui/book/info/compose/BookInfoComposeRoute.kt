@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -342,7 +343,7 @@ private fun BookInfoStatusPill(
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.White.copy(alpha = 0.16f))
+            .background(Color.Black.copy(alpha = 0.28f))
             .clickable(onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 10.dp)
     )
@@ -459,7 +460,6 @@ private fun BookInfoFloatingTopBar(
         BookInfoTopIcon(
             iconRes = R.drawable.ic_back,
             contentDescription = stringResource(R.string.back),
-            style = style,
             onClick = onBack
         )
         Text(
@@ -474,7 +474,6 @@ private fun BookInfoFloatingTopBar(
         BookInfoTopIcon(
             iconRes = R.drawable.ic_more_vert,
             contentDescription = stringResource(R.string.more),
-            style = style,
             onClick = onMore
         )
     }
@@ -501,14 +500,13 @@ private fun BookInfoTopGradient(
 private fun BookInfoTopIcon(
     iconRes: Int,
     contentDescription: String,
-    style: BookInfoComposeStyle,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(40.dp)
-            .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.White.copy(alpha = 0.15f))
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.20f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -653,7 +651,7 @@ private fun BookInfoPosterChip(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.White.copy(alpha = 0.16f))
+            .background(Color.Black.copy(alpha = 0.26f))
             .padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }
@@ -790,9 +788,7 @@ private fun BookInfoIntroPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(style.metrics.panelRadius))
-            .background(style.colors.surface.copy(alpha = 0.84f))
-            .padding(horizontal = 16.dp, vertical = 15.dp),
+            .padding(horizontal = 22.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         BookInfoSectionHeader(title = stringResource(R.string.book_info_tab_intro), style = style)
@@ -1246,9 +1242,7 @@ private fun BookInfoWebIntro(
     AndroidView(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp)
-            .clip(RoundedCornerShape(style.metrics.actionRadius))
-            .background(Color.Transparent),
+            .height(360.dp),
         factory = {
             pooledWebView.realWebView.apply {
                 (parent as? ViewGroup)?.removeView(this)
