@@ -208,30 +208,41 @@ fun BookInfoComposeRoute(
         derivedStateOf { (pageScrollState.value / 220f).coerceIn(0f, 1f) }
     }
     Box(modifier = modifier.fillMaxSize().background(style.colors.background)) {
-        BookInfoCoverBackdrop(
-            coverPath = state.coverPath,
-            style = style,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(520.dp)
-        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(pageScrollState)
-                .padding(start = 18.dp, end = 18.dp, top = 132.dp, bottom = 116.dp),
+                .verticalScroll(pageScrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            BookInfoPosterHero(state, actions, style)
-            BookInfoStatusStrip(state, actions, style)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(520.dp)
+            ) {
+                BookInfoCoverBackdrop(
+                    coverPath = state.coverPath,
+                    style = style,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 18.dp)
+                        .padding(bottom = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    BookInfoPosterHero(state, actions, style)
+                    BookInfoStatusStrip(state, actions, style)
+                }
+            }
             BookInfoIntroPanel(
                 intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
                 state = state,
                 actions = actions,
                 style = style
             )
-            BookInfoChapterPreviewPanel(state, actions, style)
-            BookInfoAiImagesPanel(state, actions, style)
+            Spacer(modifier = Modifier.height(116.dp))
         }
         BookInfoBottomActions(
             state = state,
@@ -284,21 +295,34 @@ private fun BookInfoStatusStrip(
     actions: BookInfoActions,
     style: BookInfoComposeStyle
 ) {
+    val galleryText = if (state.aiImageCount > 0) {
+        "${stringResource(R.string.book_info_component_ai_images)} ${state.aiImageCount}"
+    } else {
+        stringResource(R.string.book_info_component_ai_images)
+    }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         BookInfoStatusPill(
             text = state.originName,
             style = style,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.width(168.dp),
             onClick = actions.onChangeSource
         )
         BookInfoStatusPill(
             text = state.tocText.ifBlank { stringResource(R.string.view_toc) },
             style = style,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.width(168.dp),
             onClick = actions.onOpenToc
+        )
+        BookInfoStatusPill(
+            text = galleryText,
+            style = style,
+            modifier = Modifier.width(112.dp),
+            onClick = actions.onOpenAiGallery
         )
     }
 }
