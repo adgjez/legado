@@ -14,11 +14,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -134,6 +138,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var startX = 0f
     private var startY = 0f
     private var imeBottomInset = 0
+    private var savedWindowState: FloatingWindowState? = null
 
     private var messages by mutableStateOf<List<ReadAiMessage>>(emptyList())
     private var historySessions by mutableStateOf<List<ReadAiSession>>(emptyList())
@@ -141,6 +146,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     private var showingHistory by mutableStateOf(false)
     private var requesting by mutableStateOf(false)
     private var modelLabel by mutableStateOf(currentModelLabel())
+    private var fullscreen by mutableStateOf(false)
     private var windowSkillIds: Set<String> = emptySet()
     private var windowMcpServerIds: Set<String> = emptySet()
 
@@ -161,8 +167,10 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
                 showingHistory = showingHistory,
                 requesting = requesting,
                 modelLabel = modelLabel,
+                fullscreen = fullscreen,
                 timeFormat = timeFormat,
                 onTopDrag = ::handleDrag,
+                onToggleFullscreen = ::toggleFullscreen,
                 onSelectModel = ::selectModel,
                 onOpenAbilities = ::showWindowAbilityDialog,
                 onOpenSkills = ::showWindowSkillDialog,
@@ -210,7 +218,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         }
         bringToFront()
         doOnLayoutCompat {
-            if (anchor != null) {
+            if (anchor != null && !fullscreen) {
                 placeNearAnchor(anchor)
             }
             ensureInsideParent()
@@ -227,8 +235,17 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     fun close() {
+        if (fullscreen) {
+            setFullscreenMode(false)
+        }
         updateRequestingState()
         visibility = GONE
+    }
+
+    fun exitFullscreenIfNeeded(): Boolean {
+        if (!fullscreen) return false
+        setFullscreenMode(false)
+        return true
     }
 
     private fun stopAnswer() {
@@ -576,6 +593,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun handleDrag(event: MotionEvent): Boolean {
+        if (fullscreen) return false
         val parentView = parent as? ViewGroup ?: return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -603,6 +621,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun ensureInsideParent() {
+        if (fullscreen) return
         val parentView = parent as? ViewGroup ?: return
         if (width <= 0 || height <= 0 || parentView.width <= 0 || parentView.height <= 0) return
         x = min(max(0f, x), max(0, parentView.width - width).toFloat())
@@ -643,6 +662,7 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
     }
 
     private fun placeNearAnchor(anchor: Anchor) {
+        if (fullscreen) return
         val parentView = parent as? ViewGroup ?: return
         if (width <= 0 || height <= 0 || parentView.width <= 0 || parentView.height <= 0) return
         val margin = 10.dpToPx()
@@ -662,6 +682,62 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
 
     private fun updateRequestingState() {
         requesting = answerJob?.isActive == true
+    }
+
+    private fun toggleFullscreen() {
+        setFullscreenMode(!fullscreen)
+    }
+
+    private fun setFullscreenMode(enabled: Boolean) {
+        if (fullscreen == enabled) return
+        animate().cancel()
+        translationY = 0f
+        if (enabled) {
+            savedWindowState = FloatingWindowState(
+                width = layoutParams?.width ?: 320.dpToPx(),
+                height = layoutParams?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                x = x,
+                y = y,
+                composeWidth = composeView.layoutParams?.width ?: LayoutParams.MATCH_PARENT,
+                composeHeight = composeView.layoutParams?.height ?: LayoutParams.WRAP_CONTENT
+            )
+            fullscreen = true
+            x = 0f
+            y = 0f
+            updatePanelLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            updateComposeLayout(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+            bringToFront()
+        } else {
+            val state = savedWindowState
+            fullscreen = false
+            savedWindowState = null
+            updatePanelLayout(
+                state?.width ?: 320.dpToPx(),
+                state?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            updateComposeLayout(
+                state?.composeWidth ?: LayoutParams.MATCH_PARENT,
+                state?.composeHeight ?: LayoutParams.WRAP_CONTENT
+            )
+            x = state?.x ?: x
+            y = state?.y ?: y
+            post { ensureInsideParent() }
+        }
+        requestLayout()
+    }
+
+    private fun updatePanelLayout(width: Int, height: Int) {
+        val params = layoutParams ?: ViewGroup.LayoutParams(width, height)
+        params.width = width
+        params.height = height
+        layoutParams = params
+    }
+
+    private fun updateComposeLayout(width: Int, height: Int) {
+        val params = composeView.layoutParams ?: LayoutParams(width, height)
+        params.width = width
+        params.height = height
+        composeView.layoutParams = params
     }
 
     private fun currentModelLabel(): String {
@@ -915,6 +991,15 @@ class ReadAiFloatingPanel @JvmOverloads constructor(
         private val requestScope = CoroutineScope(SupervisorJob() + IO)
         private const val READ_AI_COMPANION_ID = "read_ai"
     }
+
+    private data class FloatingWindowState(
+        val width: Int,
+        val height: Int,
+        val x: Float,
+        val y: Float,
+        val composeWidth: Int,
+        val composeHeight: Int
+    )
 }
 @Composable
 private fun ReadAiPanelContent(
@@ -924,8 +1009,10 @@ private fun ReadAiPanelContent(
     showingHistory: Boolean,
     requesting: Boolean,
     modelLabel: String,
+    fullscreen: Boolean,
     timeFormat: SimpleDateFormat,
     onTopDrag: (MotionEvent) -> Boolean,
+    onToggleFullscreen: () -> Unit,
     onSelectModel: () -> Unit,
     onOpenAbilities: () -> Unit,
     onOpenSkills: () -> Unit,
@@ -944,19 +1031,33 @@ private fun ReadAiPanelContent(
     val context = LocalContext.current
     val style = aiComposeStyle(context)
     var menuExpanded by remember { mutableStateOf(false) }
-    val panelShape = RoundedCornerShape(20.dp)
-    Surface(
-        modifier = Modifier
+    val panelShape = RoundedCornerShape(if (fullscreen) 0.dp else 20.dp)
+    val panelModifier = if (fullscreen) {
+        Modifier.fillMaxSize()
+    } else {
+        Modifier
             .fillMaxWidth()
             .shadow(12.dp, panelShape, clip = false)
-            .clip(panelShape),
+    }
+    Surface(
+        modifier = panelModifier.clip(panelShape),
         shape = panelShape,
         color = style.colors.background,
         shadowElevation = 0.dp,
-        border = BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
+        border = if (fullscreen) null else BorderStroke(style.metrics.strokeWidth, style.colors.stroke)
     ) {
         Column(
-            modifier = Modifier.padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 12.dp)
+            modifier = Modifier
+                .then(if (fullscreen) Modifier.fillMaxSize() else Modifier)
+                .then(if (fullscreen) Modifier.statusBarsPadding() else Modifier)
+                .then(if (fullscreen) Modifier.navigationBarsPadding() else Modifier)
+                .then(if (fullscreen) Modifier.imePadding() else Modifier)
+                .padding(
+                    start = if (fullscreen) 16.dp else 12.dp,
+                    top = if (fullscreen) 12.dp else 10.dp,
+                    end = if (fullscreen) 16.dp else 12.dp,
+                    bottom = if (fullscreen) 14.dp else 12.dp
+                )
         ) {
             Row(
                 modifier = Modifier
@@ -968,7 +1069,11 @@ private fun ReadAiPanelContent(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .pointerInteropFilter(onTouchEvent = onTopDrag),
+                        .then(
+                            if (fullscreen) Modifier else Modifier.pointerInteropFilter(
+                                onTouchEvent = onTopDrag
+                            )
+                        ),
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
@@ -1008,6 +1113,12 @@ private fun ReadAiPanelContent(
                         )
                     }
                 }
+                ReadAiIconButton(
+                    iconRes = if (fullscreen) R.drawable.ic_exit else R.drawable.ic_fullscreen,
+                    contentDescriptionRes = if (fullscreen) R.string.exit else R.string.full_screen,
+                    style = style,
+                    onClick = onToggleFullscreen
+                )
                 Box {
                     ReadAiIconButton(R.drawable.ic_settings, R.string.menu, style) {
                         menuExpanded = true
@@ -1037,13 +1148,16 @@ private fun ReadAiPanelContent(
                     timeFormat = timeFormat,
                     onOpenSession = onOpenSession,
                     onDeleteSession = onDeleteSession,
-                    onClearHistory = onClearHistory
+                    onClearHistory = onClearHistory,
+                    modifier = if (fullscreen) Modifier.weight(1f) else Modifier.height(220.dp)
                 )
             } else {
                 ReadAiMessageList(
                     messages = messages,
                     requesting = requesting,
-                    style = style
+                    style = style,
+                    fullscreen = fullscreen,
+                    modifier = if (fullscreen) Modifier.weight(1f) else Modifier.height(260.dp)
                 )
             }
             ReadAiComposer(
@@ -1139,7 +1253,9 @@ private fun ReadAiTopMenu(
 private fun ReadAiMessageList(
     messages: List<ReadAiMessage>,
     requesting: Boolean,
-    style: AiComposeStyle
+    style: AiComposeStyle,
+    fullscreen: Boolean,
+    modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     var stickToBottom by remember { mutableStateOf(true) }
@@ -1163,16 +1279,15 @@ private fun ReadAiMessageList(
     }
     LazyColumn(
         state = listState,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(260.dp),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(messages, key = { it.id }) { message ->
             ReadAiMessageRow(
                 message = message,
                 streaming = requesting && message == messages.lastOrNull(),
-                style = style
+                style = style,
+                fullscreen = fullscreen
             )
         }
     }
@@ -1182,7 +1297,8 @@ private fun ReadAiMessageList(
 private fun ReadAiMessageRow(
     message: ReadAiMessage,
     streaming: Boolean,
-    style: AiComposeStyle
+    style: AiComposeStyle,
+    fullscreen: Boolean
 ) {
     val isUser = message.role == ReadAiMessage.Role.USER
     Row(
@@ -1190,7 +1306,7 @@ private fun ReadAiMessageRow(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
         Surface(
-            modifier = Modifier.widthIn(min = 72.dp, max = 280.dp),
+            modifier = Modifier.widthIn(min = 72.dp, max = if (fullscreen) 640.dp else 280.dp),
             shape = RoundedCornerShape(style.metrics.cardRadius),
             color = if (isUser) style.colors.userBubble else style.colors.composerSurface,
             tonalElevation = 0.dp,
@@ -1224,13 +1340,12 @@ private fun ReadAiHistoryList(
     timeFormat: SimpleDateFormat,
     onOpenSession: (String) -> Unit,
     onDeleteSession: (String) -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     if (sessions.isEmpty()) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp),
+            modifier = modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -1242,9 +1357,7 @@ private fun ReadAiHistoryList(
         return
     }
     LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(220.dp),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(sessions, key = { it.id }) { session ->

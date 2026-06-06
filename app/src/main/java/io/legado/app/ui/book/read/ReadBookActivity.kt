@@ -509,7 +509,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                 return@addCallback
             }
             if (binding.readAiPanel.isVisible) {
-                binding.readAiPanel.close()
+                if (!binding.readAiPanel.exitFullscreenIfNeeded()) {
+                    binding.readAiPanel.close()
+                }
                 return@addCallback
             }
             if (isShowingSearchResult) {
