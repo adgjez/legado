@@ -776,7 +776,7 @@ object AiReadAloudRoleService {
                         segmentCount = segments.size,
                         previewSource = AiReadAloudRoleState.SOURCE_CACHE,
                         previewSegments = buildPreviewSegments(
-                            book.bookUrl,
+                            book.characterBookKey(),
                             segments,
                             cleanParagraphs,
                             AiReadAloudRoleState.SOURCE_CACHE
@@ -1215,7 +1215,7 @@ object AiReadAloudRoleService {
         if (localSegments.isNotEmpty()) {
             onPreview(
                 buildPreviewSegments(
-                    book.bookUrl,
+                    book.characterBookKey(),
                     localSegments,
                     paragraphs,
                     AiReadAloudRoleState.SOURCE_RULE
@@ -1352,7 +1352,7 @@ object AiReadAloudRoleService {
             )
             onPreview(
                 buildPreviewSegments(
-                    book.bookUrl,
+                    book.characterBookKey(),
                     previewSegments,
                     paragraphs,
                     AiReadAloudRoleState.SOURCE_AI_CONFIRM
@@ -1810,7 +1810,7 @@ object AiReadAloudRoleService {
         if (localSegments.isNotEmpty()) {
             onPreview(
                 buildPreviewSegments(
-                    book.bookUrl,
+                    book.characterBookKey(),
                     localSegments,
                     paragraphs,
                     AiReadAloudRoleState.SOURCE_RULE,
@@ -1835,7 +1835,7 @@ object AiReadAloudRoleService {
             val confirmedSegments = segmentsFromUnits(applyUnitResolutions(targetUnits, collectedResolutions), targetSet)
             onPreview(
                 buildPreviewSegments(
-                    book.bookUrl,
+                    book.characterBookKey(),
                     confirmedSegments,
                     paragraphs,
                     AiReadAloudRoleState.SOURCE_AI_CONFIRM,
@@ -1886,7 +1886,7 @@ object AiReadAloudRoleService {
         if (collectedResolutions.isNotEmpty()) {
             onPreview(
                 buildPreviewSegments(
-                    book.bookUrl,
+                    book.characterBookKey(),
                     resolvedSegments,
                     paragraphs,
                     AiReadAloudRoleState.SOURCE_AI_CONFIRM,
