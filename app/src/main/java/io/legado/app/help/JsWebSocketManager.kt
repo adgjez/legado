@@ -1,7 +1,10 @@
 package io.legado.app.help
 
 import android.util.Base64
-import io.legado.app.help.http.okHttpClient
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.http.SSLHelper
+import okhttp3.ConnectionSpec
+import okhttp3.Dns
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -24,8 +27,29 @@ object JsWebSocketManager {
     private const val IDLE_TIMEOUT_MS = 5 * 60 * 1000L
 
     private val client: OkHttpClient by lazy {
-        okHttpClient.newBuilder()
+        val specs = arrayListOf(
+            ConnectionSpec.MODERN_TLS,
+            ConnectionSpec.COMPATIBLE_TLS,
+            ConnectionSpec.CLEARTEXT
+        )
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
+            .callTimeout(0, TimeUnit.MILLISECONDS)
+            .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory, SSLHelper.unsafeTrustManager)
+            .hostnameVerifier(SSLHelper.unsafeHostnameVerifier)
+            .connectionSpecs(specs)
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .apply {
+                if (AppConfig.addressCache.isNotEmpty()) {
+                    dns { hostname ->
+                        AppConfig.addressCache[hostname] ?: Dns.SYSTEM.lookup(hostname)
+                    }
+                }
+            }
             .build()
     }
     private val connections = ConcurrentHashMap<String, Connection>()
