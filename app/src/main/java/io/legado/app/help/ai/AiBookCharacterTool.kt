@@ -11,6 +11,7 @@ import io.legado.app.help.ai.AiImageGalleryManager.GalleryFilter
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterIdentityMigrator
 import io.legado.app.help.character.BookCharacterProfileMeta
+import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
 import io.legado.app.help.readaloud.speech.SpeechRoute
 import io.legado.app.help.readaloud.speech.SpeechRouteSanitizer
 import io.legado.app.help.readaloud.speech.SpeechVoiceAssigner
@@ -286,6 +287,7 @@ object AiBookCharacterTool {
         val age = (optText(args, "ageStage") ?: optText(args, "age"))
             ?.let(BookCharacterProfileMeta::sanitizeAge)
             ?: old?.let(BookCharacterProfileMeta::ageOf).orEmpty()
+        val speechRouteJson = optText(args, "speechRouteJson") ?: old?.speechRouteJson.orEmpty()
         val character = (old ?: BookCharacter(bookUrl = bookKey)).copy(
             bookUrl = bookKey,
             name = name,
@@ -299,7 +301,7 @@ object AiBookCharacterTool {
             appearance = optText(args, "appearance") ?: old?.appearance.orEmpty(),
             personality = optText(args, "personality") ?: old?.personality.orEmpty(),
             biography = optText(args, "biography") ?: old?.biography.orEmpty(),
-            speechRouteJson = optText(args, "speechRouteJson") ?: old?.speechRouteJson.orEmpty(),
+            speechRouteJson = speechRouteJson,
             autoCreated = args?.takeIf { it.has("autoCreated") }?.optBoolean("autoCreated")
                 ?: old?.autoCreated
                 ?: false,
@@ -316,6 +318,9 @@ object AiBookCharacterTool {
             character.id
         } else {
             appDb.bookCharacterDao.insertCharacter(character)
+        }
+        if (old?.speechRouteJson.orEmpty() != character.speechRouteJson) {
+            ReadAloudConfigChangeNotifier.notifySpeech()
         }
         JSONObject().apply {
             put("ok", true)
@@ -603,6 +608,9 @@ object AiBookCharacterTool {
             updatedAt = System.currentTimeMillis()
         )
         appDb.bookCharacterDao.updateCharacter(updated)
+        if (updated.speechRouteJson != character.speechRouteJson) {
+            ReadAloudConfigChangeNotifier.notifySpeech()
+        }
         JSONObject().apply {
             put("ok", true)
             put("character", characterJson(updated))
@@ -634,6 +642,9 @@ object AiBookCharacterTool {
                     updatedCharacters += updated
                 }
             }
+        if (updatedCharacters.isNotEmpty()) {
+            ReadAloudConfigChangeNotifier.notifySpeech()
+        }
         JSONObject().apply {
             put("ok", true)
             put("updated", updatedCharacters.size)
@@ -662,6 +673,9 @@ object AiBookCharacterTool {
                 appDb.bookCharacterDao.updateCharacter(updated)
                 updatedCharacters += updated
             }
+        if (updatedCharacters.isNotEmpty()) {
+            ReadAloudConfigChangeNotifier.notifySpeech()
+        }
         JSONObject().apply {
             put("ok", true)
             put("updated", updatedCharacters.size)
