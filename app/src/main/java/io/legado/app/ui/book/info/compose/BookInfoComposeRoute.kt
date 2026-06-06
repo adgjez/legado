@@ -444,24 +444,20 @@ private fun BookInfoMetricBox(
             .height(74.dp)
             .shadow(2.dp, shape, clip = false)
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    0f to style.colors.metricTop.copy(alpha = 0.94f),
-                    0.58f to style.colors.accentContainer.copy(alpha = 0.88f),
-                    1f to style.colors.metricBottom.copy(alpha = 0.90f)
-                )
-            )
+            .background(style.colors.metricTop.copy(alpha = 0.96f))
             .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = value,
@@ -1228,7 +1224,8 @@ private fun BookInfoBottomActions(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             BookInfoActionButton(
                 text = if (state.inBookshelf) {
@@ -1239,14 +1236,14 @@ private fun BookInfoBottomActions(
                 primary = false,
                 style = style,
                 onClick = actions.onShelf,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(0.88f)
             )
             BookInfoActionButton(
                 text = stringResource(R.string.reading),
                 primary = true,
                 style = style,
                 onClick = actions.onRead,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1.12f)
             )
         }
     }
@@ -1260,16 +1257,26 @@ private fun BookInfoActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val background = if (primary) style.colors.accent else style.colors.accentContainer
+    val background = if (primary) {
+        Brush.verticalGradient(
+            0f to style.colors.accent.copy(alpha = 0.98f),
+            1f to style.colors.accent.copy(alpha = 0.82f)
+        )
+    } else {
+        Brush.verticalGradient(
+            0f to style.colors.surface.copy(alpha = 0.92f),
+            1f to style.colors.accentContainer.copy(alpha = 0.78f)
+        )
+    }
     val textColor = if (primary) style.colors.actionText else style.colors.primaryText
     Box(
         modifier = modifier
-            .height(50.dp)
-            .shadow(4.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
+            .height(if (primary) 54.dp else 50.dp)
+            .shadow(if (primary) 8.dp else 3.dp, RoundedCornerShape(style.metrics.actionRadius), clip = false)
             .clip(RoundedCornerShape(style.metrics.actionRadius))
             .background(background)
             .clickable(onClick = onClick),
-        contentAlignment = androidx.compose.ui.Alignment.Center
+        contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
