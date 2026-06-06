@@ -177,40 +177,58 @@ data class BookInfoComposeStyle(
 @Stable
 fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoComposeStyle {
     val night = AppConfig.isNightTheme
-    val accent = coverColor ?: context.accentColor
-    val pageBackground = if (night) {
-        0xff111318.toInt()
+    val coverAccent = coverColor ?: context.accentColor
+    val accent = if (night) {
+        coverAccent.coverTone(saturation = 0.58f, value = 0.72f)
     } else {
-        ColorUtils.blendColors(0xfff6f7f9.toInt(), accent, 0.16f)
+        coverAccent.coverTone(saturation = 0.50f, value = 0.62f)
     }
-    val surface = if (night) 0xff20232a.toInt() else 0xffffffff.toInt()
-    val variant = if (night) 0xff292d35.toInt() else 0xfff0f3f6.toInt()
-    val contentBackground = ColorUtils.blendColors(
-        pageBackground,
-        accent,
-        if (night) 0.22f else 0.30f
-    )
-    val contentTop = ColorUtils.blendColors(
-        contentBackground,
-        accent,
-        if (night) 0.24f else 0.24f
-    )
-    val accentContainer = ColorUtils.blendColors(
-        surface,
-        accent,
-        if (night) 0.22f else 0.14f
-    )
-    val metricTop = if (night) {
-        ColorUtils.blendColors(surface, accent, 0.28f)
+    val pageBackground = if (night) {
+        coverAccent.coverTone(saturation = 0.34f, value = 0.09f)
     } else {
-        ColorUtils.blendColors(0xffffffff.toInt(), accent, 0.42f)
+        coverAccent.coverTone(saturation = 0.24f, value = 0.90f)
+    }
+    val contentBackground = if (night) {
+        coverAccent.coverTone(saturation = 0.30f, value = 0.13f)
+    } else {
+        coverAccent.coverTone(saturation = 0.28f, value = 0.88f)
+    }
+    val contentTop = if (night) {
+        coverAccent.coverTone(saturation = 0.42f, value = 0.20f)
+    } else {
+        coverAccent.coverTone(saturation = 0.36f, value = 0.76f)
+    }
+    val surface = if (night) {
+        coverAccent.coverTone(saturation = 0.26f, value = 0.18f)
+    } else {
+        coverAccent.coverTone(saturation = 0.18f, value = 0.93f)
+    }
+    val variant = if (night) {
+        coverAccent.coverTone(saturation = 0.28f, value = 0.22f)
+    } else {
+        coverAccent.coverTone(saturation = 0.24f, value = 0.84f)
+    }
+    val accentContainer = if (night) {
+        coverAccent.coverTone(saturation = 0.38f, value = 0.24f)
+    } else {
+        coverAccent.coverTone(saturation = 0.30f, value = 0.82f)
+    }
+    val metricTop = if (night) {
+        coverAccent.coverTone(saturation = 0.34f, value = 0.24f)
+    } else {
+        coverAccent.coverTone(saturation = 0.30f, value = 0.92f)
     }
     val metricBottom = if (night) {
-        ColorUtils.blendColors(variant, accent, 0.22f)
+        coverAccent.coverTone(saturation = 0.30f, value = 0.18f)
     } else {
-        ColorUtils.blendColors(0xfff7f8fa.toInt(), accent, 0.34f)
+        coverAccent.coverTone(saturation = 0.36f, value = 0.82f)
     }
     val actionText = if (ColorUtils.isColorLight(accent)) 0xff202124.toInt() else 0xffffffff.toInt()
+    val scrim = if (night) {
+        coverAccent.coverTone(saturation = 0.52f, value = 0.07f)
+    } else {
+        coverAccent.coverTone(saturation = 0.44f, value = 0.18f)
+    }
     return BookInfoComposeStyle(
         colors = BookInfoComposeColors(
             background = Color(pageBackground),
@@ -228,13 +246,21 @@ fun bookInfoComposeStyle(context: Context, coverColor: Int? = null): BookInfoCom
             metricSecondaryText = Color(if (night) 0xffb8bec8.toInt() else 0xff5f6670.toInt()),
             metricHighlight = Color(if (night) 0x3dffffff else 0x80ffffff),
             actionText = Color(actionText),
-            scrim = Color(if (night) 0x99000000.toInt() else 0x66ffffff)
+            scrim = Color(scrim)
         ),
         metrics = BookInfoComposeMetrics(
             panelRadius = context.composePanelRadius(),
             actionRadius = context.composeActionRadius()
         )
     )
+}
+
+private fun Int.coverTone(saturation: Float, value: Float): Int {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(this, hsv)
+    hsv[1] = saturation.coerceIn(0f, 1f)
+    hsv[2] = value.coerceIn(0f, 1f)
+    return android.graphics.Color.HSVToColor(hsv)
 }
 
 @Composable
