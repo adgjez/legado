@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1420,6 +1421,7 @@ private fun BookInfoWebIntro(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
     val pageHeight = configuration.screenHeightDp.dp.coerceAtLeast(520.dp)
     val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
     val baseUrl = remember(bookUrl) {
@@ -1463,10 +1465,10 @@ private fun BookInfoWebIntro(
         """.trimIndent()
     }
     val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
-    var contentHeightCssPx by remember(loadKey) { mutableStateOf(0) }
-    val webHeight = remember(contentHeightCssPx, expandPages, pageHeight) {
-        if (contentHeightCssPx > 0) {
-            val contentHeight = contentHeightCssPx.dp
+    var contentHeightPx by remember(loadKey) { mutableStateOf(0) }
+    val webHeight = remember(contentHeightPx, expandPages, density, pageHeight) {
+        if (contentHeightPx > 0) {
+            val contentHeight = with(density) { contentHeightPx.toDp() }
             val requestedHeight = pageHeight * expandPages.coerceAtLeast(1).toFloat()
             if (contentHeight < requestedHeight) {
                 contentHeight.coerceAtLeast(1.dp)
@@ -1530,9 +1532,9 @@ private fun BookInfoWebIntro(
                 context = context,
                 currentToken = { loadToken.get() },
                 isTokenActive = { token -> token > 0L && loadToken.get() == token }
-            ) { token, heightCssPx ->
-                if (loadToken.get() == token && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
-                    contentHeightCssPx = heightCssPx
+            ) { token, heightPx ->
+                if (loadToken.get() == token && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                    contentHeightPx = heightPx
                 }
             }
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -1563,9 +1565,9 @@ private fun BookInfoWebIntro(
             webView = webView,
             token = token,
             isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
-        ) { activeToken, heightCssPx ->
-            if (loadToken.get() == activeToken && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
-                contentHeightCssPx = heightCssPx
+        ) { activeToken, heightPx ->
+            if (loadToken.get() == activeToken && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                contentHeightPx = heightPx
             }
         }
         delay(900)
@@ -1573,9 +1575,9 @@ private fun BookInfoWebIntro(
             webView = webView,
             token = token,
             isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
-        ) { activeToken, heightCssPx ->
-            if (loadToken.get() == activeToken && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
-                contentHeightCssPx = heightCssPx
+        ) { activeToken, heightPx ->
+            if (loadToken.get() == activeToken && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                contentHeightPx = heightPx
             }
         }
     }
@@ -1641,15 +1643,26 @@ private fun measureBookInfoWebIntroHeight(
         webView.evaluateJavascript(
             """
                 (function() {
-                  var body = document.body || {};
-                  var doc = document.documentElement || {};
-                  return Math.max(
-                    body.scrollHeight || 0,
-                    body.offsetHeight || 0,
-                    doc.clientHeight || 0,
-                    doc.scrollHeight || 0,
-                    doc.offsetHeight || 0
+                  var body = document.body;
+                  var doc = document.documentElement;
+                  var contentBottom = 0;
+                  if (body) {
+                    Array.prototype.forEach.call(body.children || [], function(el) {
+                      var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+                      if (style && (style.display === 'none' || style.visibility === 'hidden')) return;
+                      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                      if (!rect) return;
+                      contentBottom = Math.max(contentBottom, rect.bottom + window.pageYOffset);
+                    });
+                  }
+                  var documentHeight = Math.max(
+                    body ? body.scrollHeight || 0 : 0,
+                    body ? body.offsetHeight || 0 : 0,
+                    doc ? doc.clientHeight || 0 : 0,
+                    doc ? doc.scrollHeight || 0 : 0,
+                    doc ? doc.offsetHeight || 0 : 0
                   );
+                  return contentBottom > 1 ? contentBottom : documentHeight;
                 })();
             """.trimIndent()
         ) { result ->
@@ -1658,9 +1671,16 @@ private fun measureBookInfoWebIntroHeight(
                 ?.trim()
                 ?.trim('"')
                 ?.toFloatOrNull()
-                ?: return@evaluateJavascript
-            val heightCssPx = cssHeight.roundToInt().coerceAtLeast(1)
-            onContentHeight(token, heightCssPx)
+                ?: 0f
+            val density = webView.resources.displayMetrics.density
+            val jsHeightPx = (cssHeight * density).roundToInt()
+            val fallbackHeightPx = (webView.contentHeight * density).roundToInt()
+            val heightPx = when {
+                jsHeightPx > 1 -> jsHeightPx
+                fallbackHeightPx > 1 -> fallbackHeightPx
+                else -> return@evaluateJavascript
+            }
+            onContentHeight(token, heightPx)
         }
     }
 }
