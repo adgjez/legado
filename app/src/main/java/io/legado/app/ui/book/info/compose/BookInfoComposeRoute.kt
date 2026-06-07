@@ -145,6 +145,9 @@ data class BookInfoActions(
     val onCustomButton: () -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
     val onSetBookVariable: () -> Unit = {},
+    val onCopyBookUrl: () -> Unit = {},
+    val onCopyTocUrl: () -> Unit = {},
+    val onClearCache: () -> Unit = {},
     val onSetupWebIntro: (WebView) -> Unit = {},
     val onRefreshEnabledChanged: (Boolean) -> Unit = {}
 )
@@ -555,6 +558,14 @@ private fun BookInfoMoreActionSheet(
                 onDismiss()
                 actions.onRefreshToc()
             }
+            BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
+                onDismiss()
+                actions.onCopyBookUrl()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.copy_toc_url), style) {
+                onDismiss()
+                actions.onCopyTocUrl()
+            }
             BookInfoMoreActionItem(stringResource(R.string.change_book_source_action), style) {
                 onDismiss()
                 actions.onChangeSource()
@@ -578,6 +589,10 @@ private fun BookInfoMoreActionSheet(
             BookInfoMoreActionItem(stringResource(R.string.ai_image_gallery), style) {
                 onDismiss()
                 actions.onOpenAiGallery()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.clear_cache), style) {
+                onDismiss()
+                actions.onClearCache()
             }
             if (state.hasCustomButton) {
                 BookInfoMoreActionItem(stringResource(R.string.custom_button), style) {

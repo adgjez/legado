@@ -73,6 +73,7 @@ import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openFileUri
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
@@ -364,6 +365,9 @@ class BookInfoComposeActivity :
             onCustomButton = ::callSourceCustomButton,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
+            onCopyBookUrl = ::copyBookUrl,
+            onCopyTocUrl = ::copyTocUrl,
+            onClearCache = ::clearBookCache,
             onSetupWebIntro = ::setupWebIntro,
             onRefreshEnabledChanged = { enabled ->
                 if (::refreshLayout.isInitialized) {
@@ -371,6 +375,50 @@ class BookInfoComposeActivity :
                 }
             }
         )
+    }
+
+    private fun copyBookUrl() {
+        viewModel.getBook()?.let { book ->
+            SourceCallBack.callBackBtn(
+                this,
+                SourceCallBack.CLICK_COPY_BOOK_URL,
+                viewModel.bookSource,
+                book,
+                null,
+                result = book.bookUrl
+            ) {
+                sendToClip(book.bookUrl)
+            }
+        }
+    }
+
+    private fun copyTocUrl() {
+        viewModel.getBook()?.let { book ->
+            SourceCallBack.callBackBtn(
+                this,
+                SourceCallBack.CLICK_COPY_TOC_URL,
+                viewModel.bookSource,
+                book,
+                null,
+                result = book.tocUrl
+            ) {
+                sendToClip(book.tocUrl)
+            }
+        }
+    }
+
+    private fun clearBookCache() {
+        viewModel.getBook()?.let { book ->
+            SourceCallBack.callBackBtn(
+                this,
+                SourceCallBack.CLICK_CLEAR_CACHE,
+                viewModel.bookSource,
+                book,
+                null
+            ) {
+                viewModel.clearCache(book)
+            }
+        }
     }
 
     private fun setupWebIntro(webView: WebView) {
