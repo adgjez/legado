@@ -49,13 +49,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.utils.ColorUtils
-import io.legado.app.utils.setLayout
 import kotlin.math.roundToInt
 
 @Stable
@@ -116,7 +114,7 @@ fun AppDialogFrame(
         color = style.surface,
         tonalElevation = 0.dp,
         shadowElevation = if (AppConfig.isEInkMode) 0.dp else 10.dp,
-        border = BorderStroke(1.dp, style.stroke)
+        border = null
     ) {
         Column(
             modifier = Modifier
@@ -164,7 +162,7 @@ fun AppDialogFrame(
     }
 }
 
-class ComposeTextInputDialog : BaseDialogFragment(0) {
+class ComposeTextInputDialog : ComposeDialogFragment() {
 
     private var titleText: String = ""
     private var messageText: String? = null
@@ -177,11 +175,6 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
     private var validateInput: ((String) -> Boolean)? = null
     private var onPositive: ((String) -> Unit)? = null
     private var onNeutral: (() -> Unit)? = null
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -238,14 +231,14 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         TextButton(
-                        onClick = {
-                            val current = text
-                            if (validateInput?.invoke(current) == false) {
-                                return@TextButton
-                            }
-                            dismissAllowingStateLoss()
-                            onPositive?.invoke(current)
-                        },
+                            onClick = {
+                                val current = text
+                                if (validateInput?.invoke(current) == false) {
+                                    return@TextButton
+                                }
+                                dismissAllowingStateLoss()
+                                onPositive?.invoke(current)
+                            },
                             shape = RoundedCornerShape(style.actionRadius)
                         ) {
                             Text(positiveText, color = style.accent)
@@ -254,9 +247,6 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
                 )
             }
         }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
     }
 
     companion object {
@@ -290,7 +280,7 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
     }
 }
 
-class ComposeMultiChoiceDialog : BaseDialogFragment(0) {
+class ComposeMultiChoiceDialog : ComposeDialogFragment() {
 
     private var titleText: String = ""
     private var messageText: String? = null
@@ -299,11 +289,6 @@ class ComposeMultiChoiceDialog : BaseDialogFragment(0) {
     private var positiveText: String = ""
     private var negativeText: String = ""
     private var onPositive: ((BooleanArray) -> Unit)? = null
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -371,9 +356,6 @@ class ComposeMultiChoiceDialog : BaseDialogFragment(0) {
                 )
             }
         }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
     }
 
     companion object {
