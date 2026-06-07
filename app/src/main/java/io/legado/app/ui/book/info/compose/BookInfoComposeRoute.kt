@@ -83,6 +83,7 @@ import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.sendToClip
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
@@ -508,6 +509,7 @@ private fun BookInfoMoreActionSheet(
     actions: BookInfoActions,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -536,6 +538,12 @@ private fun BookInfoMoreActionSheet(
             BookInfoMoreActionItem(stringResource(R.string.refresh), style) {
                 onDismiss()
                 actions.onRefresh()
+            }
+            if (state.intro.isNotBlank()) {
+                BookInfoMoreActionItem("复制简介", style) {
+                    onDismiss()
+                    context.sendToClip(state.intro.toCopyableBookInfoIntro())
+                }
             }
             BookInfoMoreActionItem(stringResource(R.string.update_toc), style) {
                 onDismiss()
@@ -1438,6 +1446,12 @@ private fun BookInfoWebIntro(
                   font-size: 14px;
                   line-height: 1.72;
                   word-break: break-word;
+                  -webkit-user-select: text !important;
+                  user-select: text !important;
+                }
+                body * {
+                  -webkit-user-select: text !important;
+                  user-select: text !important;
                 }
                 img, video, iframe {
                   max-width: 100%;
@@ -1482,6 +1496,9 @@ private fun BookInfoWebIntro(
             }
             overScrollMode = View.OVER_SCROLL_NEVER
             isVerticalScrollBarEnabled = false
+            isLongClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
@@ -1745,4 +1762,35 @@ private fun String.cleanBookInfoValue(): String {
 private fun String.extractWrappedIntro(prefixLength: Int): String {
     val endIndex = lastIndexOf("<").takeIf { it > prefixLength } ?: length
     return substring(prefixLength.coerceAtMost(length), endIndex.coerceAtLeast(prefixLength).coerceAtMost(length))
+}
+
+private fun String.toCopyableBookInfoIntro(): String {
+    val htmlOptions = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    val text = when {
+        startsWith("<useweb>", ignoreCase = true) -> {
+            extractWrappedIntro(8)
+                .replace(Regex("<script\\b[^>]*>.*?</script>", htmlOptions), "")
+                .replace(Regex("<style\\b[^>]*>.*?</style>", htmlOptions), "")
+                .let {
+                    HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
+                }
+        }
+
+        startsWith("<usehtml>", ignoreCase = true) -> {
+            HtmlCompat.fromHtml(
+                extractWrappedIntro(9),
+                HtmlCompat.FROM_HTML_MODE_LEGACY
+            ).toString()
+        }
+
+        startsWith("<md>", ignoreCase = true) -> {
+            extractWrappedIntro(4)
+        }
+
+        else -> this
+    }
+    return text
+        .replace(Regex("[\\t\\x0B\\f\\r]+"), " ")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
 }
