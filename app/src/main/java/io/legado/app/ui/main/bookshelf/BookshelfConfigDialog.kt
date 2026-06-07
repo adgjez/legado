@@ -4,35 +4,42 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.ui.widget.compose.AppDialogFrame
-import io.legado.app.ui.widget.compose.AppDialogOptionGroup
 import io.legado.app.ui.widget.compose.AppDialogSliderRow
 import io.legado.app.ui.widget.compose.AppDialogSwitchRow
+import io.legado.app.ui.widget.compose.AppDialogStyle
+import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.utils.setLayout
 
 data class BookshelfConfigValues(
     val groupStyle: Int,
@@ -46,7 +53,7 @@ data class BookshelfConfigValues(
     val margin: Int
 )
 
-class BookshelfConfigDialog : BaseDialogFragment(0) {
+class BookshelfConfigDialog : ComposeDialogFragment() {
 
     private var initialValues = BookshelfConfigValues(
         groupStyle = 0,
@@ -60,11 +67,6 @@ class BookshelfConfigDialog : BaseDialogFragment(0) {
         margin = 12
     )
     private var onApply: ((BookshelfConfigValues) -> Unit)? = null
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -102,13 +104,15 @@ class BookshelfConfigDialog : BaseDialogFragment(0) {
                 AppDialogFrame(
                     title = getString(R.string.bookshelf_layout),
                     content = {
-                        AppDialogOptionGroup(
-                            title = getString(R.string.group_style),
+                        DialogSectionTitle(getString(R.string.group_style), style)
+                        DialogChoiceChips(
                             options = groupStyleOptions,
                             selectedIndex = values.groupStyle.coerceIn(groupStyleOptions.indices),
+                            style = style,
                             onSelected = { values = values.copy(groupStyle = it) }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
+                        DialogSectionTitle(getString(R.string.show), style)
                         AppDialogSwitchRow(
                             text = getString(R.string.show_unread),
                             checked = values.showUnread,
@@ -129,58 +133,33 @@ class BookshelfConfigDialog : BaseDialogFragment(0) {
                             checked = values.showFastScroller,
                             onCheckedChange = { values = values.copy(showFastScroller = it) }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            AppDialogOptionGroup(
-                                title = getString(R.string.view),
-                                options = layoutOptions,
-                                selectedIndex = values.layout.coerceIn(layoutOptions.indices),
-                                onSelected = { values = values.copy(layout = it) },
-                                modifier = Modifier.weight(1f)
-                            )
-                            AppDialogOptionGroup(
-                                title = getString(R.string.sort),
-                                options = sortOptions,
-                                selectedIndex = values.sort.coerceIn(sortOptions.indices),
-                                onSelected = { values = values.copy(sort = it) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        DialogSectionTitle(getString(R.string.view), style)
+                        DialogChoiceChips(
+                            options = layoutOptions,
+                            selectedIndex = values.layout.coerceIn(layoutOptions.indices),
+                            style = style,
+                            onSelected = { values = values.copy(layout = it) }
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        DialogSectionTitle(getString(R.string.sort), style)
+                        DialogChoiceChips(
+                            options = sortOptions,
+                            selectedIndex = values.sort.coerceIn(sortOptions.indices),
+                            style = style,
+                            onSelected = { values = values.copy(sort = it) }
+                        )
                         if (values.layout >= 2) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = getString(R.string.book_name),
-                                color = style.accent,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(vertical = 6.dp)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            DialogSectionTitle(getString(R.string.book_name), style)
+                            DialogChoiceChips(
+                                options = bookNameOptions,
+                                selectedIndex = values.showBookname.coerceIn(bookNameOptions.indices),
+                                style = style,
+                                onSelected = { values = values.copy(showBookname = it) }
                             )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                bookNameOptions.forEachIndexed { index, label ->
-                                    TextButton(
-                                        onClick = { values = values.copy(showBookname = index) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(style.actionRadius)
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            color = if (values.showBookname == index) {
-                                                style.accent
-                                            } else {
-                                                style.secondaryText
-                                            }
-                                        )
-                                    }
-                                }
-                            }
                         }
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         AppDialogSliderRow(
                             title = getString(R.string.margin),
                             value = values.margin,
@@ -211,9 +190,6 @@ class BookshelfConfigDialog : BaseDialogFragment(0) {
         }
     }
 
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-    }
-
     companion object {
         fun create(
             initialValues: BookshelfConfigValues,
@@ -222,6 +198,65 @@ class BookshelfConfigDialog : BaseDialogFragment(0) {
             return BookshelfConfigDialog().apply {
                 this.initialValues = initialValues
                 this.onApply = onApply
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogSectionTitle(
+    text: String,
+    style: AppDialogStyle
+) {
+    Text(
+        text = text,
+        color = style.accent,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(bottom = 8.dp)
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DialogChoiceChips(
+    options: List<String>,
+    selectedIndex: Int,
+    style: AppDialogStyle,
+    onSelected: (Int) -> Unit
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEachIndexed { index, label ->
+            val selected = selectedIndex == index
+            Surface(
+                modifier = Modifier
+                    .widthIn(min = 78.dp)
+                    .clickable { onSelected(index) },
+                shape = RoundedCornerShape(style.actionRadius),
+                color = if (selected) {
+                    style.accent.copy(alpha = 0.16f)
+                } else {
+                    style.fieldSurface
+                },
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        color = if (selected) style.accent else style.primaryText,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
