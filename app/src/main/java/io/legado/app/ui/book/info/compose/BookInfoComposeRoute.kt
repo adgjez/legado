@@ -703,6 +703,7 @@ private fun BookInfoMetricPreviewOverlay(
             state = state,
             style = style,
             contentAlpha = contentAlpha,
+            contentReady = visible && previewProgress > 0.96f,
             previewProgress = previewProgress,
             elevation = cardElevation.dp,
             cornerRadius = cornerRadius.dp,
@@ -720,6 +721,7 @@ private fun BookInfoMetricPreviewCard(
     state: BookInfoUiState,
     style: BookInfoComposeStyle,
     contentAlpha: Float,
+    contentReady: Boolean,
     previewProgress: Float,
     elevation: Dp,
     cornerRadius: Dp,
@@ -758,7 +760,9 @@ private fun BookInfoMetricPreviewCard(
             when (preview.type) {
                 BookInfoMetricPreviewType.Source -> BookInfoSourcePreview(state, style)
                 BookInfoMetricPreviewType.Toc -> BookInfoTocMetricPreview(state, style)
-                BookInfoMetricPreviewType.Gallery -> BookInfoGalleryMetricPreview(state, style)
+                BookInfoMetricPreviewType.Gallery -> {
+                    BookInfoGalleryMetricPreview(state, style, contentReady)
+                }
             }
         }
     }
@@ -884,7 +888,8 @@ private fun BookInfoTocMetricPreview(
 @Composable
 private fun BookInfoGalleryMetricPreview(
     state: BookInfoUiState,
-    style: BookInfoComposeStyle
+    style: BookInfoComposeStyle,
+    contentReady: Boolean
 ) {
     BookInfoPreviewTitle("图库预览", style)
     if (state.aiImagePaths.isEmpty()) {
@@ -904,13 +909,21 @@ private fun BookInfoGalleryMetricPreview(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             state.aiImagePaths.take(3).forEach { path ->
-                BookInfoImage(
-                    path = path,
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .aspectRatio(0.78f)
                         .clip(RoundedCornerShape(style.metrics.actionRadius))
-                )
+                        .background(style.colors.surfaceVariant.copy(alpha = 0.72f))
+                ) {
+                    if (contentReady) {
+                        BookInfoPreviewImage(
+                            path = path,
+                            style = style,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
             }
         }
     }
@@ -1782,6 +1795,48 @@ private fun BookInfoImage(
                         .placeholder(R.drawable.image_cover_default)
                         .into(imageView)
                 }
+            }
+        }
+    )
+}
+
+@Composable
+private fun BookInfoPreviewImage(
+    path: String?,
+    style: BookInfoComposeStyle,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val fallbackWidth = with(density) { 180.dp.toPx().roundToInt() }
+    val fallbackHeight = with(density) { 230.dp.toPx().roundToInt() }
+    AndroidView(
+        modifier = modifier.background(style.colors.surfaceVariant.copy(alpha = 0.72f)),
+        factory = {
+            ImageView(it).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                adjustViewBounds = false
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { imageView ->
+            val target = path?.takeIf { it.isNotBlank() }
+            val width = imageView.width.takeIf { it > 0 } ?: fallbackWidth
+            val height = imageView.height.takeIf { it > 0 } ?: fallbackHeight
+            val tag = "${target ?: R.drawable.image_cover_default}:$width:$height"
+            if (imageView.tag != tag) {
+                imageView.tag = tag
+                val request = if (target == null) {
+                    ImageLoader.load(context, R.drawable.image_cover_default)
+                } else {
+                    ImageLoader.load(context, target)
+                        .error(R.drawable.image_cover_default)
+                        .placeholder(R.drawable.image_cover_default)
+                }
+                request
+                    .dontTransform()
+                    .override(width, height)
+                    .into(imageView)
             }
         }
     )
