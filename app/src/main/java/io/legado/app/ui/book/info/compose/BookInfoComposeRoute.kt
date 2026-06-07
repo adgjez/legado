@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -55,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -62,6 +65,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -69,10 +75,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -115,6 +124,9 @@ data class BookInfoUiState(
     val tocText: String = "",
     val chapterCount: Int = 0,
     val chapterPreview: List<BookInfoChapterUi> = emptyList(),
+    val currentChapterIndex: Int = -1,
+    val currentChapterTitle: String = "",
+    val currentChapterPreview: List<BookInfoChapterUi> = emptyList(),
     val aiImageCount: Int = 0,
     val aiImagePaths: List<String> = emptyList(),
     val inBookshelf: Boolean = false,
@@ -182,6 +194,17 @@ data class BookInfoComposeMetrics(
 data class BookInfoComposeStyle(
     val colors: BookInfoComposeColors,
     val metrics: BookInfoComposeMetrics
+)
+
+private enum class BookInfoMetricPreviewType {
+    Source,
+    Toc,
+    Gallery
+}
+
+private data class BookInfoMetricPreview(
+    val type: BookInfoMetricPreviewType,
+    val anchorBounds: Rect
 )
 
 @Stable
@@ -286,6 +309,8 @@ fun BookInfoComposeRoute(
     }
     val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
+    var metricPreview by remember { mutableStateOf<BookInfoMetricPreview?>(null) }
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
     val pageScrollState = rememberScrollState()
     val refreshAtTop by remember {
         derivedStateOf { pageScrollState.value == 0 }
@@ -310,6 +335,7 @@ fun BookInfoComposeRoute(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onSizeChanged { rootSize = it }
             .background(
                 Brush.verticalGradient(
                     0f to style.colors.contentTop,
@@ -344,7 +370,12 @@ fun BookInfoComposeRoute(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     BookInfoPosterHero(state, actions, style)
-                    BookInfoStatusStrip(state, actions, style)
+                    BookInfoStatusStrip(
+                        state = state,
+                        actions = actions,
+                        style = style,
+                        onPreview = { metricPreview = it }
+                    )
                 }
             }
             BookInfoContentPanel(style = style) {
@@ -404,6 +435,18 @@ fun BookInfoComposeRoute(
                 onDismiss = { showMoreMenu = false }
             )
         }
+        metricPreview?.let { preview ->
+            BookInfoMetricPreviewOverlay(
+                preview = preview,
+                state = state,
+                style = style,
+                rootSize = rootSize,
+                onDismiss = { metricPreview = null },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(4f)
+            )
+        }
     }
 }
 
@@ -411,7 +454,8 @@ fun BookInfoComposeRoute(
 private fun BookInfoStatusStrip(
     state: BookInfoUiState,
     actions: BookInfoActions,
-    style: BookInfoComposeStyle
+    style: BookInfoComposeStyle,
+    onPreview: (BookInfoMetricPreview) -> Unit
 ) {
     val sourceValue = state.originName.cleanBookInfoValue()
     val tocValue = if (state.chapterCount > 0) {
@@ -429,6 +473,9 @@ private fun BookInfoStatusStrip(
             value = sourceValue,
             modifier = Modifier.weight(1f),
             style = style,
+            onLongClick = { bounds ->
+                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Source, bounds))
+            },
             onClick = actions.onChangeSource
         )
         BookInfoMetricBox(
@@ -437,6 +484,9 @@ private fun BookInfoStatusStrip(
             suffix = if (state.chapterCount > 0) "章" else "",
             modifier = Modifier.weight(1f),
             style = style,
+            onLongClick = { bounds ->
+                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Toc, bounds))
+            },
             onClick = actions.onOpenToc
         )
         BookInfoMetricBox(
@@ -445,11 +495,15 @@ private fun BookInfoStatusStrip(
             suffix = if (state.aiImageCount > 0) "" else "",
             modifier = Modifier.weight(1f),
             style = style,
+            onLongClick = { bounds ->
+                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Gallery, bounds))
+            },
             onClick = actions.onOpenAiGallery
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BookInfoMetricBox(
     label: String,
@@ -457,16 +511,22 @@ private fun BookInfoMetricBox(
     suffix: String = "",
     modifier: Modifier = Modifier,
     style: BookInfoComposeStyle,
+    onLongClick: (Rect) -> Unit,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(style.metrics.actionRadius)
+    var bounds by remember { mutableStateOf<Rect?>(null) }
     Box(
         modifier = modifier
             .height(74.dp)
             .shadow(2.dp, shape, clip = false)
             .clip(shape)
             .background(style.colors.metricTop.copy(alpha = 0.96f))
-            .clickable(onClick = onClick)
+            .onGloballyPositioned { bounds = it.boundsInRoot() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { bounds?.let(onLongClick) }
+            )
     ) {
         Column(
             modifier = Modifier
@@ -507,6 +567,217 @@ private fun BookInfoMetricBox(
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun BookInfoMetricPreviewOverlay(
+    preview: BookInfoMetricPreview,
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle,
+    rootSize: IntSize,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (rootSize.width <= 0 || rootSize.height <= 0) return
+    val density = LocalDensity.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val preferredHeight = when (preview.type) {
+        BookInfoMetricPreviewType.Source -> 188.dp
+        BookInfoMetricPreviewType.Toc -> 318.dp
+        BookInfoMetricPreviewType.Gallery -> 238.dp
+    }
+    val paddingPx = with(density) { 16.dp.toPx() }
+    val gapPx = with(density) { 10.dp.toPx() }
+    val rootWidthPx = rootSize.width.toFloat()
+    val rootHeightPx = rootSize.height.toFloat()
+    val availableWidthPx = (rootWidthPx - paddingPx * 2)
+        .coerceAtLeast(with(density) { 180.dp.toPx() })
+    val availableHeightPx = (rootHeightPx - paddingPx * 2)
+        .coerceAtLeast(with(density) { 120.dp.toPx() })
+    val preferredHeightPx = with(density) { preferredHeight.toPx() }
+        .coerceAtMost(availableHeightPx)
+    val popupWidthPx = availableWidthPx
+        .coerceAtMost(with(density) { 340.dp.toPx() })
+    val anchor = preview.anchorBounds
+    val maxY = (rootHeightPx - preferredHeightPx - paddingPx).coerceAtLeast(paddingPx)
+    val aboveY = anchor.top - preferredHeightPx - gapPx
+    val belowY = anchor.bottom + gapPx
+    val shouldPlaceAbove = aboveY >= paddingPx || rootHeightPx - belowY < preferredHeightPx
+    val rawY = if (shouldPlaceAbove && aboveY >= paddingPx) aboveY else belowY
+    val y = rawY.coerceIn(paddingPx, maxY)
+    val maxX = (rootWidthPx - popupWidthPx - paddingPx).coerceAtLeast(paddingPx)
+    val x = (anchor.center.x - popupWidthPx / 2f).coerceIn(paddingPx, maxX)
+    Box(
+        modifier = modifier.clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onDismiss
+        )
+    ) {
+        BookInfoMetricPreviewCard(
+            preview = preview,
+            state = state,
+            style = style,
+            modifier = Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .width(with(density) { popupWidthPx.toDp() })
+                .heightIn(max = with(density) { preferredHeightPx.toDp() })
+        )
+    }
+}
+
+@Composable
+private fun BookInfoMetricPreviewCard(
+    preview: BookInfoMetricPreview,
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(style.metrics.panelRadius)
+    Column(
+        modifier = modifier
+            .shadow(14.dp, shape, clip = false)
+            .clip(shape)
+            .background(style.colors.surface.copy(alpha = 0.97f))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        when (preview.type) {
+            BookInfoMetricPreviewType.Source -> BookInfoSourcePreview(state, style)
+            BookInfoMetricPreviewType.Toc -> BookInfoTocMetricPreview(state, style)
+            BookInfoMetricPreviewType.Gallery -> BookInfoGalleryMetricPreview(state, style)
+        }
+    }
+}
+
+@Composable
+private fun BookInfoSourcePreview(
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle
+) {
+    BookInfoPreviewTitle("书源详情", style)
+    BookInfoPreviewLine("书源", state.originName.cleanBookInfoValue(), style)
+    BookInfoPreviewLine("书名", state.name, style)
+    BookInfoPreviewLine("作者", state.author, style)
+}
+
+@Composable
+private fun BookInfoTocMetricPreview(
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle
+) {
+    BookInfoPreviewTitle("目录预览", style)
+    val currentTitle = state.currentChapterTitle.ifBlank { state.tocText.cleanBookInfoValue() }
+    if (currentTitle.isNotBlank()) {
+        BookInfoPreviewLine("当前", currentTitle, style)
+    }
+    val chapters = state.currentChapterPreview.ifEmpty { state.chapterPreview.take(8) }
+    if (chapters.isEmpty()) {
+        Text(
+            text = stringResource(R.string.error_load_toc),
+            color = style.colors.secondaryText,
+            fontSize = 13.sp
+        )
+    } else {
+        chapters.forEach { chapter ->
+            val selected = chapter.index == state.currentChapterIndex
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "#${chapter.index + 1}",
+                    color = if (selected) style.colors.accent else style.colors.secondaryText,
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+                Text(
+                    text = chapter.title,
+                    color = if (selected) style.colors.primaryText else style.colors.secondaryText,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookInfoGalleryMetricPreview(
+    state: BookInfoUiState,
+    style: BookInfoComposeStyle
+) {
+    BookInfoPreviewTitle("图库预览", style)
+    if (state.aiImagePaths.isEmpty()) {
+        Text(
+            text = stringResource(R.string.ai_image_gallery_empty),
+            color = style.colors.secondaryText,
+            fontSize = 13.sp
+        )
+    } else {
+        Text(
+            text = "共 ${state.aiImageCount} 张",
+            color = style.colors.secondaryText,
+            fontSize = 12.5.sp
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            state.aiImagePaths.take(3).forEach { path ->
+                BookInfoImage(
+                    path = path,
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(0.78f)
+                        .clip(RoundedCornerShape(style.metrics.actionRadius))
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookInfoPreviewTitle(
+    text: String,
+    style: BookInfoComposeStyle
+) {
+    Text(
+        text = text,
+        color = style.colors.primaryText,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun BookInfoPreviewLine(
+    label: String,
+    value: String,
+    style: BookInfoComposeStyle
+) {
+    if (value.isBlank()) return
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            text = label,
+            color = style.colors.accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = value,
+            color = style.colors.primaryText,
+            fontSize = 13.5.sp,
+            lineHeight = 18.sp
+        )
     }
 }
 

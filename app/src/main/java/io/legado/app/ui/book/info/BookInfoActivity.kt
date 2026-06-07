@@ -757,6 +757,13 @@ class BookInfoActivity :
             chapterList.isEmpty() -> getString(R.string.toc_s, getString(R.string.error_load_toc))
             else -> getString(R.string.toc_s, safeBook.durChapterTitle)
         }
+        val readableChapters = chapterList.filter { !it.isVolume }
+        val currentChapterPosition = readableChapters
+            .indexOfFirst { it.index == safeBook.durChapterIndex }
+            .takeIf { it >= 0 } ?: 0
+        val currentChapterStart = (currentChapterPosition - 4).coerceAtLeast(0)
+        val currentChapterEnd = (currentChapterPosition + 5)
+            .coerceAtMost(readableChapters.size)
         val intro = resolveComposeStableIntro(safeBook)
         composeBookInfoState = BookInfoUiState(
             bookUrl = safeBook.bookUrl,
@@ -770,10 +777,14 @@ class BookInfoActivity :
             kinds = safeBook.getKindList(),
             groupText = composeGroupText,
             tocText = tocText,
-            chapterCount = chapterList.count { !it.isVolume },
-            chapterPreview = chapterList
-                .filter { !it.isVolume }
+            chapterCount = readableChapters.size,
+            chapterPreview = readableChapters
                 .take(12)
+                .map { BookInfoChapterUi(it.index, it.title, it.isVolume) },
+            currentChapterIndex = safeBook.durChapterIndex,
+            currentChapterTitle = safeBook.durChapterTitle.orEmpty(),
+            currentChapterPreview = readableChapters
+                .subList(currentChapterStart, currentChapterEnd)
                 .map { BookInfoChapterUi(it.index, it.title, it.isVolume) },
             aiImageCount = composeAiImageCount,
             aiImagePaths = composeAiImagePaths,
