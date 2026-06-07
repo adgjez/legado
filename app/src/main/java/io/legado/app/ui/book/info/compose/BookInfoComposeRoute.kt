@@ -17,8 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +65,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -97,6 +103,7 @@ import io.legado.app.utils.sendToClip
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
@@ -310,6 +317,7 @@ fun BookInfoComposeRoute(
     val style = remember(context, coverColor) { bookInfoComposeStyle(context, coverColor) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var metricPreview by remember { mutableStateOf<BookInfoMetricPreview?>(null) }
+    var metricPreviewVisible by remember { mutableStateOf(false) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     val pageScrollState = rememberScrollState()
     val refreshAtTop by remember {
@@ -330,6 +338,14 @@ fun BookInfoComposeRoute(
     LaunchedEffect(shouldExpandWebIntro) {
         if (shouldExpandWebIntro && webIntroExpandPages < 32) {
             webIntroExpandPages += 1
+        }
+    }
+    LaunchedEffect(metricPreviewVisible, metricPreview) {
+        if (!metricPreviewVisible && metricPreview != null) {
+            delay(190)
+            if (!metricPreviewVisible) {
+                metricPreview = null
+            }
         }
     }
     Box(
@@ -374,7 +390,13 @@ fun BookInfoComposeRoute(
                         state = state,
                         actions = actions,
                         style = style,
-                        onPreview = { metricPreview = it }
+                        onPreviewStart = {
+                            metricPreview = it
+                            metricPreviewVisible = true
+                        },
+                        onPreviewEnd = {
+                            metricPreviewVisible = false
+                        }
                     )
                 }
             }
@@ -441,7 +463,7 @@ fun BookInfoComposeRoute(
                 state = state,
                 style = style,
                 rootSize = rootSize,
-                onDismiss = { metricPreview = null },
+                visible = metricPreviewVisible,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(4f)
@@ -455,7 +477,8 @@ private fun BookInfoStatusStrip(
     state: BookInfoUiState,
     actions: BookInfoActions,
     style: BookInfoComposeStyle,
-    onPreview: (BookInfoMetricPreview) -> Unit
+    onPreviewStart: (BookInfoMetricPreview) -> Unit,
+    onPreviewEnd: () -> Unit
 ) {
     val sourceValue = state.originName.cleanBookInfoValue()
     val tocValue = if (state.chapterCount > 0) {
@@ -473,9 +496,10 @@ private fun BookInfoStatusStrip(
             value = sourceValue,
             modifier = Modifier.weight(1f),
             style = style,
-            onLongClick = { bounds ->
-                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Source, bounds))
+            onLongPressStart = { bounds ->
+                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Source, bounds))
             },
+            onPressEnd = onPreviewEnd,
             onClick = actions.onChangeSource
         )
         BookInfoMetricBox(
@@ -484,9 +508,10 @@ private fun BookInfoStatusStrip(
             suffix = if (state.chapterCount > 0) "章" else "",
             modifier = Modifier.weight(1f),
             style = style,
-            onLongClick = { bounds ->
-                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Toc, bounds))
+            onLongPressStart = { bounds ->
+                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Toc, bounds))
             },
+            onPressEnd = onPreviewEnd,
             onClick = actions.onOpenToc
         )
         BookInfoMetricBox(
@@ -495,9 +520,10 @@ private fun BookInfoStatusStrip(
             suffix = if (state.aiImageCount > 0) "" else "",
             modifier = Modifier.weight(1f),
             style = style,
-            onLongClick = { bounds ->
-                onPreview(BookInfoMetricPreview(BookInfoMetricPreviewType.Gallery, bounds))
+            onLongPressStart = { bounds ->
+                onPreviewStart(BookInfoMetricPreview(BookInfoMetricPreviewType.Gallery, bounds))
             },
+            onPressEnd = onPreviewEnd,
             onClick = actions.onOpenAiGallery
         )
     }
@@ -511,7 +537,8 @@ private fun BookInfoMetricBox(
     suffix: String = "",
     modifier: Modifier = Modifier,
     style: BookInfoComposeStyle,
-    onLongClick: (Rect) -> Unit,
+    onLongPressStart: (Rect) -> Unit,
+    onPressEnd: () -> Unit,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(style.metrics.actionRadius)
@@ -523,10 +550,19 @@ private fun BookInfoMetricBox(
             .clip(shape)
             .background(style.colors.metricTop.copy(alpha = 0.96f))
             .onGloballyPositioned { bounds = it.boundsInRoot() }
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { bounds?.let(onLongClick) }
-            )
+            .pointerInput(onClick, onLongPressStart, onPressEnd) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { bounds?.let(onLongPressStart) },
+                    onPress = {
+                        try {
+                            awaitRelease()
+                        } finally {
+                            onPressEnd()
+                        }
+                    }
+                )
+            }
     ) {
         Column(
             modifier = Modifier
@@ -576,12 +612,18 @@ private fun BookInfoMetricPreviewOverlay(
     state: BookInfoUiState,
     style: BookInfoComposeStyle,
     rootSize: IntSize,
-    onDismiss: () -> Unit,
+    visible: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (rootSize.width <= 0 || rootSize.height <= 0) return
     val density = LocalDensity.current
-    val interactionSource = remember { MutableInteractionSource() }
+    val visibleState = remember(preview) {
+        MutableTransitionState(false).apply { targetState = true }
+    }
+    LaunchedEffect(visible) {
+        visibleState.targetState = visible
+    }
+    val transition = updateTransition(visibleState, label = "bookInfoMetricPreview")
     val preferredHeight = when (preview.type) {
         BookInfoMetricPreviewType.Source -> 188.dp
         BookInfoMetricPreviewType.Toc -> 318.dp
@@ -608,21 +650,36 @@ private fun BookInfoMetricPreviewOverlay(
     val y = rawY.coerceIn(paddingPx, maxY)
     val maxX = (rootWidthPx - popupWidthPx - paddingPx).coerceAtLeast(paddingPx)
     val x = (anchor.center.x - popupWidthPx / 2f).coerceIn(paddingPx, maxX)
-    Box(
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = onDismiss
-        )
-    ) {
+    val animatedX by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
+        label = "metricPreviewX"
+    ) { shown -> if (shown) x else anchor.left }
+    val animatedY by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
+        label = "metricPreviewY"
+    ) { shown -> if (shown) y else anchor.top }
+    val animatedWidth by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
+        label = "metricPreviewWidth"
+    ) { shown -> if (shown) popupWidthPx else anchor.width }
+    val animatedHeight by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
+        label = "metricPreviewHeight"
+    ) { shown -> if (shown) preferredHeightPx else anchor.height }
+    val contentAlpha by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 120, easing = FastOutSlowInEasing) },
+        label = "metricPreviewAlpha"
+    ) { shown -> if (shown) 1f else 0f }
+    Box(modifier = modifier) {
         BookInfoMetricPreviewCard(
             preview = preview,
             state = state,
             style = style,
+            contentAlpha = contentAlpha,
             modifier = Modifier
-                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
-                .width(with(density) { popupWidthPx.toDp() })
-                .heightIn(max = with(density) { preferredHeightPx.toDp() })
+                .offset { IntOffset(animatedX.roundToInt(), animatedY.roundToInt()) }
+                .width(with(density) { animatedWidth.toDp() })
+                .height(with(density) { animatedHeight.toDp() })
         )
     }
 }
@@ -632,22 +689,29 @@ private fun BookInfoMetricPreviewCard(
     preview: BookInfoMetricPreview,
     state: BookInfoUiState,
     style: BookInfoComposeStyle,
+    contentAlpha: Float,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(style.metrics.panelRadius)
-    Column(
+    Box(
         modifier = modifier
             .shadow(14.dp, shape, clip = false)
             .clip(shape)
             .background(style.colors.surface.copy(alpha = 0.97f))
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        when (preview.type) {
-            BookInfoMetricPreviewType.Source -> BookInfoSourcePreview(state, style)
-            BookInfoMetricPreviewType.Toc -> BookInfoTocMetricPreview(state, style)
-            BookInfoMetricPreviewType.Gallery -> BookInfoGalleryMetricPreview(state, style)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .graphicsLayer { alpha = contentAlpha }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            when (preview.type) {
+                BookInfoMetricPreviewType.Source -> BookInfoSourcePreview(state, style)
+                BookInfoMetricPreviewType.Toc -> BookInfoTocMetricPreview(state, style)
+                BookInfoMetricPreviewType.Gallery -> BookInfoGalleryMetricPreview(state, style)
+            }
         }
     }
 }
