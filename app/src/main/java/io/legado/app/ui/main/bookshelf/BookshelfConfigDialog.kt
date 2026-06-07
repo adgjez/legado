@@ -201,12 +201,11 @@ private fun BookshelfConfigContent(
             onSelected = { onValuesChange(values.copy(groupStyle = options.groupStyles[it].value)) }
         )
         Spacer(modifier = Modifier.height(10.dp))
-        DialogSelectField(
-            label = "视图",
-            options = options.layouts.map { it.label },
-            selectedIndex = values.layout.coerceIn(options.layouts.indices),
+        BookshelfLayoutPicker(
+            options = options.layouts,
+            selectedValue = values.layout,
             style = style,
-            onSelected = { onValuesChange(values.copy(layout = options.layouts[it].value)) }
+            onSelected = { onValuesChange(values.copy(layout = it)) }
         )
     }
     ConfigSection(
@@ -269,6 +268,154 @@ private fun BookshelfConfigContent(
             range = 0..60,
             onValueChange = { onValuesChange(values.copy(margin = it)) }
         )
+    }
+}
+
+@Composable
+private fun BookshelfLayoutPicker(
+    options: List<BookshelfConfigOption>,
+    selectedValue: Int,
+    style: AppDialogStyle,
+    onSelected: (Int) -> Unit
+) {
+    val rows = listOf(
+        options.take(2),
+        options.drop(2).take(3),
+        options.drop(5)
+    ).filter { it.isNotEmpty() }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "书架视图",
+            color = style.secondaryText,
+            fontSize = 12.sp
+        )
+        rows.forEach { rowOptions ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowOptions.forEach { option ->
+                    BookshelfLayoutCard(
+                        option = option,
+                        selected = option.value == selectedValue,
+                        style = style,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelected(option.value) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookshelfLayoutCard(
+    option: BookshelfConfigOption,
+    selected: Boolean,
+    style: AppDialogStyle,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(92.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(style.actionRadius),
+        color = if (selected) style.accent.copy(alpha = 0.16f) else style.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected) style.accent else style.secondaryText.copy(alpha = 0.16f),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {}
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BookshelfLayoutMiniature(option.value, style)
+                Text(
+                    text = option.label,
+                    color = if (selected) style.accent else style.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookshelfLayoutMiniature(
+    layout: Int,
+    style: AppDialogStyle
+) {
+    val columns = if (layout >= 2) layout.coerceIn(2, 6) else 1
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (columns == 1) {
+            repeat(if (layout == 1) 3 else 2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .width(if (layout == 1) 12.dp else 16.dp)
+                            .height(if (layout == 1) 14.dp else 18.dp),
+                        shape = RoundedCornerShape(3.dp),
+                        color = style.accent.copy(alpha = 0.25f),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {}
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(5.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = style.primaryText.copy(alpha = 0.13f),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {}
+                }
+            }
+        } else {
+            repeat(2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    repeat(columns) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(12.dp),
+                            shape = RoundedCornerShape(3.dp),
+                            color = style.accent.copy(alpha = 0.22f),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp
+                        ) {}
+                    }
+                }
+            }
+        }
     }
 }
 
