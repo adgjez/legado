@@ -21,7 +21,6 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.cache.CacheActivity
 import io.legado.app.ui.book.group.GroupManageDialog
@@ -33,6 +32,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.ModernActionPopup
+import io.legado.app.ui.widget.compose.ComposeMultiChoiceDialog
 import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.isAbsUrl
@@ -156,7 +156,6 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         }
     }
 
-    @SuppressLint("InflateParams")
     protected open fun showBookTagManageAlert() {
         val targetBooks = books
         val tags = targetBooks
@@ -170,14 +169,17 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         val checked = BooleanArray(tags.size) { true }
         val labels = tags.map { tag ->
             "$tag (${targetBooks.count { BookTagHelper.has(it.customTag, tag) }})"
-        }.toTypedArray()
-        alert(titleResource = R.string.bookshelf_tag_manage) {
-            setMessage(getString(R.string.bookshelf_tag_manage_hint))
-            multiChoiceItems(labels, checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
-            okButton {
-                val keepTags = tags.filterIndexed { index, _ -> checked[index] }.toSet()
+        }
+        showDialogFragment(
+            ComposeMultiChoiceDialog.create(
+                title = getString(R.string.bookshelf_tag_manage),
+                labels = labels,
+                checked = checked,
+                message = getString(R.string.bookshelf_tag_manage_hint),
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                onPositive = { result ->
+                    val keepTags = tags.filterIndexed { index, _ -> result[index] }.toSet()
                 lifecycleScope.launch(IO) {
                     targetBooks.forEach { book ->
                         val normalized = BookTagHelper.join(
@@ -190,9 +192,9 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                     }
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
-            }
-            cancelButton()
-        }
+                }
+            )
+        )
     }
 
     protected fun initBookGroupData() {

@@ -21,7 +21,6 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf1Binding
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.search.SearchActivity
@@ -30,11 +29,13 @@ import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
+import io.legado.app.ui.widget.compose.ComposeMultiChoiceDialog
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
@@ -335,14 +336,17 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         val checked = BooleanArray(tags.size) { true }
         val labels = tags.map { tag ->
             "$tag (${targetBooks.count { BookTagHelper.has(it.customTag, tag) }})"
-        }.toTypedArray()
-        alert(title = "${group.groupName} · ${getString(R.string.bookshelf_tag_manage)}") {
-            setMessage(getString(R.string.bookshelf_tag_manage_hint))
-            multiChoiceItems(labels, checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
-            okButton {
-                val keepTags = tags.filterIndexed { index, _ -> checked[index] }.toSet()
+        }
+        showDialogFragment(
+            ComposeMultiChoiceDialog.create(
+                title = "${group.groupName} · ${getString(R.string.bookshelf_tag_manage)}",
+                labels = labels,
+                checked = checked,
+                message = getString(R.string.bookshelf_tag_manage_hint),
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                onPositive = { result ->
+                    val keepTags = tags.filterIndexed { index, _ -> result[index] }.toSet()
                 lifecycleScope.launch(IO) {
                     targetBooks.forEach { book ->
                         val normalized = BookTagHelper.join(
@@ -355,9 +359,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                     }
                     postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }
-            }
-            cancelButton()
-        }
+                }
+            )
+        )
     }
 
     override fun observeLiveBus() {
