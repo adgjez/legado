@@ -544,19 +544,11 @@ private fun BookInfoMoreActionSheet(
                 onDismiss()
                 actions.onEditBookInfo()
             }
-            BookInfoMoreActionItem(stringResource(R.string.refresh), style) {
-                onDismiss()
-                actions.onRefresh()
-            }
             if (state.intro.isNotBlank()) {
                 BookInfoMoreActionItem("复制简介", style) {
                     onDismiss()
                     context.sendToClip(state.intro.toCopyableBookInfoIntro())
                 }
-            }
-            BookInfoMoreActionItem(stringResource(R.string.update_toc), style) {
-                onDismiss()
-                actions.onRefreshToc()
             }
             BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
                 onDismiss()
@@ -566,18 +558,6 @@ private fun BookInfoMoreActionSheet(
                 onDismiss()
                 actions.onCopyTocUrl()
             }
-            BookInfoMoreActionItem(stringResource(R.string.change_book_source_action), style) {
-                onDismiss()
-                actions.onChangeSource()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.edit_source), style) {
-                onDismiss()
-                actions.onEditSource()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.change_group), style) {
-                onDismiss()
-                actions.onChangeGroup()
-            }
             BookInfoMoreActionItem(stringResource(R.string.set_source_variable), style) {
                 onDismiss()
                 actions.onSetSourceVariable()
@@ -586,11 +566,11 @@ private fun BookInfoMoreActionSheet(
                 onDismiss()
                 actions.onSetBookVariable()
             }
-            BookInfoMoreActionItem(stringResource(R.string.ai_image_gallery), style) {
-                onDismiss()
-                actions.onOpenAiGallery()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.clear_cache), style) {
+            BookInfoMoreActionItem(
+                text = stringResource(R.string.clear_cache),
+                style = style,
+                danger = true
+            ) {
                 onDismiss()
                 actions.onClearCache()
             }
@@ -609,11 +589,12 @@ private fun BookInfoMoreActionSheet(
 private fun BookInfoMoreActionItem(
     text: String,
     style: BookInfoComposeStyle,
+    danger: Boolean = false,
     onClick: () -> Unit
 ) {
     Text(
         text = text,
-        color = style.colors.primaryText,
+        color = if (danger) Color(0xffd64545) else style.colors.primaryText,
         fontSize = 15.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
