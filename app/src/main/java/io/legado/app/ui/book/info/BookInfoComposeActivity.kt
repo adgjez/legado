@@ -116,6 +116,8 @@ class BookInfoComposeActivity :
     private var groupText = ""
     private var aiImageCount = 0
     private var aiImagePaths: List<String> = emptyList()
+    private var lastStableIntroBookUrl: String? = null
+    private var lastStableIntro = ""
 
     private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { treeUri ->
@@ -401,6 +403,7 @@ class BookInfoComposeActivity :
             chapterList.isEmpty() -> getString(R.string.toc_s, getString(R.string.error_load_toc))
             else -> getString(R.string.toc_s, book.durChapterTitle)
         }
+        val intro = resolveStableIntro(book)
         uiState = BookInfoUiState(
             bookUrl = book.bookUrl,
             name = book.name,
@@ -409,7 +412,7 @@ class BookInfoComposeActivity :
             latestChapterTitle = getString(R.string.lasted_show, book.latestChapterTitle),
             readTimeText = readTimeText,
             coverPath = book.getDisplayCover(),
-            intro = book.getDisplayIntro().orEmpty(),
+            intro = intro,
             kinds = book.getKindList(),
             groupText = groupText,
             tocText = tocText,
@@ -426,6 +429,20 @@ class BookInfoComposeActivity :
         )
         if (::refreshLayout.isInitialized) {
             refreshLayout.isRefreshing = false
+        }
+    }
+
+    private fun resolveStableIntro(book: Book): String {
+        val intro = book.getDisplayIntro().orEmpty()
+        if (intro.isNotBlank()) {
+            lastStableIntroBookUrl = book.bookUrl
+            lastStableIntro = intro
+            return intro
+        }
+        return if (lastStableIntroBookUrl == book.bookUrl && lastStableIntro.isNotBlank()) {
+            lastStableIntro
+        } else {
+            intro
         }
     }
 

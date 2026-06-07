@@ -289,6 +289,8 @@ class BookInfoActivity :
     private var composeAiImagePaths: List<String> = emptyList()
     private var composeBookInfoState by mutableStateOf(BookInfoUiState())
     private var composeBookInfoView: ComposeView? = null
+    private var composeLastStableIntroBookUrl: String? = null
+    private var composeLastStableIntro = ""
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
     override val viewModel by viewModels<BookInfoViewModel>()
@@ -746,14 +748,16 @@ class BookInfoActivity :
             chapterList.isEmpty() -> getString(R.string.toc_s, getString(R.string.error_load_toc))
             else -> getString(R.string.toc_s, safeBook.durChapterTitle)
         }
+        val intro = resolveComposeStableIntro(safeBook)
         composeBookInfoState = BookInfoUiState(
+            bookUrl = safeBook.bookUrl,
             name = safeBook.name,
             author = safeBook.getRealAuthor(),
             originName = getString(R.string.origin_show, safeBook.originName),
             latestChapterTitle = getString(R.string.lasted_show, safeBook.latestChapterTitle),
             readTimeText = composeReadTimeText,
             coverPath = safeBook.getDisplayCover(),
-            intro = safeBook.getDisplayIntro().orEmpty(),
+            intro = intro,
             kinds = safeBook.getKindList(),
             groupText = composeGroupText,
             tocText = tocText,
@@ -768,6 +772,20 @@ class BookInfoActivity :
             hasCustomButton = viewModel.hasCustomBtn,
             loading = false
         )
+    }
+
+    private fun resolveComposeStableIntro(book: Book): String {
+        val intro = book.getDisplayIntro().orEmpty()
+        if (intro.isNotBlank()) {
+            composeLastStableIntroBookUrl = book.bookUrl
+            composeLastStableIntro = intro
+            return intro
+        }
+        return if (composeLastStableIntroBookUrl == book.bookUrl && composeLastStableIntro.isNotBlank()) {
+            composeLastStableIntro
+        } else {
+            intro
+        }
     }
 
     override fun onResume() {

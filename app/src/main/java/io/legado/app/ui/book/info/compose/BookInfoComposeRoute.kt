@@ -327,7 +327,7 @@ fun BookInfoComposeRoute(
             }
             BookInfoContentPanel(style = style) {
                 BookInfoIntroPanel(
-                    intro = state.intro.ifBlank { stringResource(R.string.intro_show_null) },
+                    intro = state.intro,
                     state = state,
                     actions = actions,
                     style = style
@@ -950,6 +950,7 @@ private fun BookInfoIntroPanel(
     actions: BookInfoActions,
     style: BookInfoComposeStyle
 ) {
+    val displayIntro = intro.ifBlank { stringResource(R.string.intro_show_null) }
     val isWebIntro = intro.startsWith("<useweb>", ignoreCase = true)
     Column(
         modifier = Modifier
@@ -977,7 +978,7 @@ private fun BookInfoIntroPanel(
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 BookInfoIntroContent(
-                    rawIntro = intro,
+                    rawIntro = displayIntro,
                     state = state,
                     actions = actions,
                     style = style
