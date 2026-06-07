@@ -279,9 +279,6 @@ class BookInfoActivity :
     private var menuCloudEntryMode: MenuItem? = null
     private val book get() = viewModel.getBook(false)
     private var introRawText: CharSequence = ""
-    private var stableIntroBookUrl: String? = null
-    private var stableIntroWorkKey: String? = null
-    private var stableIntro = ""
     private var detailIntroOnly = false
     private var bookInfoComponentsReady = false
     private var lastBookInfoBgPath: String? = null
@@ -293,7 +290,6 @@ class BookInfoActivity :
     private var composeBookInfoState by mutableStateOf(BookInfoUiState())
     private var composeBookInfoView: ComposeView? = null
     private var composeLastStableIntroBookUrl: String? = null
-    private var composeLastStableIntroWorkKey: String? = null
     private var composeLastStableIntro = ""
 
     override val binding by viewBinding(ActivityBookInfoBinding::inflate)
@@ -789,42 +785,16 @@ class BookInfoActivity :
 
     private fun resolveComposeStableIntro(book: Book): String {
         val intro = book.getDisplayIntro().orEmpty()
-        val workKey = book.stableIntroWorkKey()
         if (intro.isNotBlank()) {
             composeLastStableIntroBookUrl = book.bookUrl
-            composeLastStableIntroWorkKey = workKey
             composeLastStableIntro = intro
             return intro
         }
-        return if (composeLastStableIntro.isNotBlank() &&
-            (composeLastStableIntroBookUrl == book.bookUrl || composeLastStableIntroWorkKey == workKey)
-        ) {
+        return if (composeLastStableIntroBookUrl == book.bookUrl && composeLastStableIntro.isNotBlank()) {
             composeLastStableIntro
         } else {
             intro
         }
-    }
-
-    private fun resolveStableIntro(book: Book): String? {
-        val intro = book.getDisplayIntro()
-        val workKey = book.stableIntroWorkKey()
-        if (!intro.isNullOrBlank()) {
-            stableIntroBookUrl = book.bookUrl
-            stableIntroWorkKey = workKey
-            stableIntro = intro
-            return intro
-        }
-        return if (stableIntro.isNotBlank() &&
-            (stableIntroBookUrl == book.bookUrl || stableIntroWorkKey == workKey)
-        ) {
-            stableIntro
-        } else {
-            intro
-        }
-    }
-
-    private fun Book.stableIntroWorkKey(): String {
-        return listOf(origin, name, getRealAuthor()).joinToString("\u001F")
     }
 
     override fun onResume() {
@@ -1959,7 +1929,7 @@ class BookInfoActivity :
     }
 
     private fun showBookIntro(book: Book) {
-        val intro = resolveStableIntro(book)
+        val intro = book.getDisplayIntro()
         if (intro?.startsWith("<useweb>") == true) {
             binding.tvIntroToggle.gone()
             val lastIndex = intro.lastIndexOf("<")

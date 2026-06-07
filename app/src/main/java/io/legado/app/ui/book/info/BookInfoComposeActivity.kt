@@ -117,7 +117,6 @@ class BookInfoComposeActivity :
     private var aiImageCount = 0
     private var aiImagePaths: List<String> = emptyList()
     private var lastStableIntroBookUrl: String? = null
-    private var lastStableIntroWorkKey: String? = null
     private var lastStableIntro = ""
 
     private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
@@ -435,24 +434,16 @@ class BookInfoComposeActivity :
 
     private fun resolveStableIntro(book: Book): String {
         val intro = book.getDisplayIntro().orEmpty()
-        val workKey = book.stableIntroWorkKey()
         if (intro.isNotBlank()) {
             lastStableIntroBookUrl = book.bookUrl
-            lastStableIntroWorkKey = workKey
             lastStableIntro = intro
             return intro
         }
-        return if (lastStableIntro.isNotBlank() &&
-            (lastStableIntroBookUrl == book.bookUrl || lastStableIntroWorkKey == workKey)
-        ) {
+        return if (lastStableIntroBookUrl == book.bookUrl && lastStableIntro.isNotBlank()) {
             lastStableIntro
         } else {
             intro
         }
-    }
-
-    private fun Book.stableIntroWorkKey(): String {
-        return listOf(origin, name, getRealAuthor()).joinToString("\u001F")
     }
 
     private fun updateReadTime(targetBook: Book) {
