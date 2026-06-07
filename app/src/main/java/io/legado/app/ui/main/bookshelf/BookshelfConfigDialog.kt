@@ -8,8 +8,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,10 +16,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -110,17 +109,27 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                 var values by remember { mutableStateOf(initialValues) }
                 BookshelfConfigPanel(
                     title = getString(R.string.bookshelf_layout),
+                    subtitle = "${getString(R.string.group_style)} / ${getString(R.string.view)} / ${getString(R.string.sort)}",
                     style = style,
                     content = {
                         ConfigSection(
-                            title = getString(R.string.group_style),
+                            title = "结构",
                             style = style
                         ) {
-                            DialogChoiceChips(
+                            DialogSelectField(
+                                label = getString(R.string.group_style),
                                 options = groupStyleOptions,
                                 selectedIndex = values.groupStyle.coerceIn(groupStyleOptions.indices),
                                 style = style,
                                 onSelected = { values = values.copy(groupStyle = it) }
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            DialogSelectField(
+                                label = getString(R.string.view),
+                                options = layoutOptions,
+                                selectedIndex = values.layout.coerceIn(layoutOptions.indices),
+                                style = style,
+                                onSelected = { values = values.copy(layout = it) }
                             )
                         }
                         ConfigSection(
@@ -149,21 +158,11 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                             )
                         }
                         ConfigSection(
-                            title = getString(R.string.view),
-                            style = style
-                        ) {
-                            DialogChoiceChips(
-                                options = layoutOptions,
-                                selectedIndex = values.layout.coerceIn(layoutOptions.indices),
-                                style = style,
-                                onSelected = { values = values.copy(layout = it) }
-                            )
-                        }
-                        ConfigSection(
                             title = getString(R.string.sort),
                             style = style
                         ) {
-                            DialogChoiceChips(
+                            DialogSelectField(
+                                label = getString(R.string.sort),
                                 options = sortOptions,
                                 selectedIndex = values.sort.coerceIn(sortOptions.indices),
                                 style = style,
@@ -175,7 +174,8 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                             style = style,
                             visible = values.layout >= 2
                         ) {
-                            DialogChoiceChips(
+                            DialogSelectField(
+                                label = getString(R.string.book_name),
                                 options = bookNameOptions,
                                 selectedIndex = values.showBookname.coerceIn(bookNameOptions.indices),
                                 style = style,
@@ -233,6 +233,7 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
 @Composable
 private fun BookshelfConfigPanel(
     title: String,
+    subtitle: String,
     style: AppDialogStyle,
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
@@ -262,7 +263,7 @@ private fun BookshelfConfigPanel(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "调整书架分组、展示信息、布局密度和排序方式",
+                text = subtitle,
                 color = style.secondaryText,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
@@ -319,44 +320,71 @@ private fun ConfigSection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DialogChoiceChips(
+private fun DialogSelectField(
+    label: String,
     options: List<String>,
     selectedIndex: Int,
     style: AppDialogStyle,
     onSelected: (Int) -> Unit
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        options.forEachIndexed { index, label ->
-            val selected = selectedIndex == index
+    var expanded by remember { mutableStateOf(false) }
+    val value = options.getOrNull(selectedIndex).orEmpty()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            color = style.secondaryText,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
             Surface(
                 modifier = Modifier
-                    .widthIn(min = 78.dp)
-                    .clickable { onSelected(index) },
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
                 shape = RoundedCornerShape(style.actionRadius),
-                color = if (selected) {
-                    style.accent.copy(alpha = 0.18f)
-                } else {
-                    style.surface
-                },
+                color = style.surface,
                 tonalElevation = 0.dp,
-                shadowElevation = 1.dp
+                shadowElevation = 0.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = label,
-                        color = if (selected) style.accent else style.primaryText,
-                        fontSize = 14.sp,
+                        text = value,
+                        modifier = Modifier.weight(1f),
+                        color = style.primaryText,
+                        fontSize = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "v",
+                        color = style.secondaryText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEachIndexed { index, option ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = option,
+                                color = if (index == selectedIndex) style.accent else style.primaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(index)
+                        }
                     )
                 }
             }
