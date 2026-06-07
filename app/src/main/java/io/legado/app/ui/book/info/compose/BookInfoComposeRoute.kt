@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
@@ -87,7 +88,6 @@ import io.legado.app.utils.sendToClip
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
@@ -1538,6 +1538,22 @@ private fun BookInfoWebIntro(
                 }
             }
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            webView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) {
+                    val token = loadToken.get()
+                    scheduleBookInfoWebIntroHeightMeasure(
+                        webView = webView,
+                        token = token,
+                        isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken },
+                        delays = longArrayOf(120L, 360L, 720L)
+                    ) { activeToken, heightPx ->
+                        if (loadToken.get() == activeToken && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                            contentHeightPx = heightPx
+                        }
+                    }
+                }
+                false
+            }
             if (webView.getTag(R.id.tag) != loadKey) {
                 val token = loadToken.incrementAndGet()
                 webView.setTag(R.id.tag, loadKey)
@@ -1560,21 +1576,11 @@ private fun BookInfoWebIntro(
     )
     LaunchedEffect(loadKey, webView) {
         val token = loadToken.get()
-        delay(300)
-        measureBookInfoWebIntroHeight(
+        scheduleBookInfoWebIntroHeightMeasure(
             webView = webView,
             token = token,
-            isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
-        ) { activeToken, heightPx ->
-            if (loadToken.get() == activeToken && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
-                contentHeightPx = heightPx
-            }
-        }
-        delay(900)
-        measureBookInfoWebIntroHeight(
-            webView = webView,
-            token = token,
-            isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
+            isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken },
+            delays = longArrayOf(300L, 900L)
         ) { activeToken, heightPx ->
             if (loadToken.get() == activeToken && kotlin.math.abs(heightPx - contentHeightPx) > 8) {
                 contentHeightPx = heightPx
@@ -1626,9 +1632,31 @@ private class BookInfoIntroWebViewClient(
         val token = currentToken()
         if (!isTokenActive(token)) return
         runCatching { view.evaluateJavascript(jsStr, null) }
-        measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight)
-        view.postDelayed({ measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight) }, 350)
-        view.postDelayed({ measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight) }, 1200)
+        scheduleBookInfoWebIntroHeightMeasure(
+            webView = view,
+            token = token,
+            isTokenActive = isTokenActive,
+            delays = longArrayOf(0L, 120L, 360L, 720L, 1200L),
+            onContentHeight = onContentHeight
+        )
+    }
+}
+
+private fun scheduleBookInfoWebIntroHeightMeasure(
+    webView: WebView,
+    token: Long,
+    isTokenActive: (Long) -> Boolean,
+    delays: LongArray,
+    onContentHeight: (Long, Int) -> Unit
+) {
+    if (!isTokenActive(token)) return
+    delays.forEach { delayMillis ->
+        webView.postDelayed({
+            if (!isTokenActive(token) || webView.handler == null || !webView.isAttachedToWindow) {
+                return@postDelayed
+            }
+            measureBookInfoWebIntroHeight(webView, token, isTokenActive, onContentHeight)
+        }, delayMillis)
     }
 }
 
