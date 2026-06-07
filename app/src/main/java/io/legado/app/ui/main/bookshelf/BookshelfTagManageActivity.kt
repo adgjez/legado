@@ -2,11 +2,9 @@ package io.legado.app.ui.main.bookshelf
 
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -27,10 +25,13 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.ui.widget.compose.ComposeMultiChoiceDialog
+import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -175,25 +176,23 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
     }
 
     private fun showAddTagDialog(groupId: Long) {
-        val editText = EditText(this).apply {
-            hint = getString(R.string.bookshelf_tag_new_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setSingleLine(false)
-            minLines = 1
-        }
-        alert(titleResource = R.string.bookshelf_tag_edit) {
-            customView { editText }
-            okButton {
-                val newTags = BookTagHelper.parse(editText.text?.toString())
-                if (newTags.isEmpty()) return@okButton
-                val map = AppConfig.bookshelfGroupTags.toMutableMap()
-                map[groupId] = (map[groupId].orEmpty() + newTags).distinct()
-                AppConfig.bookshelfGroupTags = map
-                postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                loadTags()
-            }
-            cancelButton()
-        }
+        showDialogFragment(
+            ComposeTextInputDialog.create(
+                title = getString(R.string.bookshelf_tag_edit),
+                hint = getString(R.string.bookshelf_tag_new_hint),
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                validateInput = { BookTagHelper.parse(it).isNotEmpty() },
+                onPositive = {
+                    val newTags = BookTagHelper.parse(it)
+                    val map = AppConfig.bookshelfGroupTags.toMutableMap()
+                    map[groupId] = (map[groupId].orEmpty() + newTags).distinct()
+                    AppConfig.bookshelfGroupTags = map
+                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                    loadTags()
+                }
+            )
+        )
     }
 
     private fun showAssignBooksDialog(groupTags: GroupTags, tag: String) {
@@ -201,32 +200,37 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
         val checked = BooleanArray(groupTags.books.size) { index ->
             BookTagHelper.has(groupTags.books[index].customTag, tag)
         }
-        val labels = groupTags.books.map { it.name }.toTypedArray()
-        alert(title = "${groupTags.group.groupName} · $tag") {
-            multiChoiceItems(labels, checked) { _, which, isChecked ->
-                checked[which] = isChecked
-            }
-            okButton {
-                lifecycleScope.launch(IO) {
-                    groupTags.books.forEachIndexed { index, book ->
-                        val tags = BookTagHelper.parse(book.customTag).toMutableList()
-                        val hasTag = tags.any { it.equals(tag, ignoreCase = true) }
-                        when {
-                            checked[index] && !hasTag -> tags.add(tag)
-                            !checked[index] && hasTag -> tags.removeAll { it.equals(tag, ignoreCase = true) }
-                            else -> return@forEachIndexed
+        val labels = groupTags.books.map { it.name }
+        showDialogFragment(
+            ComposeMultiChoiceDialog.create(
+                title = "${groupTags.group.groupName} · $tag",
+                labels = labels,
+                checked = checked,
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                onPositive = { result ->
+                    lifecycleScope.launch(IO) {
+                        groupTags.books.forEachIndexed { index, book ->
+                            val tags = BookTagHelper.parse(book.customTag).toMutableList()
+                            val hasTag = tags.any { it.equals(tag, ignoreCase = true) }
+                            when {
+                                result[index] && !hasTag -> tags.add(tag)
+                                !result[index] && hasTag -> tags.removeAll {
+                                    it.equals(tag, ignoreCase = true)
+                                }
+                                else -> return@forEachIndexed
+                            }
+                            book.customTag = BookTagHelper.join(tags)
+                            appDb.bookDao.update(book)
                         }
-                        book.customTag = BookTagHelper.join(tags)
-                        appDb.bookDao.update(book)
-                    }
-                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        loadTags()
+                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            loadTags()
+                        }
                     }
                 }
-            }
-            cancelButton()
-        }
+            )
+        )
     }
 
     private fun setTagVisible(groupId: Long, tag: String, visible: Boolean) {
