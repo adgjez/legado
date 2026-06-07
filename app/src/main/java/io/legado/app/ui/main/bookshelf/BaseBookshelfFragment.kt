@@ -20,7 +20,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.DialogBookshelfConfigBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
@@ -36,6 +35,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.ModernActionPopup
+import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.checkByIndex
 import io.legado.app.utils.getCheckedIndex
@@ -68,19 +68,18 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
     }
     private val exportResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton {
-                    requireContext().sendToClip(uri.toString())
-                }
-            }
+            showDialogFragment(
+                ComposeTextInputDialog.create(
+                    title = getString(R.string.export_success),
+                    hint = getString(R.string.path),
+                    initialValue = uri.toString(),
+                    message = DirectLinkUpload.getSummary().takeIf { uri.toString().isAbsUrl() },
+                    readOnly = true,
+                    positiveText = getString(android.R.string.ok),
+                    negativeText = getString(android.R.string.cancel),
+                    onPositive = { requireContext().sendToClip(it) }
+                )
+            )
         }
     }
     abstract val groupId: Long
@@ -225,20 +224,19 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 
     @SuppressLint("InflateParams")
     fun showAddBookByUrlAlert() {
-        alert(titleResource = R.string.add_book_url) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
+        showDialogFragment(
+            ComposeTextInputDialog.create(
+                title = getString(R.string.add_book_url),
+                hint = "url",
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                onPositive = {
                     waitDialog.setText("添加中...")
                     waitDialog.show()
                     viewModel.addBookByUrl(it)
                 }
-            }
-            cancelButton()
-        }
+            )
+        )
     }
 
     @SuppressLint("InflateParams")
@@ -341,24 +339,24 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
 
 
     private fun importBookshelfAlert(groupId: Long) {
-        alert(titleResource = R.string.import_bookshelf) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url/json"
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
+        showDialogFragment(
+            ComposeTextInputDialog.create(
+                title = getString(R.string.import_bookshelf),
+                hint = "url/json",
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(android.R.string.cancel),
+                neutralText = getString(R.string.select_file),
+                onPositive = {
                     viewModel.importBookshelf(it, groupId)
+                },
+                onNeutral = {
+                    importBookshelf.launch {
+                        mode = HandleFileContract.FILE
+                        allowExtensions = arrayOf("txt", "json")
+                    }
                 }
-            }
-            cancelButton()
-            neutralButton(R.string.select_file) {
-                importBookshelf.launch {
-                    mode = HandleFileContract.FILE
-                    allowExtensions = arrayOf("txt", "json")
-                }
-            }
-        }
+            )
+        )
     }
 
 }
