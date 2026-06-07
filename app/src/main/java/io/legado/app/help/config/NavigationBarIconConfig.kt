@@ -54,6 +54,7 @@ object NavigationBarIconConfig {
     const val MODE_NIGHT = "night"
     const val STATE_NORMAL = "normal"
     const val STATE_SELECTED = "selected"
+    const val EXTRA_SEARCH = "search"
     const val DEFAULT_DIR_NAME = "default"
     private const val packageFileName = "navigation.json"
     private const val remoteListTimeoutMillis = 4_000L
@@ -137,6 +138,10 @@ object NavigationBarIconConfig {
         NavItem("readRecord", R.string.side_nav_stats, R.id.menu_read_record, R.drawable.ic_bottom_read_record),
         NavItem("my", R.string.my, R.id.menu_my_config, R.drawable.ic_bottom_person),
         NavItem("ai", R.string.side_nav_assistant, R.id.menu_ai, R.drawable.ic_bottom_ai_assistant)
+    )
+
+    val extraItems = listOf(
+        NavItem(EXTRA_SEARCH, R.string.navigation_icon_search_ball, 0, R.drawable.ic_search)
     )
 
     fun activeDirName(isNight: Boolean): String {
@@ -367,11 +372,45 @@ object NavigationBarIconConfig {
         return addOrUpdate(config, entry)
     }
 
+    fun saveSingleIconToPackage(
+        context: Context,
+        uri: Uri,
+        entry: Entry,
+        itemKey: String,
+        targetSize: Int
+    ): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) {
+            throw IllegalArgumentException(context.getString(R.string.navigation_bar_default_readonly))
+        }
+        val bitmap = decodeIconBitmap(context, uri, targetSize)
+            ?: throw IllegalArgumentException(context.getString(R.string.navigation_icon_decode_failed))
+        val output = drawCenteredIcon(bitmap, targetSize)
+        if (bitmap !== output && !bitmap.isRecycled) bitmap.recycle()
+        val dirName = entry.dirName.ifBlank {
+            entry.config.name.normalizeFileName().ifBlank { "navigation_${System.currentTimeMillis()}" }
+        }
+        val dir = entry.localDir ?: localDir(entry.config.isNightMode, dirName).apply { mkdirs() }
+        val fileName = "${itemKey}_single.png"
+        val file = File(dir, fileName)
+        FileOutputStream(file).use { output.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (!output.isRecycled) output.recycle()
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.icons[singleIconKey(itemKey)] = fileName
+        return addOrUpdate(config, entry)
+    }
+
     fun clearIcon(entry: Entry, itemKey: String, selected: Boolean): Entry {
         if (entry.dirName == DEFAULT_DIR_NAME) return entry
         val state = if (selected) STATE_SELECTED else STATE_NORMAL
         val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
         config.icons.remove(iconKey(itemKey, state))
+        return addOrUpdate(config, entry)
+    }
+
+    fun clearSingleIcon(entry: Entry, itemKey: String): Entry {
+        if (entry.dirName == DEFAULT_DIR_NAME) return entry
+        val config = entry.config.copy(icons = entry.config.icons.toMutableMap())
+        config.icons.remove(singleIconKey(itemKey))
         return addOrUpdate(config, entry)
     }
 
@@ -453,7 +492,10 @@ object NavigationBarIconConfig {
 
     fun applyTo(menu: Menu, context: Context, isNight: Boolean): Boolean {
         val entry = currentEntry(isNight)
-        val hasCustom = entry.dirName != DEFAULT_DIR_NAME && entry.config.icons.isNotEmpty()
+        val hasCustom = entry.dirName != DEFAULT_DIR_NAME && items.any { item ->
+            iconPath(entry, item.key, STATE_NORMAL) != null ||
+                iconPath(entry, item.key, STATE_SELECTED) != null
+        }
         items.forEach { item ->
             menu.findItem(item.menuId)?.icon = createMenuDrawable(context, entry, item)
         }
@@ -472,6 +514,24 @@ object NavigationBarIconConfig {
         return previewDrawable(context, currentEntry(AppConfig.isNightTheme), item, selected)
     }
 
+    fun previewSingleDrawable(context: Context, entry: Entry, item: NavItem): Drawable? {
+        return loadDrawable(context, singleIconPath(entry, item.key))
+            ?: ContextCompat.getDrawable(context, item.defaultIconRes)
+    }
+
+    fun currentSingleDrawable(context: Context, itemKey: String): Drawable? {
+        val item = extraItems.firstOrNull { it.key == itemKey } ?: return null
+        return previewSingleDrawable(context, currentEntry(AppConfig.isNightTheme), item)
+    }
+
+    fun hasSingleIcon(entry: Entry, itemKey: String): Boolean {
+        return singleIconPath(entry, itemKey) != null
+    }
+
+    fun hasCurrentSingleIcon(itemKey: String): Boolean {
+        return hasSingleIcon(currentEntry(AppConfig.isNightTheme), itemKey)
+    }
+
     fun currentMenuDrawable(context: Context, itemKey: String): Drawable? {
         val item = items.firstOrNull { it.key == itemKey } ?: return null
         return createMenuDrawable(context, currentEntry(AppConfig.isNightTheme), item)
@@ -488,6 +548,10 @@ object NavigationBarIconConfig {
     fun getIconFileName(entry: Entry, itemKey: String, selected: Boolean): String? {
         val state = if (selected) STATE_SELECTED else STATE_NORMAL
         return entry.config.icons[iconKey(itemKey, state)]?.let { File(it).name }
+    }
+
+    fun getSingleIconFileName(entry: Entry, itemKey: String): String? {
+        return entry.config.icons[singleIconKey(itemKey)]?.let { File(it).name }
     }
 
     private fun defaultEntry(isNight: Boolean): Entry {
@@ -672,6 +736,13 @@ object NavigationBarIconConfig {
         return if (file.isAbsolute) value else File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), value).absolutePath
     }
 
+    private fun singleIconPath(entry: Entry, itemKey: String): String? {
+        if (entry.dirName == DEFAULT_DIR_NAME) return null
+        val value = entry.config.icons[singleIconKey(itemKey)] ?: return null
+        val file = File(value)
+        return if (file.isAbsolute) value else File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), value).absolutePath
+    }
+
     private fun resolveSidebarBackgroundPath(entry: Entry): String? {
         if (entry.dirName == DEFAULT_DIR_NAME) return null
         val value = entry.config.sidebarBackgroundPath ?: return null
@@ -693,6 +764,8 @@ object NavigationBarIconConfig {
     }
 
     private fun iconKey(itemKey: String, state: String): String = "${itemKey}_$state"
+
+    private fun singleIconKey(itemKey: String): String = "${itemKey}_single"
 
     private fun defaultDrawable(context: Context, @DrawableRes resId: Int, color: Int): Drawable {
         val drawable = ContextCompat.getDrawable(context, resId)!!.mutate()

@@ -92,14 +92,24 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         lifecycleScope.launch {
             kotlin.runCatching {
                 withContext(Dispatchers.IO) {
-                    NavigationBarIconConfig.saveIconToPackage(
-                        this@NavigationBarManageActivity,
-                        uri,
-                        request.entry,
-                        request.item.key,
-                        request.selected,
-                        resources.getDimensionPixelSize(R.dimen.main_bottom_nav_icon_size)
-                    )
+                    if (request.single) {
+                        NavigationBarIconConfig.saveSingleIconToPackage(
+                            this@NavigationBarManageActivity,
+                            uri,
+                            request.entry,
+                            request.item.key,
+                            resources.getDimensionPixelSize(R.dimen.main_sidebar_search_icon_size)
+                        )
+                    } else {
+                        NavigationBarIconConfig.saveIconToPackage(
+                            this@NavigationBarManageActivity,
+                            uri,
+                            request.entry,
+                            request.item.key,
+                            request.selected,
+                            resources.getDimensionPixelSize(R.dimen.main_bottom_nav_icon_size)
+                        )
+                    }
                 }
             }.onSuccess {
                 editingEntry = it
@@ -551,8 +561,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             }
             NavigationBarIconConfig.items
                 .filter { config.layoutMode == "sidebar" || it.key != "ai" }
+                .let { NavigationBarIconConfig.extraItems + it }
                 .forEach { item ->
-                    addView(iconRow(item))
+                    if (item.menuId == 0) {
+                        addView(singleIconRow(item))
+                    } else {
+                        addView(iconRow(item))
+                    }
                 }
         }
     }
@@ -682,6 +697,68 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             })
             addView(previewButton(entry, item, false))
             addView(previewButton(entry, item, true))
+        }
+    }
+
+    private fun singleIconRow(item: NavigationBarIconConfig.NavItem): View {
+        val entry = editingEntry ?: return View(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(14.dp, 8.dp, 14.dp, 8.dp)
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.actionRadius(context)
+            )
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = 8.dp
+            }
+            addView(TextView(context).apply {
+                setText(item.titleRes)
+                textSize = 15f
+                setTextColor(primaryTextColor)
+                typeface = this@NavigationBarManageActivity.uiTypeface()
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(singlePreviewButton(entry, item))
+        }
+    }
+
+    private fun singlePreviewButton(entry: NavigationBarIconConfig.Entry, item: NavigationBarIconConfig.NavItem): ImageView {
+        return ImageView(this).apply {
+            contentDescription = getString(item.titleRes)
+            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setImageDrawable(NavigationBarIconConfig.previewSingleDrawable(this@NavigationBarManageActivity, entry, item))
+            background = UiCorner.actionSelector(
+                ContextCompat.getColor(context, R.color.background_menu),
+                ContextCompat.getColor(context, R.color.background_card),
+                UiCorner.actionRadius(context)
+            )
+            layoutParams = LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginStart = 8.dp }
+            setOnClickListener {
+                selector(
+                    contentDescription,
+                    listOf(getString(R.string.select_image), getString(R.string.delete))
+                ) { _, index ->
+                    if (index == 0) {
+                        val code = requestSingleIconBase + NavigationBarIconConfig.extraItems.indexOf(item)
+                        pendingIconRequest = IconRequest(code, entry, item, selected = false, single = true)
+                        selectIcon.launch {
+                            mode = HandleFileContract.FILE
+                            requestCode = code
+                            title = getString(R.string.navigation_icon_select_file)
+                            allowExtensions = arrayOf("ico", "svg", "png", "jpg", "jpeg")
+                        }
+                    } else {
+                        editingEntry = NavigationBarIconConfig.clearSingleIcon(entry, item.key)
+                        pendingConfig = editingEntry!!.config.copy(icons = editingEntry!!.config.icons.toMutableMap())
+                        notifyAppliedIfNeeded(editingEntry!!)
+                        refreshEditDialog()
+                        loadPackages()
+                    }
+                }
+            }
         }
     }
 
@@ -965,7 +1042,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         val code: Int,
         val entry: NavigationBarIconConfig.Entry,
         val item: NavigationBarIconConfig.NavItem,
-        val selected: Boolean
+        val selected: Boolean,
+        val single: Boolean = false
     )
 
     private companion object {
@@ -975,6 +1053,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         const val requestSidebarBackground = 7001
         const val COLOR_BORDER = 7002
         const val requestBottomWallpaper = 7003
+        const val requestSingleIconBase = 7100
     }
 
     private enum class NavAction(val titleRes: Int) {

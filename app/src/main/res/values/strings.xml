@@ -1865,6 +1865,7 @@ function login() {
     <string name="navigation_icon_clear_selected">Clear selected icon</string>
     <string name="navigation_icon_select_file">Select navigation icon</string>
     <string name="navigation_icon_decode_failed">Icon parse failed. Please use ico, svg, png, jpg or jpeg.</string>
+    <string name="navigation_icon_search_ball">Search / assistant floating icon</string>
     <string name="bottom_bar_effect_solid">Solid</string>
     <string name="bottom_bar_effect_glass">Glass</string>
     <string name="bottom_bar_effect_frosted">Frosted glass</string>

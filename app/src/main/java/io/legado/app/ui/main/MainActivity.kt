@@ -734,6 +734,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             it.visibility = View.INVISIBLE
             root.addView(it)
         }
+        syncAiFloatingBallIcon(ball)
         showAiFloatingBallWhenReady(ball)
     }
 
@@ -749,11 +750,6 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             background = createSolidBottomShellDrawable(bottomBarCornerRadius, oval = true)
             layoutParams = ConstraintLayout.LayoutParams(size, size)
             addView(ImageView(this@MainActivity).apply {
-                setImageDrawable(
-                    NavigationBarIconConfig.currentDrawable(this@MainActivity, "ai", false)
-                        ?: ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_bottom_ai_assistant)
-                )
-                imageTintList = binding.bottomNavigationView.createThemeColorStateList()
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
                 layoutParams = FrameLayout.LayoutParams(
@@ -761,6 +757,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             })
+            syncAiFloatingBallIcon(this)
             setOnClickListener {
                 if (!aiFloatingBallDragged) {
                     startActivity(Intent(this@MainActivity, AiChatActivity::class.java))
@@ -1454,6 +1451,17 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun syncAiFloatingBallIcon(ball: View) {
+        val imageView = (ball as? ViewGroup)?.getChildAt(0) as? ImageView ?: return
+        val hasCustomSearchIcon = NavigationBarIconConfig.hasCurrentSingleIcon(NavigationBarIconConfig.EXTRA_SEARCH)
+        imageView.setImageDrawable(searchSingleDrawable())
+        imageView.imageTintList = if (hasCustomSearchIcon) {
+            null
+        } else {
+            binding.bottomNavigationView.createThemeColorStateList()
+        }
+    }
+
     private fun measuredPillRadius(view: View, fallback: Float): Float {
         val width = view.width.takeIf { it > 0 } ?: return fallback
         val height = view.height.takeIf { it > 0 } ?: return fallback
@@ -1476,8 +1484,23 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun syncSearchButtonTint() = binding.run {
-        searchButtonIcon.imageTintList = bottomNavigationView.createThemeColorStateList()
-        sideSearchButton.imageTintList = bottomNavigationView.createThemeColorStateList()
+        val hasCustomSearchIcon = NavigationBarIconConfig.hasCurrentSingleIcon(NavigationBarIconConfig.EXTRA_SEARCH)
+        val drawable = searchSingleDrawable()
+        searchButtonIcon.setImageDrawable(drawable.copyForImageView())
+        sideSearchButton.setImageDrawable(drawable.copyForImageView())
+        val tint = if (hasCustomSearchIcon) null else bottomNavigationView.createThemeColorStateList()
+        searchButtonIcon.imageTintList = tint
+        sideSearchButton.imageTintList = tint
+        aiFloatingBall?.let(::syncAiFloatingBallIcon)
+    }
+
+    private fun searchSingleDrawable(): Drawable? {
+        return NavigationBarIconConfig.currentSingleDrawable(this, NavigationBarIconConfig.EXTRA_SEARCH)
+            ?: ContextCompat.getDrawable(this, R.drawable.ic_search)
+    }
+
+    private fun Drawable?.copyForImageView(): Drawable? {
+        return this?.constantState?.newDrawable()?.mutate() ?: this?.mutate()
     }
 
     private fun createSolidBottomShellDrawable(cornerRadius: Float, oval: Boolean): GradientDrawable {
