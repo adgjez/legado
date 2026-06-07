@@ -679,10 +679,23 @@ class BookInfoActivity :
             },
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
+            onLogin = ::openSourceLogin,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onSetupWebIntro = ::setupComposeWebIntro
         )
+    }
+
+    private fun openSourceLogin() {
+        viewModel.bookSource
+            ?.takeIf { !it.loginUrl.isNullOrBlank() }
+            ?.let { source ->
+                startActivity<SourceLoginActivity> {
+                    putExtra("type", "bookSource")
+                    putExtra("key", source.bookSourceUrl)
+                    putExtra("bookUrl", viewModel.getBook(false)?.bookUrl)
+                }
+            }
     }
 
     private fun setupComposeWebIntro(webView: WebView) {
@@ -790,6 +803,7 @@ class BookInfoActivity :
             aiImagePaths = composeAiImagePaths,
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
+            hasSourceLogin = !viewModel.bookSource?.loginUrl.isNullOrBlank(),
             loading = false
         )
     }

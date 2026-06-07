@@ -99,7 +99,6 @@ import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.sendToClip
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +137,7 @@ data class BookInfoUiState(
     val aiImagePaths: List<String> = emptyList(),
     val inBookshelf: Boolean = false,
     val hasCustomButton: Boolean = false,
+    val hasSourceLogin: Boolean = false,
     val loading: Boolean = false
 )
 
@@ -162,6 +162,7 @@ data class BookInfoActions(
     val onOpenChapter: (BookInfoChapterUi) -> Unit = {},
     val onOpenAiGallery: () -> Unit = {},
     val onCustomButton: () -> Unit = {},
+    val onLogin: () -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
     val onSetBookVariable: () -> Unit = {},
     val onCopyBookUrl: () -> Unit = {},
@@ -870,7 +871,6 @@ private fun BookInfoMoreActionSheet(
     actions: BookInfoActions,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -892,15 +892,15 @@ private fun BookInfoMoreActionSheet(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
+            if (state.hasSourceLogin) {
+                BookInfoMoreActionItem(stringResource(R.string.login), style) {
+                    onDismiss()
+                    actions.onLogin()
+                }
+            }
             BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
                 onDismiss()
                 actions.onEditBookInfo()
-            }
-            if (state.intro.isNotBlank()) {
-                BookInfoMoreActionItem("复制简介", style) {
-                    onDismiss()
-                    context.sendToClip(state.intro.toCopyableBookInfoIntro())
-                }
             }
             BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
                 onDismiss()
@@ -2240,35 +2240,4 @@ private fun String.cleanBookInfoValue(): String {
 private fun String.extractWrappedIntro(prefixLength: Int): String {
     val endIndex = lastIndexOf("<").takeIf { it > prefixLength } ?: length
     return substring(prefixLength.coerceAtMost(length), endIndex.coerceAtLeast(prefixLength).coerceAtMost(length))
-}
-
-private fun String.toCopyableBookInfoIntro(): String {
-    val htmlOptions = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-    val text = when {
-        startsWith("<useweb>", ignoreCase = true) -> {
-            extractWrappedIntro(8)
-                .replace(Regex("<script\\b[^>]*>.*?</script>", htmlOptions), "")
-                .replace(Regex("<style\\b[^>]*>.*?</style>", htmlOptions), "")
-                .let {
-                    HtmlCompat.fromHtml(it, HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
-                }
-        }
-
-        startsWith("<usehtml>", ignoreCase = true) -> {
-            HtmlCompat.fromHtml(
-                extractWrappedIntro(9),
-                HtmlCompat.FROM_HTML_MODE_LEGACY
-            ).toString()
-        }
-
-        startsWith("<md>", ignoreCase = true) -> {
-            extractWrappedIntro(4)
-        }
-
-        else -> this
-    }
-    return text
-        .replace(Regex("[\\t\\x0B\\f\\r]+"), " ")
-        .replace(Regex("\\n{3,}"), "\n\n")
-        .trim()
 }

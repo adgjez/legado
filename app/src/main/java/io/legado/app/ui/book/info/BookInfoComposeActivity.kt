@@ -65,6 +65,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -363,6 +364,7 @@ class BookInfoComposeActivity :
             },
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
+            onLogin = ::openSourceLogin,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onCopyBookUrl = ::copyBookUrl,
@@ -419,6 +421,20 @@ class BookInfoComposeActivity :
                 viewModel.clearCache(book)
             }
         }
+    }
+
+    private fun openSourceLogin() {
+        viewModel.bookSource
+            ?.takeIf { !it.loginUrl.isNullOrBlank() }
+            ?.let { source ->
+                startActivity(
+                    Intent(this, SourceLoginActivity::class.java).apply {
+                        putExtra("type", "bookSource")
+                        putExtra("key", source.bookSourceUrl)
+                        putExtra("bookUrl", viewModel.getBook(false)?.bookUrl)
+                    }
+                )
+            }
     }
 
     private fun setupWebIntro(webView: WebView) {
@@ -484,6 +500,7 @@ class BookInfoComposeActivity :
             aiImagePaths = aiImagePaths,
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
+            hasSourceLogin = !viewModel.bookSource?.loginUrl.isNullOrBlank(),
             loading = false
         )
         if (::refreshLayout.isInitialized) {
