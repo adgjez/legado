@@ -32,11 +32,60 @@
 
     </io.legado.app.ui.widget.text.TextInputLayout>
 
+    <io.legado.app.ui.widget.text.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="3dp">
+
+        <io.legado.app.lib.theme.view.ThemeEditText
+            android:id="@+id/check_source_thread_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:digits="1234567890"
+            android:hint="@string/check_source_thread_count"
+            tools:ignore="SpeakableTextPresentCheck,TouchTargetSizeCheck" />
+
+    </io.legado.app.ui.widget.text.TextInputLayout>
+
     <io.legado.app.lib.theme.view.ThemeCheckBox
         android:id="@+id/w_source_comment"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/write_source_comment" />
+
+    <io.legado.app.lib.theme.view.ThemeCheckBox
+        android:id="@+id/check_source_quick_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/check_source_quick_mode" />
+
+    <LinearLayout
+        android:id="@+id/ll_check_source_depth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="6dp">
+
+        <io.legado.app.ui.widget.text.AccentTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/check_source_depth" />
+
+        <androidx.appcompat.widget.AppCompatSpinner
+            android:id="@+id/check_source_depth"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:theme="@style/Spinner" />
+
+    </LinearLayout>
 
     <io.legado.app.ui.widget.text.AccentTextView
         android:paddingStart="12dp"

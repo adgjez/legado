@@ -18,7 +18,6 @@ import io.legado.app.exception.ContentEmptyException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.IntentData
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -48,7 +47,6 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
 import java.util.concurrent.Executors
-import kotlin.math.min
 
 /**
  * 校验书源
@@ -242,14 +240,14 @@ class CheckSourceService : BaseService() {
      */
     private suspend fun checkBook(book: Book, source: BookSource, isSearchBook: Boolean = true) {
         kotlin.runCatching {
-            if (!CheckSource.checkInfo) {
+            if (!CheckSource.shouldCheckInfo()) {
                 return
             }
             //校验详情
             if (book.tocUrl.isBlank()) {
                 WebBook.getBookInfoAwait(source, book)
             }
-            if (!CheckSource.checkCategory || source.bookSourceType == BookSourceType.file) {
+            if (!CheckSource.shouldCheckCategory() || source.bookSourceType == BookSourceType.file) {
                 return
             }
             //校验目录
@@ -258,7 +256,7 @@ class CheckSourceService : BaseService() {
                 .take(2)
                 .toList()
             val nextChapterUrl = toc.getOrNull(1)?.url ?: toc.first().url
-            if (!CheckSource.checkContent) {
+            if (!CheckSource.shouldCheckContent()) {
                 return
             }
             //校验正文
@@ -301,13 +299,7 @@ class CheckSourceService : BaseService() {
     }
 
     private fun checkThreadCount(): Int {
-        val maxMemoryMb = Runtime.getRuntime().maxMemory() / 1024 / 1024
-        val maxByHeap = when {
-            maxMemoryMb <= 256 -> 2
-            maxMemoryMb <= 384 -> 3
-            else -> 4
-        }
-        return AppConfig.threadCount.coerceIn(1, min(AppConst.MAX_THREAD, maxByHeap))
+        return CheckSource.normalizedThreadCount()
     }
 
 }

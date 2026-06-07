@@ -3,6 +3,9 @@ package io.legado.app.ui.config
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import androidx.core.view.isVisible
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.PreferKey
@@ -30,6 +33,37 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
         binding.run {
+            fun applyQuickDepth(depth: Int = checkSourceDepth.selectedItemPosition) {
+                checkInfo.isChecked = depth >= CheckSource.CHECK_DEPTH_INFO
+                checkCategory.isChecked = depth >= CheckSource.CHECK_DEPTH_CATEGORY
+                checkContent.isChecked = depth >= CheckSource.CHECK_DEPTH_CONTENT
+            }
+
+            fun refreshCheckItemState() {
+                val quickMode = checkSourceQuickMode.isChecked
+                llCheckSourceDepth.isVisible = quickMode
+                if (quickMode) {
+                    applyQuickDepth()
+                    checkInfo.isEnabled = false
+                    checkCategory.isEnabled = false
+                    checkContent.isEnabled = false
+                    return
+                }
+                checkInfo.isEnabled = checkSearch.isChecked || checkDiscovery.isChecked
+                if (!checkInfo.isEnabled || !checkInfo.isChecked) {
+                    checkCategory.isChecked = false
+                    checkContent.isChecked = false
+                    checkCategory.isEnabled = false
+                    checkContent.isEnabled = false
+                } else {
+                    checkCategory.isEnabled = true
+                    checkContent.isEnabled = checkCategory.isChecked
+                    if (!checkCategory.isChecked) {
+                        checkContent.isChecked = false
+                    }
+                }
+            }
+
             fun disableInfoSection() {
                 checkInfo.isChecked = false
                 checkInfo.isEnabled = false
@@ -42,6 +76,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                 if (!checkSearch.isChecked && !checkDiscovery.isChecked && !checkDomain.isChecked) {
                     checkSearch.isChecked = true
                 }
+                refreshCheckItemState()
             }
             checkSearch.onClick {
                 if (!checkSearch.isChecked && !checkDiscovery.isChecked) {
@@ -52,6 +87,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                 } else {
                     checkInfo.isEnabled = true
                 }
+                refreshCheckItemState()
             }
             checkDiscovery.onClick {
                 if (!checkSearch.isChecked && !checkDiscovery.isChecked) {
@@ -62,6 +98,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                 } else {
                     checkInfo.isEnabled = true
                 }
+                refreshCheckItemState()
             }
             checkInfo.onClick {
                 if (!checkInfo.isChecked) {
@@ -72,6 +109,7 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                 } else {
                     checkCategory.isEnabled = true
                 }
+                refreshCheckItemState()
             }
             checkCategory.onClick {
                 if (!checkCategory.isChecked) {
@@ -80,19 +118,57 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                 } else {
                     checkContent.isEnabled = true
                 }
+                refreshCheckItemState()
+            }
+            checkSourceQuickMode.onClick {
+                refreshCheckItemState()
+            }
+            val depthAdapter = ArrayAdapter(
+                requireContext(),
+                R.layout.item_text_common,
+                listOf(
+                    getString(R.string.check_source_depth_result),
+                    getString(R.string.check_source_depth_info),
+                    getString(R.string.check_source_depth_category),
+                    getString(R.string.check_source_depth_content)
+                )
+            )
+            depthAdapter.setDropDownViewResource(R.layout.item_spinner_dropdown)
+            checkSourceDepth.adapter = depthAdapter
+            checkSourceDepth.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    if (checkSourceQuickMode.isChecked) {
+                        applyQuickDepth(position)
+                    }
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             }
         }
         CheckSource.run {
             binding.checkSourceTimeout.setText((timeout / 1000).toString())
+            binding.checkSourceThreadCount.setText(normalizedThreadCount().toString())
+            binding.checkSourceQuickMode.isChecked = quickMode
+            binding.checkSourceDepth.setSelection(normalizedCheckDepth())
             binding.wSourceComment.isChecked  = wSourceComment
             binding.checkDomain.isChecked = checkDomain
             binding.checkSearch.isChecked = checkSearch
             binding.checkDiscovery.isChecked = checkDiscovery
-            binding.checkInfo.isChecked = checkInfo
-            binding.checkCategory.isChecked = checkCategory
-            binding.checkContent.isChecked = checkContent
-            binding.checkCategory.isEnabled = checkInfo
-            binding.checkContent.isEnabled = checkCategory
+            binding.checkInfo.isChecked = shouldCheckInfo()
+            binding.checkCategory.isChecked = shouldCheckCategory()
+            binding.checkContent.isChecked = shouldCheckContent()
+            binding.run {
+                val quickMode = checkSourceQuickMode.isChecked
+                llCheckSourceDepth.isVisible = quickMode
+                checkInfo.isEnabled = !quickMode && (checkSearch.isChecked || checkDiscovery.isChecked)
+                checkCategory.isEnabled = !quickMode && checkInfo.isChecked
+                checkContent.isEnabled = !quickMode && checkCategory.isChecked
+            }
             binding.tvCancel.onClick {
                 dismiss()
             }
@@ -115,13 +191,28 @@ class CheckSourceConfig : BaseDialogFragment(R.layout.dialog_check_source_config
                     }
                     else -> timeout = text.toLong() * 1000
                 }
+                val threadText = binding.checkSourceThreadCount.text.toString()
+                val threadValue = threadText.toIntOrNull()
+                if (threadValue == null || threadValue !in 1..10) {
+                    toastOnUi(R.string.check_source_thread_count_invalid)
+                    return@onClick
+                }
+                threadCount = threadValue
+                quickMode = binding.checkSourceQuickMode.isChecked
+                checkDepth = binding.checkSourceDepth.selectedItemPosition
                 wSourceComment = binding.wSourceComment.isChecked
                 checkDomain = binding.checkDomain.isChecked
                 checkSearch = binding.checkSearch.isChecked
                 checkDiscovery = binding.checkDiscovery.isChecked
-                checkInfo = binding.checkInfo.isChecked
-                checkCategory = binding.checkCategory.isChecked
-                checkContent = binding.checkContent.isChecked
+                if (quickMode) {
+                    checkInfo = checkDepth >= CHECK_DEPTH_INFO
+                    checkCategory = checkDepth >= CHECK_DEPTH_CATEGORY
+                    checkContent = checkDepth >= CHECK_DEPTH_CONTENT
+                } else {
+                    checkInfo = binding.checkInfo.isChecked
+                    checkCategory = binding.checkCategory.isChecked
+                    checkContent = binding.checkContent.isChecked
+                }
                 putConfig()
                 putPrefString(PreferKey.checkSource, summary)
                 dismiss()
