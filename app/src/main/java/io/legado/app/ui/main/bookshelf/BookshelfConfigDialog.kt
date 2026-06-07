@@ -56,6 +56,18 @@ data class BookshelfConfigValues(
     val margin: Int
 )
 
+private data class BookshelfConfigOption(
+    val label: String,
+    val value: Int
+)
+
+private data class BookshelfConfigOptions(
+    val groupStyles: List<BookshelfConfigOption>,
+    val layouts: List<BookshelfConfigOption>,
+    val sorts: List<BookshelfConfigOption>,
+    val bookNameModes: List<BookshelfConfigOption>
+)
+
 class BookshelfConfigDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.94f
@@ -83,116 +95,19 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val style = rememberAppDialogStyle()
-                val groupStyleOptions = resources.getStringArray(R.array.group_style).toList()
-                val layoutOptions = listOf(
-                    getString(R.string.layout_list),
-                    getString(R.string.layout_list_compact),
-                    getString(R.string.layout_grid2),
-                    getString(R.string.layout_grid3),
-                    getString(R.string.layout_grid4),
-                    getString(R.string.layout_grid5),
-                    getString(R.string.layout_grid6)
-                )
-                val sortOptions = listOf(
-                    getString(R.string.bookshelf_px_0),
-                    getString(R.string.bookshelf_px_1),
-                    getString(R.string.bookshelf_px_2),
-                    getString(R.string.bookshelf_px_3),
-                    getString(R.string.bookshelf_px_4),
-                    getString(R.string.bookshelf_px_5)
-                )
-                val bookNameOptions = listOf(
-                    getString(R.string.show),
-                    getString(R.string.hide),
-                    getString(R.string.overlay)
-                )
+                val options = remember { buildBookshelfConfigOptions() }
                 var values by remember { mutableStateOf(initialValues) }
                 BookshelfConfigPanel(
                     title = getString(R.string.bookshelf_layout),
                     subtitle = "${getString(R.string.group_style)} / ${getString(R.string.view)} / ${getString(R.string.sort)}",
                     style = style,
                     content = {
-                        ConfigSection(
-                            title = "结构",
-                            style = style
-                        ) {
-                            DialogSelectField(
-                                label = getString(R.string.group_style),
-                                options = groupStyleOptions,
-                                selectedIndex = values.groupStyle.coerceIn(groupStyleOptions.indices),
-                                style = style,
-                                onSelected = { values = values.copy(groupStyle = it) }
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            DialogSelectField(
-                                label = getString(R.string.view),
-                                options = layoutOptions,
-                                selectedIndex = values.layout.coerceIn(layoutOptions.indices),
-                                style = style,
-                                onSelected = { values = values.copy(layout = it) }
-                            )
-                        }
-                        ConfigSection(
-                            title = getString(R.string.show),
-                            style = style
-                        ) {
-                            AppDialogSwitchRow(
-                                text = getString(R.string.show_unread),
-                                checked = values.showUnread,
-                                onCheckedChange = { values = values.copy(showUnread = it) }
-                            )
-                            AppDialogSwitchRow(
-                                text = getString(R.string.show_last_update_time),
-                                checked = values.showLastUpdateTime,
-                                onCheckedChange = { values = values.copy(showLastUpdateTime = it) }
-                            )
-                            AppDialogSwitchRow(
-                                text = getString(R.string.show_wait_up_count),
-                                checked = values.showWaitUpCount,
-                                onCheckedChange = { values = values.copy(showWaitUpCount = it) }
-                            )
-                            AppDialogSwitchRow(
-                                text = getString(R.string.show_bookshelf_fast_scroller),
-                                checked = values.showFastScroller,
-                                onCheckedChange = { values = values.copy(showFastScroller = it) }
-                            )
-                        }
-                        ConfigSection(
-                            title = getString(R.string.sort),
-                            style = style
-                        ) {
-                            DialogSelectField(
-                                label = getString(R.string.sort),
-                                options = sortOptions,
-                                selectedIndex = values.sort.coerceIn(sortOptions.indices),
-                                style = style,
-                                onSelected = { values = values.copy(sort = it) }
-                            )
-                        }
-                        ConfigSection(
-                            title = getString(R.string.book_name),
+                        BookshelfConfigContent(
+                            values = values,
+                            options = options,
                             style = style,
-                            visible = values.layout >= 2
-                        ) {
-                            DialogSelectField(
-                                label = getString(R.string.book_name),
-                                options = bookNameOptions,
-                                selectedIndex = values.showBookname.coerceIn(bookNameOptions.indices),
-                                style = style,
-                                onSelected = { values = values.copy(showBookname = it) }
-                            )
-                        }
-                        ConfigSection(
-                            title = getString(R.string.margin),
-                            style = style
-                        ) {
-                            AppDialogSliderRow(
-                                title = getString(R.string.margin),
-                                value = values.margin,
-                                range = 0..60,
-                                onValueChange = { values = values.copy(margin = it) }
-                            )
-                        }
+                            onValuesChange = { values = it }
+                        )
                     },
                     actions = {
                         TextButton(
@@ -217,6 +132,35 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
         }
     }
 
+    private fun buildBookshelfConfigOptions(): BookshelfConfigOptions {
+        return BookshelfConfigOptions(
+            groupStyles = resources.getStringArray(R.array.group_style)
+                .mapIndexed { index, label -> BookshelfConfigOption(label, index) },
+            layouts = listOf(
+                getString(R.string.layout_list),
+                getString(R.string.layout_list_compact),
+                getString(R.string.layout_grid2),
+                getString(R.string.layout_grid3),
+                getString(R.string.layout_grid4),
+                getString(R.string.layout_grid5),
+                getString(R.string.layout_grid6)
+            ).mapIndexed { index, label -> BookshelfConfigOption(label, index) },
+            sorts = listOf(
+                getString(R.string.bookshelf_px_0),
+                getString(R.string.bookshelf_px_1),
+                getString(R.string.bookshelf_px_2),
+                getString(R.string.bookshelf_px_3),
+                getString(R.string.bookshelf_px_4),
+                getString(R.string.bookshelf_px_5)
+            ).mapIndexed { index, label -> BookshelfConfigOption(label, index) },
+            bookNameModes = listOf(
+                getString(R.string.show),
+                getString(R.string.hide),
+                getString(R.string.overlay)
+            ).mapIndexed { index, label -> BookshelfConfigOption(label, index) }
+        )
+    }
+
     companion object {
         fun create(
             initialValues: BookshelfConfigValues,
@@ -227,6 +171,96 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                 this.onApply = onApply
             }
         }
+    }
+}
+
+@Composable
+private fun BookshelfConfigContent(
+    values: BookshelfConfigValues,
+    options: BookshelfConfigOptions,
+    style: AppDialogStyle,
+    onValuesChange: (BookshelfConfigValues) -> Unit
+) {
+    ConfigSection(
+        title = "结构",
+        style = style
+    ) {
+        DialogSelectField(
+            label = "分组样式",
+            options = options.groupStyles.map { it.label },
+            selectedIndex = values.groupStyle.coerceIn(options.groupStyles.indices),
+            style = style,
+            onSelected = { onValuesChange(values.copy(groupStyle = options.groupStyles[it].value)) }
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        DialogSelectField(
+            label = "视图",
+            options = options.layouts.map { it.label },
+            selectedIndex = values.layout.coerceIn(options.layouts.indices),
+            style = style,
+            onSelected = { onValuesChange(values.copy(layout = options.layouts[it].value)) }
+        )
+    }
+    ConfigSection(
+        title = "显示",
+        style = style
+    ) {
+        AppDialogSwitchRow(
+            text = "显示未读",
+            checked = values.showUnread,
+            onCheckedChange = { onValuesChange(values.copy(showUnread = it)) }
+        )
+        AppDialogSwitchRow(
+            text = "显示最近更新时间",
+            checked = values.showLastUpdateTime,
+            onCheckedChange = { onValuesChange(values.copy(showLastUpdateTime = it)) }
+        )
+        AppDialogSwitchRow(
+            text = "显示追更数量",
+            checked = values.showWaitUpCount,
+            onCheckedChange = { onValuesChange(values.copy(showWaitUpCount = it)) }
+        )
+        AppDialogSwitchRow(
+            text = "显示快速滚动条",
+            checked = values.showFastScroller,
+            onCheckedChange = { onValuesChange(values.copy(showFastScroller = it)) }
+        )
+    }
+    ConfigSection(
+        title = "排序",
+        style = style
+    ) {
+        DialogSelectField(
+            label = "排序",
+            options = options.sorts.map { it.label },
+            selectedIndex = values.sort.coerceIn(options.sorts.indices),
+            style = style,
+            onSelected = { onValuesChange(values.copy(sort = options.sorts[it].value)) }
+        )
+    }
+    ConfigSection(
+        title = "书名",
+        style = style,
+        visible = values.layout >= 2
+    ) {
+        DialogSelectField(
+            label = "书名",
+            options = options.bookNameModes.map { it.label },
+            selectedIndex = values.showBookname.coerceIn(options.bookNameModes.indices),
+            style = style,
+            onSelected = { onValuesChange(values.copy(showBookname = options.bookNameModes[it].value)) }
+        )
+    }
+    ConfigSection(
+        title = "边距",
+        style = style
+    ) {
+        AppDialogSliderRow(
+            title = "边距",
+            value = values.margin,
+            range = 0..60,
+            onValueChange = { onValuesChange(values.copy(margin = it)) }
+        )
     }
 }
 
