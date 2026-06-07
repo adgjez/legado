@@ -353,7 +353,12 @@ fun BookInfoComposeRoute(
                     webIntroExpandPages = webIntroExpandPages
                 )
             }
-            Spacer(modifier = Modifier.height(116.dp))
+            Spacer(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(116.dp)
+                    .background(style.colors.contentBackground)
+            )
         }
         BookInfoBottomActions(
             state = state,
@@ -960,8 +965,7 @@ private fun BookInfoContentPanel(
                 Brush.verticalGradient(
                     0f to style.colors.contentTop,
                     0.24f to style.colors.contentBackground,
-                    0.72f to style.colors.contentBackground,
-                    1f to style.colors.background
+                    1f to style.colors.contentBackground
                 )
             )
             .padding(top = 10.dp)
