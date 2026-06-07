@@ -128,6 +128,7 @@ import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
+import io.legado.app.ui.config.LibraryContainerManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
@@ -680,6 +681,20 @@ class BookInfoActivity :
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
             onLogin = ::openSourceLogin,
+            onCloudBackup = {
+                viewModel.getBook()?.let { book ->
+                    BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.CACHE_PACKAGE)
+                    updateBookCloudEntryMenu()
+                    showBookCloudBackupDialog(book)
+                }
+            },
+            onOpenLibraryContainer = {
+                viewModel.getBook()?.let { book ->
+                    BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.LIBRARY_CHAPTER)
+                    updateBookCloudEntryMenu()
+                }
+                startActivity<LibraryContainerManageActivity>()
+            },
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onSetupWebIntro = ::setupComposeWebIntro

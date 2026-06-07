@@ -33,6 +33,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
+import io.legado.app.help.book.BookCloudEntryMode
+import io.legado.app.help.book.BookCloudEntryModeStore
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -50,6 +52,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.model.SourceCallBack
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.ui.book.cache.CacheManageActivity
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
@@ -64,6 +67,7 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
+import io.legado.app.ui.config.LibraryContainerManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
@@ -365,6 +369,22 @@ class BookInfoComposeActivity :
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
             onLogin = ::openSourceLogin,
+            onCloudBackup = {
+                viewModel.getBook(false)?.let { book ->
+                    BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.CACHE_PACKAGE)
+                    startActivity(
+                        Intent(this, CacheManageActivity::class.java).apply {
+                            putExtra(CacheManageActivity.EXTRA_INITIAL_SEARCH_KEY, book.name)
+                        }
+                    )
+                }
+            },
+            onOpenLibraryContainer = {
+                viewModel.getBook(false)?.let { book ->
+                    BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.LIBRARY_CHAPTER)
+                }
+                startActivity(Intent(this, LibraryContainerManageActivity::class.java))
+            },
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onCopyBookUrl = ::copyBookUrl,

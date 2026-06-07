@@ -163,6 +163,8 @@ data class BookInfoActions(
     val onOpenAiGallery: () -> Unit = {},
     val onCustomButton: () -> Unit = {},
     val onLogin: () -> Unit = {},
+    val onCloudBackup: () -> Unit = {},
+    val onOpenLibraryContainer: () -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
     val onSetBookVariable: () -> Unit = {},
     val onCopyBookUrl: () -> Unit = {},
@@ -897,6 +899,14 @@ private fun BookInfoMoreActionSheet(
                     onDismiss()
                     actions.onLogin()
                 }
+            }
+            BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), style) {
+                onDismiss()
+                actions.onCloudBackup()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), style) {
+                onDismiss()
+                actions.onOpenLibraryContainer()
             }
             BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
                 onDismiss()
