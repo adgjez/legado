@@ -30,7 +30,9 @@ import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeout
 import org.mozilla.javascript.WrappedException
 import splitties.init.appCtx
@@ -170,9 +173,13 @@ class CheckSourceService : BaseService() {
 
     private suspend fun doCheckSource(source: BookSource) {
         Debug.startChecking(source)
-        source.removeInvalidGroups()
+        source.updateGroups {
+            removeInvalidGroups()
+        }
         if (CheckSource.wSourceComment) {
-            source.removeErrorComment()
+            source.updateGroups {
+                removeErrorComment()
+            }
         }
         //检测源地址可访问性
         if (CheckSource.checkDomain) {
@@ -181,57 +188,78 @@ class CheckSourceService : BaseService() {
                 throw NoStackTraceException("源地址不是http链接")
             }
             else if (isDomainReachable(domain)) {
-                source.removeGroup("域名失效")
+                source.removeGroupSafe("域名失效")
             } else {
-                source.addGroup("域名失效")
+                source.addGroupSafe("域名失效")
                 throw NoStackTraceException("源地址不可访问")
             }
         }
+        if (CheckSource.quickMode) {
+            checkSourceBranchesFast(source)
+        } else {
+            checkSearchBranch(source)
+            checkDiscoveryBranch(source)
+        }
+        val finalCheckMessage = source.getInvalidGroupNames()
+        if (finalCheckMessage.isNotBlank()) {
+            throw NoStackTraceException(finalCheckMessage)
+        }
+    }
+
+    private suspend fun checkSourceBranchesFast(source: BookSource) = supervisorScope {
+        listOf(
+            async { kotlin.runCatching { checkSearchBranch(source) } },
+            async { kotlin.runCatching { checkDiscoveryBranch(source) } }
+        ).awaitAll().firstOrNull { it.isFailure }?.exceptionOrNull()?.let {
+            throw it
+        }
+    }
+
+    private suspend fun checkSearchBranch(source: BookSource) {
         //校验搜索书籍
         if (CheckSource.checkSearch) {
             val searchWord = source.getCheckKeyword(CheckSource.keyword)
             if (!source.searchUrl.isNullOrBlank()) {
-                source.removeGroup("搜索链接规则为空")
+                source.removeGroupSafe("搜索链接规则为空")
                 val searchBooks = WebBook.searchBookAwait(
                     source,
                     searchWord,
                     shouldBreak = { it > 0 }
                 )
                 if (searchBooks.isEmpty()) {
-                    source.addGroup("搜索失效")
+                    source.addGroupSafe("搜索失效")
                 } else {
-                    source.removeGroup("搜索失效")
+                    source.removeGroupSafe("搜索失效")
                     checkBook(searchBooks.first().toBook(), source)
                 }
             } else {
-                source.addGroup("搜索链接规则为空")
+                source.addGroupSafe("搜索链接规则为空")
             }
         }
+    }
+
+    private suspend fun checkDiscoveryBranch(source: BookSource) {
         //校验发现书籍
         if (CheckSource.checkDiscovery && !source.exploreUrl.isNullOrBlank()) {
             val url = source.exploreKinds().firstOrNull {
                 !it.url.isNullOrBlank()
             }?.url
             if (url.isNullOrBlank()) {
-                source.addGroup("发现规则为空")
+                source.addGroupSafe("发现规则为空")
             } else {
-                source.removeGroup("发现规则为空")
+                source.removeGroupSafe("发现规则为空")
                 val exploreBooks = WebBook.exploreBookAwait(
                     source,
                     url,
                     shouldBreak = { it > 0 }
                 )
                 if (exploreBooks.isEmpty()) {
-                    source.addGroup("发现失效")
+                    source.addGroupSafe("发现失效")
                 } else {
-                    source.removeGroup("发现失效")
+                    source.removeGroupSafe("发现失效")
                     checkBook(exploreBooks.first().toBook(), source, false)
                 }
             }
-        }
-        val finalCheckMessage = source.getInvalidGroupNames()
-        if (finalCheckMessage.isNotBlank()) {
-            throw NoStackTraceException(finalCheckMessage)
         }
     }
 
@@ -270,14 +298,32 @@ class CheckSourceService : BaseService() {
         }.onFailure {
             val bookType = if (isSearchBook) "搜索" else "发现"
             when (it) {
-                is ContentEmptyException -> source.addGroup("${bookType}正文失效")
-                is TocEmptyException -> source.addGroup("${bookType}目录失效")
+                is ContentEmptyException -> source.addGroupSafe("${bookType}正文失效")
+                is TocEmptyException -> source.addGroupSafe("${bookType}目录失效")
                 else -> throw it
             }
         }.onSuccess {
             val bookType = if (isSearchBook) "搜索" else "发现"
-            source.removeGroup("${bookType}目录失效")
-            source.removeGroup("${bookType}正文失效")
+            source.removeGroupSafe("${bookType}目录失效")
+            source.removeGroupSafe("${bookType}正文失效")
+        }
+    }
+
+    private inline fun BookSource.updateGroups(block: BookSource.() -> Unit) {
+        synchronized(this) {
+            block()
+        }
+    }
+
+    private fun BookSource.addGroupSafe(group: String) {
+        updateGroups {
+            addGroup(group)
+        }
+    }
+
+    private fun BookSource.removeGroupSafe(group: String) {
+        updateGroups {
+            removeGroup(group)
         }
     }
 

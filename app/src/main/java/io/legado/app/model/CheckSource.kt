@@ -11,18 +11,12 @@ import io.legado.app.utils.startService
 import splitties.init.appCtx
 
 object CheckSource {
-    const val CHECK_DEPTH_RESULT = 0
-    const val CHECK_DEPTH_INFO = 1
-    const val CHECK_DEPTH_CATEGORY = 2
-    const val CHECK_DEPTH_CONTENT = 3
-
     var keyword = "我的"
 
     //校验设置
     var timeout = CacheManager.getLong("checkSourceTimeout") ?: 180000L
-    var threadCount = CacheManager.getInt("checkSourceThreadCount") ?: 6
+    var threadCount = CacheManager.getInt("checkSourceThreadCount") ?: 8
     var quickMode = CacheManager.get("checkSourceQuickMode")?.toBoolean() ?: false
-    var checkDepth = CacheManager.getInt("checkSourceDepth") ?: CHECK_DEPTH_CONTENT
     var wSourceComment = CacheManager.get("wSourceComment")?.toBoolean() ?: true
     var checkDomain = CacheManager.get("checkDomain")?.toBoolean() ?: false
     var checkSearch = CacheManager.get("checkSearch")?.toBoolean() ?: true
@@ -58,7 +52,6 @@ object CheckSource {
         CacheManager.put("checkSourceTimeout", timeout)
         CacheManager.put("checkSourceThreadCount", normalizedThreadCount())
         CacheManager.put("checkSourceQuickMode", quickMode)
-        CacheManager.put("checkSourceDepth", normalizedCheckDepth())
         CacheManager.put("wSourceComment", wSourceComment)
         CacheManager.put("checkDomain", checkDomain)
         CacheManager.put("checkSearch", checkSearch)
@@ -69,32 +62,19 @@ object CheckSource {
     }
 
     fun normalizedThreadCount(): Int {
-        return threadCount.coerceIn(1, 10)
-    }
-
-    fun normalizedCheckDepth(): Int {
-        return checkDepth.coerceIn(CHECK_DEPTH_RESULT, CHECK_DEPTH_CONTENT)
+        return threadCount.coerceIn(1, 64)
     }
 
     fun shouldCheckInfo(): Boolean {
-        return if (quickMode) normalizedCheckDepth() >= CHECK_DEPTH_INFO else checkInfo
+        return checkInfo
     }
 
     fun shouldCheckCategory(): Boolean {
-        return if (quickMode) normalizedCheckDepth() >= CHECK_DEPTH_CATEGORY else checkCategory
+        return checkCategory
     }
 
     fun shouldCheckContent(): Boolean {
-        return if (quickMode) normalizedCheckDepth() >= CHECK_DEPTH_CONTENT else checkContent
-    }
-
-    fun depthLabel(depth: Int = normalizedCheckDepth()): String {
-        return when (depth.coerceIn(CHECK_DEPTH_RESULT, CHECK_DEPTH_CONTENT)) {
-            CHECK_DEPTH_RESULT -> appCtx.getString(R.string.check_source_depth_result)
-            CHECK_DEPTH_INFO -> appCtx.getString(R.string.check_source_depth_info)
-            CHECK_DEPTH_CATEGORY -> appCtx.getString(R.string.check_source_depth_category)
-            else -> appCtx.getString(R.string.check_source_depth_content)
-        }
+        return checkContent
     }
 
     private fun upSummary(): String {
@@ -109,7 +89,8 @@ object CheckSource {
             R.string.check_source_config_summary_ext,
             (timeout / 1000).toString(),
             normalizedThreadCount().toString(),
-            if (quickMode) depthLabel() else appCtx.getString(R.string.check_source_mode_manual),
+            if (quickMode) appCtx.getString(R.string.check_source_mode_quick)
+            else appCtx.getString(R.string.check_source_mode_manual),
             checkItem
         )
     }

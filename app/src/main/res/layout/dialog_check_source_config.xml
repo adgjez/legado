@@ -61,32 +61,6 @@
         android:layout_height="wrap_content"
         android:text="@string/check_source_quick_mode" />
 
-    <LinearLayout
-        android:id="@+id/ll_check_source_depth"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingLeft="12dp"
-        android:paddingRight="12dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="6dp">
-
-        <io.legado.app.ui.widget.text.AccentTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/check_source_depth" />
-
-        <androidx.appcompat.widget.AppCompatSpinner
-            android:id="@+id/check_source_depth"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:theme="@style/Spinner" />
-
-    </LinearLayout>
-
     <io.legado.app.ui.widget.text.AccentTextView
         android:paddingStart="12dp"
         android:layout_width="match_parent"
