@@ -14,6 +14,7 @@ import androidx.core.view.setPadding
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
+import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -50,11 +51,14 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
             val data = withContext(IO) {
                 val books = appDb.bookDao.all
                 val groups = appDb.bookGroupDao.all
-                    .filter { it.groupId >= 0 || it.groupId == BookGroup.IdAll }
+                    .filter { it.groupId != BookGroup.IdRoot }
                     .sortedWith(compareBy<BookGroup> { if (it.groupId == focusGroupId) 0 else 1 }
                         .thenBy { it.order })
+                val userGroupMask = groups.asSequence()
+                    .filter { it.groupId > 0 }
+                    .fold(0L) { acc, group -> acc or group.groupId }
                 groups.mapNotNull { group ->
-                    val groupBooks = booksInGroup(group, books)
+                    val groupBooks = booksInGroup(group, books, userGroupMask)
                     val existingTags = groupBooks.flatMap { BookTagHelper.parse(it.customTag) }
                         .distinct()
                         .sorted()
@@ -297,10 +301,30 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
         UiCorner.actionRadius(this)
     )
 
-    private fun booksInGroup(group: BookGroup, books: List<Book>): List<Book> {
+    private fun booksInGroup(group: BookGroup, books: List<Book>, userGroupMask: Long): List<Book> {
         return when (group.groupId) {
             BookGroup.IdAll -> books
-            else -> books.filter { it.group and group.groupId > 0 }
+            BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
+            BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
+            BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
+            BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
+            BookGroup.IdNetNone -> books.filter {
+                it.type and BookType.audio == 0 &&
+                    it.type and BookType.video == 0 &&
+                    it.type and BookType.local == 0 &&
+                    (it.group and userGroupMask) == 0L
+            }
+            BookGroup.IdLocalNone -> books.filter {
+                it.type and BookType.audio == 0 &&
+                    it.type and BookType.video == 0 &&
+                    it.type and BookType.local > 0 &&
+                    (it.group and userGroupMask) == 0L
+            }
+            else -> if (group.groupId > 0) {
+                books.filter { it.group and group.groupId > 0 }
+            } else {
+                emptyList()
+            }
         }
     }
 
