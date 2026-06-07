@@ -1352,7 +1352,7 @@ private fun BookInfoRichIntro(
                 includeFontPadding = true
                 textSize = 13.5f
                 setLineSpacing(4f, 1f)
-                setTextIsSelectable(false)
+                setTextIsSelectable(true)
             }
         },
         update = { textView ->
