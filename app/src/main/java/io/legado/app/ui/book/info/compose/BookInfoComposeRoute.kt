@@ -1622,7 +1622,9 @@ private fun measureBookInfoWebIntroHeight(
             ?.trim('"')
             ?.toFloatOrNull()
             ?: return@evaluateJavascript
-        val heightCssPx = cssHeight.roundToInt().coerceAtLeast(1)
+        val measuredCssPx = cssHeight.roundToInt()
+        if (measuredCssPx < 24) return@evaluateJavascript
+        val heightCssPx = measuredCssPx.coerceAtLeast(120)
         onContentHeight(heightCssPx)
     }
 }
