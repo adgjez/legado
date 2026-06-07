@@ -898,6 +898,10 @@ private fun BookInfoMoreActionSheet(
                     actions.onLogin()
                 }
             }
+            BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
+                onDismiss()
+                actions.onChangeGroup()
+            }
             BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
                 onDismiss()
                 actions.onEditBookInfo()
