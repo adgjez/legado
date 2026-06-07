@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget.compose
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.fragment.app.DialogFragment
@@ -16,6 +17,8 @@ abstract class ComposeDialogFragment : DialogFragment() {
     protected open val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
     protected open val widthFraction: Float? = null
     protected open val maxWidthDp: Int? = null
+    protected open val dialogGravity: Int = Gravity.CENTER
+    protected open val dialogWindowAnimations: Int = R.style.AnimDialogCenter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,7 +29,8 @@ abstract class ComposeDialogFragment : DialogFragment() {
         super.onStart()
         dialog?.window?.let { window ->
             val attr = window.attributes
-            attr.windowAnimations = R.style.AnimDialogCenter
+            attr.gravity = dialogGravity
+            attr.windowAnimations = dialogWindowAnimations
             window.attributes = attr
             window.setBackgroundDrawableResource(R.color.transparent)
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)

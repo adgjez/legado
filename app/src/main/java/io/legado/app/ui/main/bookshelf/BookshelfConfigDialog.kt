@@ -1,6 +1,7 @@
 package io.legado.app.ui.main.bookshelf
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -71,7 +72,9 @@ private data class BookshelfConfigOptions(
 class BookshelfConfigDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.94f
-    override val maxWidthDp: Int = 720
+    override val maxWidthDp: Int = 760
+    override val dialogGravity: Int = Gravity.BOTTOM
+    override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
 
     private var initialValues = BookshelfConfigValues(
         groupStyle = 0,
