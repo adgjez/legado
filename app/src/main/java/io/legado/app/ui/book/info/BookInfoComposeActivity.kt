@@ -118,8 +118,6 @@ class BookInfoComposeActivity :
     private var aiImagePaths: List<String> = emptyList()
     private var lastStableIntroBookUrl: String? = null
     private var lastStableIntro = ""
-    private var introReloadVersion = 0L
-    private var pendingIntroReload = false
 
     private val localBookTreeSelect = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { treeUri ->
@@ -183,7 +181,6 @@ class BookInfoComposeActivity :
             viewModel.bookSource = appDb.bookSourceDao.getBookSource(book.origin)?.also { source ->
                 viewModel.hasCustomBtn = source.customButton
             }
-            pendingIntroReload = true
             viewModel.refreshBook(book)
         }
     }
@@ -385,19 +382,10 @@ class BookInfoComposeActivity :
     }
 
     private fun showBook(book: Book) {
-        consumePendingIntroReload(book)
         updateUiState()
         updateReadTime(book)
         updateGroup(book)
         updateAiImages(book)
-    }
-
-    private fun consumePendingIntroReload(book: Book) {
-        if (!pendingIntroReload) return
-        pendingIntroReload = false
-        if (book.getDisplayIntro().orEmpty().startsWith("<useweb>", ignoreCase = true)) {
-            introReloadVersion++
-        }
     }
 
     private fun updateUiState() {
@@ -437,7 +425,6 @@ class BookInfoComposeActivity :
             aiImagePaths = aiImagePaths,
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
-            introReloadVersion = introReloadVersion,
             loading = false
         )
         if (::refreshLayout.isInitialized) {
@@ -522,7 +509,6 @@ class BookInfoComposeActivity :
         if (::refreshLayout.isInitialized) {
             refreshLayout.isRefreshing = true
         }
-        pendingIntroReload = true
         uiState = uiState.copy(loading = true)
         viewModel.refreshBook(book)
     }
