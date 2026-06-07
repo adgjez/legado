@@ -184,6 +184,11 @@ private fun BookshelfConfigContent(
     style: AppDialogStyle,
     onValuesChange: (BookshelfConfigValues) -> Unit
 ) {
+    BookshelfLayoutPreview(
+        values = values,
+        options = options,
+        style = style
+    )
     ConfigSection(
         title = "结构",
         style = style
@@ -264,6 +269,170 @@ private fun BookshelfConfigContent(
             range = 0..60,
             onValueChange = { onValuesChange(values.copy(margin = it)) }
         )
+    }
+}
+
+@Composable
+private fun BookshelfLayoutPreview(
+    values: BookshelfConfigValues,
+    options: BookshelfConfigOptions,
+    style: AppDialogStyle
+) {
+    val layoutLabel = options.layouts
+        .getOrNull(values.layout.coerceIn(options.layouts.indices))
+        ?.label
+        .orEmpty()
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(style.panelRadius),
+        color = style.fieldSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "实时预览",
+                        color = style.primaryText,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = layoutLabel,
+                        color = style.secondaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "边距 ${values.margin}",
+                    color = style.secondaryText,
+                    fontSize = 12.sp
+                )
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(style.actionRadius),
+                color = style.surface,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding((8 + values.margin / 8).dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when {
+                        values.layout <= 0 -> repeat(3) { BookshelfPreviewListRow(style, compact = false) }
+                        values.layout == 1 -> repeat(4) { BookshelfPreviewListRow(style, compact = true) }
+                        else -> {
+                            val columns = values.layout.coerceIn(2, 6)
+                            repeat(2) {
+                                BookshelfPreviewGridRow(
+                                    columns = columns,
+                                    showTitle = values.showBookname != 1,
+                                    style = style
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookshelfPreviewListRow(
+    style: AppDialogStyle,
+    compact: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(if (compact) 24.dp else 32.dp)
+                .height(if (compact) 34.dp else 44.dp),
+            shape = RoundedCornerShape(5.dp),
+            color = style.accent.copy(alpha = 0.24f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {}
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(if (compact) 0.62f else 0.72f)
+                    .height(if (compact) 8.dp else 10.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = style.primaryText.copy(alpha = 0.16f),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {}
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(if (compact) 0.44f else 0.54f)
+                    .height(7.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = style.secondaryText.copy(alpha = 0.14f),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {}
+        }
+    }
+}
+
+@Composable
+private fun BookshelfPreviewGridRow(
+    columns: Int,
+    showTitle: Boolean,
+    style: AppDialogStyle
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        repeat(columns) { index ->
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height((34 + (index % 2) * 5).dp),
+                    shape = RoundedCornerShape(5.dp),
+                    color = style.accent.copy(alpha = 0.18f + index.coerceAtMost(3) * 0.025f),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {}
+                if (showTitle) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(0.82f)
+                            .height(6.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = style.primaryText.copy(alpha = 0.13f),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {}
+                }
+            }
+        }
     }
 }
 
