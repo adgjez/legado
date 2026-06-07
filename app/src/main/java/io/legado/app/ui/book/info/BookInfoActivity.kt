@@ -680,8 +680,17 @@ class BookInfoActivity :
             onOpenAiGallery = ::openBookAiImageGallery,
             onCustomButton = ::callSourceCustomButton,
             onSetSourceVariable = ::setSourceVariable,
-            onSetBookVariable = ::setBookVariable
+            onSetBookVariable = ::setBookVariable,
+            onSetupWebIntro = ::setupComposeWebIntro
         )
+    }
+
+    private fun setupComposeWebIntro(webView: WebView) {
+        webView.addJavascriptInterface(WebCacheManager, nameCache)
+        viewModel.bookSource?.let { source ->
+            webView.addJavascriptInterface(source as BaseSource, nameSource)
+            webView.addJavascriptInterface(WebJsExtensions(source, null, webView), nameJava)
+        }
     }
 
     private fun showComposeBookInfo(book: Book) {

@@ -63,7 +63,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -990,13 +989,13 @@ private fun BookInfoIntroPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         if (isWebIntro) {
-                BookInfoIntroContent(
-                    rawIntro = intro,
-                    state = state,
-                    actions = actions,
-                    style = style,
-                    webIntroExpandPages = webIntroExpandPages
-                )
+            BookInfoIntroContent(
+                rawIntro = intro,
+                state = state,
+                actions = actions,
+                style = style,
+                webIntroExpandPages = webIntroExpandPages
+            )
         } else {
             Box(
                 modifier = Modifier
@@ -1420,7 +1419,6 @@ private fun BookInfoWebIntro(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
     val pageHeight = configuration.screenHeightDp.dp.coerceAtLeast(520.dp)
     val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
     val baseUrl = remember(bookUrl) {
@@ -1464,10 +1462,10 @@ private fun BookInfoWebIntro(
         """.trimIndent()
     }
     val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
-    var contentHeightPx by remember(loadKey) { mutableStateOf(0) }
-    val webHeight = remember(contentHeightPx, expandPages, density, pageHeight) {
-        if (contentHeightPx > 0) {
-            val contentHeight = with(density) { contentHeightPx.toDp() }
+    var contentHeightCssPx by remember(loadKey) { mutableStateOf(0) }
+    val webHeight = remember(contentHeightCssPx, expandPages, pageHeight) {
+        if (contentHeightCssPx > 0) {
+            val contentHeight = contentHeightCssPx.dp
             val requestedHeight = pageHeight * expandPages.coerceAtLeast(1).toFloat()
             if (contentHeight < requestedHeight) {
                 contentHeight.coerceAtLeast(1.dp)
@@ -1524,9 +1522,9 @@ private fun BookInfoWebIntro(
         },
         update = { webView ->
             actions.onSetupWebIntro(webView)
-            webView.webViewClient = BookInfoIntroWebViewClient(context) { heightPx ->
-                if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
-                    contentHeightPx = heightPx
+            webView.webViewClient = BookInfoIntroWebViewClient(context) { heightCssPx ->
+                if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+                    contentHeightCssPx = heightCssPx
                 }
             }
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -1544,15 +1542,15 @@ private fun BookInfoWebIntro(
     )
     LaunchedEffect(loadKey, webView) {
         delay(300)
-        measureBookInfoWebIntroHeight(webView) { heightPx ->
-            if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
-                contentHeightPx = heightPx
+        measureBookInfoWebIntroHeight(webView) { heightCssPx ->
+            if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+                contentHeightCssPx = heightCssPx
             }
         }
         delay(900)
-        measureBookInfoWebIntroHeight(webView) { heightPx ->
-            if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
-                contentHeightPx = heightPx
+        measureBookInfoWebIntroHeight(webView) { heightCssPx ->
+            if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+                contentHeightCssPx = heightCssPx
             }
         }
     }
@@ -1624,8 +1622,8 @@ private fun measureBookInfoWebIntroHeight(
             ?.trim('"')
             ?.toFloatOrNull()
             ?: return@evaluateJavascript
-        val heightPx = (cssHeight * webView.scale).roundToInt().coerceAtLeast(1)
-        onContentHeight(heightPx)
+        val heightCssPx = cssHeight.roundToInt().coerceAtLeast(1)
+        onContentHeight(heightCssPx)
     }
 }
 
