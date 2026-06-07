@@ -64,7 +64,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
@@ -544,19 +543,9 @@ private fun BookInfoMetricBox(
 ) {
     val shape = RoundedCornerShape(style.metrics.actionRadius)
     var bounds by remember { mutableStateOf<Rect?>(null) }
-    var pressed by remember { mutableStateOf(false) }
-    val pressScale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (pressed) 0.975f else 1f,
-        animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
-        label = "metricPressScale"
-    )
     Box(
         modifier = modifier
             .height(74.dp)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
             .shadow(2.dp, shape, clip = false)
             .clip(shape)
             .background(style.colors.metricTop.copy(alpha = 0.96f))
@@ -566,11 +555,9 @@ private fun BookInfoMetricBox(
                     onTap = { onClick() },
                     onLongPress = { bounds?.let(onLongPressStart) },
                     onPress = {
-                        pressed = true
                         try {
                             awaitRelease()
                         } finally {
-                            pressed = false
                             onPressEnd()
                         }
                     }
@@ -687,16 +674,6 @@ private fun BookInfoMetricPreviewOverlay(
         transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
         label = "metricPreviewProgress"
     ) { shown -> if (shown) 1f else 0f }
-    val cardElevation by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
-        label = "metricPreviewElevation"
-    ) { shown -> if (shown) 14f else 2f }
-    val cornerRadius by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 170, easing = FastOutSlowInEasing) },
-        label = "metricPreviewCorner"
-    ) { shown ->
-        if (shown) style.metrics.panelRadius.value else style.metrics.actionRadius.value
-    }
     Box(modifier = modifier) {
         BookInfoMetricPreviewCard(
             preview = preview,
@@ -704,9 +681,6 @@ private fun BookInfoMetricPreviewOverlay(
             style = style,
             contentAlpha = contentAlpha,
             contentReady = visible && previewProgress > 0.96f,
-            previewProgress = previewProgress,
-            elevation = cardElevation.dp,
-            cornerRadius = cornerRadius.dp,
             modifier = Modifier
                 .offset { IntOffset(animatedX.roundToInt(), animatedY.roundToInt()) }
                 .width(with(density) { animatedWidth.toDp() })
@@ -722,33 +696,15 @@ private fun BookInfoMetricPreviewCard(
     style: BookInfoComposeStyle,
     contentAlpha: Float,
     contentReady: Boolean,
-    previewProgress: Float,
-    elevation: Dp,
-    cornerRadius: Dp,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(cornerRadius)
-    val background = lerp(
-        style.colors.metricTop.copy(alpha = 0.96f),
-        style.colors.surface.copy(alpha = 0.97f),
-        previewProgress
-    )
+    val shape = RoundedCornerShape(style.metrics.panelRadius)
     Box(
         modifier = modifier
-            .shadow(elevation, shape, clip = false)
+            .shadow(14.dp, shape, clip = false)
             .clip(shape)
-            .background(background)
+            .background(style.colors.surface.copy(alpha = 0.97f))
     ) {
-        BookInfoCollapsedMetricPreview(
-            preview = preview,
-            state = state,
-            style = style,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    alpha = (1f - contentAlpha * 1.25f).coerceIn(0f, 1f)
-                }
-        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -765,67 +721,6 @@ private fun BookInfoMetricPreviewCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun BookInfoCollapsedMetricPreview(
-    preview: BookInfoMetricPreview,
-    state: BookInfoUiState,
-    style: BookInfoComposeStyle,
-    modifier: Modifier = Modifier
-) {
-    val label = when (preview.type) {
-        BookInfoMetricPreviewType.Source -> stringResource(R.string.book_source)
-        BookInfoMetricPreviewType.Toc -> stringResource(R.string.book_info_tab_toc)
-        BookInfoMetricPreviewType.Gallery -> stringResource(R.string.ai_image_gallery)
-    }
-    val value = when (preview.type) {
-        BookInfoMetricPreviewType.Source -> state.originName.cleanBookInfoValue()
-        BookInfoMetricPreviewType.Toc -> {
-            if (state.chapterCount > 0) "${state.chapterCount}" else stringResource(R.string.view_toc)
-        }
-        BookInfoMetricPreviewType.Gallery -> {
-            if (state.aiImageCount > 0) "${state.aiImageCount}" else stringResource(R.string.ai_image_gallery_empty)
-        }
-    }
-    val suffix = if (preview.type == BookInfoMetricPreviewType.Toc && state.chapterCount > 0) "章" else ""
-    Column(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = value,
-                color = style.colors.metricText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            if (suffix.isNotBlank()) {
-                Text(
-                    text = suffix,
-                    color = style.colors.metricSecondaryText,
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
-            }
-        }
-        Text(
-            text = label,
-            color = style.colors.metricSecondaryText,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp)
-        )
     }
 }
 
