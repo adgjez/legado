@@ -89,6 +89,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 @Immutable
@@ -1476,7 +1477,8 @@ private fun BookInfoWebIntro(
             pageHeight
         }
     }
-    val webView = remember(context, rawIntro, bookUrl) {
+    val loadToken = remember { AtomicLong(0L) }
+    val webView = remember(context) {
         WebView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1503,6 +1505,8 @@ private fun BookInfoWebIntro(
     }
     DisposableEffect(webView) {
         onDispose {
+            loadToken.set(Long.MIN_VALUE)
+            webView.webViewClient = WebViewClient()
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.stopLoading()
             webView.destroy()
@@ -1522,14 +1526,20 @@ private fun BookInfoWebIntro(
         },
         update = { webView ->
             actions.onSetupWebIntro(webView)
-            webView.webViewClient = BookInfoIntroWebViewClient(context) { heightCssPx ->
-                if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+            webView.webViewClient = BookInfoIntroWebViewClient(
+                context = context,
+                currentToken = { loadToken.get() },
+                isTokenActive = { token -> token > 0L && loadToken.get() == token }
+            ) { token, heightCssPx ->
+                if (loadToken.get() == token && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
                     contentHeightCssPx = heightCssPx
                 }
             }
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             if (webView.getTag(R.id.tag) != loadKey) {
+                val token = loadToken.incrementAndGet()
                 webView.setTag(R.id.tag, loadKey)
+                webView.stopLoading()
                 webView.loadDataWithBaseURL(
                     baseUrl,
                     transparentHtml,
@@ -1537,19 +1547,34 @@ private fun BookInfoWebIntro(
                     "utf-8",
                     baseUrl
                 )
+                webView.post {
+                    if (token > 0L && loadToken.get() == token) {
+                        webView.requestLayout()
+                        webView.invalidate()
+                    }
+                }
             }
         }
     )
     LaunchedEffect(loadKey, webView) {
+        val token = loadToken.get()
         delay(300)
-        measureBookInfoWebIntroHeight(webView) { heightCssPx ->
-            if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+        measureBookInfoWebIntroHeight(
+            webView = webView,
+            token = token,
+            isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
+        ) { activeToken, heightCssPx ->
+            if (loadToken.get() == activeToken && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
                 contentHeightCssPx = heightCssPx
             }
         }
         delay(900)
-        measureBookInfoWebIntroHeight(webView) { heightCssPx ->
-            if (kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
+        measureBookInfoWebIntroHeight(
+            webView = webView,
+            token = token,
+            isTokenActive = { activeToken -> activeToken > 0L && loadToken.get() == activeToken }
+        ) { activeToken, heightCssPx ->
+            if (loadToken.get() == activeToken && kotlin.math.abs(heightCssPx - contentHeightCssPx) > 8) {
                 contentHeightCssPx = heightCssPx
             }
         }
@@ -1558,7 +1583,9 @@ private fun BookInfoWebIntro(
 
 private class BookInfoIntroWebViewClient(
     private val context: Context,
-    private val onContentHeight: (Int) -> Unit
+    private val currentToken: () -> Long,
+    private val isTokenActive: (Long) -> Boolean,
+    private val onContentHeight: (Long, Int) -> Unit
 ) : WebViewClient() {
     private val jsStr = getInjectionString
 
@@ -1585,45 +1612,56 @@ private class BookInfoIntroWebViewClient(
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
-        view?.evaluateJavascript(jsStr, null)
+        val token = currentToken()
+        if (isTokenActive(token)) {
+            runCatching { view?.evaluateJavascript(jsStr, null) }
+        }
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
         view ?: return
-        view.evaluateJavascript(jsStr, null)
-        measureBookInfoWebIntroHeight(view, onContentHeight)
-        view.postDelayed({ measureBookInfoWebIntroHeight(view, onContentHeight) }, 350)
-        view.postDelayed({ measureBookInfoWebIntroHeight(view, onContentHeight) }, 1200)
+        val token = currentToken()
+        if (!isTokenActive(token)) return
+        runCatching { view.evaluateJavascript(jsStr, null) }
+        measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight)
+        view.postDelayed({ measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight) }, 350)
+        view.postDelayed({ measureBookInfoWebIntroHeight(view, token, isTokenActive, onContentHeight) }, 1200)
     }
 }
 
 private fun measureBookInfoWebIntroHeight(
     webView: WebView,
-    onContentHeight: (Int) -> Unit
+    token: Long,
+    isTokenActive: (Long) -> Boolean,
+    onContentHeight: (Long, Int) -> Unit
 ) {
-    webView.evaluateJavascript(
-        """
-            (function() {
-              var body = document.body || {};
-              var doc = document.documentElement || {};
-              return Math.max(
-                body.scrollHeight || 0,
-                body.offsetHeight || 0,
-                doc.clientHeight || 0,
-                doc.scrollHeight || 0,
-                doc.offsetHeight || 0
-              );
-            })();
-        """.trimIndent()
-    ) { result ->
-        val cssHeight = result
-            ?.trim()
-            ?.trim('"')
-            ?.toFloatOrNull()
-            ?: return@evaluateJavascript
-        val heightCssPx = cssHeight.roundToInt().coerceAtLeast(1)
-        onContentHeight(heightCssPx)
+    if (!isTokenActive(token)) return
+    runCatching {
+        webView.evaluateJavascript(
+            """
+                (function() {
+                  var body = document.body || {};
+                  var doc = document.documentElement || {};
+                  return Math.max(
+                    body.scrollHeight || 0,
+                    body.offsetHeight || 0,
+                    doc.clientHeight || 0,
+                    doc.scrollHeight || 0,
+                    doc.offsetHeight || 0
+                  );
+                })();
+            """.trimIndent()
+        ) { result ->
+            if (!isTokenActive(token)) return@evaluateJavascript
+            val cssHeight = result
+                ?.trim()
+                ?.trim('"')
+                ?.toFloatOrNull()
+                ?: return@evaluateJavascript
+            val heightCssPx = cssHeight.roundToInt().coerceAtLeast(1)
+            onContentHeight(token, heightCssPx)
+        }
     }
 }
 
