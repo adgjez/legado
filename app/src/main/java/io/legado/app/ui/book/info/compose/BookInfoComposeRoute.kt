@@ -117,6 +117,7 @@ data class BookInfoUiState(
     val aiImagePaths: List<String> = emptyList(),
     val inBookshelf: Boolean = false,
     val hasCustomButton: Boolean = false,
+    val introReloadVersion: Long = 0L,
     val loading: Boolean = false
 )
 
@@ -348,7 +349,8 @@ fun BookInfoComposeRoute(
                     state = state,
                     actions = actions,
                     style = style,
-                    webIntroExpandPages = webIntroExpandPages
+                    webIntroExpandPages = webIntroExpandPages,
+                    introReloadVersion = state.introReloadVersion
                 )
             }
             Spacer(modifier = Modifier.height(116.dp))
@@ -974,7 +976,8 @@ private fun BookInfoIntroPanel(
     state: BookInfoUiState,
     actions: BookInfoActions,
     style: BookInfoComposeStyle,
-    webIntroExpandPages: Int
+    webIntroExpandPages: Int,
+    introReloadVersion: Long
 ) {
     val displayIntro = intro.ifBlank { stringResource(R.string.intro_show_null) }
     val isWebIntro = intro.startsWith("<useweb>", ignoreCase = true)
@@ -994,7 +997,8 @@ private fun BookInfoIntroPanel(
                 state = state,
                 actions = actions,
                 style = style,
-                webIntroExpandPages = webIntroExpandPages
+                webIntroExpandPages = webIntroExpandPages,
+                introReloadVersion = introReloadVersion
             )
         } else {
             Box(
@@ -1009,7 +1013,8 @@ private fun BookInfoIntroPanel(
                     state = state,
                     actions = actions,
                     style = style,
-                    webIntroExpandPages = webIntroExpandPages
+                    webIntroExpandPages = webIntroExpandPages,
+                    introReloadVersion = introReloadVersion
                 )
             }
         }
@@ -1393,7 +1398,8 @@ private fun BookInfoIntroContent(
     state: BookInfoUiState,
     actions: BookInfoActions,
     style: BookInfoComposeStyle,
-    webIntroExpandPages: Int
+    webIntroExpandPages: Int,
+    introReloadVersion: Long
 ) {
     if (rawIntro.startsWith("<useweb>", ignoreCase = true)) {
         BookInfoWebIntro(
@@ -1401,7 +1407,8 @@ private fun BookInfoIntroContent(
             bookUrl = state.bookUrl,
             actions = actions,
             style = style,
-            expandPages = webIntroExpandPages
+            expandPages = webIntroExpandPages,
+            reloadVersion = introReloadVersion
         )
     } else {
         BookInfoRichIntro(rawIntro, style)
@@ -1415,7 +1422,8 @@ private fun BookInfoWebIntro(
     bookUrl: String,
     actions: BookInfoActions,
     style: BookInfoComposeStyle,
-    expandPages: Int
+    expandPages: Int,
+    reloadVersion: Long
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -1461,7 +1469,9 @@ private fun BookInfoWebIntro(
             </html>
         """.trimIndent()
     }
-    val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
+    val loadKey = remember(baseUrl, transparentHtml, reloadVersion) {
+        "${baseUrl.orEmpty()}\n$reloadVersion\n$transparentHtml"
+    }
     var contentHeightCssPx by remember(loadKey) { mutableStateOf(0) }
     val webHeight = remember(contentHeightCssPx, expandPages, pageHeight) {
         if (contentHeightCssPx > 0) {
@@ -1530,6 +1540,7 @@ private fun BookInfoWebIntro(
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             if (webView.getTag(R.id.tag) != loadKey) {
                 webView.setTag(R.id.tag, loadKey)
+                webView.stopLoading()
                 webView.loadDataWithBaseURL(
                     baseUrl,
                     transparentHtml,
@@ -1537,6 +1548,10 @@ private fun BookInfoWebIntro(
                     "utf-8",
                     baseUrl
                 )
+                webView.post {
+                    webView.requestLayout()
+                    webView.invalidate()
+                }
             }
         }
     )
