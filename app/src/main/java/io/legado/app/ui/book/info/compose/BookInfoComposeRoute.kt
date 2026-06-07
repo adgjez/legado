@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -85,8 +86,10 @@ import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Immutable
 data class BookInfoChapterUi(
@@ -285,6 +288,20 @@ fun BookInfoComposeRoute(
     LaunchedEffect(refreshAtTop) {
         actions.onRefreshEnabledChanged(refreshAtTop)
     }
+    val hasWebIntro = state.intro.startsWith("<useweb>", ignoreCase = true)
+    var webIntroExpandPages by remember(state.bookUrl, state.intro) { mutableStateOf(1) }
+    val shouldExpandWebIntro by remember(hasWebIntro) {
+        derivedStateOf {
+            hasWebIntro &&
+                pageScrollState.maxValue > 0 &&
+                pageScrollState.value >= pageScrollState.maxValue - 96
+        }
+    }
+    LaunchedEffect(shouldExpandWebIntro) {
+        if (shouldExpandWebIntro && webIntroExpandPages < 32) {
+            webIntroExpandPages += 1
+        }
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -330,7 +347,8 @@ fun BookInfoComposeRoute(
                     intro = state.intro,
                     state = state,
                     actions = actions,
-                    style = style
+                    style = style,
+                    webIntroExpandPages = webIntroExpandPages
                 )
             }
             Spacer(modifier = Modifier.height(116.dp))
@@ -948,7 +966,8 @@ private fun BookInfoIntroPanel(
     intro: String,
     state: BookInfoUiState,
     actions: BookInfoActions,
-    style: BookInfoComposeStyle
+    style: BookInfoComposeStyle,
+    webIntroExpandPages: Int
 ) {
     val displayIntro = intro.ifBlank { stringResource(R.string.intro_show_null) }
     val isWebIntro = intro.startsWith("<useweb>", ignoreCase = true)
@@ -963,12 +982,13 @@ private fun BookInfoIntroPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         if (isWebIntro) {
-            BookInfoIntroContent(
-                rawIntro = intro,
-                state = state,
-                actions = actions,
-                style = style
-            )
+                BookInfoIntroContent(
+                    rawIntro = intro,
+                    state = state,
+                    actions = actions,
+                    style = style,
+                    webIntroExpandPages = webIntroExpandPages
+                )
         } else {
             Box(
                 modifier = Modifier
@@ -981,7 +1001,8 @@ private fun BookInfoIntroPanel(
                     rawIntro = displayIntro,
                     state = state,
                     actions = actions,
-                    style = style
+                    style = style,
+                    webIntroExpandPages = webIntroExpandPages
                 )
             }
         }
@@ -1364,14 +1385,16 @@ private fun BookInfoIntroContent(
     rawIntro: String,
     state: BookInfoUiState,
     actions: BookInfoActions,
-    style: BookInfoComposeStyle
+    style: BookInfoComposeStyle,
+    webIntroExpandPages: Int
 ) {
     if (rawIntro.startsWith("<useweb>", ignoreCase = true)) {
         BookInfoWebIntro(
             rawIntro = rawIntro,
             bookUrl = state.bookUrl,
             actions = actions,
-            style = style
+            style = style,
+            expandPages = webIntroExpandPages
         )
     } else {
         BookInfoRichIntro(rawIntro, style)
@@ -1384,11 +1407,13 @@ private fun BookInfoWebIntro(
     rawIntro: String,
     bookUrl: String,
     actions: BookInfoActions,
-    style: BookInfoComposeStyle
+    style: BookInfoComposeStyle,
+    expandPages: Int
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val webHeight = configuration.screenHeightDp.dp.coerceAtLeast(520.dp)
+    val density = LocalDensity.current
+    val pageHeight = configuration.screenHeightDp.dp.coerceAtLeast(520.dp)
     val html = remember(rawIntro) { rawIntro.extractWrappedIntro(8) }
     val baseUrl = remember(bookUrl) {
         bookUrl
@@ -1425,6 +1450,20 @@ private fun BookInfoWebIntro(
         """.trimIndent()
     }
     val loadKey = remember(baseUrl, transparentHtml) { "${baseUrl.orEmpty()}\n$transparentHtml" }
+    var contentHeightPx by remember(loadKey) { mutableStateOf(0) }
+    val webHeight = remember(contentHeightPx, expandPages, density, pageHeight) {
+        if (contentHeightPx > 0) {
+            val contentHeight = with(density) { contentHeightPx.toDp() }
+            val requestedHeight = pageHeight * expandPages.coerceAtLeast(1).toFloat()
+            if (contentHeight < requestedHeight) {
+                contentHeight.coerceAtLeast(1.dp)
+            } else {
+                requestedHeight
+            }
+        } else {
+            pageHeight
+        }
+    }
     val webView = remember(context, rawIntro, bookUrl) {
         WebView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -1442,6 +1481,7 @@ private fun BookInfoWebIntro(
                 textZoom = 100
             }
             overScrollMode = View.OVER_SCROLL_NEVER
+            isVerticalScrollBarEnabled = false
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
@@ -1462,12 +1502,16 @@ private fun BookInfoWebIntro(
                 (parent as? ViewGroup)?.removeView(this)
                 setTag(R.id.tag, null)
                 onResume()
-                webViewClient = BookInfoIntroWebViewClient(context)
                 actions.onSetupWebIntro(this)
             }
         },
         update = { webView ->
             actions.onSetupWebIntro(webView)
+            webView.webViewClient = BookInfoIntroWebViewClient(context) { heightPx ->
+                if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                    contentHeightPx = heightPx
+                }
+            }
             webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
             if (webView.getTag(R.id.tag) != loadKey) {
                 webView.setTag(R.id.tag, loadKey)
@@ -1481,10 +1525,25 @@ private fun BookInfoWebIntro(
             }
         }
     )
+    LaunchedEffect(loadKey, webView) {
+        delay(300)
+        measureBookInfoWebIntroHeight(webView) { heightPx ->
+            if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                contentHeightPx = heightPx
+            }
+        }
+        delay(900)
+        measureBookInfoWebIntroHeight(webView) { heightPx ->
+            if (kotlin.math.abs(heightPx - contentHeightPx) > 8) {
+                contentHeightPx = heightPx
+            }
+        }
+    }
 }
 
 private class BookInfoIntroWebViewClient(
-    private val context: Context
+    private val context: Context,
+    private val onContentHeight: (Int) -> Unit
 ) : WebViewClient() {
     private val jsStr = getInjectionString
 
@@ -1512,6 +1571,44 @@ private class BookInfoIntroWebViewClient(
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         super.onPageStarted(view, url, favicon)
         view?.evaluateJavascript(jsStr, null)
+    }
+
+    override fun onPageFinished(view: WebView?, url: String?) {
+        super.onPageFinished(view, url)
+        view ?: return
+        view.evaluateJavascript(jsStr, null)
+        measureBookInfoWebIntroHeight(view, onContentHeight)
+        view.postDelayed({ measureBookInfoWebIntroHeight(view, onContentHeight) }, 350)
+        view.postDelayed({ measureBookInfoWebIntroHeight(view, onContentHeight) }, 1200)
+    }
+}
+
+private fun measureBookInfoWebIntroHeight(
+    webView: WebView,
+    onContentHeight: (Int) -> Unit
+) {
+    webView.evaluateJavascript(
+        """
+            (function() {
+              var body = document.body || {};
+              var doc = document.documentElement || {};
+              return Math.max(
+                body.scrollHeight || 0,
+                body.offsetHeight || 0,
+                doc.clientHeight || 0,
+                doc.scrollHeight || 0,
+                doc.offsetHeight || 0
+              );
+            })();
+        """.trimIndent()
+    ) { result ->
+        val cssHeight = result
+            ?.trim()
+            ?.trim('"')
+            ?.toFloatOrNull()
+            ?: return@evaluateJavascript
+        val heightPx = (cssHeight * webView.scale).roundToInt().coerceAtLeast(1)
+        onContentHeight(heightPx)
     }
 }
 
