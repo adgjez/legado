@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,8 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -193,14 +190,14 @@ private fun BookshelfConfigContent(
         title = "结构",
         style = style
     ) {
-        DialogSelectField(
+        BookshelfSegmentedControl(
             label = "分组样式",
-            options = options.groupStyles.map { it.label },
-            selectedIndex = values.groupStyle.coerceIn(options.groupStyles.indices),
+            options = options.groupStyles,
+            selectedValue = values.groupStyle,
             style = style,
-            onSelected = { onValuesChange(values.copy(groupStyle = options.groupStyles[it].value)) }
+            onSelected = { onValuesChange(values.copy(groupStyle = it)) }
         )
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         BookshelfLayoutPicker(
             options = options.layouts,
             selectedValue = values.layout,
@@ -237,12 +234,12 @@ private fun BookshelfConfigContent(
         title = "排序",
         style = style
     ) {
-        DialogSelectField(
-            label = "排序",
-            options = options.sorts.map { it.label },
-            selectedIndex = values.sort.coerceIn(options.sorts.indices),
+        BookshelfChoiceGrid(
+            label = "排序方式",
+            options = options.sorts,
+            selectedValue = values.sort,
             style = style,
-            onSelected = { onValuesChange(values.copy(sort = options.sorts[it].value)) }
+            onSelected = { onValuesChange(values.copy(sort = it)) }
         )
     }
     ConfigSection(
@@ -250,12 +247,12 @@ private fun BookshelfConfigContent(
         style = style,
         visible = values.layout >= 2
     ) {
-        DialogSelectField(
-            label = "书名",
-            options = options.bookNameModes.map { it.label },
-            selectedIndex = values.showBookname.coerceIn(options.bookNameModes.indices),
+        BookshelfSegmentedControl(
+            label = "网格书名",
+            options = options.bookNameModes,
+            selectedValue = values.showBookname,
             style = style,
-            onSelected = { onValuesChange(values.copy(showBookname = options.bookNameModes[it].value)) }
+            onSelected = { onValuesChange(values.copy(showBookname = it)) }
         )
     }
     ConfigSection(
@@ -674,73 +671,139 @@ private fun ConfigSection(
 }
 
 @Composable
-private fun DialogSelectField(
+private fun BookshelfSegmentedControl(
     label: String,
-    options: List<String>,
-    selectedIndex: Int,
+    options: List<BookshelfConfigOption>,
+    selectedValue: Int,
     style: AppDialogStyle,
     onSelected: (Int) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val value = options.getOrNull(selectedIndex).orEmpty()
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(
             text = label,
             color = style.secondaryText,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp)
+            fontSize = 12.sp
         )
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = true },
-                shape = RoundedCornerShape(style.actionRadius),
-                color = style.surface,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = value,
-                        modifier = Modifier.weight(1f),
-                        color = style.primaryText,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "v",
-                        color = style.secondaryText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEachIndexed { index, option ->
-                    DropdownMenuItem(
-                        text = {
+                options.forEach { option ->
+                    val selected = option.value == selectedValue
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clickable { onSelected(option.value) },
+                        shape = RoundedCornerShape(style.actionRadius),
+                        color = if (selected) style.accent.copy(alpha = 0.18f) else style.surface,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
                             Text(
-                                text = option,
-                                color = if (index == selectedIndex) style.accent else style.primaryText,
+                                text = option.label,
+                                color = if (selected) style.accent else style.primaryText,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                        },
-                        onClick = {
-                            expanded = false
-                            onSelected(index)
                         }
-                    )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BookshelfChoiceGrid(
+    label: String,
+    options: List<BookshelfConfigOption>,
+    selectedValue: Int,
+    style: AppDialogStyle,
+    onSelected: (Int) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = label,
+            color = style.secondaryText,
+            fontSize = 12.sp
+        )
+        options.chunked(2).forEach { rowOptions ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rowOptions.forEach { option ->
+                    BookshelfChoiceCard(
+                        option = option,
+                        selected = option.value == selectedValue,
+                        style = style,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onSelected(option.value) }
+                    )
+                }
+                if (rowOptions.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookshelfChoiceCard(
+    option: BookshelfConfigOption,
+    selected: Boolean,
+    style: AppDialogStyle,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(44.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(style.actionRadius),
+        color = if (selected) style.accent.copy(alpha = 0.15f) else style.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier
+                    .width(6.dp)
+                    .height(6.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = if (selected) style.accent else style.secondaryText.copy(alpha = 0.22f),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {}
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = option.label,
+                modifier = Modifier.weight(1f),
+                color = if (selected) style.accent else style.primaryText,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
