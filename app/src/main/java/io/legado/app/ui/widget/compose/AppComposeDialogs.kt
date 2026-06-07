@@ -174,6 +174,7 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
     private var positiveText: String = ""
     private var negativeText: String = ""
     private var neutralText: String? = null
+    private var validateInput: ((String) -> Boolean)? = null
     private var onPositive: ((String) -> Unit)? = null
     private var onNeutral: (() -> Unit)? = null
 
@@ -237,11 +238,14 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         TextButton(
-                            onClick = {
-                                val current = text
-                                dismissAllowingStateLoss()
-                                onPositive?.invoke(current)
-                            },
+                        onClick = {
+                            val current = text
+                            if (validateInput?.invoke(current) == false) {
+                                return@TextButton
+                            }
+                            dismissAllowingStateLoss()
+                            onPositive?.invoke(current)
+                        },
                             shape = RoundedCornerShape(style.actionRadius)
                         ) {
                             Text(positiveText, color = style.accent)
@@ -265,6 +269,7 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
             positiveText: String,
             negativeText: String,
             neutralText: String? = null,
+            validateInput: ((String) -> Boolean)? = null,
             onPositive: (String) -> Unit,
             onNeutral: (() -> Unit)? = null
         ): ComposeTextInputDialog {
@@ -277,6 +282,7 @@ class ComposeTextInputDialog : BaseDialogFragment(0) {
                 this.positiveText = positiveText
                 this.negativeText = negativeText
                 this.neutralText = neutralText
+                this.validateInput = validateInput
                 this.onPositive = onPositive
                 this.onNeutral = onNeutral
             }
