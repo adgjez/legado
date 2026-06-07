@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -13,10 +14,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,7 +39,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.ui.widget.compose.AppDialogFrame
 import io.legado.app.ui.widget.compose.AppDialogSliderRow
 import io.legado.app.ui.widget.compose.AppDialogSwitchRow
 import io.legado.app.ui.widget.compose.AppDialogStyle
@@ -54,6 +58,9 @@ data class BookshelfConfigValues(
 )
 
 class BookshelfConfigDialog : ComposeDialogFragment() {
+
+    override val widthFraction: Float = 0.94f
+    override val maxWidthDp: Int = 720
 
     private var initialValues = BookshelfConfigValues(
         groupStyle = 0,
@@ -101,57 +108,73 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                     getString(R.string.overlay)
                 )
                 var values by remember { mutableStateOf(initialValues) }
-                AppDialogFrame(
+                BookshelfConfigPanel(
                     title = getString(R.string.bookshelf_layout),
+                    style = style,
                     content = {
-                        DialogSectionTitle(getString(R.string.group_style), style)
-                        DialogChoiceChips(
-                            options = groupStyleOptions,
-                            selectedIndex = values.groupStyle.coerceIn(groupStyleOptions.indices),
+                        ConfigSection(
+                            title = getString(R.string.group_style),
+                            style = style
+                        ) {
+                            DialogChoiceChips(
+                                options = groupStyleOptions,
+                                selectedIndex = values.groupStyle.coerceIn(groupStyleOptions.indices),
+                                style = style,
+                                onSelected = { values = values.copy(groupStyle = it) }
+                            )
+                        }
+                        ConfigSection(
+                            title = getString(R.string.show),
+                            style = style
+                        ) {
+                            AppDialogSwitchRow(
+                                text = getString(R.string.show_unread),
+                                checked = values.showUnread,
+                                onCheckedChange = { values = values.copy(showUnread = it) }
+                            )
+                            AppDialogSwitchRow(
+                                text = getString(R.string.show_last_update_time),
+                                checked = values.showLastUpdateTime,
+                                onCheckedChange = { values = values.copy(showLastUpdateTime = it) }
+                            )
+                            AppDialogSwitchRow(
+                                text = getString(R.string.show_wait_up_count),
+                                checked = values.showWaitUpCount,
+                                onCheckedChange = { values = values.copy(showWaitUpCount = it) }
+                            )
+                            AppDialogSwitchRow(
+                                text = getString(R.string.show_bookshelf_fast_scroller),
+                                checked = values.showFastScroller,
+                                onCheckedChange = { values = values.copy(showFastScroller = it) }
+                            )
+                        }
+                        ConfigSection(
+                            title = getString(R.string.view),
+                            style = style
+                        ) {
+                            DialogChoiceChips(
+                                options = layoutOptions,
+                                selectedIndex = values.layout.coerceIn(layoutOptions.indices),
+                                style = style,
+                                onSelected = { values = values.copy(layout = it) }
+                            )
+                        }
+                        ConfigSection(
+                            title = getString(R.string.sort),
+                            style = style
+                        ) {
+                            DialogChoiceChips(
+                                options = sortOptions,
+                                selectedIndex = values.sort.coerceIn(sortOptions.indices),
+                                style = style,
+                                onSelected = { values = values.copy(sort = it) }
+                            )
+                        }
+                        ConfigSection(
+                            title = getString(R.string.book_name),
                             style = style,
-                            onSelected = { values = values.copy(groupStyle = it) }
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        DialogSectionTitle(getString(R.string.show), style)
-                        AppDialogSwitchRow(
-                            text = getString(R.string.show_unread),
-                            checked = values.showUnread,
-                            onCheckedChange = { values = values.copy(showUnread = it) }
-                        )
-                        AppDialogSwitchRow(
-                            text = getString(R.string.show_last_update_time),
-                            checked = values.showLastUpdateTime,
-                            onCheckedChange = { values = values.copy(showLastUpdateTime = it) }
-                        )
-                        AppDialogSwitchRow(
-                            text = getString(R.string.show_wait_up_count),
-                            checked = values.showWaitUpCount,
-                            onCheckedChange = { values = values.copy(showWaitUpCount = it) }
-                        )
-                        AppDialogSwitchRow(
-                            text = getString(R.string.show_bookshelf_fast_scroller),
-                            checked = values.showFastScroller,
-                            onCheckedChange = { values = values.copy(showFastScroller = it) }
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        DialogSectionTitle(getString(R.string.view), style)
-                        DialogChoiceChips(
-                            options = layoutOptions,
-                            selectedIndex = values.layout.coerceIn(layoutOptions.indices),
-                            style = style,
-                            onSelected = { values = values.copy(layout = it) }
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        DialogSectionTitle(getString(R.string.sort), style)
-                        DialogChoiceChips(
-                            options = sortOptions,
-                            selectedIndex = values.sort.coerceIn(sortOptions.indices),
-                            style = style,
-                            onSelected = { values = values.copy(sort = it) }
-                        )
-                        if (values.layout >= 2) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            DialogSectionTitle(getString(R.string.book_name), style)
+                            visible = values.layout >= 2
+                        ) {
                             DialogChoiceChips(
                                 options = bookNameOptions,
                                 selectedIndex = values.showBookname.coerceIn(bookNameOptions.indices),
@@ -159,13 +182,17 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                                 onSelected = { values = values.copy(showBookname = it) }
                             )
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        AppDialogSliderRow(
+                        ConfigSection(
                             title = getString(R.string.margin),
-                            value = values.margin,
-                            range = 0..60,
-                            onValueChange = { values = values.copy(margin = it) }
-                        )
+                            style = style
+                        ) {
+                            AppDialogSliderRow(
+                                title = getString(R.string.margin),
+                                value = values.margin,
+                                range = 0..60,
+                                onValueChange = { values = values.copy(margin = it) }
+                            )
+                        }
                     },
                     actions = {
                         TextButton(
@@ -204,17 +231,92 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
 }
 
 @Composable
-private fun DialogSectionTitle(
-    text: String,
-    style: AppDialogStyle
+private fun BookshelfConfigPanel(
+    title: String,
+    style: AppDialogStyle,
+    content: @Composable () -> Unit,
+    actions: @Composable () -> Unit
 ) {
-    Text(
-        text = text,
-        color = style.accent,
-        fontSize = 14.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(bottom = 8.dp)
-    )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        shape = RoundedCornerShape(style.panelRadius),
+        color = style.surface,
+        tonalElevation = 0.dp,
+        shadowElevation = 14.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            Text(
+                text = title,
+                color = style.primaryText,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "调整书架分组、展示信息、布局密度和排序方式",
+                color = style.secondaryText,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 620.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                content()
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                actions()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfigSection(
+    title: String,
+    style: AppDialogStyle,
+    visible: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    if (!visible) return
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(style.actionRadius),
+        color = style.fieldSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = title,
+                color = style.accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            content()
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -238,12 +340,12 @@ private fun DialogChoiceChips(
                     .clickable { onSelected(index) },
                 shape = RoundedCornerShape(style.actionRadius),
                 color = if (selected) {
-                    style.accent.copy(alpha = 0.16f)
+                    style.accent.copy(alpha = 0.18f)
                 } else {
-                    style.fieldSurface
+                    style.surface
                 },
                 tonalElevation = 0.dp,
-                shadowElevation = 0.dp
+                shadowElevation = 1.dp
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),

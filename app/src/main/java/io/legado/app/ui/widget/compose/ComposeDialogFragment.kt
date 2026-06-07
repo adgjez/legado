@@ -5,12 +5,17 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.windowSize
+import splitties.systemservices.windowManager
 
 abstract class ComposeDialogFragment : DialogFragment() {
 
     protected open val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
     protected open val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
+    protected open val widthFraction: Float? = null
+    protected open val maxWidthDp: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,7 +31,16 @@ abstract class ComposeDialogFragment : DialogFragment() {
             window.setBackgroundDrawableResource(R.color.transparent)
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
         }
-        setLayout(dialogWidth, dialogHeight)
+        val fraction = widthFraction
+        val maxDp = maxWidthDp
+        if (fraction != null || maxDp != null) {
+            val dm = requireContext().windowManager.windowSize
+            val target = (dm.widthPixels * (fraction ?: 1f)).toInt()
+            val maxWidth = maxDp?.dpToPx() ?: target
+            dialog?.window?.setLayout(minOf(target, maxWidth), dialogHeight)
+        } else {
+            setLayout(dialogWidth, dialogHeight)
+        }
     }
 
     override fun show(manager: androidx.fragment.app.FragmentManager, tag: String?) {
