@@ -1485,6 +1485,13 @@
     <string name="ai_fetch_models_no_new">没有新的模型</string>
     <string name="ai_fetch_models_success">已添加 %1$d 个模型</string>
     <string name="ai_fetch_models_failed">获取模型列表失败：%s</string>
+    <string name="ai_fetch_models_long_press_hint">点击添加单个模型，长按模型可勾选多个。</string>
+    <string name="ai_fetch_models_selected_hint">已选择 %1$d 个模型，点击条目可调整勾选。</string>
+    <string name="ai_fetch_models_add_selected_empty">添加已选</string>
+    <string name="ai_fetch_models_add_selected">添加已选（%1$d）</string>
+    <string name="ai_fetch_models_existing">已添加</string>
+    <string name="ai_fetch_models_click_toggle">点击切换勾选</string>
+    <string name="ai_fetch_models_click_add_long_select">点击添加，长按多选</string>
     <string name="ai_manage_models">管理模型</string>
     <string name="ai_manage_models_summary">已添加 %1$d 个模型</string>
     <string name="ai_edit_model">编辑模型</string>

@@ -740,6 +740,13 @@
     <string name="ai_fetch_models_no_new">No new models</string>
     <string name="ai_fetch_models_success">Added %1$d models</string>
     <string name="ai_fetch_models_failed">Failed to fetch models: %s</string>
+    <string name="ai_fetch_models_long_press_hint">Tap to add one model. Long press a model to select multiple.</string>
+    <string name="ai_fetch_models_selected_hint">%1$d models selected. Tap rows to adjust the selection.</string>
+    <string name="ai_fetch_models_add_selected_empty">Add selected</string>
+    <string name="ai_fetch_models_add_selected">Add selected (%1$d)</string>
+    <string name="ai_fetch_models_existing">Already added</string>
+    <string name="ai_fetch_models_click_toggle">Tap to toggle selection</string>
+    <string name="ai_fetch_models_click_add_long_select">Tap to add, long press for multi-select</string>
     <string name="ai_manage_models">Manage models</string>
     <string name="ai_manage_models_summary">%1$d models added</string>
     <string name="ai_edit_model">Edit model</string>

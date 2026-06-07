@@ -1,13 +1,24 @@
 package io.legado.app.ui.config
 
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.TextUtils
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
@@ -27,12 +38,13 @@ import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
-import io.legado.app.ui.widget.SourceSelectDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -272,20 +284,190 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
     }
 
     private fun showFetchedModelSelector(providerId: String, modelIds: List<String>) {
-        val allKey = getString(R.string.ai_add_all_models)
-        val items = listOf(allKey) + modelIds.distinct()
-        SourceSelectDialog.show(
-            context = this,
-            title = getString(R.string.ai_add_model_from_list),
-            items = items,
-            selectedKey = null,
-            displayName = { it },
-            searchTexts = { listOf(it) },
-            itemKey = { it }
-        ) { selected ->
-            if (selected == allKey) appendFetchedModels(providerId, modelIds)
-            else appendFetchedModels(providerId, listOf(selected))
+        val fetchedModelIds = modelIds.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+        if (fetchedModelIds.isEmpty()) {
+            toastOnUi(R.string.ai_fetch_models_empty)
+            return
         }
+        val existingIds = AppConfig.aiModelConfigList
+            .filter { it.providerId == providerId }
+            .map { it.modelId }
+            .toSet()
+        val selectedIds = linkedSetOf<String>()
+        var selectionMode = false
+        var filteredModelIds = fetchedModelIds
+        var dialog: AlertDialog? = null
+        lateinit var adapter: RecyclerView.Adapter<FetchedModelViewHolder>
+        lateinit var summaryView: TextView
+        lateinit var addSelectedButton: TextView
+
+        fun refreshSelectionState() {
+            summaryView.text = if (selectionMode) {
+                getString(R.string.ai_fetch_models_selected_hint, selectedIds.size)
+            } else {
+                getString(R.string.ai_fetch_models_long_press_hint)
+            }
+            addSelectedButton.isEnabled = selectedIds.isNotEmpty()
+            addSelectedButton.alpha = if (selectedIds.isNotEmpty()) 1f else 0.45f
+            addSelectedButton.text = if (selectedIds.isEmpty()) {
+                getString(R.string.ai_fetch_models_add_selected_empty)
+            } else {
+                getString(R.string.ai_fetch_models_add_selected, selectedIds.size)
+            }
+        }
+
+        fun toggleSelection(modelId: String) {
+            selectionMode = true
+            if (!selectedIds.add(modelId)) {
+                selectedIds.remove(modelId)
+            }
+            refreshSelectionState()
+            adapter.notifyDataSetChanged()
+        }
+
+        adapter = object : RecyclerView.Adapter<FetchedModelViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FetchedModelViewHolder {
+                return FetchedModelViewHolder(parent)
+            }
+
+            override fun getItemCount(): Int = filteredModelIds.size
+
+            override fun onBindViewHolder(holder: FetchedModelViewHolder, position: Int) {
+                val modelId = filteredModelIds[position]
+                holder.bind(
+                    modelId = modelId,
+                    existing = modelId in existingIds,
+                    selected = modelId in selectedIds,
+                    selectionMode = selectionMode,
+                    onClick = {
+                        if (selectionMode) {
+                            toggleSelection(modelId)
+                        } else {
+                            dialog?.dismiss()
+                            appendFetchedModels(providerId, listOf(modelId))
+                        }
+                    },
+                    onLongClick = {
+                        toggleSelection(modelId)
+                        true
+                    }
+                )
+            }
+        }
+
+        val searchView = SearchView(this).apply {
+            queryHint = getString(R.string.screen_find)
+            isIconified = false
+            isSubmitButtonEnabled = false
+            background = GradientDrawable().apply {
+                cornerRadius = UiCorner.searchRadius(10f)
+                setColor(ContextCompat.getColor(this@AiProviderEditActivity, R.color.background_menu))
+            }
+            setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
+            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+                override fun onQueryTextSubmit(query: String?): Boolean = true
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    val key = newText.orEmpty().trim()
+                    filteredModelIds = if (key.isBlank()) {
+                        fetchedModelIds
+                    } else {
+                        fetchedModelIds.filter { it.contains(key, ignoreCase = true) }
+                    }
+                    adapter.notifyDataSetChanged()
+                    return true
+                }
+            })
+        }
+
+        val recyclerView = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@AiProviderEditActivity)
+            this.adapter = adapter
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                360.dpToPx()
+            ).apply {
+                topMargin = 10.dpToPx()
+            }
+        }
+
+        summaryView = TextView(this).apply {
+            applyUiLabelStyle(this@AiProviderEditActivity)
+            setTextColor(secondaryTextColor)
+            textSize = 13f
+            setPadding(2.dpToPx(), 8.dpToPx(), 2.dpToPx(), 0)
+        }
+
+        val addAllButton = TextView(this).apply {
+            text = getString(R.string.ai_add_all_models)
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+            textSize = 14f
+            typeface = this@AiProviderEditActivity.uiTypeface()
+            background = actionBackground()
+            setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+            setOnClickListener {
+                dialog?.dismiss()
+                appendFetchedModels(providerId, fetchedModelIds)
+            }
+        }
+
+        addSelectedButton = TextView(this).apply {
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+            textSize = 14f
+            typeface = this@AiProviderEditActivity.uiTypeface()
+            background = actionBackground()
+            setPadding(12.dpToPx(), 0, 12.dpToPx(), 0)
+            setOnClickListener {
+                if (selectedIds.isEmpty()) return@setOnClickListener
+                dialog?.dismiss()
+                appendFetchedModels(providerId, selectedIds.toList())
+            }
+        }
+
+        val actionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            addView(addAllButton, LinearLayout.LayoutParams(0, 44.dpToPx(), 1f))
+            addView(addSelectedButton, LinearLayout.LayoutParams(0, 44.dpToPx(), 1f).apply {
+                marginStart = 10.dpToPx()
+            })
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(this@AiProviderEditActivity, R.color.background_card),
+                UiCorner.panelRadius(this@AiProviderEditActivity)
+            )
+            setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
+            addView(TextView(this@AiProviderEditActivity).apply {
+                text = getString(R.string.ai_add_model_from_list)
+                applyUiSectionTitleStyle(this@AiProviderEditActivity)
+                textSize = 18f
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(2.dpToPx(), 0, 2.dpToPx(), 12.dpToPx())
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 32.dpToPx()))
+            addView(searchView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 42.dpToPx()))
+            addView(summaryView)
+            addView(recyclerView)
+            addView(actionBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 44.dpToPx()).apply {
+                topMargin = 10.dpToPx()
+            })
+        }
+        refreshSelectionState()
+        dialog = AlertDialog.Builder(this)
+            .setView(container)
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     }
 
     private fun appendFetchedModels(providerId: String, modelIds: List<String>) {
@@ -322,6 +504,90 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
         ContextCompat.getColor(this, R.color.background_menu),
         UiCorner.actionRadius(this)
     )
+
+    private inner class FetchedModelViewHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
+        LinearLayout(parent.context).apply {
+            layoutParams = RecyclerView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 4.dpToPx()
+                bottomMargin = 4.dpToPx()
+            }
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = 54.dpToPx()
+            setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
+        }
+    ) {
+        private val checkBox = CheckBox(parent.context).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        private val titleView = TextView(parent.context).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            applyUiSectionTitleStyle(this@AiProviderEditActivity)
+            textSize = 15f
+        }
+        private val stateView = TextView(parent.context).apply {
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            applyUiLabelStyle(this@AiProviderEditActivity)
+            textSize = 12f
+        }
+
+        init {
+            (itemView as LinearLayout).apply {
+                addView(checkBox, LinearLayout.LayoutParams(40.dpToPx(), 40.dpToPx()))
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(titleView, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ))
+                    addView(stateView, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = 4.dpToPx()
+                    })
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+        }
+
+        fun bind(
+            modelId: String,
+            existing: Boolean,
+            selected: Boolean,
+            selectionMode: Boolean,
+            onClick: () -> Unit,
+            onLongClick: () -> Boolean
+        ) {
+            val fillColor = if (selected) {
+                ContextCompat.getColor(this@AiProviderEditActivity, R.color.background_menu)
+            } else {
+                Color.TRANSPARENT
+            }
+            itemView.background = UiCorner.actionSelector(
+                fillColor,
+                ContextCompat.getColor(this@AiProviderEditActivity, R.color.background_menu),
+                UiCorner.actionRadius(this@AiProviderEditActivity)
+            )
+            checkBox.isVisible = selectionMode
+            checkBox.isChecked = selected
+            titleView.text = modelId
+            stateView.text = when {
+                existing -> getString(R.string.ai_fetch_models_existing)
+                selectionMode -> getString(R.string.ai_fetch_models_click_toggle)
+                else -> getString(R.string.ai_fetch_models_click_add_long_select)
+            }
+            stateView.setTextColor(if (existing) accentColor else secondaryTextColor)
+            itemView.setOnClickListener { onClick() }
+            itemView.setOnLongClickListener { onLongClick() }
+        }
+    }
 
     private inner class ModelAdapter :
         RecyclerAdapter<AiModelConfig, ItemS3ContainerBinding>(this@AiProviderEditActivity) {
