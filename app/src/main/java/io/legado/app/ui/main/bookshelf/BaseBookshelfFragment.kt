@@ -8,7 +8,6 @@ import android.widget.PopupWindow
 import androidx.appcompat.widget.ActionMenuView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
-import androidx.core.view.indices
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.LiveData
@@ -19,7 +18,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.DialogBookshelfConfigBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.config.AppConfig
@@ -37,8 +35,6 @@ import io.legado.app.ui.main.MainViewModel
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.ComposeTextInputDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.utils.checkByIndex
-import io.legado.app.utils.getCheckedIndex
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readText
@@ -239,101 +235,109 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         )
     }
 
-    @SuppressLint("InflateParams")
     fun configBookshelf() {
-        alert(titleResource = R.string.bookshelf_layout) {
-            var bookshelfLayout = AppConfig.bookshelfLayout
-            var bookshelfSort = AppConfig.bookshelfSort
-            var showBookname = AppConfig.showBookname
-            val alertBinding =
-                DialogBookshelfConfigBinding.inflate(layoutInflater)
-                    .apply {
-                        if (AppConfig.bookGroupStyle !in 0..<spGroupStyle.count) {
-                            AppConfig.bookGroupStyle = 0
-                        }
-                        if (bookshelfLayout !in rgLayout.indices) {
-                            bookshelfLayout = 0
-                            AppConfig.bookshelfLayout = 0
-                        }
-                        if (bookshelfSort !in rgSort.indices) {
-                            bookshelfSort = 0
-                            AppConfig.bookshelfSort = 0
-                        }
-                        if (showBookname !in rgbLayout.indices) {
-                            showBookname = 0
-                            AppConfig.showBookname = 0
-                        }
-                        spGroupStyle.setSelection(AppConfig.bookGroupStyle)
-                        swShowUnread.isChecked = AppConfig.showUnread
-                        swShowLastUpdateTime.isChecked = AppConfig.showLastUpdateTime
-                        swShowWaitUpBooks.isChecked = AppConfig.showWaitUpCount
-                        swShowBookshelfFastScroller.isChecked = AppConfig.showBookshelfFastScroller
-                        rgLayout.checkByIndex(bookshelfLayout)
-                        rgbLayout.checkByIndex(showBookname)
-                        if (bookshelfLayout < 2) {
-                            bookNameChoice.visibility = View.GONE
-                        }
-                        rgLayout.setOnCheckedChangeListener { group, checkedId ->
-                            val index = group.getCheckedIndex()
-                            bookNameChoice.visibility = if (index > 1) View.VISIBLE else View.GONE
-                        }
-                        rgSort.checkByIndex(bookshelfSort)
-                        margin.progress = AppConfig.bookshelfMargin
-                    }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.apply {
-                    var notifyMain = false
-                    var recreate = false
-                    if (AppConfig.bookGroupStyle != spGroupStyle.selectedItemPosition) {
-                        AppConfig.bookGroupStyle = spGroupStyle.selectedItemPosition
-                        notifyMain = true
-                    }
-                    if (showBookname != rgbLayout.getCheckedIndex()) {
-                        AppConfig.showBookname = rgbLayout.getCheckedIndex()
-                        recreate = true
-                    }
-                    if (AppConfig.bookshelfMargin != margin.progress) {
-                        AppConfig.bookshelfMargin = margin.progress
-                        recreate = true
-                    }
-                    if (AppConfig.showUnread != swShowUnread.isChecked) {
-                        AppConfig.showUnread = swShowUnread.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (AppConfig.showLastUpdateTime != swShowLastUpdateTime.isChecked) {
-                        AppConfig.showLastUpdateTime = swShowLastUpdateTime.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (AppConfig.showWaitUpCount != swShowWaitUpBooks.isChecked) {
-                        AppConfig.showWaitUpCount = swShowWaitUpBooks.isChecked
-                        activityViewModel.postUpBooksLiveData(true)
-                    }
-                    if (AppConfig.showBookshelfFastScroller != swShowBookshelfFastScroller.isChecked) {
-                        AppConfig.showBookshelfFastScroller = swShowBookshelfFastScroller.isChecked
-                        postEvent(EventBus.BOOKSHELF_REFRESH, "")
-                    }
-                    if (bookshelfSort != rgSort.getCheckedIndex()) {
-                        AppConfig.bookshelfSort = rgSort.getCheckedIndex()
-                        upSort()
-                    }
-                    if (bookshelfLayout != rgLayout.getCheckedIndex()) {
-                        AppConfig.bookshelfLayout = rgLayout.getCheckedIndex()
-                        if (AppConfig.bookshelfLayout < 2) {
-                            activityViewModel.booksGridRecycledViewPool.clear()
-                        } else {
-                            activityViewModel.booksListRecycledViewPool.clear()
-                        }
-                        recreate = true
-                    }
-                    if (recreate) {
-                        postEvent(EventBus.RECREATE, "")
-                    } else if (notifyMain) {
-                        postEvent(EventBus.NOTIFY_MAIN, false)
-                    }
+        val groupStyleCount = resources.getStringArray(R.array.group_style).size
+        if (AppConfig.bookGroupStyle !in 0 until groupStyleCount) {
+            AppConfig.bookGroupStyle = 0
+        }
+        var bookshelfLayout = AppConfig.bookshelfLayout
+        var bookshelfSort = AppConfig.bookshelfSort
+        var showBookname = AppConfig.showBookname
+        if (bookshelfLayout !in 0..6) {
+            bookshelfLayout = 0
+            AppConfig.bookshelfLayout = 0
+        }
+        if (bookshelfSort !in 0..5) {
+            bookshelfSort = 0
+            AppConfig.bookshelfSort = 0
+        }
+        if (showBookname !in 0..2) {
+            showBookname = 0
+            AppConfig.showBookname = 0
+        }
+        showDialogFragment(
+            BookshelfConfigDialog.create(
+                initialValues = BookshelfConfigValues(
+                    groupStyle = AppConfig.bookGroupStyle,
+                    showUnread = AppConfig.showUnread,
+                    showLastUpdateTime = AppConfig.showLastUpdateTime,
+                    showWaitUpCount = AppConfig.showWaitUpCount,
+                    showFastScroller = AppConfig.showBookshelfFastScroller,
+                    layout = bookshelfLayout,
+                    sort = bookshelfSort,
+                    showBookname = showBookname,
+                    margin = AppConfig.bookshelfMargin
+                ),
+                onApply = { values ->
+                    applyBookshelfConfig(
+                        previousLayout = bookshelfLayout,
+                        previousSort = bookshelfSort,
+                        previousShowBookname = showBookname,
+                        values = values
+                    )
                 }
+            )
+        )
+    }
+
+    private fun applyBookshelfConfig(
+        previousLayout: Int,
+        previousSort: Int,
+        previousShowBookname: Int,
+        values: BookshelfConfigValues
+    ) {
+        var notifyMain = false
+        var recreate = false
+        val groupStyle = values.groupStyle.coerceIn(0, 1)
+        val layout = values.layout.coerceIn(0, 6)
+        val sort = values.sort.coerceIn(0, 5)
+        val showBookname = values.showBookname.coerceIn(0, 2)
+        val margin = values.margin.coerceIn(0, 60)
+        if (AppConfig.bookGroupStyle != groupStyle) {
+            AppConfig.bookGroupStyle = groupStyle
+            notifyMain = true
+        }
+        if (previousShowBookname != showBookname) {
+            AppConfig.showBookname = showBookname
+            recreate = true
+        }
+        if (AppConfig.bookshelfMargin != margin) {
+            AppConfig.bookshelfMargin = margin
+            recreate = true
+        }
+        if (AppConfig.showUnread != values.showUnread) {
+            AppConfig.showUnread = values.showUnread
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+        }
+        if (AppConfig.showLastUpdateTime != values.showLastUpdateTime) {
+            AppConfig.showLastUpdateTime = values.showLastUpdateTime
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+        }
+        if (AppConfig.showWaitUpCount != values.showWaitUpCount) {
+            AppConfig.showWaitUpCount = values.showWaitUpCount
+            activityViewModel.postUpBooksLiveData(true)
+        }
+        if (AppConfig.showBookshelfFastScroller != values.showFastScroller) {
+            AppConfig.showBookshelfFastScroller = values.showFastScroller
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+        }
+        if (previousSort != sort) {
+            AppConfig.bookshelfSort = sort
+            upSort()
+        }
+        if (previousLayout != layout) {
+            AppConfig.bookshelfLayout = layout
+            if (AppConfig.bookshelfLayout < 2) {
+                activityViewModel.booksGridRecycledViewPool.clear()
+            } else {
+                activityViewModel.booksListRecycledViewPool.clear()
             }
-            cancelButton()
+            recreate = true
+        }
+        if (recreate) {
+            postEvent(EventBus.RECREATE, "")
+        } else if (notifyMain) {
+            postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
 
