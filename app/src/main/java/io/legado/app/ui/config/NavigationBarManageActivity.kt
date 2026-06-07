@@ -13,6 +13,7 @@ import android.widget.ImageView
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -404,11 +405,33 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         val root = buildEditView()
         editingDialog = root
         alert(R.string.navigation_bar_edit) {
-            customView { root }
+            customView { editDialogScrollContainer(root) }
             okButton {
                 saveEditingPackage()
             }
             cancelButton()
+        }
+    }
+
+    private fun editDialogScrollContainer(content: View): ScrollView {
+        return object : ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val maxHeight = (resources.displayMetrics.heightPixels * 0.68f).toInt()
+                    .coerceAtLeast(320.dp)
+                val limitedHeightSpec = View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, limitedHeightSpec)
+            }
+        }.apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                content,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
     }
 
