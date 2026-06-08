@@ -425,11 +425,47 @@ data class Book(
     }
 
     fun save() {
+        sanitizeForStorage()
         if (appDb.bookDao.has(bookUrl)) {
             appDb.bookDao.update(this)
         } else {
             appDb.bookDao.insert(this)
         }
+    }
+
+    fun sanitizeForStorage() {
+        intro = intro.limitBookTextField()
+        customIntro = customIntro.limitBookTextField()
+        variable = variable.limitBookTextField()
+        coverUrl = coverUrl.limitBookUrlField()
+        customCoverUrl = customCoverUrl.limitBookUrlField()
+    }
+
+    private fun String?.limitBookTextField(): String? {
+        val value = this ?: return null
+        if (value.length <= MaxBookTextFieldLength) {
+            return value
+        }
+        return when {
+            value.startsWith("<useweb>", ignoreCase = true) -> value.limitTaggedBookText("useweb")
+            value.startsWith("<usehtml>", ignoreCase = true) -> value.limitTaggedBookText("usehtml")
+            value.startsWith("<md>", ignoreCase = true) -> value.limitTaggedBookText("md")
+            else -> value.take(MaxBookTextFieldLength)
+        }
+    }
+
+    private fun String.limitTaggedBookText(tag: String): String {
+        val startTag = "<$tag>"
+        val endTag = "</$tag>"
+        val maxContentLength = (MaxBookTextFieldLength - startTag.length - endTag.length)
+            .coerceAtLeast(0)
+        val content = drop(startTag.length).substringBeforeLast(endTag)
+        return startTag + content.take(maxContentLength) + endTag
+    }
+
+    private fun String?.limitBookUrlField(): String? {
+        val value = this ?: return null
+        return if (value.length > MaxBookUrlFieldLength) null else value
     }
 
     fun delete() {
@@ -447,6 +483,8 @@ data class Book(
         const val imgStyleFull = "FULL"
         const val imgStyleText = "TEXT"
         const val imgStyleSingle = "SINGLE"
+        private const val MaxBookTextFieldLength = 262_144
+        private const val MaxBookUrlFieldLength = 32_768
     }
 
     @Parcelize

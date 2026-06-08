@@ -168,18 +168,31 @@ interface BookDao {
     fun hasFile(fileName: String): Boolean
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insert(vararg book: Book)
+    fun insertRaw(vararg book: Book)
 
     @Update
-    fun update(vararg book: Book)
+    fun updateRaw(vararg book: Book)
+
+    @Transaction
+    fun insert(vararg book: Book) {
+        book.forEach { it.sanitizeForStorage() }
+        insertRaw(*book)
+    }
+
+    @Transaction
+    fun update(vararg book: Book) {
+        book.forEach { it.sanitizeForStorage() }
+        updateRaw(*book)
+    }
 
     @Delete
     fun delete(vararg book: Book)
 
     @Transaction
     fun replace(oldBook: Book, newBook: Book) {
+        newBook.sanitizeForStorage()
         delete(oldBook)
-        insert(newBook)
+        insertRaw(newBook)
     }
 
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
