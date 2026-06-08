@@ -1,6 +1,8 @@
 package io.legado.app.ui.book.character.compose
 
 import android.widget.ImageView
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -43,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -50,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1884,6 +1888,13 @@ private fun RelationEditSheet(
     var selectingTarget by remember { mutableStateOf<RelationSelectTarget?>(null) }
     val style = rememberCharacterStyle()
     val palette = style.toCharacterMiuixPalette()
+    CharacterBackHandler {
+        if (selectingTarget != null) {
+            selectingTarget = null
+        } else {
+            onDismiss()
+        }
+    }
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -1980,6 +1991,23 @@ private fun RelationEditSheet(
                 selectingTarget = null
             }
         )
+    }
+}
+
+@Composable
+private fun CharacterBackHandler(onBack: () -> Unit) {
+    val activity = LocalContext.current as? AppCompatActivity ?: return
+    val currentOnBack by rememberUpdatedState(onBack)
+    DisposableEffect(activity) {
+        val callback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                currentOnBack()
+            }
+        }
+        activity.onBackPressedDispatcher.addCallback(callback)
+        onDispose {
+            callback.remove()
+        }
     }
 }
 
