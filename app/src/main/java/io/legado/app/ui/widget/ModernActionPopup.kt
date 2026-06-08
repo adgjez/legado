@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.MenuRes
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,7 +18,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.LocalTextStyle
@@ -65,7 +66,11 @@ object ModernActionPopup {
     class Handle internal constructor(
         private val visibleState: MutableState<Boolean>,
         private val overlay: ComposeView,
-        private val host: ViewGroup
+        private val host: ViewGroup,
+        private val backCallback: OnBackPressedCallback?,
+        private val anchor: View,
+        private val anchorDetachListener: View.OnAttachStateChangeListener,
+        private val hostDetachListener: View.OnAttachStateChangeListener
     ) {
         private var dismissed = false
         val isShowing: Boolean
@@ -75,6 +80,9 @@ object ModernActionPopup {
             if (dismissed) return
             dismissed = true
             visibleState.value = false
+            backCallback?.remove()
+            anchor.removeOnAttachStateChangeListener(anchorDetachListener)
+            host.removeOnAttachStateChangeListener(hostDetachListener)
             val delay = if (AppConfig.isEInkMode) 0L else 170L
             overlay.postDelayed({
                 if (overlay.parent === host) {
@@ -105,26 +113,56 @@ object ModernActionPopup {
         bottomGapDp: Int = 8
     ): Handle? {
         if (actions.isEmpty()) return previousPopup
-        val host = anchor.activity?.window?.decorView as? ViewGroup
-            ?: anchor.rootView as? ViewGroup
+        val host = anchor.rootView as? ViewGroup
+            ?: anchor.activity?.window?.decorView as? ViewGroup
             ?: return previousPopup
         val snapshot = calculateAnchorSnapshot(anchor, host, actions, maxHeightRatio, bottomGapDp)
         previousPopup?.dismiss()
-        val visibleState = mutableStateOf(AppConfig.isEInkMode)
+        val visibleState = mutableStateOf(false)
+        var handle: Handle? = null
         val overlay = ComposeView(host.context).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            isFocusable = true
             isFocusableInTouchMode = true
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    (tag as? Handle)?.dismiss()
+                    handle?.dismiss()
                     true
                 } else {
                     false
                 }
             }
         }
-        val handle = Handle(visibleState, overlay, host)
-        overlay.tag = handle
+        val anchorDetachListener = object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = Unit
+            override fun onViewDetachedFromWindow(v: View) {
+                handle?.dismiss()
+            }
+        }
+        val hostDetachListener = object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = Unit
+            override fun onViewDetachedFromWindow(v: View) {
+                handle?.dismiss()
+            }
+        }
+        anchor.addOnAttachStateChangeListener(anchorDetachListener)
+        host.addOnAttachStateChangeListener(hostDetachListener)
+        val backCallback = anchor.activity?.let { activity ->
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handle?.dismiss()
+                }
+            }.also { activity.onBackPressedDispatcher.addCallback(it) }
+        }
+        handle = Handle(
+            visibleState = visibleState,
+            overlay = overlay,
+            host = host,
+            backCallback = backCallback,
+            anchor = anchor,
+            anchorDetachListener = anchorDetachListener,
+            hostDetachListener = hostDetachListener
+        )
         overlay.setContent {
             ModernActionPopupOverlay(
                 snapshot = snapshot,
@@ -141,10 +179,8 @@ object ModernActionPopup {
             )
         )
         overlay.requestFocus()
-        if (!AppConfig.isEInkMode) {
-            overlay.post {
-                visibleState.value = true
-            }
+        overlay.post {
+            visibleState.value = true
         }
         return handle
     }
@@ -181,9 +217,7 @@ object ModernActionPopup {
         val style = rememberAppDialogStyle()
         val palette = style.toMiuixPalette()
         val density = LocalDensity.current
-        val maxWidthDp = with(density) { snapshot.maxWidthPx.toDp() }
         val maxHeightDp = with(density) { snapshot.maxHeightPx.toDp() }
-        val minWidthDp = with(density) { minOf(MIN_WIDTH_DP.dpToPx(), snapshot.maxWidthPx).toDp() }
         var panelSize by remember { mutableStateOf(IntSize.Zero) }
         var panelBounds by remember { mutableStateOf<ComposeRect?>(null) }
         val panelWidth = panelSize.width.takeIf { it > 0 } ?: snapshot.fallbackWidthPx
@@ -216,7 +250,7 @@ object ModernActionPopup {
                 LegadoMiuixCard(
                     modifier = Modifier
                         .offset { panelOffset }
-                        .widthIn(min = minWidthDp, max = minOf(MAX_WIDTH_DP.dp, maxWidthDp))
+                        .width(with(density) { snapshot.fallbackWidthPx.toDp() })
                         .heightIn(max = maxHeightDp)
                         .onSizeChanged { panelSize = it }
                         .onGloballyPositioned { panelBounds = it.boundsInRoot() }
@@ -293,7 +327,7 @@ object ModernActionPopup {
             .coerceAtLeast(minimumHeight)
             .coerceAtMost(usableHeight)
         val maxWidth = (hostWidth - gap * 2).coerceAtLeast(1)
-        val fallbackWidth = minOf(MAX_WIDTH_DP.dpToPx(), maxWidth).coerceAtLeast(1)
+        val fallbackWidth = estimatePanelWidthPx(actions, maxWidth)
         val rowHeight = ROW_HEIGHT_DP.dpToPx()
         val fallbackHeight = minOf(
             maxHeight,
@@ -351,5 +385,12 @@ object ModernActionPopup {
         val pivotY = ((anchorCenterY - panelOffset.y) / panelHeight.coerceAtLeast(1))
             .coerceIn(0f, 1f)
         return TransformOrigin(pivotX, pivotY)
+    }
+
+    private fun estimatePanelWidthPx(actions: List<Action>, maxWidthPx: Int): Int {
+        val longest = actions.maxOfOrNull { it.title.length } ?: 0
+        val estimatedDp = (56 + longest.coerceAtMost(14) * 13)
+            .coerceIn(MIN_WIDTH_DP, MAX_WIDTH_DP)
+        return minOf(estimatedDp.dpToPx(), maxWidthPx).coerceAtLeast(1)
     }
 }
