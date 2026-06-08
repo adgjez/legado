@@ -1,32 +1,56 @@
 package io.legado.app.ui.widget
 
-import android.graphics.Color
+import android.app.Dialog
+import android.content.Context
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
-import android.text.TextUtils
-import android.view.View
-import android.view.Gravity
 import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.SearchView
-import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import android.view.Window
+import android.view.WindowManager
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.windowSize
+import splitties.systemservices.windowManager
 
 object SourceSelectDialog {
 
     fun <T> show(
-        context: android.content.Context,
+        context: Context,
         title: CharSequence,
         items: List<T>,
         selectedKey: String?,
@@ -37,129 +61,144 @@ object SourceSelectDialog {
         onSelect: (T) -> Unit
     ) {
         if (items.isEmpty()) return
-        var dialog: AlertDialog? = null
-        var filteredItems = items.toList()
-        val adapter = object : RecyclerView.Adapter<SourceViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SourceViewHolder {
-                return SourceViewHolder(SourceOptionView(parent.context))
-            }
-
-            override fun getItemCount(): Int = filteredItems.size
-
-            override fun onBindViewHolder(holder: SourceViewHolder, position: Int) {
-                val item = filteredItems[position]
-                val selectedPrefix = if (itemKey(item) == selectedKey) "\u2713 " else ""
-                holder.bind(selectedPrefix + displayName(item)) {
-                    dialog?.dismiss()
-                    onSelect(item)
-                }
-            }
+        val dialog = Dialog(context).apply {
+            requestWindowFeature(Window.FEATURE_NO_TITLE)
+            window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
-        val searchView = SearchView(context).apply {
-            queryHint = context.getString(R.string.screen_find)
-            isIconified = false
-            isSubmitButtonEnabled = false
-            background = GradientDrawable().apply {
-                cornerRadius = UiCorner.searchRadius(10f)
-                setColor(ContextCompat.getColor(context, R.color.background_menu))
-            }
-            setPadding(4.dpToPx(), 0, 4.dpToPx(), 0)
-            setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean = true
-
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    val key = newText.orEmpty().trim()
-                    filteredItems = if (key.isBlank()) {
-                        items
-                    } else {
-                        items.filter { item ->
-                            searchTexts(item).any { text -> text.contains(key, true) }
+        dialog.setContentView(
+            ComposeView(context).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                setContent {
+                    SourceSelectContent(
+                        title = title.toString(),
+                        items = items,
+                        selectedKey = selectedKey,
+                        displayName = displayName,
+                        searchTexts = searchTexts,
+                        itemKey = itemKey,
+                        showTitle = showTitle,
+                        onSelect = {
+                            dialog.dismiss()
+                            onSelect(it)
                         }
-                    }
-                    adapter.notifyDataSetChanged()
-                    return true
-                }
-            })
-        }
-        searchView.applyUiBodyTypefaceDeep(context.uiTypeface())
-        val recyclerView = RecyclerView(context).apply {
-            layoutManager = LinearLayoutManager(context)
-            this.adapter = adapter
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                360.dpToPx()
-            ).apply {
-                topMargin = 10.dpToPx()
-            }
-        }
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
-                UiCorner.panelRadius(context)
-            )
-            setPadding(14.dpToPx(), 14.dpToPx(), 14.dpToPx(), 12.dpToPx())
-            if (showTitle) {
-                addView(
-                    TextView(context).apply {
-                        text = title
-                        applyUiSectionTitleStyle(context)
-                        textSize = 18f
-                        includeFontPadding = false
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(2.dpToPx(), 0, 2.dpToPx(), 12.dpToPx())
-                    },
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        32.dpToPx()
                     )
-                )
+                }
             }
-            addView(
-                searchView,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    42.dpToPx()
+        )
+        dialog.setOnShowListener {
+            val width = minOf(
+                (context.windowManager.windowSize.widthPixels * 0.94f).toInt(),
+                520.dpToPx()
+            )
+            dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
+        dialog.show()
+    }
+}
+
+@Composable
+private fun <T> SourceSelectContent(
+    title: String,
+    items: List<T>,
+    selectedKey: String?,
+    displayName: (T) -> String,
+    searchTexts: (T) -> List<String>,
+    itemKey: (T) -> String,
+    showTitle: Boolean,
+    onSelect: (T) -> Unit
+) {
+    val style = rememberAppDialogStyle()
+    val palette = style.toMiuixPalette()
+    var query by remember { mutableStateOf("") }
+    val filteredItems = remember(items, query) {
+        val key = query.trim()
+        if (key.isBlank()) {
+            items
+        } else {
+            items.filter { item ->
+                searchTexts(item).any { it.contains(key, ignoreCase = true) }
+            }
+        }
+    }
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+    ) {
+        LegadoMiuixCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            color = style.surface,
+            contentColor = style.primaryText,
+            cornerRadius = style.panelRadius,
+            insidePadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            if (showTitle) {
+                Text(
+                    text = title,
+                    color = style.primaryText,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = style.titleFontFamily,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text(stringResource(R.string.screen_find)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                textStyle = LocalTextStyle.current.copy(
+                    color = style.primaryText,
+                    fontSize = 15.sp
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = style.primaryText,
+                    unfocusedTextColor = style.primaryText,
+                    focusedContainerColor = style.fieldSurface,
+                    unfocusedContainerColor = style.fieldSurface,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedLabelColor = style.accent,
+                    unfocusedLabelColor = style.secondaryText,
+                    cursorColor = style.accent
                 )
             )
-            addView(recyclerView)
-        }
-        dialog = AlertDialog.Builder(context)
-            .setView(container)
-            .create()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-    }
-
-    private class SourceOptionView(context: android.content.Context) : TextView(context) {
-        init {
-            layoutParams = RecyclerView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
-            minHeight = 48.dpToPx()
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            applyUiLabelStyle(context)
-            textSize = 15f
-            setPadding(18.dpToPx(), 0, 18.dpToPx(), 0)
-            background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(context, R.color.background_menu),
-                UiCorner.actionRadius(context)
-            )
-            isClickable = true
-            isFocusable = true
-        }
-    }
-
-    private class SourceViewHolder(private val rowView: SourceOptionView) : RecyclerView.ViewHolder(rowView) {
-        fun bind(title: CharSequence, onClick: () -> Unit) {
-            rowView.text = title
-            rowView.setOnClickListener { onClick() }
+            Spacer(modifier = Modifier.height(10.dp))
+            if (filteredItems.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.empty),
+                    color = style.secondaryText,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(filteredItems) { item ->
+                        LegadoMiuixChoiceRow(
+                            text = displayName(item),
+                            selected = itemKey(item) == selectedKey,
+                            palette = palette,
+                            onClick = { onSelect(item) },
+                            minHeight = 46.dp
+                        )
+                    }
+                }
+            }
         }
     }
 }
