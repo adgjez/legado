@@ -466,7 +466,16 @@ private fun BookshelfOptionGrid(
     spec: BookshelfPremiumSpec
 ) {
     var expandedKey by remember { mutableStateOf<String?>(null) }
+    var panelVisible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val expandedItem = items.firstOrNull { it.key == expandedKey }
+    fun dismissPanel() {
+        panelVisible = false
+        scope.launch {
+            delay(120)
+            expandedKey = null
+        }
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spec.gridGap)
@@ -484,7 +493,12 @@ private fun BookshelfOptionGrid(
                         spec = spec,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            expandedKey = if (expandedKey == item.key) null else item.key
+                            if (expandedKey == item.key) {
+                                dismissPanel()
+                            } else {
+                                panelVisible = false
+                                expandedKey = item.key
+                            }
                         }
                     )
                 }
@@ -493,14 +507,24 @@ private fun BookshelfOptionGrid(
                 }
             }
         }
-        expandedItem?.let { item ->
-            BookshelfChoicePanel(
+    }
+    expandedItem?.let { item ->
+        Popup(
+            alignment = Alignment.Center,
+            onDismissRequest = { dismissPanel() },
+            properties = PopupProperties(focusable = true)
+        ) {
+            LaunchedEffect(item.key) {
+                panelVisible = true
+            }
+            BookshelfChoicePopupPanel(
+                visible = panelVisible,
                 item = item,
                 style = style,
                 spec = spec,
                 onSelected = {
                     item.onSelected(it)
-                    expandedKey = null
+                    dismissPanel()
                 }
             )
         }
@@ -567,25 +591,48 @@ private fun BookshelfSelectTile(
 }
 
 @Composable
-private fun BookshelfChoicePanel(
+private fun BookshelfChoicePopupPanel(
+    visible: Boolean,
     item: BookshelfSelectItem,
     style: AppDialogStyle,
     spec: BookshelfPremiumSpec,
     onSelected: (Int) -> Unit
 ) {
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "bookshelfChoicePopup"
+    )
     val columns = 2
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(style.actionRadius),
+        modifier = Modifier
+            .width(340.dp)
+            .graphicsLayer {
+                alpha = progress
+                scaleX = 0.96f + 0.04f * progress
+                scaleY = 0.96f + 0.04f * progress
+                translationY = (1f - progress) * 12f
+            },
+        shape = RoundedCornerShape(style.panelRadius),
         color = style.surface,
         contentColor = style.primaryText,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 12.dp
     ) {
         Column(
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            Text(
+                text = "选择${item.label}",
+                color = style.primaryText,
+                fontSize = 16.sp,
+                fontFamily = style.titleFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
             item.options.chunked(columns).forEach { rowOptions ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
