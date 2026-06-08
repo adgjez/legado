@@ -7,16 +7,20 @@ import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -30,7 +34,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -111,6 +117,9 @@ private fun <T> SourceSelectContent(
 ) {
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
+    val configuration = LocalConfiguration.current
+    val maxPanelHeight = maxOf(260.dp, (configuration.screenHeightDp * 0.78f).dp)
+    val listMaxHeight = maxOf(150.dp, maxPanelHeight - if (showTitle) 156.dp else 112.dp)
     var query by remember { mutableStateOf("") }
     val filteredItems = remember(items, query) {
         val key = query.trim()
@@ -128,6 +137,7 @@ private fun <T> SourceSelectContent(
         LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = maxPanelHeight)
                 .imePadding()
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             color = style.surface,
@@ -154,6 +164,17 @@ private fun <T> SourceSelectContent(
                 singleLine = true,
                 label = { Text(stringResource(R.string.screen_find)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_clear),
+                                contentDescription = null,
+                                tint = style.secondaryText
+                            )
+                        }
+                    }
+                },
                 textStyle = LocalTextStyle.current.copy(
                     color = style.primaryText,
                     fontSize = 15.sp
@@ -172,23 +193,30 @@ private fun <T> SourceSelectContent(
             )
             Spacer(modifier = Modifier.height(10.dp))
             if (filteredItems.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.empty),
-                    color = style.secondaryText,
-                    fontSize = 14.sp,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp),
-                    textAlign = TextAlign.Center
-                )
+                        .height(minOf(180.dp, listMaxHeight)),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.empty),
+                        color = style.secondaryText,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 380.dp),
+                        .heightIn(max = listMaxHeight),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(filteredItems) { item ->
+                    itemsIndexed(
+                        items = filteredItems,
+                        key = { index, item -> "${itemKey(item)}#$index" }
+                    ) { _, item ->
                         LegadoMiuixChoiceRow(
                             text = displayName(item),
                             selected = itemKey(item) == selectedKey,
