@@ -9,7 +9,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.FrameLayout
 import android.widget.PopupMenu
-import android.widget.PopupWindow
 import androidx.annotation.MenuRes
 import androidx.annotation.StringRes
 import io.legado.app.R
@@ -38,7 +37,7 @@ class SelectActionBar @JvmOverloads constructor(
 
     private var callBack: CallBack? = null
     private var selMenu: Menu? = null
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private var menuItemClickListener: MenuItem.OnMenuItemClickListener? = null
     private val binding = ViewSelectActionBarBinding
         .inflate(LayoutInflater.from(context), this, true)

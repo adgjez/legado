@@ -11,7 +11,6 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DiffUtil
@@ -79,7 +78,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
-    private var containerMenuPopup: PopupWindow? = null
+    private var containerMenuPopup: ModernActionPopup.Handle? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val importPackage = registerForActivityResult(HandleFileContract()) {

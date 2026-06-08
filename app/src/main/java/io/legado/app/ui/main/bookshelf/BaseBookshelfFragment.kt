@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.PopupWindow
 import androidx.appcompat.widget.ActionMenuView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.children
@@ -89,7 +88,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             }
         }
     }
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
 
     abstract fun gotoTop()
 

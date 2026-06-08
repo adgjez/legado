@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.widget.PopupWindow
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
@@ -81,7 +80,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
     private val adapter by lazy { CacheAdapter(this, this) }
     private var booksFlowJob: Job? = null
     private var menu: Menu? = null
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private val groupList: ArrayList<BookGroup> = arrayListOf()
     private var groupId: Long = -1
 

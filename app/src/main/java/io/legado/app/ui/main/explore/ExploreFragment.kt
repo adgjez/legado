@@ -144,7 +144,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private var modernModeInitialized = false
     private var usingModernDiscovery = false
     private var sourceMenuPopup: PopupWindow? = null
-    private var tagFilterPopup: PopupWindow? = null
+    private var tagFilterPopup: ModernActionPopup.Handle? = null
     private var discoverSourceFlowJob: Job? = null
     private var discoverBookshelfFlowJob: Job? = null
     private var discoverWarmupJob: Job? = null

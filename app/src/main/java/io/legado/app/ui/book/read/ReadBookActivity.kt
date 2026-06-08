@@ -26,7 +26,6 @@ import android.view.WindowInsetsController
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import android.text.TextPaint
@@ -312,7 +311,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
     private var menu: Menu? = null
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private var backupJob: Job? = null
     private var tts: TTS? = null
     private var commentWebViewSession: CommentWebViewSession? = null

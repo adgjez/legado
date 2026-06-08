@@ -3,7 +3,6 @@ package io.legado.app.ui.rss.subscription
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
@@ -18,7 +17,7 @@ class RuleSubAdapter(context: Context, val callBack: Callback) :
     RecyclerAdapter<RuleSub, ItemRuleSubBinding>(context),
     ItemTouchCallback.Callback {
 
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private val typeArray = context.resources.getStringArray(R.array.rule_type)
 
     override fun convert(

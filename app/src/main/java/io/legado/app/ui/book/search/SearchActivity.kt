@@ -10,7 +10,6 @@ import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.LinearLayout
 import androidx.activity.viewModels
@@ -105,7 +104,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private var groups: List<String>? = null
     private var historyFlowJob: Job? = null
     private var booksFlowJob: Job? = null
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private var isManualStopSearch = false
     private var sourceGroupBarBaseBottomMargin = 0
     private var inputHelpBaseBottomMargin = 0

@@ -22,7 +22,6 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.SeekBar
 import android.widget.Space
 import android.widget.TextView
@@ -120,7 +119,7 @@ class ReadMenu @JvmOverloads constructor(
             PreferKey.showBrightnessView,
             true
         )
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private var currentChapterUrl: String? = null
     private var cloudState: LibraryCloudState = LibraryCloudState.DISABLED
     private var autoPageActive: Boolean = false

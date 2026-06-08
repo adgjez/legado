@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -30,7 +29,7 @@ class ChangeBookSourceAdapter(
     val callBack: CallBack
 ) : DiffRecyclerAdapter<SearchBook, ItemChangeSourceBinding>(context) {
 
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
 
     override val diffItemCallback = object : DiffUtil.ItemCallback<SearchBook>() {
         override fun areItemsTheSame(oldItem: SearchBook, newItem: SearchBook): Boolean {

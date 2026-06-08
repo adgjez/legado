@@ -3,7 +3,6 @@ package io.legado.app.ui.main.rss
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.bumptech.glide.request.RequestOptions
@@ -26,7 +25,7 @@ class RssAdapter(
     private val lifecycle: Lifecycle
 ) : RecyclerAdapter<RssSource, ItemRssBinding>(context) {
 
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
 
     override fun getViewBinding(parent: ViewGroup): ItemRssBinding {
         return ItemRssBinding.inflate(inflater, parent, false).apply {

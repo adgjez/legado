@@ -5,7 +5,6 @@ package io.legado.app.ui.main.bookshelf.style1
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
@@ -56,7 +55,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private val adapter by lazy { TabFragmentPageAdapter(childFragmentManager) }
     private val bookGroups = mutableListOf<BookGroup>()
     private val fragmentMap = hashMapOf<Long, BooksFragment>()
-    private var groupMenuPopup: PopupWindow? = null
+    private var groupMenuPopup: ModernActionPopup.Handle? = null
     private var bookTags = emptyList<String>()
     private var selectedBookTag = ""
     private val groupBooksCache = hashMapOf<Long, List<Book>>()

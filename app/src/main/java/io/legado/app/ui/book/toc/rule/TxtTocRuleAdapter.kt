@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
@@ -22,7 +21,7 @@ class TxtTocRuleAdapter(context: Context, private val callBack: CallBack) :
     ItemTouchCallback.Callback {
 
     private val selected = linkedSetOf<TxtTocRule>()
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
 
     val selection: List<TxtTocRule>
         get() = getItems().filter {

@@ -12,7 +12,6 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -83,7 +82,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
-    private var containerMenuPopup: PopupWindow? = null
+    private var containerMenuPopup: ModernActionPopup.Handle? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val selectIcon = registerForActivityResult(HandleFileContract()) { result ->

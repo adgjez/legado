@@ -12,7 +12,6 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.LinearLayout
-import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatSpinner
@@ -69,7 +68,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
     companion object {
         val exploreInfoMapList = LruCache<String, InfoMap>(99)
     }
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private val recycler = arrayListOf<TextView>()
     private val textRecycler = arrayListOf<AutoCompleteTextView>()
     private val selectRecycler = arrayListOf<LinearLayout>()

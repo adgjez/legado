@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import android.widget.PopupWindow
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
 import androidx.recyclerview.widget.DiffUtil
@@ -39,7 +38,7 @@ class BookSourceAdapter(
     private val selected = linkedSetOf<BookSourcePart>()
     private val finalMessageRegex = Regex("成功|失败")
     private val handler = buildMainHandler()
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     var showSourceHost = false
 
     val selection: List<BookSourcePart>

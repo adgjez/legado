@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import android.widget.PopupWindow
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
@@ -34,7 +33,7 @@ class FileManageActivity : VMBaseActivity<ActivityFileManageBinding, FileManageV
 
     override val binding by viewBinding(ActivityFileManageBinding::inflate)
     override val viewModel by viewModels<FileManageViewModel>()
-    private var modernMenuPopup: PopupWindow? = null
+    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private val dirParent = ".."
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)

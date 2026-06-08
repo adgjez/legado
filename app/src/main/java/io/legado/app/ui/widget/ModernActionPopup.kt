@@ -1,28 +1,53 @@
 package io.legado.app.ui.widget
 
-import android.content.Context
-import android.graphics.Color
-import android.graphics.Rect
-import android.graphics.drawable.ColorDrawable
-import android.os.Build
-import android.view.MotionEvent
-import android.view.Gravity
+import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
-import android.widget.PopupWindow
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import androidx.annotation.MenuRes
-import androidx.core.content.ContextCompat
-import androidx.core.graphics.ColorUtils
-import io.legado.app.R
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryTextColor
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect as ComposeRect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.utils.activity
 import io.legado.app.utils.dpToPx
 
 object ModernActionPopup {
@@ -33,55 +58,102 @@ object ModernActionPopup {
         val invoke: () -> Unit
     )
 
-    private data class PopupConstraints(
+    class Handle internal constructor(
+        private val visibleState: MutableState<Boolean>,
+        private val overlay: ComposeView,
+        private val host: ViewGroup
+    ) {
+        private var dismissed = false
+        val isShowing: Boolean
+            get() = !dismissed && overlay.parent != null
+
+        fun dismiss() {
+            if (dismissed) return
+            dismissed = true
+            visibleState.value = false
+            val delay = if (AppConfig.isEInkMode) 0L else 170L
+            overlay.postDelayed({
+                if (overlay.parent === host) {
+                    host.removeView(overlay)
+                }
+            }, delay)
+        }
+    }
+
+    private data class AnchorSnapshot(
+        val anchorLeft: Int,
+        val anchorTop: Int,
+        val anchorRight: Int,
+        val anchorBottom: Int,
+        val hostWidth: Int,
+        val hostHeight: Int,
         val maxWidthPx: Int,
-        val maxHeightPx: Int
+        val maxHeightPx: Int,
+        val fallbackWidthPx: Int,
+        val fallbackHeightPx: Int
     )
 
     fun show(
         anchor: View,
         actions: List<Action>,
-        previousPopup: PopupWindow? = null,
+        previousPopup: Handle? = null,
         maxHeightRatio: Float = 0.62f,
         bottomGapDp: Int = 8
-    ): PopupWindow? {
+    ): Handle? {
         if (actions.isEmpty()) return previousPopup
-        val context = anchor.context
-        var popup: PopupWindow? = null
-        val constraints = calculatePopupConstraints(anchor, maxHeightRatio, bottomGapDp)
-        val content = createContent(context, actions, constraints) {
-            popup?.dismiss()
-        }
+        val host = anchor.activity?.window?.decorView as? ViewGroup
+            ?: anchor.rootView as? ViewGroup
+            ?: return previousPopup
+        val snapshot = calculateAnchorSnapshot(anchor, host, actions, maxHeightRatio, bottomGapDp)
         previousPopup?.dismiss()
-        popup = PopupWindow(
-            content,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            true
-        ).apply {
-            animationStyle = R.style.AnimPopupMenu
-            isOutsideTouchable = true
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = 0f
-            }
-            showAnchored(anchor, constraints)
-            content.post {
-                updateAnchored(anchor, content, constraints)
+        val visibleState = mutableStateOf(AppConfig.isEInkMode)
+        val overlay = ComposeView(host.context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    (tag as? Handle)?.dismiss()
+                    true
+                } else {
+                    false
+                }
             }
         }
-        return popup
+        val handle = Handle(visibleState, overlay, host)
+        overlay.tag = handle
+        overlay.setContent {
+            ModernActionPopupOverlay(
+                snapshot = snapshot,
+                actions = actions,
+                visible = visibleState.value,
+                onDismiss = handle::dismiss
+            )
+        }
+        host.addView(
+            overlay,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay.requestFocus()
+        if (!AppConfig.isEInkMode) {
+            overlay.post {
+                visibleState.value = true
+            }
+        }
+        return handle
     }
 
     fun showFromMenu(
         anchor: View,
         @MenuRes menuRes: Int,
-        previousPopup: PopupWindow? = null,
+        previousPopup: Handle? = null,
         maxHeightRatio: Float = 0.62f,
         bottomGapDp: Int = 8,
         prepare: (Menu.() -> Unit)? = null,
         onClick: (MenuItem) -> Boolean
-    ): PopupWindow? {
+    ): Handle? {
         val popupMenu = PopupMenu(anchor.context, anchor)
         popupMenu.inflate(menuRes)
         prepare?.invoke(popupMenu.menu)
@@ -95,108 +167,117 @@ object ModernActionPopup {
         return show(anchor, actions, previousPopup, maxHeightRatio, bottomGapDp)
     }
 
-    private fun createContent(
-        context: Context,
+    @Composable
+    private fun ModernActionPopupOverlay(
+        snapshot: AnchorSnapshot,
         actions: List<Action>,
-        constraints: PopupConstraints,
-        dismiss: () -> Unit
-    ): View {
-        val maxWidth = minOf(280.dpToPx(), constraints.maxWidthPx).coerceAtLeast(1)
-        val minWidth = minOf(132.dpToPx(), maxWidth).coerceAtLeast(1)
-        val actionRadius = UiCorner.actionRadius(context)
-        val selectedBackground = ColorUtils.blendARGB(
-            ContextCompat.getColor(context, R.color.background_menu),
-            context.accentColor,
-            0.08f
+        visible: Boolean,
+        onDismiss: () -> Unit
+    ) {
+        val style = rememberAppDialogStyle()
+        val palette = style.toMiuixPalette()
+        val density = LocalDensity.current
+        val maxWidthDp = with(density) { snapshot.maxWidthPx.toDp() }
+        val maxHeightDp = with(density) { snapshot.maxHeightPx.toDp() }
+        val minWidthDp = with(density) { minOf(132.dpToPx(), snapshot.maxWidthPx).toDp() }
+        var panelSize by remember { mutableStateOf(IntSize.Zero) }
+        var panelBounds by remember { mutableStateOf<ComposeRect?>(null) }
+        val panelWidth = panelSize.width.takeIf { it > 0 } ?: snapshot.fallbackWidthPx
+        val panelHeight = panelSize.height.takeIf { it > 0 } ?: snapshot.fallbackHeightPx
+        val panelOffset = calculatePanelOffset(snapshot, panelWidth, panelHeight)
+        val panelTransformOrigin = calculateTransformOrigin(snapshot, panelOffset, panelWidth, panelHeight)
+        val progress by animateFloatAsState(
+            targetValue = if (visible) 1f else 0f,
+            animationSpec = tween(
+                durationMillis = if (AppConfig.isEInkMode) 0 else 150,
+                easing = FastOutSlowInEasing
+            ),
+            label = "modernActionPopup"
         )
-        val pressedBackground = ColorUtils.setAlphaComponent(
-            context.accentColor,
-            if (ColorUtils.calculateLuminance(context.accentColor) > 0.5) 42 else 52
-        )
-        val list = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.dialog_surface),
-                UiCorner.panelRadius(context)
-            )
-        }
-        actions.forEach { action ->
-            val row = TextView(context).apply {
-                text = action.title
-                maxLines = 2
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                textSize = 15f
-                gravity = Gravity.CENTER_VERTICAL
-                includeFontPadding = false
-                minHeight = 42.dpToPx()
-                setTextColor(if (action.checked) context.accentColor else context.primaryTextColor)
-                setPadding(14.dpToPx(), 9.dpToPx(), 14.dpToPx(), 9.dpToPx())
-                isSelected = action.checked
-                background = UiCorner.actionSelector(
-                    if (action.checked) selectedBackground else Color.TRANSPARENT,
-                    pressedBackground,
-                    actionRadius
-                )
-                setOnClickListener {
-                    dismiss()
-                    action.invoke()
-                }
-                setOnTouchListener { view, event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> view.alpha = 0.78f
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.ACTION_CANCEL -> view.alpha = 1f
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(panelBounds) {
+                    detectTapGestures { tap ->
+                        val bounds = panelBounds
+                        if (bounds == null || !bounds.contains(tap)) {
+                            onDismiss()
+                        }
                     }
-                    false
                 }
-            }
-            list.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    topMargin = 1.dpToPx()
-                    bottomMargin = 1.dpToPx()
+        ) {
+            CompositionLocalProvider(
+                LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+            ) {
+                LegadoMiuixCard(
+                    modifier = Modifier
+                        .offset { panelOffset }
+                        .widthIn(min = minWidthDp, max = minOf(280.dp, maxWidthDp))
+                        .heightIn(max = maxHeightDp)
+                        .onSizeChanged { panelSize = it }
+                        .onGloballyPositioned { panelBounds = it.boundsInRoot() }
+                        .graphicsLayer {
+                            alpha = progress
+                            transformOrigin = panelTransformOrigin
+                            scaleX = 0.96f + 0.04f * progress
+                            scaleY = 0.96f + 0.04f * progress
+                            translationY = (if (panelOffset.y >= snapshot.anchorBottom) -6f else 6f) *
+                                (1f - progress)
+                        },
+                    color = style.surface,
+                    contentColor = style.primaryText,
+                    cornerRadius = style.panelRadius,
+                    insidePadding = PaddingValues(6.dp)
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = maxHeightDp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        itemsIndexed(
+                            items = actions,
+                            key = { index, action -> "${action.title}#$index" }
+                        ) { _, action ->
+                            LegadoMiuixChoiceRow(
+                                text = action.title,
+                                selected = action.checked,
+                                palette = palette,
+                                onClick = {
+                                    onDismiss()
+                                    action.invoke()
+                                },
+                                minHeight = 42.dp,
+                                compact = true,
+                                showSelectedMark = action.checked
+                            )
+                        }
+                    }
                 }
-            )
-        }
-        return ScrollView(context).apply {
-            isFillViewport = false
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            addView(
-                list,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-            minimumWidth = minWidth
-            layoutParams = ViewGroup.LayoutParams(maxWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setPadding(0, 0, 0, 0)
-            clipToPadding = false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = 0f
             }
         }
     }
 
-    private fun calculatePopupConstraints(
+    private fun calculateAnchorSnapshot(
         anchor: View,
+        host: ViewGroup,
+        actions: List<Action>,
         maxHeightRatio: Float,
         bottomGapDp: Int
-    ): PopupConstraints {
+    ): AnchorSnapshot {
         val gap = 8.dpToPx()
         val bottomGap = bottomGapDp.dpToPx()
-        val visibleFrame = Rect()
-        anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
-        val location = IntArray(2)
-        anchor.getLocationOnScreen(location)
-        val belowSpace = visibleFrame.bottom - (location[1] + anchor.height) - gap - bottomGap
-        val aboveSpace = location[1] - visibleFrame.top - gap
-        val usableHeight = (visibleFrame.height() - gap * 2 - bottomGap).coerceAtLeast(1)
+        val hostLocation = IntArray(2)
+        val anchorLocation = IntArray(2)
+        host.getLocationOnScreen(hostLocation)
+        anchor.getLocationOnScreen(anchorLocation)
+        val hostWidth = host.width.takeIf { it > 0 } ?: anchor.rootView.width
+        val hostHeight = host.height.takeIf { it > 0 } ?: anchor.rootView.height
+        val anchorLeft = anchorLocation[0] - hostLocation[0]
+        val anchorTop = anchorLocation[1] - hostLocation[1]
+        val anchorRight = anchorLeft + anchor.width
+        val anchorBottom = anchorTop + anchor.height
+        val belowSpace = hostHeight - anchorBottom - gap - bottomGap
+        val aboveSpace = anchorTop - gap
+        val usableHeight = (hostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
         val minimumHeight = minOf(72.dpToPx(), usableHeight).coerceAtLeast(1)
         val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
             minOf(48.dpToPx(), usableHeight).coerceAtLeast(1),
@@ -207,64 +288,64 @@ object ModernActionPopup {
         val maxHeight = minOf(anchorSpace, ratioHeight)
             .coerceAtLeast(minimumHeight)
             .coerceAtMost(usableHeight)
-        val maxWidth = (visibleFrame.width() - gap * 2).coerceAtLeast(1)
-        return PopupConstraints(maxWidthPx = maxWidth, maxHeightPx = maxHeight)
-    }
-
-    private fun measureAttachedPopupSize(content: View, constraints: PopupConstraints): Pair<Int, Int> {
-        content.measure(
-            View.MeasureSpec.makeMeasureSpec(constraints.maxWidthPx, View.MeasureSpec.AT_MOST),
-            View.MeasureSpec.makeMeasureSpec(constraints.maxHeightPx, View.MeasureSpec.AT_MOST)
+        val maxWidth = (hostWidth - gap * 2).coerceAtLeast(1)
+        val fallbackWidth = minOf(280.dpToPx(), maxWidth).coerceAtLeast(1)
+        val rowHeight = 44.dpToPx()
+        val fallbackHeight = minOf(
+            maxHeight,
+            (actions.size * rowHeight + 12.dpToPx()).coerceAtLeast(minimumHeight)
         )
-        return content.measuredWidth.coerceAtMost(constraints.maxWidthPx) to
-            content.measuredHeight.coerceAtMost(constraints.maxHeightPx)
+        return AnchorSnapshot(
+            anchorLeft = anchorLeft,
+            anchorTop = anchorTop,
+            anchorRight = anchorRight,
+            anchorBottom = anchorBottom,
+            hostWidth = hostWidth,
+            hostHeight = hostHeight,
+            maxWidthPx = maxWidth,
+            maxHeightPx = maxHeight,
+            fallbackWidthPx = fallbackWidth,
+            fallbackHeightPx = fallbackHeight
+        )
     }
 
-    private fun PopupWindow.showAnchored(anchor: View, constraints: PopupConstraints) {
-        val fallbackWidth = minOf(280.dpToPx(), constraints.maxWidthPx).coerceAtLeast(1)
-        val fallbackHeight = constraints.maxHeightPx.coerceAtLeast(1)
-        val position = calculateAnchoredPosition(anchor, fallbackWidth, fallbackHeight)
-        showAtLocation(anchor.rootView, Gravity.NO_GRAVITY, position.first, position.second)
-    }
-
-    private fun PopupWindow.updateAnchored(
-        anchor: View,
-        content: View,
-        constraints: PopupConstraints
-    ) {
-        if (!isShowing) return
-        val (popupWidth, popupHeight) = measureAttachedPopupSize(content, constraints)
-        val position = calculateAnchoredPosition(anchor, popupWidth, popupHeight)
-        update(position.first, position.second, popupWidth, popupHeight)
-    }
-
-    private fun calculateAnchoredPosition(
-        anchor: View,
-        popupWidth: Int,
-        popupHeight: Int
-    ): Pair<Int, Int> {
+    private fun calculatePanelOffset(
+        snapshot: AnchorSnapshot,
+        panelWidth: Int,
+        panelHeight: Int
+    ): IntOffset {
         val gap = 4.dpToPx()
-        val location = IntArray(2)
-        val visibleFrame = Rect()
-        anchor.getLocationOnScreen(location)
-        anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
-
-        val desiredX = location[0] + anchor.width - popupWidth
+        val desiredX = snapshot.anchorRight - panelWidth
         val x = desiredX.coerceIn(
-            visibleFrame.left + gap,
-            (visibleFrame.right - popupWidth - gap).coerceAtLeast(visibleFrame.left + gap)
+            gap,
+            (snapshot.hostWidth - panelWidth - gap).coerceAtLeast(gap)
         )
-        val belowY = location[1] + anchor.height + gap
-        val aboveY = location[1] - popupHeight - gap
-        val hasRoomBelow = belowY + popupHeight <= visibleFrame.bottom - gap
-        val y = if (hasRoomBelow || aboveY < visibleFrame.top + gap) {
+        val belowY = snapshot.anchorBottom + gap
+        val aboveY = snapshot.anchorTop - panelHeight - gap
+        val hasRoomBelow = belowY + panelHeight <= snapshot.hostHeight - gap
+        val y = if (hasRoomBelow || aboveY < gap) {
             belowY
         } else {
             aboveY
         }.coerceIn(
-            visibleFrame.top + gap,
-            (visibleFrame.bottom - popupHeight - gap).coerceAtLeast(visibleFrame.top + gap)
+            gap,
+            (snapshot.hostHeight - panelHeight - gap).coerceAtLeast(gap)
         )
-        return x to y
+        return IntOffset(x, y)
+    }
+
+    private fun calculateTransformOrigin(
+        snapshot: AnchorSnapshot,
+        panelOffset: IntOffset,
+        panelWidth: Int,
+        panelHeight: Int
+    ): TransformOrigin {
+        val anchorCenterX = (snapshot.anchorLeft + snapshot.anchorRight) / 2f
+        val anchorCenterY = (snapshot.anchorTop + snapshot.anchorBottom) / 2f
+        val pivotX = ((anchorCenterX - panelOffset.x) / panelWidth.coerceAtLeast(1))
+            .coerceIn(0f, 1f)
+        val pivotY = ((anchorCenterY - panelOffset.y) / panelHeight.coerceAtLeast(1))
+            .coerceIn(0f, 1f)
+        return TransformOrigin(pivotX, pivotY)
     }
 }
