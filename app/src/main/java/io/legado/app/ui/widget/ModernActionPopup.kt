@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -40,6 +40,11 @@ object ModernActionPopup {
         val invoke: () -> Unit
     )
 
+    private data class PopupConstraints(
+        val maxWidthPx: Int,
+        val maxHeightPx: Int
+    )
+
     fun show(
         anchor: View,
         actions: List<Action>,
@@ -50,12 +55,12 @@ object ModernActionPopup {
         if (actions.isEmpty()) return previousPopup
         val context = anchor.context
         var popup: PopupWindow? = null
-        val maxHeightPx = calculatePopupMaxHeight(anchor, maxHeightRatio, bottomGapDp)
-        val content = createContent(context, actions, maxHeightPx) {
+        val constraints = calculatePopupConstraints(anchor, maxHeightRatio, bottomGapDp)
+        val content = createContent(context, actions, constraints) {
             popup?.dismiss()
         }
         previousPopup?.dismiss()
-        val popupSize = measurePopupSize(content, maxHeightPx)
+        val popupSize = measurePopupSize(content, constraints)
         popup = PopupWindow(
             content,
             popupSize.first,
@@ -98,11 +103,13 @@ object ModernActionPopup {
     private fun createContent(
         context: Context,
         actions: List<Action>,
-        maxHeightPx: Int,
+        constraints: PopupConstraints,
         dismiss: () -> Unit
     ): ComposeView {
         val density = context.resources.displayMetrics.density
-        val maxHeightDp = (maxHeightPx / density).dp
+        val maxWidthDp = (constraints.maxWidthPx / density).dp
+        val maxHeightDp = (constraints.maxHeightPx / density).dp
+        val minWidthDp = minOf(132.dp, maxWidthDp)
         return ComposeView(context).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
@@ -113,7 +120,7 @@ object ModernActionPopup {
                 ) {
                     LegadoMiuixCard(
                         modifier = Modifier
-                            .widthIn(min = 132.dp, max = 280.dp)
+                            .widthIn(min = minWidthDp, max = minOf(280.dp, maxWidthDp))
                             .heightIn(max = maxHeightDp),
                         color = style.surface,
                         contentColor = style.primaryText,
@@ -124,7 +131,10 @@ object ModernActionPopup {
                             modifier = Modifier.heightIn(max = maxHeightDp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            items(actions) { action ->
+                            itemsIndexed(
+                                items = actions,
+                                key = { index, action -> "${action.title}#$index" }
+                            ) { _, action ->
                                 LegadoMiuixChoiceRow(
                                     text = action.title,
                                     selected = action.checked,
@@ -135,7 +145,7 @@ object ModernActionPopup {
                                     },
                                     minHeight = 42.dp,
                                     compact = true,
-                                    showSelectedMark = false
+                                    showSelectedMark = action.checked
                                 )
                             }
                         }
@@ -145,26 +155,43 @@ object ModernActionPopup {
         }
     }
 
-    private fun calculatePopupMaxHeight(
+    private fun calculatePopupConstraints(
         anchor: View,
         maxHeightRatio: Float,
         bottomGapDp: Int
-    ): Int {
+    ): PopupConstraints {
         val gap = 8.dpToPx()
         val bottomGap = bottomGapDp.dpToPx()
         val visibleFrame = Rect()
         anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
+        val location = IntArray(2)
+        anchor.getLocationOnScreen(location)
+        val belowSpace = visibleFrame.bottom - (location[1] + anchor.height) - gap - bottomGap
+        val aboveSpace = location[1] - visibleFrame.top - gap
+        val usableHeight = (visibleFrame.height() - gap * 2 - bottomGap).coerceAtLeast(72.dpToPx())
+        val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
+            48.dpToPx(),
+            usableHeight
+        )
         val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
-        return ((visibleFrame.height() - gap - bottomGap) * ratio).toInt()
-            .coerceAtLeast(160.dpToPx())
+        val ratioHeight = (usableHeight * ratio).toInt().coerceAtLeast(72.dpToPx())
+        val maxHeight = minOf(anchorSpace, ratioHeight).coerceAtLeast(
+            minOf(72.dpToPx(), usableHeight)
+        )
+        val maxWidth = (visibleFrame.width() - gap * 2).coerceAtLeast(96.dpToPx())
+        return PopupConstraints(maxWidthPx = maxWidth, maxHeightPx = maxHeight)
     }
 
     private fun measurePopupSize(
         content: View,
-        maxHeight: Int
+        constraints: PopupConstraints
     ): Pair<Int, Int> {
-        content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        return content.measuredWidth to content.measuredHeight.coerceAtMost(maxHeight)
+        content.measure(
+            View.MeasureSpec.makeMeasureSpec(constraints.maxWidthPx, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(constraints.maxHeightPx, View.MeasureSpec.AT_MOST)
+        )
+        return content.measuredWidth.coerceAtMost(constraints.maxWidthPx) to
+            content.measuredHeight.coerceAtMost(constraints.maxHeightPx)
     }
 
     private fun PopupWindow.showAnchored(anchor: View, content: View) {
