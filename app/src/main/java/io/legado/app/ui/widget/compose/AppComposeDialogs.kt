@@ -4,10 +4,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,11 +24,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -106,21 +102,19 @@ fun AppDialogFrame(
     actions: @Composable () -> Unit
 ) {
     val style = rememberAppDialogStyle()
-    Surface(
+    LegadoMiuixCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 18.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(style.panelRadius),
         color = style.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = if (AppConfig.isEInkMode) 0.dp else 10.dp,
-        border = null
+        contentColor = style.primaryText,
+        cornerRadius = style.panelRadius,
+        insidePadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
-                .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Text(
                 text = title,
@@ -211,38 +205,39 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
                         }
                     },
                     actions = {
+                        val palette = style.toMiuixPalette()
                         neutralText?.let { label ->
-                            TextButton(
+                            LegadoMiuixActionButton(
+                                text = label,
+                                palette = palette,
                                 onClick = {
                                     dismissAllowingStateLoss()
                                     onNeutral?.invoke()
                                 },
-                                shape = RoundedCornerShape(style.actionRadius)
-                            ) {
-                                Text(label, color = style.accent)
-                            }
+                                cornerRadius = style.actionRadius
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        TextButton(
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
                             onClick = { dismissAllowingStateLoss() },
-                            shape = RoundedCornerShape(style.actionRadius)
-                        ) {
-                            Text(negativeText, color = style.secondaryText)
-                        }
+                            cornerRadius = style.actionRadius
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
+                        LegadoMiuixActionButton(
+                            text = positiveText,
+                            palette = palette,
                             onClick = {
                                 val current = text
-                                if (validateInput?.invoke(current) == false) {
-                                    return@TextButton
+                                if (validateInput?.invoke(current) != false) {
+                                    dismissAllowingStateLoss()
+                                    onPositive?.invoke(current)
                                 }
-                                dismissAllowingStateLoss()
-                                onPositive?.invoke(current)
                             },
-                            shape = RoundedCornerShape(style.actionRadius)
-                        ) {
-                            Text(positiveText, color = style.accent)
-                        }
+                            primary = true,
+                            cornerRadius = style.actionRadius
+                        )
                     }
                 )
             }
@@ -335,23 +330,25 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                         }
                     },
                     actions = {
-                        TextButton(
+                        val palette = style.toMiuixPalette()
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
                             onClick = { dismissAllowingStateLoss() },
-                            shape = RoundedCornerShape(style.actionRadius)
-                        ) {
-                            Text(negativeText, color = style.secondaryText)
-                        }
+                            cornerRadius = style.actionRadius
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
+                        LegadoMiuixActionButton(
+                            text = positiveText,
+                            palette = palette,
                             onClick = {
                                 val result = BooleanArray(checked.size) { checked[it] }
                                 dismissAllowingStateLoss()
                                 onPositive?.invoke(result)
                             },
-                            shape = RoundedCornerShape(style.actionRadius)
-                        ) {
-                            Text(positiveText, color = style.accent)
-                        }
+                            primary = true,
+                            cornerRadius = style.actionRadius
+                        )
                     }
                 )
             }
@@ -388,6 +385,7 @@ fun AppDialogSwitchRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val style = rememberAppDialogStyle()
+    val palette = style.toMiuixPalette()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -401,7 +399,11 @@ fun AppDialogSwitchRow(
             color = style.primaryText,
             fontSize = 15.sp
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        LegadoMiuixSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            palette = palette
+        )
     }
 }
 
@@ -455,6 +457,7 @@ fun AppDialogSliderRow(
     onValueChange: (Int) -> Unit
 ) {
     val style = rememberAppDialogStyle()
+    val palette = style.toMiuixPalette()
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -472,9 +475,10 @@ fun AppDialogSliderRow(
                 fontSize = 13.sp
             )
         }
-        Slider(
+        LegadoMiuixSlider(
             value = value.toFloat(),
             onValueChange = { onValueChange(it.roundToInt().coerceIn(range.first, range.last)) },
+            palette = palette,
             valueRange = range.first.toFloat()..range.last.toFloat(),
             steps = (range.last - range.first - 1).coerceAtLeast(0)
         )
