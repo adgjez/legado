@@ -471,13 +471,17 @@ private fun BookshelfOptionGrid(
 ) {
     var expandedKey by remember { mutableStateOf<String?>(null) }
     var panelVisible by remember { mutableStateOf(false) }
+    var transitionVersion by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val expandedItem = items.firstOrNull { it.key == expandedKey }
     fun dismissPanel() {
+        val version = ++transitionVersion
         panelVisible = false
         scope.launch {
             delay(BOOKSHELF_PANEL_DISMISS_MS)
-            expandedKey = null
+            if (transitionVersion == version) {
+                expandedKey = null
+            }
         }
     }
     Column(
@@ -500,6 +504,7 @@ private fun BookshelfOptionGrid(
                             if (expandedKey == item.key) {
                                 dismissPanel()
                             } else {
+                                transitionVersion++
                                 panelVisible = false
                                 expandedKey = item.key
                             }
@@ -706,6 +711,7 @@ private fun BookshelfDisplaySummaryCard(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var panelVisible by remember { mutableStateOf(false) }
+    var transitionVersion by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val activeItems = items.filter { it.checked }
     val rotation by animateFloatAsState(
@@ -714,10 +720,13 @@ private fun BookshelfDisplaySummaryCard(
         label = "bookshelfDisplayArrow"
     )
     fun dismissPanel() {
+        val version = ++transitionVersion
         panelVisible = false
         scope.launch {
             delay(BOOKSHELF_PANEL_DISMISS_MS)
-            expanded = false
+            if (transitionVersion == version) {
+                expanded = false
+            }
         }
     }
     Surface(
@@ -727,6 +736,7 @@ private fun BookshelfDisplaySummaryCard(
                 if (expanded) {
                     dismissPanel()
                 } else {
+                    transitionVersion++
                     expanded = true
                 }
             },

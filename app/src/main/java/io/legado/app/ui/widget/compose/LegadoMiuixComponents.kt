@@ -428,12 +428,16 @@ fun <T> LegadoMiuixSelectField(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var panelVisible by remember { mutableStateOf(false) }
+    var transitionVersion by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     fun dismissOptions() {
+        val version = ++transitionVersion
         panelVisible = false
         scope.launch {
             delay(MIUIX_PANEL_DISMISS_MS)
-            expanded = false
+            if (transitionVersion == version) {
+                expanded = false
+            }
         }
     }
     val arrowRotation by animateFloatAsState(
@@ -461,6 +465,7 @@ fun <T> LegadoMiuixSelectField(
                     if (expanded) {
                         dismissOptions()
                     } else {
+                        transitionVersion++
                         expanded = true
                     }
                 },
