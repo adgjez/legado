@@ -253,7 +253,7 @@ private fun NumberPickerContent(
             Spacer(modifier = Modifier.height(18.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 customButtonText?.let {
@@ -261,25 +261,32 @@ private fun NumberPickerContent(
                         text = it,
                         palette = palette,
                         onClick = onCustomClick,
-                        cornerRadius = style.actionRadius
+                        modifier = Modifier.weight(1f),
+                        cornerRadius = style.actionRadius,
+                        minWidth = 0.dp,
+                        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                 }
                 LegadoMiuixActionButton(
                     text = stringResource(android.R.string.cancel),
                     palette = palette,
                     onClick = onCancel,
-                    cornerRadius = style.actionRadius
+                    modifier = Modifier.weight(1f),
+                    cornerRadius = style.actionRadius,
+                    minWidth = 0.dp,
+                    insidePadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
                 LegadoMiuixActionButton(
                     text = stringResource(android.R.string.ok),
                     palette = palette,
                     onClick = {
                         onConfirm(committedValue())
                     },
+                    modifier = Modifier.weight(1f),
                     primary = true,
-                    cornerRadius = style.actionRadius
+                    cornerRadius = style.actionRadius,
+                    minWidth = 0.dp,
+                    insidePadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                 )
             }
         }
@@ -330,7 +337,9 @@ private fun parsePickerValue(value: String, decimalMode: Boolean): Int? {
     val normalized = value.trim()
     if (normalized.isEmpty()) return null
     return if (decimalMode) {
-        normalized.toDoubleOrNull()?.let { (it * 10).roundToInt() }
+        normalized.toDoubleOrNull()
+            ?.takeIf { java.lang.Double.isFinite(it) }
+            ?.let { (it * 10).roundToInt() }
     } else {
         normalized.toIntOrNull()
     }
