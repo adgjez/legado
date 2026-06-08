@@ -37,7 +37,6 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
@@ -538,16 +537,14 @@ class BackupConfigFragment : PreferenceFragment(),
             if (context == null) {
                 return@onError
             }
-            showDialogFragment(
-                ComposeConfirmDialog.create(
-                    title = getString(R.string.restore),
-                    message = "Cloud storage error\n${it.localizedMessage}\nRestore from local backup?",
-                    positiveText = getString(android.R.string.ok),
-                    negativeText = getString(android.R.string.cancel),
-                    messageInContent = true,
-                    onPositive = { restoreFromLocal() }
-                )
-            )
+            alert {
+                setTitle(R.string.restore)
+                setMessage("Cloud storage error\n${it.localizedMessage}\nRestore from local backup?")
+                okButton {
+                    restoreFromLocal()
+                }
+                cancelButton()
+            }
         }.onFinally {
             waitDialog.dismiss()
         }
