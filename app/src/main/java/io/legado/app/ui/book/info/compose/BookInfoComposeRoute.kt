@@ -22,7 +22,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -41,8 +40,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -95,9 +97,6 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.association.OnLineImportActivity
-import io.legado.app.ui.widget.compose.LegadoMiuixActionRow
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixPalette
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
@@ -866,6 +865,7 @@ private fun BookInfoPreviewLine(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BookInfoMoreActionSheet(
     state: BookInfoUiState,
@@ -873,107 +873,80 @@ private fun BookInfoMoreActionSheet(
     actions: BookInfoActions,
     onDismiss: () -> Unit
 ) {
-    val palette = LegadoMiuixPalette(
-        accent = style.colors.accent,
-        surface = style.colors.surface,
-        surfaceVariant = style.colors.surfaceVariant.copy(alpha = 0.82f),
-        primaryText = style.colors.primaryText,
-        secondaryText = style.colors.secondaryText,
-        danger = Color(0xffd64545)
-    )
-    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.76f)
-        .coerceAtLeast(360.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(8f)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = style.metrics.panelRadius, topEnd = style.metrics.panelRadius),
+        containerColor = style.colors.surface
     ) {
-        Box(
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (AppConfig.isNightTheme) 0.34f else 0.24f))
-                .clickable(onClick = onDismiss)
-        )
-        LegadoMiuixCard(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-                .heightIn(max = maxHeight),
-            color = style.colors.surface,
-            contentColor = style.colors.primaryText,
-            cornerRadius = style.metrics.panelRadius,
-            insidePadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = stringResource(R.string.more),
                 color = style.colors.primaryText,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 6.dp)
             )
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = maxHeight - 64.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                if (state.hasSourceLogin) {
-                    BookInfoMoreActionItem(stringResource(R.string.login), palette, style) {
-                        onDismiss()
-                        actions.onLogin()
-                    }
-                }
-                BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), palette, style) {
+            if (state.hasSourceLogin) {
+                BookInfoMoreActionItem(stringResource(R.string.login), style) {
                     onDismiss()
-                    actions.onCloudBackup()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), palette, style) {
-                    onDismiss()
-                    actions.onOpenLibraryContainer()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.group_select), palette, style) {
-                    onDismiss()
-                    actions.onChangeGroup()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.book_info_edit), palette, style) {
-                    onDismiss()
-                    actions.onEditBookInfo()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.copy_book_url), palette, style) {
-                    onDismiss()
-                    actions.onCopyBookUrl()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.copy_toc_url), palette, style) {
-                    onDismiss()
-                    actions.onCopyTocUrl()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.set_source_variable), palette, style) {
-                    onDismiss()
-                    actions.onSetSourceVariable()
-                }
-                BookInfoMoreActionItem(stringResource(R.string.set_book_variable), palette, style) {
-                    onDismiss()
-                    actions.onSetBookVariable()
-                }
-                BookInfoMoreActionItem(
-                    text = stringResource(R.string.clear_cache),
-                    palette = palette,
-                    style = style,
-                    danger = true
-                ) {
-                    onDismiss()
-                    actions.onClearCache()
-                }
-                if (state.hasCustomButton) {
-                    BookInfoMoreActionItem(stringResource(R.string.custom_button), palette, style) {
-                        onDismiss()
-                        actions.onCustomButton()
-                    }
+                    actions.onLogin()
                 }
             }
+            BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), style) {
+                onDismiss()
+                actions.onCloudBackup()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), style) {
+                onDismiss()
+                actions.onOpenLibraryContainer()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
+                onDismiss()
+                actions.onChangeGroup()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
+                onDismiss()
+                actions.onEditBookInfo()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
+                onDismiss()
+                actions.onCopyBookUrl()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.copy_toc_url), style) {
+                onDismiss()
+                actions.onCopyTocUrl()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.set_source_variable), style) {
+                onDismiss()
+                actions.onSetSourceVariable()
+            }
+            BookInfoMoreActionItem(stringResource(R.string.set_book_variable), style) {
+                onDismiss()
+                actions.onSetBookVariable()
+            }
+            BookInfoMoreActionItem(
+                text = stringResource(R.string.clear_cache),
+                style = style,
+                danger = true
+            ) {
+                onDismiss()
+                actions.onClearCache()
+            }
+            if (state.hasCustomButton) {
+                BookInfoMoreActionItem(stringResource(R.string.custom_button), style) {
+                    onDismiss()
+                    actions.onCustomButton()
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }
@@ -981,17 +954,21 @@ private fun BookInfoMoreActionSheet(
 @Composable
 private fun BookInfoMoreActionItem(
     text: String,
-    palette: LegadoMiuixPalette,
     style: BookInfoComposeStyle,
     danger: Boolean = false,
     onClick: () -> Unit
 ) {
-    LegadoMiuixActionRow(
+    Text(
         text = text,
-        palette = palette,
-        onClick = onClick,
-        danger = danger,
-        cornerRadius = style.metrics.actionRadius
+        color = if (danger) Color(0xffd64545) else style.colors.primaryText,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surfaceVariant.copy(alpha = 0.72f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp)
     )
 }
 
