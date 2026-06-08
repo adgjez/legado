@@ -69,6 +69,9 @@ import top.yukonga.miuix.kmp.basic.SliderDefaults as MiuixSliderDefaults
 import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
 import top.yukonga.miuix.kmp.basic.SwitchDefaults as MiuixSwitchDefaults
 
+private const val MIUIX_PANEL_ANIMATION_MS = 160
+private const val MIUIX_PANEL_DISMISS_MS = MIUIX_PANEL_ANIMATION_MS + 20L
+
 @Immutable
 data class LegadoMiuixPalette(
     val accent: Color,
@@ -300,7 +303,7 @@ fun LegadoMiuixFloatingPanel(
 ) {
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(durationMillis = 160),
+        animationSpec = tween(durationMillis = MIUIX_PANEL_ANIMATION_MS),
         label = "legadoMiuixFloatingPanel"
     )
     Surface(
@@ -429,7 +432,7 @@ fun <T> LegadoMiuixSelectField(
     fun dismissOptions() {
         panelVisible = false
         scope.launch {
-            delay(120)
+            delay(MIUIX_PANEL_DISMISS_MS)
             expanded = false
         }
     }

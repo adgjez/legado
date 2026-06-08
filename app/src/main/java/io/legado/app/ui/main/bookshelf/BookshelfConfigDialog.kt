@@ -70,6 +70,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private const val BOOKSHELF_PANEL_ANIMATION_MS = 160
+private const val BOOKSHELF_PANEL_DISMISS_MS = BOOKSHELF_PANEL_ANIMATION_MS + 20L
+
 data class BookshelfConfigValues(
     val groupStyle: Int,
     val showUnread: Boolean,
@@ -473,7 +476,7 @@ private fun BookshelfOptionGrid(
     fun dismissPanel() {
         panelVisible = false
         scope.launch {
-            delay(120)
+            delay(BOOKSHELF_PANEL_DISMISS_MS)
             expandedKey = null
         }
     }
@@ -601,7 +604,7 @@ private fun BookshelfChoicePopupPanel(
 ) {
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(durationMillis = 160),
+        animationSpec = tween(durationMillis = BOOKSHELF_PANEL_ANIMATION_MS),
         label = "bookshelfChoicePopup"
     )
     val columns = 2
@@ -707,13 +710,13 @@ private fun BookshelfDisplaySummaryCard(
     val activeItems = items.filter { it.checked }
     val rotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(durationMillis = 160),
+        animationSpec = tween(durationMillis = BOOKSHELF_PANEL_ANIMATION_MS),
         label = "bookshelfDisplayArrow"
     )
     fun dismissPanel() {
         panelVisible = false
         scope.launch {
-            delay(120)
+            delay(BOOKSHELF_PANEL_DISMISS_MS)
             expanded = false
         }
     }
@@ -834,7 +837,7 @@ private fun BookshelfDisplayPopupPanel(
 ) {
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(durationMillis = 160),
+        animationSpec = tween(durationMillis = BOOKSHELF_PANEL_ANIMATION_MS),
         label = "bookshelfDisplayPopup"
     )
     Surface(
