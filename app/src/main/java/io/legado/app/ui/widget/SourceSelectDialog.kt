@@ -10,10 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -118,8 +120,12 @@ private fun <T> SourceSelectContent(
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
     val configuration = LocalConfiguration.current
-    val maxPanelHeight = maxOf(260.dp, (configuration.screenHeightDp * 0.78f).dp)
-    val listMaxHeight = maxOf(150.dp, maxPanelHeight - if (showTitle) 156.dp else 112.dp)
+    val density = LocalDensity.current
+    val imeBottom = with(density) { WindowInsets.ime.getBottom(this).toDp() }
+    val availableHeight = (configuration.screenHeightDp.dp - imeBottom).coerceAtLeast(180.dp)
+    val maxPanelHeight = (availableHeight * 0.86f).coerceAtMost(420.dp)
+    val listMaxHeight = (maxPanelHeight - if (showTitle) 156.dp else 112.dp)
+        .coerceIn(72.dp, 260.dp)
     var query by remember { mutableStateOf("") }
     val filteredItems = remember(items, query) {
         val key = query.trim()
@@ -215,7 +221,9 @@ private fun <T> SourceSelectContent(
                 ) {
                     itemsIndexed(
                         items = filteredItems,
-                        key = { index, item -> "${itemKey(item)}#$index" }
+                        key = { index, item ->
+                            stableSourceSelectKey(itemKey(item), originalSourceSelectIndex(items, item, index))
+                        }
                     ) { _, item ->
                         LegadoMiuixChoiceRow(
                             text = displayName(item),
@@ -229,4 +237,17 @@ private fun <T> SourceSelectContent(
             }
         }
     }
+}
+
+private fun stableSourceSelectKey(rawKey: String, index: Int): String {
+    return rawKey.takeIf { it.isNotBlank() }
+        ?.let { "$it#$index" }
+        ?: "source-selector-$index"
+}
+
+private fun <T> originalSourceSelectIndex(items: List<T>, item: T, fallback: Int): Int {
+    items.forEachIndexed { index, candidate ->
+        if (candidate === item) return index
+    }
+    return items.indexOf(item).takeIf { it >= 0 } ?: fallback
 }
