@@ -117,6 +117,7 @@ private data class BookshelfPremiumSpec(
     val tileHeight: Dp = 64.dp,
     val switchTileHeight: Dp = 46.dp,
     val choiceHeight: Dp = 38.dp,
+    val popupWidth: Dp = 304.dp,
     val gridGap: Dp = 8.dp,
     val compactGap: Dp = 6.dp
 )
@@ -606,7 +607,7 @@ private fun BookshelfChoicePopupPanel(
     val columns = 2
     Surface(
         modifier = Modifier
-            .width(340.dp)
+            .width(spec.popupWidth)
             .graphicsLayer {
                 alpha = progress
                 scaleX = 0.96f + 0.04f * progress
@@ -624,7 +625,7 @@ private fun BookshelfChoicePopupPanel(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = "选择${item.label}",
+                text = item.label,
                 color = style.primaryText,
                 fontSize = 16.sp,
                 fontFamily = style.titleFontFamily,
@@ -787,8 +788,10 @@ private fun BookshelfDisplaySummaryCard(
             }
             BookshelfDisplayPopupPanel(
                 visible = panelVisible,
+                title = title,
                 items = items,
                 style = style,
+                spec = spec,
                 onDismiss = { dismissPanel() }
             )
         }
@@ -823,8 +826,10 @@ private fun BookshelfSummaryChip(
 @Composable
 private fun BookshelfDisplayPopupPanel(
     visible: Boolean,
+    title: String,
     items: List<BookshelfSwitchItem>,
     style: AppDialogStyle,
+    spec: BookshelfPremiumSpec,
     onDismiss: () -> Unit
 ) {
     val progress by animateFloatAsState(
@@ -834,7 +839,7 @@ private fun BookshelfDisplayPopupPanel(
     )
     Surface(
         modifier = Modifier
-            .width(320.dp)
+            .width(spec.popupWidth)
             .graphicsLayer {
                 alpha = progress
                 scaleX = 0.96f + 0.04f * progress
@@ -849,7 +854,7 @@ private fun BookshelfDisplayPopupPanel(
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Text(
-                text = "显示选项",
+                text = title,
                 color = style.primaryText,
                 fontSize = 16.sp,
                 fontFamily = style.titleFontFamily,
@@ -870,7 +875,7 @@ private fun BookshelfDisplayPopupPanel(
                 horizontalArrangement = Arrangement.End
             ) {
                 LegadoMiuixActionButton(
-                    text = "完成",
+                    text = stringResource(android.R.string.ok),
                     palette = style.toMiuixPalette(),
                     onClick = onDismiss,
                     primary = true,
