@@ -6,9 +6,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,11 +18,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -45,7 +39,12 @@ import io.legado.app.ui.widget.compose.AppDialogSliderRow
 import io.legado.app.ui.widget.compose.AppDialogSwitchRow
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixSection
+import io.legado.app.ui.widget.compose.LegadoMiuixSelectField
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
 
 data class BookshelfConfigValues(
     val groupStyle: Int,
@@ -91,9 +90,9 @@ private data class BookshelfConfigTexts(
 class BookshelfConfigDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.94f
-    override val maxWidthDp: Int = 720
-    override val dialogGravity: Int = Gravity.BOTTOM
-    override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
+    override val maxWidthDp: Int = 640
+    override val dialogGravity: Int = Gravity.CENTER
+    override val dialogWindowAnimations: Int = R.style.AnimDialogCenter
 
     private var initialValues = BookshelfConfigValues(
         groupStyle = 0,
@@ -308,35 +307,22 @@ private fun BookshelfConfigPanel(
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
 ) {
-    Surface(
+    val palette = style.toMiuixPalette()
+    LegadoMiuixCard(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 8.dp)
-            .padding(top = 10.dp),
-        shape = RoundedCornerShape(style.panelRadius),
+            .padding(horizontal = 14.dp, vertical = 18.dp),
         color = style.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 14.dp
+        contentColor = style.primaryText,
+        cornerRadius = style.panelRadius,
+        insidePadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
-                .padding(horizontal = 18.dp)
-                .padding(top = 14.dp, bottom = 14.dp)
         ) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(38.dp)
-                    .height(4.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = style.secondaryText.copy(alpha = 0.22f),
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {}
-            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = texts.title,
                 color = style.primaryText,
@@ -356,9 +342,8 @@ private fun BookshelfConfigPanel(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
+                    .heightIn(max = 500.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 content()
             }
@@ -376,25 +361,13 @@ private fun ConfigSection(
     content: @Composable () -> Unit
 ) {
     if (!visible) return
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = style.fieldSurface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    val palette = style.toMiuixPalette()
+    LegadoMiuixSection(
+        title = title,
+        palette = palette,
+        cornerRadius = style.actionRadius
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
-            Text(
-                text = title,
-                color = style.accent,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            content()
-        }
+        content()
     }
 }
 
@@ -406,75 +379,20 @@ private fun DialogSelectField(
     style: AppDialogStyle,
     onSelected: (Int) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    val palette = style.toMiuixPalette()
     val selectedIndex = options.indexOfFirst { it.value == selectedValue }
         .takeIf { it >= 0 }
         ?: 0
-    val value = options.getOrNull(selectedIndex)?.label.orEmpty()
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            color = style.secondaryText,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 6.dp)
-        )
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = true },
-                shape = RoundedCornerShape(style.actionRadius),
-                color = style.surface,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = value,
-                        modifier = Modifier.weight(1f),
-                        color = style.primaryText,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "v",
-                        color = style.secondaryText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = option.label,
-                                color = if (option.value == selectedValue) {
-                                    style.accent
-                                } else {
-                                    style.primaryText
-                                },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        onClick = {
-                            expanded = false
-                            onSelected(option.value)
-                        }
-                    )
-                }
-            }
-        }
-    }
+    val selected = options.getOrNull(selectedIndex) ?: return
+    LegadoMiuixSelectField(
+        label = label,
+        options = options,
+        selected = selected,
+        optionLabel = { it.label },
+        onSelected = { onSelected(it.value) },
+        palette = palette,
+        cornerRadius = style.actionRadius
+    )
 }
 
 @Composable
@@ -485,39 +403,39 @@ private fun BookshelfSegmentedControl(
     style: AppDialogStyle,
     onSelected: (Int) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    val palette = style.toMiuixPalette()
+    Column {
         Text(
             text = label,
             color = style.secondaryText,
             fontSize = 12.sp
         )
-        Surface(
+        Spacer(modifier = Modifier.height(7.dp))
+        LegadoMiuixCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(style.actionRadius),
             color = style.surface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+            contentColor = style.primaryText,
+            cornerRadius = style.actionRadius,
+            insidePadding = PaddingValues(4.dp)
         ) {
             Row(
-                modifier = Modifier.padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 options.forEach { option ->
                     val selected = option.value == selectedValue
-                    Surface(
+                    LegadoMiuixCard(
                         modifier = Modifier
                             .weight(1f)
                             .height(38.dp)
                             .clickable { onSelected(option.value) },
-                        shape = RoundedCornerShape(style.actionRadius),
                         color = if (selected) style.accent.copy(alpha = 0.18f) else style.surface,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
+                        contentColor = style.primaryText,
+                        cornerRadius = style.actionRadius,
+                        insidePadding = PaddingValues(horizontal = 6.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
                         ) {
                             Text(
                                 text = option.label,
@@ -543,57 +461,27 @@ private fun BookshelfFooterActions(
     onCancel: () -> Unit,
     onApply: () -> Unit
 ) {
+    val palette = style.toMiuixPalette()
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(
-            modifier = Modifier
-                .height(42.dp)
-                .width(92.dp)
-                .clickable(onClick = onCancel),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.fieldSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = cancelLabel,
-                    color = style.secondaryText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
+        LegadoMiuixActionButton(
+            text = cancelLabel,
+            palette = palette,
+            onClick = onCancel,
+            modifier = Modifier.width(92.dp),
+            cornerRadius = style.actionRadius
+        )
         Spacer(modifier = Modifier.width(10.dp))
-        Surface(
-            modifier = Modifier
-                .height(42.dp)
-                .width(108.dp)
-                .clickable(onClick = onApply),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.accent,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = applyLabel,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
+        LegadoMiuixActionButton(
+            text = applyLabel,
+            palette = palette,
+            onClick = onApply,
+            modifier = Modifier.width(108.dp),
+            primary = true,
+            cornerRadius = style.actionRadius
+        )
     }
 }
