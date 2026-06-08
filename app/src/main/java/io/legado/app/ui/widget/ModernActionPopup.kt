@@ -60,11 +60,10 @@ object ModernActionPopup {
             popup?.dismiss()
         }
         previousPopup?.dismiss()
-        val popupSize = measurePopupSize(content, constraints)
         popup = PopupWindow(
             content,
-            popupSize.first,
-            popupSize.second,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
             true
         ).apply {
             animationStyle = R.style.AnimPopupMenu
@@ -73,7 +72,10 @@ object ModernActionPopup {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 elevation = 0f
             }
-            showAnchored(anchor, content)
+            showAnchored(anchor, constraints)
+            content.post {
+                updateAnchored(anchor, content, constraints)
+            }
         }
         return popup
     }
@@ -168,24 +170,22 @@ object ModernActionPopup {
         anchor.getLocationOnScreen(location)
         val belowSpace = visibleFrame.bottom - (location[1] + anchor.height) - gap - bottomGap
         val aboveSpace = location[1] - visibleFrame.top - gap
-        val usableHeight = (visibleFrame.height() - gap * 2 - bottomGap).coerceAtLeast(72.dpToPx())
+        val usableHeight = (visibleFrame.height() - gap * 2 - bottomGap).coerceAtLeast(1)
+        val minimumHeight = minOf(72.dpToPx(), usableHeight).coerceAtLeast(1)
         val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
-            48.dpToPx(),
+            minOf(48.dpToPx(), usableHeight).coerceAtLeast(1),
             usableHeight
         )
         val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
-        val ratioHeight = (usableHeight * ratio).toInt().coerceAtLeast(72.dpToPx())
-        val maxHeight = minOf(anchorSpace, ratioHeight).coerceAtLeast(
-            minOf(72.dpToPx(), usableHeight)
-        )
-        val maxWidth = (visibleFrame.width() - gap * 2).coerceAtLeast(96.dpToPx())
+        val ratioHeight = (usableHeight * ratio).toInt().coerceAtLeast(minimumHeight)
+        val maxHeight = minOf(anchorSpace, ratioHeight)
+            .coerceAtLeast(minimumHeight)
+            .coerceAtMost(usableHeight)
+        val maxWidth = (visibleFrame.width() - gap * 2).coerceAtLeast(1)
         return PopupConstraints(maxWidthPx = maxWidth, maxHeightPx = maxHeight)
     }
 
-    private fun measurePopupSize(
-        content: View,
-        constraints: PopupConstraints
-    ): Pair<Int, Int> {
+    private fun measureAttachedPopupSize(content: View, constraints: PopupConstraints): Pair<Int, Int> {
         content.measure(
             View.MeasureSpec.makeMeasureSpec(constraints.maxWidthPx, View.MeasureSpec.AT_MOST),
             View.MeasureSpec.makeMeasureSpec(constraints.maxHeightPx, View.MeasureSpec.AT_MOST)
@@ -194,15 +194,35 @@ object ModernActionPopup {
             content.measuredHeight.coerceAtMost(constraints.maxHeightPx)
     }
 
-    private fun PopupWindow.showAnchored(anchor: View, content: View) {
+    private fun PopupWindow.showAnchored(anchor: View, constraints: PopupConstraints) {
+        val fallbackWidth = minOf(280.dpToPx(), constraints.maxWidthPx).coerceAtLeast(1)
+        val fallbackHeight = constraints.maxHeightPx.coerceAtLeast(1)
+        val position = calculateAnchoredPosition(anchor, fallbackWidth, fallbackHeight)
+        showAtLocation(anchor.rootView, Gravity.NO_GRAVITY, position.first, position.second)
+    }
+
+    private fun PopupWindow.updateAnchored(
+        anchor: View,
+        content: View,
+        constraints: PopupConstraints
+    ) {
+        if (!isShowing) return
+        val (popupWidth, popupHeight) = measureAttachedPopupSize(content, constraints)
+        val position = calculateAnchoredPosition(anchor, popupWidth, popupHeight)
+        update(position.first, position.second, popupWidth, popupHeight)
+    }
+
+    private fun calculateAnchoredPosition(
+        anchor: View,
+        popupWidth: Int,
+        popupHeight: Int
+    ): Pair<Int, Int> {
         val gap = 4.dpToPx()
         val location = IntArray(2)
         val visibleFrame = Rect()
         anchor.getLocationOnScreen(location)
         anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
 
-        val popupWidth = width
-        val popupHeight = height
         val desiredX = location[0] + anchor.width - popupWidth
         val x = desiredX.coerceIn(
             visibleFrame.left + gap,
@@ -219,6 +239,6 @@ object ModernActionPopup {
             visibleFrame.top + gap,
             (visibleFrame.bottom - popupHeight - gap).coerceAtLeast(visibleFrame.top + gap)
         )
-        showAtLocation(anchor.rootView, Gravity.NO_GRAVITY, x, y)
+        return x to y
     }
 }
