@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -144,7 +143,6 @@ private fun <T> SourceSelectContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = maxPanelHeight)
-                .imePadding()
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             color = style.surface,
             contentColor = style.primaryText,
