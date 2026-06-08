@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,9 +36,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.legado.app.R
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
@@ -61,6 +66,8 @@ import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 data class BookshelfConfigValues(
@@ -123,7 +130,9 @@ private data class BookshelfSelectItem(
 )
 
 private data class BookshelfSwitchItem(
+    val key: String,
     val label: String,
+    val summaryLabel: String,
     val checked: Boolean,
     val onCheckedChange: (Boolean) -> Unit
 )
@@ -298,22 +307,30 @@ private fun BookshelfConfigContent(
     }
     val switchItems = listOf(
         BookshelfSwitchItem(
+            key = "unread",
             label = stringResource(R.string.show_unread),
+            summaryLabel = "未读",
             checked = values.showUnread,
             onCheckedChange = { onValuesChange(values.copy(showUnread = it)) }
         ),
         BookshelfSwitchItem(
+            key = "updateTime",
             label = stringResource(R.string.show_last_update_time),
+            summaryLabel = "更新",
             checked = values.showLastUpdateTime,
             onCheckedChange = { onValuesChange(values.copy(showLastUpdateTime = it)) }
         ),
         BookshelfSwitchItem(
+            key = "waitUp",
             label = stringResource(R.string.show_wait_up_count),
+            summaryLabel = "追更",
             checked = values.showWaitUpCount,
             onCheckedChange = { onValuesChange(values.copy(showWaitUpCount = it)) }
         ),
         BookshelfSwitchItem(
+            key = "fastScroller",
             label = stringResource(R.string.show_bookshelf_fast_scroller),
+            summaryLabel = "快滑",
             checked = values.showFastScroller,
             onCheckedChange = { onValuesChange(values.copy(showFastScroller = it)) }
         )
@@ -334,7 +351,8 @@ private fun BookshelfConfigContent(
         style = style,
         spec = spec
     ) {
-        BookshelfSwitchGrid(
+        BookshelfDisplaySummaryCard(
+            title = texts.showTitle,
             items = switchItems,
             style = style,
             spec = spec
@@ -629,71 +647,223 @@ private fun BookshelfChoiceChip(
 }
 
 @Composable
-private fun BookshelfSwitchGrid(
+private fun BookshelfDisplaySummaryCard(
+    title: String,
     items: List<BookshelfSwitchItem>,
     style: AppDialogStyle,
     spec: BookshelfPremiumSpec
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(spec.gridGap)
+    var expanded by remember { mutableStateOf(false) }
+    var panelVisible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val activeItems = items.filter { it.checked }
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "bookshelfDisplayArrow"
+    )
+    fun dismissPanel() {
+        panelVisible = false
+        scope.launch {
+            delay(120)
+            expanded = false
+        }
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                if (expanded) {
+                    dismissPanel()
+                } else {
+                    expanded = true
+                }
+            },
+        shape = RoundedCornerShape(style.actionRadius),
+        color = style.surface,
+        contentColor = style.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        items.chunked(2).forEach { rowItems ->
+        Row(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = style.secondaryText,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (activeItems.isEmpty()) {
+                        BookshelfSummaryChip(
+                            text = "未启用",
+                            active = false,
+                            style = style
+                        )
+                    } else {
+                        activeItems.forEach { item ->
+                            BookshelfSummaryChip(
+                                text = item.summaryLabel,
+                                active = true,
+                                style = style
+                            )
+                        }
+                    }
+                }
+            }
+            Icon(
+                painter = painterResource(id = R.drawable.ic_expand_more),
+                contentDescription = null,
+                tint = if (expanded) style.accent else style.secondaryText,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = rotation }
+            )
+        }
+    }
+    if (expanded) {
+        Popup(
+            alignment = Alignment.Center,
+            onDismissRequest = { dismissPanel() },
+            properties = PopupProperties(focusable = true)
+        ) {
+            LaunchedEffect(Unit) {
+                panelVisible = true
+            }
+            BookshelfDisplayPopupPanel(
+                visible = panelVisible,
+                items = items,
+                style = style,
+                onDismiss = { dismissPanel() }
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookshelfSummaryChip(
+    text: String,
+    active: Boolean,
+    style: AppDialogStyle
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (active) style.accent.copy(alpha = 0.13f) else style.fieldSurface,
+        contentColor = if (active) style.accent else style.secondaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Text(
+            text = text,
+            color = if (active) style.accent else style.secondaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun BookshelfDisplayPopupPanel(
+    visible: Boolean,
+    items: List<BookshelfSwitchItem>,
+    style: AppDialogStyle,
+    onDismiss: () -> Unit
+) {
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "bookshelfDisplayPopup"
+    )
+    Surface(
+        modifier = Modifier
+            .width(320.dp)
+            .graphicsLayer {
+                alpha = progress
+                scaleX = 0.96f + 0.04f * progress
+                scaleY = 0.96f + 0.04f * progress
+                translationY = (1f - progress) * 12f
+            },
+        shape = RoundedCornerShape(style.panelRadius),
+        color = style.surface,
+        contentColor = style.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                text = "显示选项",
+                color = style.primaryText,
+                fontSize = 16.sp,
+                fontFamily = style.titleFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            items.forEach { item ->
+                BookshelfDisplaySwitchRow(
+                    item = item,
+                    style = style
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spec.gridGap)
+                horizontalArrangement = Arrangement.End
             ) {
-                rowItems.forEach { item ->
-                    BookshelfSwitchTile(
-                        item = item,
-                        style = style,
-                        spec = spec,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (rowItems.size < 2) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+                LegadoMiuixActionButton(
+                    text = "完成",
+                    palette = style.toMiuixPalette(),
+                    onClick = onDismiss,
+                    primary = true,
+                    minWidth = 76.dp,
+                    minHeight = 36.dp,
+                    insidePadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    cornerRadius = style.actionRadius
+                )
             }
         }
     }
 }
 
 @Composable
-private fun BookshelfSwitchTile(
+private fun BookshelfDisplaySwitchRow(
     item: BookshelfSwitchItem,
-    style: AppDialogStyle,
-    spec: BookshelfPremiumSpec,
-    modifier: Modifier = Modifier
+    style: AppDialogStyle
 ) {
-    Surface(
-        modifier = modifier
-            .height(spec.switchTileHeight)
-            .clickable { item.onCheckedChange(!item.checked) },
-        shape = RoundedCornerShape(style.actionRadius),
-        color = if (item.checked) style.accent.copy(alpha = 0.10f) else style.surface,
-        contentColor = style.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(style.actionRadius))
+            .clickable { item.onCheckedChange(!item.checked) }
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = item.label,
-                modifier = Modifier.weight(1f),
-                color = if (item.checked) style.primaryText else style.secondaryText,
-                fontSize = 13.sp,
-                fontWeight = if (item.checked) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            BookshelfMiniSwitch(
-                checked = item.checked,
-                style = style
-            )
-        }
+        Text(
+            text = item.label,
+            modifier = Modifier.weight(1f),
+            color = if (item.checked) style.primaryText else style.secondaryText,
+            fontSize = 14.sp,
+            fontWeight = if (item.checked) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        BookshelfMiniSwitch(
+            checked = item.checked,
+            style = style
+        )
     }
 }
 
