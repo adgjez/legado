@@ -112,6 +112,7 @@ fun AppDialogFrame(
     modifier: Modifier = Modifier,
     message: String? = null,
     scrollContent: Boolean = true,
+    messageInContent: Boolean = false,
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
 ) {
@@ -142,16 +143,9 @@ fun AppDialogFrame(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (!message.isNullOrBlank()) {
+                if (!message.isNullOrBlank() && !messageInContent) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    SelectionContainer {
-                        Text(
-                            text = message,
-                            color = style.secondaryText,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        )
-                    }
+                    AppDialogMessageText(message = message, style = style)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 val contentModifier = Modifier
@@ -161,10 +155,18 @@ fun AppDialogFrame(
                     Column(
                         modifier = contentModifier.verticalScroll(rememberScrollState())
                     ) {
+                        if (!message.isNullOrBlank() && messageInContent) {
+                            AppDialogMessageText(message = message, style = style)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
                         content()
                     }
                 } else {
                     Column(modifier = contentModifier) {
+                        if (!message.isNullOrBlank() && messageInContent) {
+                            AppDialogMessageText(message = message, style = style)
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
                         content()
                     }
                 }
@@ -178,6 +180,21 @@ fun AppDialogFrame(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppDialogMessageText(
+    message: String,
+    style: AppDialogStyle
+) {
+    SelectionContainer {
+        Text(
+            text = message,
+            color = style.secondaryText,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        )
     }
 }
 
@@ -511,9 +528,11 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                 val dangerPositive = args.getBoolean(ARG_DANGER_POSITIVE)
                 val positiveRequiresCallback = args.getBoolean(ARG_POSITIVE_REQUIRES_CALLBACK, true)
                 val negativeRequiresCallback = args.getBoolean(ARG_NEGATIVE_REQUIRES_CALLBACK, false)
+                val messageInContent = args.getBoolean(ARG_MESSAGE_IN_CONTENT)
                 AppDialogFrame(
                     title = args.getString(ARG_TITLE).orEmpty(),
                     message = args.getString(ARG_MESSAGE),
+                    messageInContent = messageInContent,
                     content = {},
                     actions = {
                         val palette = style.toMiuixPalette()
@@ -577,6 +596,7 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
             dangerPositive: Boolean = false,
             positiveRequiresCallback: Boolean = true,
             negativeRequiresCallback: Boolean = false,
+            messageInContent: Boolean = false,
             onPositive: () -> Unit,
             onNegative: (() -> Unit)? = null,
             onNeutral: (() -> Unit)? = null
@@ -591,6 +611,7 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                     putBoolean(ARG_DANGER_POSITIVE, dangerPositive)
                     putBoolean(ARG_POSITIVE_REQUIRES_CALLBACK, positiveRequiresCallback)
                     putBoolean(ARG_NEGATIVE_REQUIRES_CALLBACK, negativeRequiresCallback)
+                    putBoolean(ARG_MESSAGE_IN_CONTENT, messageInContent)
                 }
                 this.onPositive = onPositive
                 this.onNegative = onNegative
@@ -606,6 +627,7 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
         private const val ARG_DANGER_POSITIVE = "dangerPositive"
         private const val ARG_POSITIVE_REQUIRES_CALLBACK = "positiveRequiresCallback"
         private const val ARG_NEGATIVE_REQUIRES_CALLBACK = "negativeRequiresCallback"
+        private const val ARG_MESSAGE_IN_CONTENT = "messageInContent"
     }
 }
 

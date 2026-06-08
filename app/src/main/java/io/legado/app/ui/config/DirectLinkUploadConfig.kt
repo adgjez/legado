@@ -126,6 +126,7 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
                 negativeText = getString(R.string.copy_text),
                 positiveRequiresCallback = false,
                 negativeRequiresCallback = true,
+                messageInContent = true,
                 onPositive = {},
                 onNegative = {
                     appCtx.sendToClip(result)
