@@ -46,14 +46,20 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.material3.Text
 import io.legado.app.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.max
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
@@ -386,6 +392,21 @@ fun LegadoMiuixChoiceRow(
     }
 }
 
+private object LegadoMiuixCenterPopupPositionProvider : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val x = ((windowSize.width - popupContentSize.width) / 2)
+            .coerceIn(0, max(0, windowSize.width - popupContentSize.width))
+        val y = ((windowSize.height - popupContentSize.height) / 2)
+            .coerceIn(0, max(0, windowSize.height - popupContentSize.height))
+        return IntOffset(x, y)
+    }
+}
+
 @Composable
 fun <T> LegadoMiuixSelectField(
     label: String,
@@ -490,7 +511,7 @@ fun <T> LegadoMiuixSelectField(
     }
     if (expanded) {
         Popup(
-            alignment = Alignment.Center,
+            popupPositionProvider = LegadoMiuixCenterPopupPositionProvider,
             onDismissRequest = { dismissOptions() },
             properties = PopupProperties(focusable = true)
         ) {
