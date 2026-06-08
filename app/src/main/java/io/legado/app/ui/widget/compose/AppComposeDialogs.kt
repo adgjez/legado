@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +109,7 @@ fun AppDialogFrame(
     title: String,
     modifier: Modifier = Modifier,
     message: String? = null,
+    scrollContent: Boolean = true,
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
 ) {
@@ -148,13 +152,19 @@ fun AppDialogFrame(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 520.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    content()
+                val contentModifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                if (scrollContent) {
+                    Column(
+                        modifier = contentModifier.verticalScroll(rememberScrollState())
+                    ) {
+                        content()
+                    }
+                } else {
+                    Column(modifier = contentModifier) {
+                        content()
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
@@ -401,12 +411,6 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
 
 class ComposeConfirmDialog : ComposeDialogFragment() {
 
-    private var titleText: String = ""
-    private var messageText: String? = null
-    private var positiveText: String = ""
-    private var negativeText: String = ""
-    private var neutralText: String? = null
-    private var dangerPositive: Boolean = false
     private var onPositive: (() -> Unit)? = null
     private var onNegative: (() -> Unit)? = null
     private var onNeutral: (() -> Unit)? = null
@@ -416,13 +420,22 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        val args = arguments ?: Bundle()
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val style = rememberAppDialogStyle()
+                val positiveText = args.getString(ARG_POSITIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.ok) }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val neutralText = args.getString(ARG_NEUTRAL_TEXT)?.takeIf { it.isNotBlank() }
+                val dangerPositive = args.getBoolean(ARG_DANGER_POSITIVE)
                 AppDialogFrame(
-                    title = titleText,
-                    message = messageText,
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
                     content = {},
                     actions = {
                         val palette = style.toMiuixPalette()
@@ -447,18 +460,20 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                             },
                             cornerRadius = style.actionRadius
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        LegadoMiuixActionButton(
-                            text = positiveText,
-                            palette = palette,
-                            onClick = {
-                                dismissAllowingStateLoss()
-                                onPositive?.invoke()
-                            },
-                            primary = !dangerPositive,
-                            danger = dangerPositive,
-                            cornerRadius = style.actionRadius
-                        )
+                        onPositive?.let { positiveCallback ->
+                            Spacer(modifier = Modifier.width(8.dp))
+                            LegadoMiuixActionButton(
+                                text = positiveText,
+                                palette = palette,
+                                onClick = {
+                                    dismissAllowingStateLoss()
+                                    positiveCallback.invoke()
+                                },
+                                primary = !dangerPositive,
+                                danger = dangerPositive,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
                     }
                 )
             }
@@ -478,28 +493,31 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
             onNeutral: (() -> Unit)? = null
         ): ComposeConfirmDialog {
             return ComposeConfirmDialog().apply {
-                titleText = title
-                messageText = message
-                this.positiveText = positiveText
-                this.negativeText = negativeText
-                this.neutralText = neutralText
-                this.dangerPositive = dangerPositive
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putString(ARG_MESSAGE, message)
+                    putString(ARG_POSITIVE_TEXT, positiveText)
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                    putString(ARG_NEUTRAL_TEXT, neutralText)
+                    putBoolean(ARG_DANGER_POSITIVE, dangerPositive)
+                }
                 this.onPositive = onPositive
                 this.onNegative = onNegative
                 this.onNeutral = onNeutral
             }
         }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_POSITIVE_TEXT = "positiveText"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
+        private const val ARG_NEUTRAL_TEXT = "neutralText"
+        private const val ARG_DANGER_POSITIVE = "dangerPositive"
     }
 }
 
 class ComposeSingleChoiceDialog : ComposeDialogFragment() {
 
-    private var titleText: String = ""
-    private var messageText: String? = null
-    private var itemLabels: List<String> = emptyList()
-    private var initialSelectedIndex: Int = -1
-    private var positiveText: String = ""
-    private var negativeText: String = ""
     private var onPositive: ((Int) -> Unit)? = null
 
     override fun onCreateView(
@@ -507,20 +525,39 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        val args = arguments ?: Bundle()
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val style = rememberAppDialogStyle()
-                var selectedIndex by rememberSaveable {
-                    mutableStateOf(initialSelectedIndex.coerceIn(-1, itemLabels.lastIndex))
+                val itemLabels = remember {
+                    args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
                 }
+                val allowNoSelection = args.getBoolean(ARG_ALLOW_NO_SELECTION)
+                var selectedIndex by rememberSaveable {
+                    mutableStateOf(args.getInt(ARG_SELECTED_INDEX).coerceIn(-1, itemLabels.lastIndex))
+                }
+                val positiveText = args.getString(ARG_POSITIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.ok) }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val canSubmit = onPositive != null &&
+                    (allowNoSelection || selectedIndex in itemLabels.indices)
                 AppDialogFrame(
-                    title = titleText,
-                    message = messageText,
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
+                    scrollContent = false,
                     content = {
                         val palette = style.toMiuixPalette()
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            itemLabels.forEachIndexed { index, label ->
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(itemLabels) { index, label ->
                                 LegadoMiuixChoiceRow(
                                     text = label,
                                     selected = selectedIndex == index,
@@ -539,17 +576,19 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
                             onClick = { dismissAllowingStateLoss() },
                             cornerRadius = style.actionRadius
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        LegadoMiuixActionButton(
-                            text = positiveText,
-                            palette = palette,
-                            onClick = {
-                                dismissAllowingStateLoss()
-                                onPositive?.invoke(selectedIndex)
-                            },
-                            primary = true,
-                            cornerRadius = style.actionRadius
-                        )
+                        if (canSubmit) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            LegadoMiuixActionButton(
+                                text = positiveText,
+                                palette = palette,
+                                onClick = {
+                                    dismissAllowingStateLoss()
+                                    onPositive?.invoke(selectedIndex)
+                                },
+                                primary = true,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
                     }
                 )
             }
@@ -564,18 +603,31 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
             message: String? = null,
             positiveText: String,
             negativeText: String,
+            allowNoSelection: Boolean = false,
             onPositive: (Int) -> Unit
         ): ComposeSingleChoiceDialog {
+            val safeLabels = labels.toList()
             return ComposeSingleChoiceDialog().apply {
-                titleText = title
-                itemLabels = labels
-                initialSelectedIndex = selectedIndex
-                messageText = message
-                this.positiveText = positiveText
-                this.negativeText = negativeText
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putStringArrayList(ARG_LABELS, ArrayList(safeLabels))
+                    putInt(ARG_SELECTED_INDEX, selectedIndex)
+                    putString(ARG_MESSAGE, message)
+                    putString(ARG_POSITIVE_TEXT, positiveText)
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                    putBoolean(ARG_ALLOW_NO_SELECTION, allowNoSelection)
+                }
                 this.onPositive = onPositive
             }
         }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_LABELS = "labels"
+        private const val ARG_SELECTED_INDEX = "selectedIndex"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_POSITIVE_TEXT = "positiveText"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
+        private const val ARG_ALLOW_NO_SELECTION = "allowNoSelection"
     }
 }
 
