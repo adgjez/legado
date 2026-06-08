@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -37,14 +38,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -92,6 +89,10 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.book.read.config.SpeechVoiceRoutePickerDialog
 import io.legado.app.ui.book.read.config.speechRouteSummary
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixPalette
+import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.utils.ColorUtils
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -144,6 +145,17 @@ fun rememberCharacterStyle(): CharacterStyle {
         ),
         radius = context.composePanelRadius(),
         smallRadius = context.composeActionRadius()
+    )
+}
+
+private fun CharacterStyle.toCharacterMiuixPalette(): LegadoMiuixPalette {
+    return LegadoMiuixPalette(
+        accent = colors.accent,
+        surface = colors.page,
+        surfaceVariant = colors.cardAlt,
+        primaryText = colors.text,
+        secondaryText = colors.subText,
+        danger = colors.danger
     )
 }
 
@@ -1861,7 +1873,6 @@ private fun RelationDetailDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RelationEditSheet(
     draft: RelationEditDraft,
@@ -1871,61 +1882,85 @@ private fun RelationEditSheet(
 ) {
     var editing by remember(draft) { mutableStateOf(draft) }
     var selectingTarget by remember { mutableStateOf<RelationSelectTarget?>(null) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val style = rememberCharacterStyle()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = style.radius, topEnd = style.radius),
-        containerColor = style.colors.page
+    val palette = style.toCharacterMiuixPalette()
+    Box(
+        modifier = Modifier.fillMaxSize()
     ) {
-        LazyColumn(
+        Box(
             modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = if (AppConfig.isNightTheme) 0.34f else 0.22f))
+                .clickable(onClick = onDismiss)
+        )
+        LegadoMiuixCard(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .imePadding(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp, 8.dp, 20.dp, 26.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .imePadding()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .heightIn(max = 620.dp),
+            color = style.colors.page,
+            contentColor = style.colors.text,
+            cornerRadius = style.radius,
+            insidePadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp)
         ) {
-            item {
-                Text(
-                    if (draft.id > 0) "编辑关系" else "添加关系",
-                    color = style.colors.text,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            item {
-                CharacterSelectField("角色 A", characters.firstOrNull { it.id == editing.fromCharacterId }) {
-                    selectingTarget = RelationSelectTarget.FROM
-                }
-            }
-            item {
-                CharacterSelectField("角色 B", characters.firstOrNull { it.id == editing.toCharacterId }) {
-                    selectingTarget = RelationSelectTarget.TO
-                }
-            }
-            item { CharacterTextField("关系名称", editing.relationName, { editing = editing.copy(relationName = it) }, singleLine = true) }
-            item { CharacterTextField("关系属性", editing.relationType, { editing = editing.copy(relationType = it) }, singleLine = true) }
-            item {
-                Column {
-                    Text("关系强度 ${editing.strength}", color = style.colors.subText, fontSize = 13.sp)
-                    Slider(
-                        value = editing.strength.toFloat(),
-                        onValueChange = { editing = editing.copy(strength = it.roundToInt().coerceIn(0, 100)) },
-                        valueRange = 0f..100f
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Text(
+                        if (draft.id > 0) "编辑关系" else "添加关系",
+                        color = style.colors.text,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-            }
-            item { CharacterTextField("关系说明", editing.description, { editing = editing.copy(description = it) }, minLines = 3) }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
-                    Button(
-                        onClick = { onChange(editing) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = style.colors.accent)
-                    ) { Text("保存") }
+                item {
+                    CharacterSelectField("角色 A", characters.firstOrNull { it.id == editing.fromCharacterId }) {
+                        selectingTarget = RelationSelectTarget.FROM
+                    }
+                }
+                item {
+                    CharacterSelectField("角色 B", characters.firstOrNull { it.id == editing.toCharacterId }) {
+                        selectingTarget = RelationSelectTarget.TO
+                    }
+                }
+                item { CharacterTextField("关系名称", editing.relationName, { editing = editing.copy(relationName = it) }, singleLine = true) }
+                item { CharacterTextField("关系属性", editing.relationType, { editing = editing.copy(relationType = it) }, singleLine = true) }
+                item {
+                    Column {
+                        Text("关系强度 ${editing.strength}", color = style.colors.subText, fontSize = 13.sp)
+                        LegadoMiuixSlider(
+                            value = editing.strength.toFloat(),
+                            onValueChange = { editing = editing.copy(strength = it.roundToInt().coerceIn(0, 100)) },
+                            palette = palette,
+                            valueRange = 0f..100f
+                        )
+                    }
+                }
+                item { CharacterTextField("关系说明", editing.description, { editing = editing.copy(description = it) }, minLines = 3) }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        LegadoMiuixActionButton(
+                            text = "取消",
+                            palette = palette,
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f),
+                            cornerRadius = style.smallRadius
+                        )
+                        LegadoMiuixActionButton(
+                            text = "保存",
+                            palette = palette,
+                            onClick = { onChange(editing) },
+                            modifier = Modifier.weight(1f),
+                            primary = true,
+                            cornerRadius = style.smallRadius
+                        )
+                    }
                 }
             }
         }
