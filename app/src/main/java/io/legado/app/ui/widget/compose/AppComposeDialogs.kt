@@ -31,6 +31,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -348,13 +349,13 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                 val itemLabels = remember {
                     args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
                 }
-                var checkedValues by rememberSaveable {
+                val checkedValues = remember(itemLabels) {
                     val initialChecked = args.getBooleanArray(ARG_CHECKED) ?: booleanArrayOf()
-                    mutableStateOf(
-                        itemLabels.mapIndexed { index, _ ->
+                    mutableStateListOf<Boolean>().apply {
+                        addAll(itemLabels.mapIndexed { index, _ ->
                             initialChecked.getOrNull(index) ?: false
-                        }
-                    )
+                        })
+                    }
                 }
                 val positiveText = args.getString(ARG_POSITIVE_TEXT)
                     .orEmpty()
@@ -381,8 +382,8 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                                     selected = checkedValues.getOrNull(index) ?: false,
                                     palette = palette,
                                     onClick = {
-                                        checkedValues = checkedValues.toMutableList().also {
-                                            it[index] = !(it.getOrNull(index) ?: false)
+                                        if (index in checkedValues.indices) {
+                                            checkedValues[index] = !checkedValues[index]
                                         }
                                     },
                                     minHeight = 42.dp
