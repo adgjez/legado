@@ -1,11 +1,11 @@
 package io.legado.app.ui.widget.number
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
 import android.view.Window
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.activity.ComponentDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,7 +91,7 @@ class NumberPickerDialog(private val context: Context, private val isDecimalMode
     }
 
     fun show(callBack: ((value: Int) -> Unit)?) {
-        val dialog = Dialog(context).apply {
+        val dialog = ComponentDialog(context).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
             window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)

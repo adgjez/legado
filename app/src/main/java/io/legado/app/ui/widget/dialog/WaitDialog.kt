@@ -1,10 +1,10 @@
 package io.legado.app.ui.widget.dialog
 
-import android.app.Dialog
 import android.content.Context
 import android.graphics.drawable.ColorDrawable
 import android.view.ViewGroup
 import android.view.Window
+import androidx.activity.ComponentDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,7 +32,7 @@ import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 
 @Suppress("unused")
-class WaitDialog(private val context: Context) : Dialog(context) {
+class WaitDialog(private val context: Context) : ComponentDialog(context) {
 
     private var message by mutableStateOf(context.getString(R.string.loading))
 
