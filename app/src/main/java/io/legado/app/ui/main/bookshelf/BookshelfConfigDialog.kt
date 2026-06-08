@@ -29,8 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,6 +53,7 @@ import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixSelectField
+import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import kotlin.math.roundToInt
@@ -241,7 +240,7 @@ private fun BookshelfConfigContent(
             style = style,
             onSelected = { onValuesChange(values.copy(groupStyle = it)) }
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(9.dp))
         DialogSelectField(
             label = texts.layoutLabel,
             options = options.layouts,
@@ -359,9 +358,9 @@ private fun BookshelfConfigPanel(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 500.dp)
+                    .heightIn(max = 486.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 content()
             }
@@ -386,13 +385,13 @@ private fun ConfigSection(
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Text(
                 text = title,
                 color = style.accent,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 8.dp),
+                modifier = Modifier.padding(bottom = 6.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -419,7 +418,7 @@ private fun BookshelfSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(40.dp)
             .clickable { onCheckedChange(!checked) },
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -462,6 +461,7 @@ private fun BookshelfSliderRow(
     style: AppDialogStyle,
     onValueChange: (Int) -> Unit
 ) {
+    val palette = style.toMiuixPalette()
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -481,18 +481,14 @@ private fun BookshelfSliderRow(
                 fontSize = 13.sp
             )
         }
-        Slider(
+        Spacer(modifier = Modifier.height(2.dp))
+        LegadoMiuixSlider(
             value = value.toFloat(),
             onValueChange = { onValueChange(it.roundToInt().coerceIn(range.first, range.last)) },
+            palette = palette,
+            modifier = Modifier.height(34.dp),
             valueRange = range.first.toFloat()..range.last.toFloat(),
-            steps = (range.last - range.first - 1).coerceAtLeast(0),
-            colors = SliderDefaults.colors(
-                activeTrackColor = style.accent,
-                inactiveTrackColor = style.surface,
-                thumbColor = style.accent,
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = style.secondaryText.copy(alpha = 0.24f)
-            )
+            steps = (range.last - range.first - 1).coerceAtLeast(0)
         )
     }
 }
@@ -517,7 +513,8 @@ private fun DialogSelectField(
         optionLabel = { it.label },
         onSelected = { onSelected(it.value) },
         palette = palette,
-        cornerRadius = style.actionRadius
+        cornerRadius = style.actionRadius,
+        compact = true
     )
 }
 
@@ -535,7 +532,7 @@ private fun BookshelfSegmentedControl(
             color = style.secondaryText,
             fontSize = 12.sp
         )
-        Spacer(modifier = Modifier.height(7.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         LegadoMiuixCard(
             modifier = Modifier.fillMaxWidth(),
             color = style.surface,
@@ -551,7 +548,7 @@ private fun BookshelfSegmentedControl(
                     LegadoMiuixCard(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .height(36.dp)
                             .clickable { onSelected(option.value) },
                         color = if (selected) style.accent.copy(alpha = 0.18f) else style.surface,
                         contentColor = style.primaryText,

@@ -2,12 +2,15 @@ package io.legado.app.ui.widget.compose
 
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,8 +20,11 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -32,13 +38,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import io.legado.app.R
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
@@ -277,12 +287,23 @@ fun <T> LegadoMiuixSelectField(
     onSelected: (T) -> Unit,
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 16.dp
+    cornerRadius: Dp = 16.dp,
+    compact: Boolean = false,
+    showSelectedMark: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "miuixSelectArrow"
+    )
+    val labelSpacing = if (compact) 5.dp else 7.dp
+    val fieldHorizontalPadding = if (compact) 12.dp else 13.dp
+    val fieldVerticalPadding = if (compact) 9.dp else 11.dp
+    val optionMinHeight = if (compact) 38.dp else 42.dp
+    val optionVerticalPadding = if (compact) 7.dp else 8.dp
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+        verticalArrangement = Arrangement.spacedBy(labelSpacing)
     ) {
         Text(
             text = label,
@@ -298,7 +319,10 @@ fun <T> LegadoMiuixSelectField(
             color = palette.surface,
             contentColor = palette.primaryText,
             cornerRadius = cornerRadius,
-            insidePadding = PaddingValues(horizontal = 13.dp, vertical = 11.dp)
+            insidePadding = PaddingValues(
+                horizontal = fieldHorizontalPadding,
+                vertical = fieldVerticalPadding
+            )
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically
@@ -323,12 +347,20 @@ fun <T> LegadoMiuixSelectField(
                         )
                     }
                 }
-                Text(
-                    text = if (expanded) "^" else "v",
-                    color = palette.secondaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier.width(30.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_expand_more),
+                        contentDescription = null,
+                        tint = palette.secondaryText,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .graphicsLayer { rotationZ = arrowRotation }
+                    )
+                }
             }
         }
         AnimatedVisibility(
@@ -341,26 +373,26 @@ fun <T> LegadoMiuixSelectField(
                 color = palette.surface,
                 contentColor = palette.primaryText,
                 cornerRadius = cornerRadius,
-                insidePadding = PaddingValues(vertical = 5.dp)
+                insidePadding = PaddingValues(vertical = if (compact) 4.dp else 5.dp)
             ) {
                 options.forEach { option ->
                     val isSelected = option == selected
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 42.dp)
+                            .defaultMinSize(minHeight = optionMinHeight)
                             .clickable {
                                 expanded = false
                                 onSelected(option)
                             }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 14.dp, vertical = optionVerticalPadding),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = optionLabel(option),
                                 color = if (isSelected) palette.accent else palette.primaryText,
-                                fontSize = 14.sp,
+                                fontSize = if (compact) 13.sp else 14.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -376,14 +408,21 @@ fun <T> LegadoMiuixSelectField(
                                 )
                             }
                         }
-                        if (isSelected) {
+                        if (showSelectedMark) {
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "OK",
-                                color = palette.accent,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                modifier = Modifier.width(18.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(palette.accent)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
