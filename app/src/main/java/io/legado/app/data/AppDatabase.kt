@@ -221,6 +221,8 @@ abstract class AppDatabase : RoomDatabase() {
         const val BOOK_TABLE_NAME = "books"
         const val BOOK_SOURCE_TABLE_NAME = "book_sources"
         const val RSS_SOURCE_TABLE_NAME = "rssSources"
+        private const val MaxBookTextFieldLength = 262_144
+        private const val MaxBookUrlFieldLength = 32_768
 
         val dbCallback = object : Callback() {
 
@@ -306,6 +308,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val upHttpTtsConcurrentRateSql =
                     "update httpTTS set concurrentRate = '0' where concurrentRate is null"
                 db.execSQL(upHttpTtsConcurrentRateSql)
+                trimOversizedBookStorageFields(db)
                 db.query("select * from keyboardAssists order by serialNo").use {
                     if (it.count == 0) {
                         DefaultData.keyboardAssists.forEach { keyboardAssist ->
@@ -323,6 +326,40 @@ abstract class AppDatabase : RoomDatabase() {
                         }
                     }
                 }
+            }
+
+            private fun trimOversizedBookStorageFields(db: SupportSQLiteDatabase) {
+                trimOversizedBookTextField(db, "intro")
+                trimOversizedBookTextField(db, "customIntro")
+                trimOversizedBookTextField(db, "variable")
+                trimOversizedBookUrlField(db, "coverUrl")
+                trimOversizedBookUrlField(db, "customCoverUrl")
+            }
+
+            private fun trimOversizedBookTextField(db: SupportSQLiteDatabase, column: String) {
+                @Language("sql")
+                val sql = """
+                    update books set $column = case
+                        when lower(substr($column, 1, 8)) = '<useweb>'
+                            then '<useweb>' || substr($column, 9, ${MaxBookTextFieldLength - 17}) || '</useweb>'
+                        when lower(substr($column, 1, 9)) = '<usehtml>'
+                            then '<usehtml>' || substr($column, 10, ${MaxBookTextFieldLength - 19}) || '</usehtml>'
+                        when lower(substr($column, 1, 4)) = '<md>'
+                            then '<md>' || substr($column, 5, ${MaxBookTextFieldLength - 9}) || '</md>'
+                        else substr($column, 1, $MaxBookTextFieldLength)
+                    end
+                    where length($column) > $MaxBookTextFieldLength
+                """.trimIndent()
+                db.execSQL(sql)
+            }
+
+            private fun trimOversizedBookUrlField(db: SupportSQLiteDatabase, column: String) {
+                @Language("sql")
+                val sql = """
+                    update books set $column = null
+                    where length($column) > $MaxBookUrlFieldLength
+                """.trimIndent()
+                db.execSQL(sql)
             }
         }
 
