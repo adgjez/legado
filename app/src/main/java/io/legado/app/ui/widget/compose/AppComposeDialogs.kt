@@ -399,6 +399,186 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
     }
 }
 
+class ComposeConfirmDialog : ComposeDialogFragment() {
+
+    private var titleText: String = ""
+    private var messageText: String? = null
+    private var positiveText: String = ""
+    private var negativeText: String = ""
+    private var neutralText: String? = null
+    private var dangerPositive: Boolean = false
+    private var onPositive: (() -> Unit)? = null
+    private var onNegative: (() -> Unit)? = null
+    private var onNeutral: (() -> Unit)? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                val style = rememberAppDialogStyle()
+                AppDialogFrame(
+                    title = titleText,
+                    message = messageText,
+                    content = {},
+                    actions = {
+                        val palette = style.toMiuixPalette()
+                        neutralText?.let { label ->
+                            LegadoMiuixActionButton(
+                                text = label,
+                                palette = palette,
+                                onClick = {
+                                    dismissAllowingStateLoss()
+                                    onNeutral?.invoke()
+                                },
+                                cornerRadius = style.actionRadius
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
+                            onClick = {
+                                dismissAllowingStateLoss()
+                                onNegative?.invoke()
+                            },
+                            cornerRadius = style.actionRadius
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        LegadoMiuixActionButton(
+                            text = positiveText,
+                            palette = palette,
+                            onClick = {
+                                dismissAllowingStateLoss()
+                                onPositive?.invoke()
+                            },
+                            primary = !dangerPositive,
+                            danger = dangerPositive,
+                            cornerRadius = style.actionRadius
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun create(
+            title: String,
+            message: String? = null,
+            positiveText: String,
+            negativeText: String,
+            neutralText: String? = null,
+            dangerPositive: Boolean = false,
+            onPositive: () -> Unit,
+            onNegative: (() -> Unit)? = null,
+            onNeutral: (() -> Unit)? = null
+        ): ComposeConfirmDialog {
+            return ComposeConfirmDialog().apply {
+                titleText = title
+                messageText = message
+                this.positiveText = positiveText
+                this.negativeText = negativeText
+                this.neutralText = neutralText
+                this.dangerPositive = dangerPositive
+                this.onPositive = onPositive
+                this.onNegative = onNegative
+                this.onNeutral = onNeutral
+            }
+        }
+    }
+}
+
+class ComposeSingleChoiceDialog : ComposeDialogFragment() {
+
+    private var titleText: String = ""
+    private var messageText: String? = null
+    private var itemLabels: List<String> = emptyList()
+    private var initialSelectedIndex: Int = -1
+    private var positiveText: String = ""
+    private var negativeText: String = ""
+    private var onPositive: ((Int) -> Unit)? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                val style = rememberAppDialogStyle()
+                var selectedIndex by rememberSaveable {
+                    mutableStateOf(initialSelectedIndex.coerceIn(-1, itemLabels.lastIndex))
+                }
+                AppDialogFrame(
+                    title = titleText,
+                    message = messageText,
+                    content = {
+                        val palette = style.toMiuixPalette()
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            itemLabels.forEachIndexed { index, label ->
+                                LegadoMiuixChoiceRow(
+                                    text = label,
+                                    selected = selectedIndex == index,
+                                    palette = palette,
+                                    onClick = { selectedIndex = index },
+                                    minHeight = 42.dp
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        val palette = style.toMiuixPalette()
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
+                            onClick = { dismissAllowingStateLoss() },
+                            cornerRadius = style.actionRadius
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        LegadoMiuixActionButton(
+                            text = positiveText,
+                            palette = palette,
+                            onClick = {
+                                dismissAllowingStateLoss()
+                                onPositive?.invoke(selectedIndex)
+                            },
+                            primary = true,
+                            cornerRadius = style.actionRadius
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun create(
+            title: String,
+            labels: List<String>,
+            selectedIndex: Int,
+            message: String? = null,
+            positiveText: String,
+            negativeText: String,
+            onPositive: (Int) -> Unit
+        ): ComposeSingleChoiceDialog {
+            return ComposeSingleChoiceDialog().apply {
+                titleText = title
+                itemLabels = labels
+                initialSelectedIndex = selectedIndex
+                messageText = message
+                this.positiveText = positiveText
+                this.negativeText = negativeText
+                this.onPositive = onPositive
+            }
+        }
+    }
+}
+
 @Composable
 fun AppDialogSwitchRow(
     text: String,
