@@ -50,6 +50,24 @@ interface BookDao {
     @Query("SELECT bookUrl, name, author, (type & ${BookType.notShelf}) > 0 AS isNotShelf FROM books")
     fun flowShelfIdentities(): Flow<List<BookShelfIdentity>>
 
+    @Query(
+        """
+        SELECT bookUrl, name, author, origin, originName, coverUrl, customCoverUrl,
+        durChapterTime, type FROM books
+        """
+    )
+    fun getDisplayInfos(): List<BookDisplayInfo>
+
+    @Query(
+        """
+        SELECT bookUrl, name, author, origin, originName, coverUrl, customCoverUrl,
+        durChapterTime, type FROM books
+        WHERE name like '%'||:key||'%' or author like '%'||:key||'%'
+        ORDER BY durChapterTime DESC
+        """
+    )
+    fun flowSearchDisplayInfos(key: String): Flow<List<BookDisplayInfo>>
+
     @Query("SELECT * FROM books WHERE type & ${BookType.audio} > 0")
     fun flowAudio(): Flow<List<Book>>
 
@@ -203,3 +221,29 @@ data class BookShelfIdentity(
     val author: String,
     val isNotShelf: Boolean
 )
+
+data class BookDisplayInfo(
+    val bookUrl: String,
+    val name: String,
+    val author: String,
+    val origin: String,
+    val originName: String,
+    val coverUrl: String?,
+    val customCoverUrl: String?,
+    val durChapterTime: Long,
+    val type: Int
+) {
+    fun toBook(): Book {
+        return Book(
+            bookUrl = bookUrl,
+            name = name,
+            author = author,
+            origin = origin,
+            originName = originName,
+            coverUrl = coverUrl,
+            customCoverUrl = customCoverUrl,
+            durChapterTime = durChapterTime,
+            type = type
+        )
+    }
+}
