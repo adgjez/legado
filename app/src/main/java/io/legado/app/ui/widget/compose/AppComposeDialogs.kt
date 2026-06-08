@@ -20,11 +20,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -109,55 +109,60 @@ fun AppDialogFrame(
     actions: @Composable () -> Unit
 ) {
     val style = rememberAppDialogStyle()
-    LegadoMiuixCard(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp)
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
     ) {
-        Column(
-            modifier = Modifier
+        LegadoMiuixCard(
+            modifier = modifier
                 .fillMaxWidth()
-                .imePadding()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            color = style.surface,
+            contentColor = style.primaryText,
+            cornerRadius = style.panelRadius,
+            insidePadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            Text(
-                text = title,
-                color = style.primaryText,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (!message.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                SelectionContainer {
-                    Text(
-                        text = message,
-                        color = style.secondaryText,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
+                    .imePadding()
             ) {
-                content()
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                actions()
+                Text(
+                    text = title,
+                    color = style.primaryText,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = style.titleFontFamily,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!message.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionContainer {
+                        Text(
+                            text = message,
+                            color = style.secondaryText,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    content()
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    actions()
+                }
             }
         }
     }
@@ -314,24 +319,17 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                     title = titleText,
                     message = messageText,
                     content = {
-                        itemLabels.forEachIndexed { index, label ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { checked[index] = !checked[index] }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = checked[index],
-                                    onCheckedChange = { checked[index] = it }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
+                        val palette = style.toMiuixPalette()
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            itemLabels.forEachIndexed { index, label ->
+                                LegadoMiuixChoiceRow(
                                     text = label,
-                                    color = style.primaryText,
-                                    fontSize = 15.sp,
-                                    lineHeight = 21.sp
+                                    selected = checked[index],
+                                    palette = palette,
+                                    onClick = {
+                                        checked[index] = !checked[index]
+                                    },
+                                    minHeight = 42.dp
                                 )
                             }
                         }
@@ -393,24 +391,32 @@ fun AppDialogSwitchRow(
 ) {
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
-    Row(
+    LegadoMiuixCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable { onCheckedChange(!checked) },
+        color = style.fieldSurface,
+        contentColor = style.primaryText,
+        cornerRadius = style.actionRadius,
+        insidePadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.weight(1f),
-            color = style.primaryText,
-            fontSize = 15.sp
-        )
-        LegadoMiuixSwitch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            palette = palette
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = text,
+                modifier = Modifier.weight(1f),
+                color = if (checked) style.primaryText else style.secondaryText,
+                fontSize = 15.sp,
+                fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            LegadoMiuixSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                palette = palette
+            )
+        }
     }
 }
 
@@ -423,6 +429,7 @@ fun AppDialogOptionGroup(
     modifier: Modifier = Modifier
 ) {
     val style = rememberAppDialogStyle()
+    val palette = style.toMiuixPalette()
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = title,
@@ -431,25 +438,15 @@ fun AppDialogOptionGroup(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(vertical = 6.dp)
         )
-        options.forEachIndexed { index, label ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelected(index) }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RadioButton(
-                    selected = selectedIndex == index,
-                    onClick = { onSelected(index) }
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEachIndexed { index, label ->
+                LegadoMiuixChoiceRow(
                     text = label,
-                    color = style.primaryText,
-                    fontSize = 14.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    selected = selectedIndex == index,
+                    palette = palette,
+                    onClick = { onSelected(index) },
+                    minHeight = 40.dp,
+                    compact = true
                 )
             }
         }
@@ -465,7 +462,14 @@ fun AppDialogSliderRow(
 ) {
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
-    Column(modifier = Modifier.fillMaxWidth()) {
+    LegadoMiuixCard(
+        modifier = Modifier.fillMaxWidth(),
+        color = style.fieldSurface,
+        contentColor = style.primaryText,
+        cornerRadius = style.actionRadius,
+        insidePadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -489,5 +493,6 @@ fun AppDialogSliderRow(
             valueRange = range.first.toFloat()..range.last.toFloat(),
             steps = (range.last - range.first - 1).coerceAtLeast(0)
         )
+        }
     }
 }
