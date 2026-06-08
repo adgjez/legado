@@ -21,9 +21,9 @@ import io.legado.app.data.entities.Server
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemServerSelectBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
@@ -128,16 +128,20 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 }
             }
             binding.ivDelete.setOnClickListener {
-                alert {
-                    setTitle(R.string.draw)
-                    setMessage(R.string.sure_del)
-                    yesButton {
-                        getItemByLayoutPosition(holder.layoutPosition)?.let { server ->
+                val server = getItemByLayoutPosition(holder.layoutPosition)
+                    ?: return@setOnClickListener
+                showDialogFragment(
+                    ComposeConfirmDialog.create(
+                        title = getString(R.string.draw),
+                        message = getString(R.string.sure_del),
+                        positiveText = getString(R.string.ok),
+                        negativeText = getString(R.string.cancel),
+                        dangerPositive = true,
+                        onPositive = {
                             viewModel.delete(server)
                         }
-                    }
-                    noButton()
-                }
+                    )
+                )
             }
         }
 
