@@ -134,8 +134,8 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                     ComposeConfirmDialog.create(
                         title = getString(R.string.draw),
                         message = getString(R.string.sure_del),
-                        positiveText = getString(R.string.ok),
-                        negativeText = getString(R.string.cancel),
+                        positiveText = getString(R.string.yes),
+                        negativeText = getString(R.string.no),
                         dangerPositive = true,
                         onPositive = {
                             viewModel.delete(server)
