@@ -48,8 +48,11 @@ object AiTaskKeepAlive {
         get() = latestTask()?.displayText ?: title
 
     fun activeTaskSnapshot(): List<TaskState> {
-        val memoryTasks = activeTasks.values
-            .sortedByDescending { it.updatedAt }
+        val memoryTasks = runCatching {
+            activeTasks.entries
+                .map { it.value }
+                .sortedByDescending { it.updatedAt }
+        }.getOrDefault(emptyList())
         if (memoryTasks.isNotEmpty()) return memoryTasks
         return runCatching {
             AiAgentStateStore.activeJobs().map { job ->
