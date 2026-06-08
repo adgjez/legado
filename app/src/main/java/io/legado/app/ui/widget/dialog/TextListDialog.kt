@@ -1,7 +1,9 @@
 package io.legado.app.ui.widget.dialog
 
 import android.os.Bundle
-import android.util.Patterns
+import android.text.SpannableString
+import android.text.style.URLSpan
+import android.text.util.Linkify
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -154,50 +156,64 @@ private fun TextListRow(
                 )
             }
         } else {
-            ClickableText(
-                text = annotated,
-                style = TextStyle(
-                    color = style.primaryText,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontFamily = style.bodyFontFamily
-                ),
-                onClick = { offset ->
-                    annotated.getStringAnnotations(TEXT_LIST_LINK_TAG, offset, offset)
-                        .firstOrNull()
-                        ?.item
-                        ?.let { url ->
-                            runCatching { uriHandler.openUri(url) }
-                        }
-                }
-            )
+            SelectionContainer {
+                ClickableText(
+                    text = annotated,
+                    style = TextStyle(
+                        color = style.primaryText,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        fontFamily = style.bodyFontFamily
+                    ),
+                    onClick = { offset ->
+                        annotated.getStringAnnotations(TEXT_LIST_LINK_TAG, offset, offset)
+                            .firstOrNull()
+                            ?.item
+                            ?.let { url ->
+                                runCatching { uriHandler.openUri(url) }
+                            }
+                    }
+                )
+            }
         }
     }
 }
 
 private fun buildAutoLinkedText(text: String, accent: Color): AnnotatedString {
     return buildAnnotatedString {
-        val matcher = Patterns.WEB_URL.matcher(text)
-        var index = 0
-        while (matcher.find()) {
-            val start = matcher.start().coerceAtLeast(index)
-            val end = matcher.end().coerceAtLeast(start)
-            if (start > index) {
-                append(text.substring(index, start))
+        val spannable = SpannableString(text)
+        if (!Linkify.addLinks(spannable, Linkify.WEB_URLS)) {
+            append(text)
+            return@buildAnnotatedString
+        }
+        val links = spannable.getSpans(0, spannable.length, URLSpan::class.java)
+            .mapNotNull { span ->
+                val start = spannable.getSpanStart(span)
+                val end = spannable.getSpanEnd(span)
+                if (start < 0 || end <= start || end > text.length) {
+                    null
+                } else {
+                    AutoLinkedSpan(start, end, span.url)
+                }
             }
-            val rawUrl = text.substring(start, end)
-            val normalizedUrl = normalizeWebUrl(rawUrl)
-            pushStringAnnotation(TEXT_LIST_LINK_TAG, normalizedUrl)
+            .sortedBy { it.start }
+        var index = 0
+        links.forEach { link ->
+            if (link.start < index) return@forEach
+            if (link.start > index) {
+                append(text.substring(index, link.start))
+            }
+            pushStringAnnotation(TEXT_LIST_LINK_TAG, link.url)
             withStyle(
                 SpanStyle(
                     color = accent,
                     textDecoration = TextDecoration.Underline
                 )
             ) {
-                append(rawUrl)
+                append(text.substring(link.start, link.end))
             }
             pop()
-            index = end
+            index = link.end
         }
         if (index < text.length) {
             append(text.substring(index))
@@ -205,12 +221,10 @@ private fun buildAutoLinkedText(text: String, accent: Color): AnnotatedString {
     }
 }
 
-private fun normalizeWebUrl(rawUrl: String): String {
-    return if (rawUrl.startsWith("http://", true) || rawUrl.startsWith("https://", true)) {
-        rawUrl
-    } else {
-        "https://$rawUrl"
-    }
-}
+private data class AutoLinkedSpan(
+    val start: Int,
+    val end: Int,
+    val url: String
+)
 
 private const val TEXT_LIST_LINK_TAG = "text_list_link"
