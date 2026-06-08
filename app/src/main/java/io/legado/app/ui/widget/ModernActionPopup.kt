@@ -52,6 +52,10 @@ import io.legado.app.utils.dpToPx
 
 object ModernActionPopup {
 
+    private const val MIN_WIDTH_DP = 124
+    private const val MAX_WIDTH_DP = 244
+    private const val ROW_HEIGHT_DP = 44
+
     data class Action(
         val title: String,
         val checked: Boolean = false,
@@ -179,7 +183,7 @@ object ModernActionPopup {
         val density = LocalDensity.current
         val maxWidthDp = with(density) { snapshot.maxWidthPx.toDp() }
         val maxHeightDp = with(density) { snapshot.maxHeightPx.toDp() }
-        val minWidthDp = with(density) { minOf(132.dpToPx(), snapshot.maxWidthPx).toDp() }
+        val minWidthDp = with(density) { minOf(MIN_WIDTH_DP.dpToPx(), snapshot.maxWidthPx).toDp() }
         var panelSize by remember { mutableStateOf(IntSize.Zero) }
         var panelBounds by remember { mutableStateOf<ComposeRect?>(null) }
         val panelWidth = panelSize.width.takeIf { it > 0 } ?: snapshot.fallbackWidthPx
@@ -212,7 +216,7 @@ object ModernActionPopup {
                 LegadoMiuixCard(
                     modifier = Modifier
                         .offset { panelOffset }
-                        .widthIn(min = minWidthDp, max = minOf(280.dp, maxWidthDp))
+                        .widthIn(min = minWidthDp, max = minOf(MAX_WIDTH_DP.dp, maxWidthDp))
                         .heightIn(max = maxHeightDp)
                         .onSizeChanged { panelSize = it }
                         .onGloballyPositioned { panelBounds = it.boundsInRoot() }
@@ -289,8 +293,8 @@ object ModernActionPopup {
             .coerceAtLeast(minimumHeight)
             .coerceAtMost(usableHeight)
         val maxWidth = (hostWidth - gap * 2).coerceAtLeast(1)
-        val fallbackWidth = minOf(280.dpToPx(), maxWidth).coerceAtLeast(1)
-        val rowHeight = 44.dpToPx()
+        val fallbackWidth = minOf(MAX_WIDTH_DP.dpToPx(), maxWidth).coerceAtLeast(1)
+        val rowHeight = ROW_HEIGHT_DP.dpToPx()
         val fallbackHeight = minOf(
             maxHeight,
             (actions.size * rowHeight + 12.dpToPx()).coerceAtLeast(minimumHeight)
