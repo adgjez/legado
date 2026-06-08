@@ -244,13 +244,15 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
                     },
                     actions = {
                         val palette = style.toMiuixPalette()
-                        neutralText?.let { label ->
+                        val neutralLabel = neutralText
+                        val neutralCallback = onNeutral
+                        if (neutralLabel != null && neutralCallback != null) {
                             LegadoMiuixActionButton(
-                                text = label,
+                                text = neutralLabel,
                                 palette = palette,
                                 onClick = {
                                     dismissAllowingStateLoss()
-                                    onNeutral?.invoke()
+                                    neutralCallback.invoke()
                                 },
                                 cornerRadius = style.actionRadius
                             )
@@ -439,13 +441,14 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                     content = {},
                     actions = {
                         val palette = style.toMiuixPalette()
-                        neutralText?.let { label ->
+                        val neutralCallback = onNeutral
+                        if (neutralText != null && neutralCallback != null) {
                             LegadoMiuixActionButton(
-                                text = label,
+                                text = neutralText,
                                 palette = palette,
                                 onClick = {
                                     dismissAllowingStateLoss()
-                                    onNeutral?.invoke()
+                                    neutralCallback.invoke()
                                 },
                                 cornerRadius = style.actionRadius
                             )
@@ -481,6 +484,10 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
     }
 
     companion object {
+        /**
+         * Lambda callbacks are intentionally transient. If Android recreates the dialog,
+         * action buttons with lost callbacks are hidden instead of running stale work.
+         */
         fun create(
             title: String,
             message: String? = null,
@@ -596,6 +603,10 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
     }
 
     companion object {
+        /**
+         * Lambda callbacks are intentionally transient. If Android recreates the dialog,
+         * the confirm action is hidden unless a callback is still attached.
+         */
         fun create(
             title: String,
             labels: List<String>,
