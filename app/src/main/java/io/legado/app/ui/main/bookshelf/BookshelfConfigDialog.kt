@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,10 +71,27 @@ private data class BookshelfConfigOptions(
     val bookNameModes: List<BookshelfConfigOption>
 )
 
+private data class BookshelfConfigTexts(
+    val title: String,
+    val subtitle: String,
+    val viewTitle: String,
+    val groupStyleLabel: String,
+    val layoutLabel: String,
+    val showTitle: String,
+    val sortTitle: String,
+    val sortLabel: String,
+    val bookNameTitle: String,
+    val bookNameLabel: String,
+    val marginTitle: String,
+    val marginLabel: String,
+    val cancelLabel: String,
+    val applyLabel: String
+)
+
 class BookshelfConfigDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.94f
-    override val maxWidthDp: Int = 760
+    override val maxWidthDp: Int = 720
     override val dialogGravity: Int = Gravity.BOTTOM
     override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
 
@@ -97,15 +118,16 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
             setContent {
                 val style = rememberAppDialogStyle()
                 val options = remember { buildBookshelfConfigOptions() }
+                val texts = remember { buildBookshelfConfigTexts() }
                 var values by remember { mutableStateOf(initialValues) }
                 BookshelfConfigPanel(
-                    title = getString(R.string.bookshelf_layout),
-                    subtitle = "${getString(R.string.group_style)} / ${getString(R.string.view)} / ${getString(R.string.sort)}",
+                    texts = texts,
                     style = style,
                     content = {
                         BookshelfConfigContent(
                             values = values,
                             options = options,
+                            texts = texts,
                             style = style,
                             onValuesChange = { values = it }
                         )
@@ -113,6 +135,8 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
                     actions = {
                         BookshelfFooterActions(
                             style = style,
+                            cancelLabel = texts.cancelLabel,
+                            applyLabel = texts.applyLabel,
                             onCancel = { dismissAllowingStateLoss() },
                             onApply = {
                                 dismissAllowingStateLoss()
@@ -154,6 +178,25 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
         )
     }
 
+    private fun buildBookshelfConfigTexts(): BookshelfConfigTexts {
+        return BookshelfConfigTexts(
+            title = getString(R.string.bookshelf_layout),
+            subtitle = "${getString(R.string.group_style)} / ${getString(R.string.view)} / ${getString(R.string.sort)}",
+            viewTitle = getString(R.string.view),
+            groupStyleLabel = getString(R.string.group_style),
+            layoutLabel = getString(R.string.view),
+            showTitle = getString(R.string.show),
+            sortTitle = getString(R.string.sort),
+            sortLabel = getString(R.string.sort),
+            bookNameTitle = getString(R.string.book_name),
+            bookNameLabel = getString(R.string.book_name),
+            marginTitle = getString(R.string.margin),
+            marginLabel = getString(R.string.margin),
+            cancelLabel = getString(android.R.string.cancel),
+            applyLabel = getString(android.R.string.ok)
+        )
+    }
+
     companion object {
         fun create(
             initialValues: BookshelfConfigValues,
@@ -171,27 +214,24 @@ class BookshelfConfigDialog : ComposeDialogFragment() {
 private fun BookshelfConfigContent(
     values: BookshelfConfigValues,
     options: BookshelfConfigOptions,
+    texts: BookshelfConfigTexts,
     style: AppDialogStyle,
     onValuesChange: (BookshelfConfigValues) -> Unit
 ) {
-    BookshelfLayoutPreview(
-        values = values,
-        options = options,
-        style = style
-    )
     ConfigSection(
-        title = "结构",
+        title = texts.viewTitle,
         style = style
     ) {
         BookshelfSegmentedControl(
-            label = "分组样式",
+            label = texts.groupStyleLabel,
             options = options.groupStyles,
             selectedValue = values.groupStyle,
             style = style,
             onSelected = { onValuesChange(values.copy(groupStyle = it)) }
         )
-        Spacer(modifier = Modifier.height(14.dp))
-        BookshelfLayoutPicker(
+        Spacer(modifier = Modifier.height(12.dp))
+        DialogSelectField(
+            label = texts.layoutLabel,
             options = options.layouts,
             selectedValue = values.layout,
             style = style,
@@ -199,36 +239,36 @@ private fun BookshelfConfigContent(
         )
     }
     ConfigSection(
-        title = "显示",
+        title = texts.showTitle,
         style = style
     ) {
         AppDialogSwitchRow(
-            text = "显示未读",
+            text = stringResource(R.string.show_unread),
             checked = values.showUnread,
             onCheckedChange = { onValuesChange(values.copy(showUnread = it)) }
         )
         AppDialogSwitchRow(
-            text = "显示最近更新时间",
+            text = stringResource(R.string.show_last_update_time),
             checked = values.showLastUpdateTime,
             onCheckedChange = { onValuesChange(values.copy(showLastUpdateTime = it)) }
         )
         AppDialogSwitchRow(
-            text = "显示追更数量",
+            text = stringResource(R.string.show_wait_up_count),
             checked = values.showWaitUpCount,
             onCheckedChange = { onValuesChange(values.copy(showWaitUpCount = it)) }
         )
         AppDialogSwitchRow(
-            text = "显示快速滚动条",
+            text = stringResource(R.string.show_bookshelf_fast_scroller),
             checked = values.showFastScroller,
             onCheckedChange = { onValuesChange(values.copy(showFastScroller = it)) }
         )
     }
     ConfigSection(
-        title = "排序",
+        title = texts.sortTitle,
         style = style
     ) {
-        BookshelfChoiceGrid(
-            label = "排序方式",
+        DialogSelectField(
+            label = texts.sortLabel,
             options = options.sorts,
             selectedValue = values.sort,
             style = style,
@@ -236,12 +276,12 @@ private fun BookshelfConfigContent(
         )
     }
     ConfigSection(
-        title = "书名",
+        title = texts.bookNameTitle,
         style = style,
         visible = values.layout >= 2
     ) {
         BookshelfSegmentedControl(
-            label = "网格书名",
+            label = texts.bookNameLabel,
             options = options.bookNameModes,
             selectedValue = values.showBookname,
             style = style,
@@ -249,11 +289,11 @@ private fun BookshelfConfigContent(
         )
     }
     ConfigSection(
-        title = "边距",
+        title = texts.marginTitle,
         style = style
     ) {
         AppDialogSliderRow(
-            title = "边距",
+            title = texts.marginLabel,
             value = values.margin,
             range = 0..60,
             onValueChange = { onValuesChange(values.copy(margin = it)) }
@@ -262,321 +302,8 @@ private fun BookshelfConfigContent(
 }
 
 @Composable
-private fun BookshelfLayoutPicker(
-    options: List<BookshelfConfigOption>,
-    selectedValue: Int,
-    style: AppDialogStyle,
-    onSelected: (Int) -> Unit
-) {
-    val rows = listOf(
-        options.take(2),
-        options.drop(2).take(3),
-        options.drop(5)
-    ).filter { it.isNotEmpty() }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "书架视图",
-            color = style.secondaryText,
-            fontSize = 12.sp
-        )
-        rows.forEach { rowOptions ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                rowOptions.forEach { option ->
-                    BookshelfLayoutCard(
-                        option = option,
-                        selected = option.value == selectedValue,
-                        style = style,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onSelected(option.value) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookshelfLayoutCard(
-    option: BookshelfConfigOption,
-    selected: Boolean,
-    style: AppDialogStyle,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier
-            .height(92.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = if (selected) style.accent.copy(alpha = 0.16f) else style.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(52.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = if (selected) style.accent else style.secondaryText.copy(alpha = 0.16f),
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {}
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                BookshelfLayoutMiniature(option.value, style)
-                Text(
-                    text = option.label,
-                    color = if (selected) style.accent else style.primaryText,
-                    fontSize = 13.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookshelfLayoutMiniature(
-    layout: Int,
-    style: AppDialogStyle
-) {
-    val columns = if (layout >= 2) layout.coerceIn(2, 6) else 1
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        if (columns == 1) {
-            repeat(if (layout == 1) 3 else 2) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .width(if (layout == 1) 12.dp else 16.dp)
-                            .height(if (layout == 1) 14.dp else 18.dp),
-                        shape = RoundedCornerShape(3.dp),
-                        color = style.accent.copy(alpha = 0.25f),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {}
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(5.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        color = style.primaryText.copy(alpha = 0.13f),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {}
-                }
-            }
-        } else {
-            repeat(2) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    repeat(columns) {
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(12.dp),
-                            shape = RoundedCornerShape(3.dp),
-                            color = style.accent.copy(alpha = 0.22f),
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.dp
-                        ) {}
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookshelfLayoutPreview(
-    values: BookshelfConfigValues,
-    options: BookshelfConfigOptions,
-    style: AppDialogStyle
-) {
-    val layoutLabel = options.layouts
-        .getOrNull(values.layout.coerceIn(options.layouts.indices))
-        ?.label
-        .orEmpty()
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(style.panelRadius),
-        color = style.fieldSurface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "实时预览",
-                        color = style.primaryText,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = layoutLabel,
-                        color = style.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = "边距 ${values.margin}",
-                    color = style.secondaryText,
-                    fontSize = 12.sp
-                )
-            }
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(style.actionRadius),
-                color = style.surface,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding((8 + values.margin / 8).dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    when {
-                        values.layout <= 0 -> repeat(3) { BookshelfPreviewListRow(style, compact = false) }
-                        values.layout == 1 -> repeat(4) { BookshelfPreviewListRow(style, compact = true) }
-                        else -> {
-                            val columns = values.layout.coerceIn(2, 6)
-                            repeat(2) {
-                                BookshelfPreviewGridRow(
-                                    columns = columns,
-                                    showTitle = values.showBookname != 1,
-                                    style = style
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookshelfPreviewListRow(
-    style: AppDialogStyle,
-    compact: Boolean
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            modifier = Modifier
-                .width(if (compact) 24.dp else 32.dp)
-                .height(if (compact) 34.dp else 44.dp),
-            shape = RoundedCornerShape(5.dp),
-            color = style.accent.copy(alpha = 0.24f),
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {}
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth(if (compact) 0.62f else 0.72f)
-                    .height(if (compact) 8.dp else 10.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = style.primaryText.copy(alpha = 0.16f),
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {}
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth(if (compact) 0.44f else 0.54f)
-                    .height(7.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = style.secondaryText.copy(alpha = 0.14f),
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {}
-        }
-    }
-}
-
-@Composable
-private fun BookshelfPreviewGridRow(
-    columns: Int,
-    showTitle: Boolean,
-    style: AppDialogStyle
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
-    ) {
-        repeat(columns) { index ->
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height((34 + (index % 2) * 5).dp),
-                    shape = RoundedCornerShape(5.dp),
-                    color = style.accent.copy(alpha = 0.18f + index.coerceAtMost(3) * 0.025f),
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp
-                ) {}
-                if (showTitle) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth(0.82f)
-                            .height(6.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        color = style.primaryText.copy(alpha = 0.13f),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {}
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun BookshelfConfigPanel(
-    title: String,
-    subtitle: String,
+    texts: BookshelfConfigTexts,
     style: AppDialogStyle,
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
@@ -590,14 +317,14 @@ private fun BookshelfConfigPanel(
         shape = RoundedCornerShape(style.panelRadius),
         color = style.surface,
         tonalElevation = 0.dp,
-        shadowElevation = 18.dp
+        shadowElevation = 14.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
                 .padding(horizontal = 18.dp)
-                .padding(top = 16.dp, bottom = 14.dp)
+                .padding(top = 14.dp, bottom = 14.dp)
         ) {
             Surface(
                 modifier = Modifier
@@ -609,101 +336,34 @@ private fun BookshelfConfigPanel(
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {}
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = title,
+                text = texts.title,
                 color = style.primaryText,
-                fontSize = 21.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = subtitle,
+                text = texts.subtitle,
                 color = style.secondaryText,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 660.dp)
+                    .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 content()
             }
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                actions()
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookshelfFooterActions(
-    style: AppDialogStyle,
-    onCancel: () -> Unit,
-    onApply: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Surface(
-            modifier = Modifier
-                .height(42.dp)
-                .width(92.dp)
-                .clickable(onClick = onCancel),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.fieldSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "取消",
-                    color = style.secondaryText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Surface(
-            modifier = Modifier
-                .height(42.dp)
-                .width(108.dp)
-                .clickable(onClick = onApply),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.accent,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "完成",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            Spacer(modifier = Modifier.height(12.dp))
+            actions()
         }
     }
 }
@@ -734,6 +394,85 @@ private fun ConfigSection(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             content()
+        }
+    }
+}
+
+@Composable
+private fun DialogSelectField(
+    label: String,
+    options: List<BookshelfConfigOption>,
+    selectedValue: Int,
+    style: AppDialogStyle,
+    onSelected: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedIndex = options.indexOfFirst { it.value == selectedValue }
+        .takeIf { it >= 0 }
+        ?: 0
+    val value = options.getOrNull(selectedIndex)?.label.orEmpty()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            color = style.secondaryText,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
+                shape = RoundedCornerShape(style.actionRadius),
+                color = style.surface,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = value,
+                        modifier = Modifier.weight(1f),
+                        color = style.primaryText,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "v",
+                        color = style.secondaryText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = option.label,
+                                color = if (option.value == selectedValue) {
+                                    style.accent
+                                } else {
+                                    style.primaryText
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelected(option.value)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -797,81 +536,64 @@ private fun BookshelfSegmentedControl(
 }
 
 @Composable
-private fun BookshelfChoiceGrid(
-    label: String,
-    options: List<BookshelfConfigOption>,
-    selectedValue: Int,
+private fun BookshelfFooterActions(
     style: AppDialogStyle,
-    onSelected: (Int) -> Unit
+    cancelLabel: String,
+    applyLabel: String,
+    onCancel: () -> Unit,
+    onApply: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = label,
-            color = style.secondaryText,
-            fontSize = 12.sp
-        )
-        options.chunked(2).forEach { rowOptions ->
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier
+                .height(42.dp)
+                .width(92.dp)
+                .clickable(onClick = onCancel),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.fieldSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                rowOptions.forEach { option ->
-                    BookshelfChoiceCard(
-                        option = option,
-                        selected = option.value == selectedValue,
-                        style = style,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onSelected(option.value) }
-                    )
-                }
-                if (rowOptions.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+                Text(
+                    text = cancelLabel,
+                    color = style.secondaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun BookshelfChoiceCard(
-    option: BookshelfConfigOption,
-    selected: Boolean,
-    style: AppDialogStyle,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = modifier
-            .height(44.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = if (selected) style.accent.copy(alpha = 0.15f) else style.surface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(modifier = Modifier.width(10.dp))
+        Surface(
+            modifier = Modifier
+                .height(42.dp)
+                .width(108.dp)
+                .clickable(onClick = onApply),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.accent,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
-            Surface(
-                modifier = Modifier
-                    .width(6.dp)
-                    .height(6.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = if (selected) style.accent else style.secondaryText.copy(alpha = 0.22f),
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {}
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = option.label,
-                modifier = Modifier.weight(1f),
-                color = if (selected) style.accent else style.primaryText,
-                fontSize = 13.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = applyLabel,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }
