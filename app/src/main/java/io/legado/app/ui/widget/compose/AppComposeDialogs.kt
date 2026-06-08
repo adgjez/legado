@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,8 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.lib.theme.titleTypeface
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import kotlin.math.roundToInt
 
@@ -62,7 +65,9 @@ data class AppDialogStyle(
     val stroke: Color,
     val danger: Color,
     val panelRadius: androidx.compose.ui.unit.Dp,
-    val actionRadius: androidx.compose.ui.unit.Dp
+    val actionRadius: androidx.compose.ui.unit.Dp,
+    val bodyFontFamily: FontFamily,
+    val titleFontFamily: FontFamily
 )
 
 @Composable
@@ -89,7 +94,9 @@ fun rememberAppDialogStyle(): AppDialogStyle {
         stroke = Color(if (night) 0x24ffffff else 0x14000000),
         danger = Color(ContextCompat.getColor(context, R.color.md_red_500)),
         panelRadius = context.composePanelRadius(),
-        actionRadius = context.composeActionRadius()
+        actionRadius = context.composeActionRadius(),
+        bodyFontFamily = FontFamily(context.uiTypeface()),
+        titleFontFamily = FontFamily(context.titleTypeface())
     )
 }
 

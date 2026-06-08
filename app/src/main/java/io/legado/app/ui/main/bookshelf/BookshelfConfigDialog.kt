@@ -5,13 +5,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,8 +30,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -110,9 +107,9 @@ private data class BookshelfPremiumSpec(
     val contentMaxHeight: Dp = 460.dp,
     val sectionPadding: Dp = 10.dp,
     val sectionGap: Dp = 8.dp,
-    val tileHeight: Dp = 58.dp,
+    val tileHeight: Dp = 64.dp,
     val switchTileHeight: Dp = 46.dp,
-    val choiceHeight: Dp = 34.dp,
+    val choiceHeight: Dp = 38.dp,
     val gridGap: Dp = 8.dp,
     val compactGap: Dp = 6.dp
 )
@@ -366,44 +363,49 @@ private fun BookshelfConfigPanel(
     actions: @Composable () -> Unit
 ) {
     val spec = BookshelfPremiumSpec()
-    LegadoMiuixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 18.dp),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(
-            horizontal = spec.panelHorizontalPadding,
-            vertical = spec.panelVerticalPadding
-        )
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
     ) {
-        Column(
+        LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
-        ) {
-            Text(
-                text = texts.title,
-                color = style.primaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                .navigationBarsPadding()
+                .padding(horizontal = 14.dp, vertical = 18.dp),
+            color = style.surface,
+            contentColor = style.primaryText,
+            cornerRadius = style.panelRadius,
+            insidePadding = PaddingValues(
+                horizontal = spec.panelHorizontalPadding,
+                vertical = spec.panelVerticalPadding
             )
-            Spacer(modifier = Modifier.height(10.dp))
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = spec.contentMaxHeight)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(spec.sectionGap)
+                    .imePadding()
             ) {
-                content()
+                Text(
+                    text = texts.title,
+                    color = style.primaryText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = style.titleFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = spec.contentMaxHeight)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(spec.sectionGap)
+                ) {
+                    content()
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                actions()
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            actions()
         }
     }
 }
@@ -473,22 +475,16 @@ private fun BookshelfOptionGrid(
                 }
             }
         }
-        AnimatedVisibility(
-            visible = expandedItem != null,
-            enter = fadeIn() + expandVertically(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            expandedItem?.let { item ->
-                BookshelfChoicePanel(
-                    item = item,
-                    style = style,
-                    spec = spec,
-                    onSelected = {
-                        item.onSelected(it)
-                        expandedKey = null
-                    }
-                )
-            }
+        expandedItem?.let { item ->
+            BookshelfChoicePanel(
+                item = item,
+                style = style,
+                spec = spec,
+                onSelected = {
+                    item.onSelected(it)
+                    expandedKey = null
+                }
+            )
         }
     }
 }
@@ -529,13 +525,14 @@ private fun BookshelfSelectTile(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = selected?.label.orEmpty(),
                     color = if (expanded) style.accent else style.primaryText,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -558,7 +555,7 @@ private fun BookshelfChoicePanel(
     spec: BookshelfPremiumSpec,
     onSelected: (Int) -> Unit
 ) {
-    val columns = if (item.options.size > 4) 3 else 2
+    val columns = 2
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(style.actionRadius),
