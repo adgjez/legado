@@ -11,15 +11,25 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
-import android.widget.LinearLayout
 import android.widget.PopupWindow
-import android.widget.ScrollView
-import android.widget.TextView
 import androidx.annotation.MenuRes
-import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import io.legado.app.R
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiMenuItemTypeface
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.dpToPx
 
 object ModernActionPopup {
@@ -40,11 +50,12 @@ object ModernActionPopup {
         if (actions.isEmpty()) return previousPopup
         val context = anchor.context
         var popup: PopupWindow? = null
-        val content = createContent(context, actions) {
+        val maxHeightPx = calculatePopupMaxHeight(anchor, maxHeightRatio, bottomGapDp)
+        val content = createContent(context, actions, maxHeightPx) {
             popup?.dismiss()
         }
         previousPopup?.dismiss()
-        val popupSize = measurePopupSize(anchor, content, maxHeightRatio, bottomGapDp)
+        val popupSize = measurePopupSize(content, maxHeightPx)
         popup = PopupWindow(
             content,
             popupSize.first,
@@ -87,99 +98,72 @@ object ModernActionPopup {
     private fun createContent(
         context: Context,
         actions: List<Action>,
+        maxHeightPx: Int,
         dismiss: () -> Unit
-    ): ScrollView {
-        val textColor = ContextCompat.getColor(context, R.color.primaryText)
-        val list = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(Color.TRANSPARENT)
-            setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
-            actions.forEach { action ->
-                addView(createItem(context, action, textColor, dismiss))
-            }
-        }
-        return ScrollView(context).apply {
-            isFillViewport = false
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            background = UiCorner.opaqueRounded(
-                ContextCompat.getColor(context, R.color.background_card),
-                UiCorner.panelRadius(context)
-            )
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                clipToOutline = true
-            }
-            addView(
-                list,
-                ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
-        }
-    }
-
-    private fun LinearLayout.createItem(
-        context: Context,
-        action: Action,
-        textColor: Int,
-        dismiss: () -> Unit
-    ): TextView {
-        return TextView(context).apply {
-            text = action.title
-            isSelected = action.checked
-            gravity = Gravity.CENTER_VERTICAL
-            minWidth = 132.dpToPx()
-            minHeight = 42.dpToPx()
-            setTextColor(textColor)
-            textSize = 14f
-            applyUiMenuItemTypeface(context)
-            includeFontPadding = false
-            setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
-            val selectedColor = ContextCompat.getColor(context, R.color.background_menu)
-            background = if (action.checked) {
-                UiCorner.opaqueRounded(
-                    selectedColor,
-                    UiCorner.actionRadius(context)
-                )
-            } else {
-                UiCorner.actionSelector(
-                    Color.TRANSPARENT,
-                    selectedColor,
-                    UiCorner.actionRadius(context)
-                )
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && action.checked) {
-                elevation = 4.dpToPx().toFloat()
-                translationZ = 4.dpToPx().toFloat()
-            }
-            setOnClickListener {
-                dismiss()
-                action.invoke()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                42.dpToPx()
-            ).apply {
-                setMargins(0, 1.dpToPx(), 0, 1.dpToPx())
+    ): ComposeView {
+        val density = context.resources.displayMetrics.density
+        val maxHeightDp = (maxHeightPx / density).dp
+        return ComposeView(context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setContent {
+                val style = rememberAppDialogStyle()
+                val palette = style.toMiuixPalette()
+                CompositionLocalProvider(
+                    LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+                ) {
+                    LegadoMiuixCard(
+                        modifier = Modifier
+                            .widthIn(min = 132.dp, max = 280.dp)
+                            .heightIn(max = maxHeightDp),
+                        color = style.surface,
+                        contentColor = style.primaryText,
+                        cornerRadius = style.panelRadius,
+                        insidePadding = PaddingValues(6.dp)
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = maxHeightDp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            items(actions) { action ->
+                                LegadoMiuixChoiceRow(
+                                    text = action.title,
+                                    selected = action.checked,
+                                    palette = palette,
+                                    onClick = {
+                                        dismiss()
+                                        action.invoke()
+                                    },
+                                    minHeight = 42.dp,
+                                    compact = true,
+                                    showSelectedMark = false
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    private fun measurePopupSize(
+    private fun calculatePopupMaxHeight(
         anchor: View,
-        content: View,
         maxHeightRatio: Float,
         bottomGapDp: Int
-    ): Pair<Int, Int> {
+    ): Int {
         val gap = 8.dpToPx()
         val bottomGap = bottomGapDp.dpToPx()
         val visibleFrame = Rect()
         anchor.rootView.getWindowVisibleDisplayFrame(visibleFrame)
-        content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
         val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
-        val maxHeight = ((visibleFrame.height() - gap - bottomGap) * ratio).toInt()
+        return ((visibleFrame.height() - gap - bottomGap) * ratio).toInt()
             .coerceAtLeast(160.dpToPx())
+    }
+
+    private fun measurePopupSize(
+        content: View,
+        maxHeight: Int
+    ): Pair<Int, Int> {
+        content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
         return content.measuredWidth to content.measuredHeight.coerceAtMost(maxHeight)
     }
 
