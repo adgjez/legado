@@ -1,12 +1,8 @@
 package io.legado.app.ui.widget.compose
 
 import android.os.Build
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,11 +15,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -32,9 +31,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,8 +48,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.material3.Text
 import io.legado.app.R
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
@@ -278,6 +283,110 @@ fun LegadoMiuixSlider(
 }
 
 @Composable
+fun LegadoMiuixFloatingPanel(
+    visible: Boolean,
+    palette: LegadoMiuixPalette,
+    modifier: Modifier = Modifier,
+    width: Dp = 304.dp,
+    cornerRadius: Dp = 22.dp,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "legadoMiuixFloatingPanel"
+    )
+    Surface(
+        modifier = modifier
+            .width(width)
+            .graphicsLayer {
+                alpha = progress
+                scaleX = 0.96f + 0.04f * progress
+                scaleY = 0.96f + 0.04f * progress
+                translationY = (1f - progress) * 12f
+            },
+        shape = RoundedCornerShape(cornerRadius),
+        color = palette.surface,
+        contentColor = palette.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp
+    ) {
+        Column(modifier = Modifier.padding(contentPadding), content = content)
+    }
+}
+
+@Composable
+fun LegadoMiuixChoiceRow(
+    text: String,
+    selected: Boolean,
+    palette: LegadoMiuixPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    minHeight: Dp = 40.dp,
+    compact: Boolean = false,
+    showSelectedMark: Boolean = true
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = minHeight)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(if (compact) 13.dp else 16.dp),
+        color = if (selected) palette.accent.copy(alpha = 0.14f) else palette.surfaceVariant,
+        contentColor = if (selected) palette.accent else palette.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = if (compact) 11.dp else 13.dp,
+                vertical = if (compact) 7.dp else 9.dp
+            ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = text,
+                    color = if (selected) palette.accent else palette.primaryText,
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                description?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = it,
+                        color = palette.secondaryText,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (showSelectedMark) {
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier.width(18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (selected) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(palette.accent)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun <T> LegadoMiuixSelectField(
     label: String,
     options: List<T>,
@@ -289,9 +398,20 @@ fun <T> LegadoMiuixSelectField(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 16.dp,
     compact: Boolean = false,
-    showSelectedMark: Boolean = true
+    showSelectedMark: Boolean = true,
+    popupTitle: String? = label,
+    popupWidth: Dp = 304.dp
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var panelVisible by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun dismissOptions() {
+        panelVisible = false
+        scope.launch {
+            delay(120)
+            expanded = false
+        }
+    }
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "miuixSelectArrow"
@@ -299,8 +419,6 @@ fun <T> LegadoMiuixSelectField(
     val labelSpacing = if (compact) 5.dp else 7.dp
     val fieldHorizontalPadding = if (compact) 12.dp else 13.dp
     val fieldVerticalPadding = if (compact) 9.dp else 11.dp
-    val optionMinHeight = if (compact) 38.dp else 42.dp
-    val optionVerticalPadding = if (compact) 7.dp else 8.dp
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(labelSpacing)
@@ -315,7 +433,13 @@ fun <T> LegadoMiuixSelectField(
         LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { expanded = !expanded },
+                .clickable {
+                    if (expanded) {
+                        dismissOptions()
+                    } else {
+                        expanded = true
+                    }
+                },
             color = palette.surface,
             contentColor = palette.primaryText,
             cornerRadius = cornerRadius,
@@ -363,67 +487,56 @@ fun <T> LegadoMiuixSelectField(
                 }
             }
         }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = fadeIn() + expandVertically(),
-            exit = shrinkVertically() + fadeOut()
+    }
+    if (expanded) {
+        Popup(
+            alignment = Alignment.Center,
+            onDismissRequest = { dismissOptions() },
+            properties = PopupProperties(focusable = true)
         ) {
-            LegadoMiuixCard(
-                modifier = Modifier.fillMaxWidth(),
-                color = palette.surface,
-                contentColor = palette.primaryText,
-                cornerRadius = cornerRadius,
-                insidePadding = PaddingValues(vertical = if (compact) 4.dp else 5.dp)
+            LaunchedEffect(Unit) {
+                panelVisible = true
+            }
+            LegadoMiuixFloatingPanel(
+                visible = panelVisible,
+                palette = palette,
+                width = popupWidth,
+                cornerRadius = 22.dp,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                options.forEach { option ->
-                    val isSelected = option == selected
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = optionMinHeight)
-                            .clickable {
-                                expanded = false
+                popupTitle?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        color = palette.primaryText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    options.forEach { option ->
+                        val isSelected = option == selected
+                        LegadoMiuixChoiceRow(
+                            text = optionLabel(option),
+                            selected = isSelected,
+                            palette = palette,
+                            onClick = {
                                 onSelected(option)
-                            }
-                            .padding(horizontal = 14.dp, vertical = optionVerticalPadding),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = optionLabel(option),
-                                color = if (isSelected) palette.accent else palette.primaryText,
-                                fontSize = if (compact) 13.sp else 14.sp,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            optionDescription?.invoke(option)?.takeIf { it.isNotBlank() }?.let {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = it,
-                                    color = palette.secondaryText,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        if (showSelectedMark) {
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Box(
-                                modifier = Modifier.width(18.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (isSelected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(palette.accent)
-                                    )
-                                }
-                            }
-                        }
+                                dismissOptions()
+                            },
+                            description = optionDescription?.invoke(option),
+                            minHeight = if (compact) 38.dp else 42.dp,
+                            compact = compact,
+                            showSelectedMark = showSelectedMark
+                        )
                     }
                 }
             }
