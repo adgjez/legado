@@ -6,7 +6,9 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.fragment.app.DialogFragment
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.setBackgroundKeepPadding
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.windowSize
 import splitties.systemservices.windowManager
@@ -30,10 +32,22 @@ abstract class ComposeDialogFragment : DialogFragment() {
         dialog?.window?.let { window ->
             val attr = window.attributes
             attr.gravity = dialogGravity
-            attr.windowAnimations = dialogWindowAnimations
+            if (AppConfig.isEInkMode) {
+                attr.dimAmount = 0f
+                attr.windowAnimations = 0
+                window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            } else {
+                attr.windowAnimations = dialogWindowAnimations
+            }
             window.attributes = attr
             window.setBackgroundDrawableResource(R.color.transparent)
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            if (AppConfig.isEInkMode) {
+                window.decorView.setBackgroundKeepPadding(R.color.transparent)
+            }
+        }
+        if (AppConfig.isEInkMode) {
+            applyEInkDialogBorder()
         }
         val fraction = widthFraction
         val maxDp = maxWidthDp
@@ -44,6 +58,19 @@ abstract class ComposeDialogFragment : DialogFragment() {
             dialog?.window?.setLayout(minOf(target, maxWidth), dialogHeight)
         } else {
             setLayout(dialogWidth, dialogHeight)
+        }
+    }
+
+    private fun applyEInkDialogBorder() {
+        val contentView = view ?: return
+        when (dialogGravity) {
+            Gravity.TOP -> contentView.setBackgroundResource(R.drawable.bg_eink_border_bottom)
+            Gravity.BOTTOM -> contentView.setBackgroundResource(R.drawable.bg_eink_border_top)
+            else -> {
+                val padding = 2.dpToPx()
+                contentView.setPadding(padding, padding, padding, padding)
+                contentView.setBackgroundResource(R.drawable.bg_eink_border_dialog)
+            }
         }
     }
 
