@@ -151,23 +151,26 @@ fun AppDialogFrame(
                 val contentModifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 520.dp)
-                if (scrollContent) {
+                val shouldScrollContent = scrollContent || messageInContent
+                if (shouldScrollContent) {
                     Column(
                         modifier = contentModifier.verticalScroll(rememberScrollState())
                     ) {
-                        if (!message.isNullOrBlank() && messageInContent) {
-                            AppDialogMessageText(message = message, style = style)
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                        content()
+                        AppDialogContent(
+                            message = message,
+                            messageInContent = messageInContent,
+                            style = style,
+                            content = content
+                        )
                     }
                 } else {
                     Column(modifier = contentModifier) {
-                        if (!message.isNullOrBlank() && messageInContent) {
-                            AppDialogMessageText(message = message, style = style)
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-                        content()
+                        AppDialogContent(
+                            message = message,
+                            messageInContent = messageInContent,
+                            style = style,
+                            content = content
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -181,6 +184,19 @@ fun AppDialogFrame(
             }
         }
     }
+}
+
+@Composable
+private fun AppDialogContent(
+    message: String?,
+    messageInContent: Boolean,
+    style: AppDialogStyle,
+    content: @Composable () -> Unit
+) {
+    if (!message.isNullOrBlank() && messageInContent) {
+        AppDialogMessageText(message = message, style = style)
+    }
+    content()
 }
 
 @Composable
