@@ -509,6 +509,8 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                     .ifBlank { stringResource(R.string.cancel) }
                 val neutralText = args.getString(ARG_NEUTRAL_TEXT)?.takeIf { it.isNotBlank() }
                 val dangerPositive = args.getBoolean(ARG_DANGER_POSITIVE)
+                val positiveRequiresCallback = args.getBoolean(ARG_POSITIVE_REQUIRES_CALLBACK, true)
+                val negativeRequiresCallback = args.getBoolean(ARG_NEGATIVE_REQUIRES_CALLBACK, false)
                 AppDialogFrame(
                     title = args.getString(ARG_TITLE).orEmpty(),
                     message = args.getString(ARG_MESSAGE),
@@ -528,23 +530,27 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        LegadoMiuixActionButton(
-                            text = negativeText,
-                            palette = palette,
-                            onClick = {
-                                dismissAllowingStateLoss()
-                                onNegative?.invoke()
-                            },
-                            cornerRadius = style.actionRadius
-                        )
-                        onPositive?.let { positiveCallback ->
+                        val negativeCallback = onNegative
+                        if (!negativeRequiresCallback || negativeCallback != null) {
+                            LegadoMiuixActionButton(
+                                text = negativeText,
+                                palette = palette,
+                                onClick = {
+                                    dismissAllowingStateLoss()
+                                    negativeCallback?.invoke()
+                                },
+                                cornerRadius = style.actionRadius
+                            )
+                        }
+                        val positiveCallback = onPositive
+                        if (!positiveRequiresCallback || positiveCallback != null) {
                             Spacer(modifier = Modifier.width(8.dp))
                             LegadoMiuixActionButton(
                                 text = positiveText,
                                 palette = palette,
                                 onClick = {
                                     dismissAllowingStateLoss()
-                                    positiveCallback.invoke()
+                                    positiveCallback?.invoke()
                                 },
                                 primary = !dangerPositive,
                                 danger = dangerPositive,
@@ -569,6 +575,8 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
             negativeText: String,
             neutralText: String? = null,
             dangerPositive: Boolean = false,
+            positiveRequiresCallback: Boolean = true,
+            negativeRequiresCallback: Boolean = false,
             onPositive: () -> Unit,
             onNegative: (() -> Unit)? = null,
             onNeutral: (() -> Unit)? = null
@@ -581,6 +589,8 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                     putString(ARG_NEGATIVE_TEXT, negativeText)
                     putString(ARG_NEUTRAL_TEXT, neutralText)
                     putBoolean(ARG_DANGER_POSITIVE, dangerPositive)
+                    putBoolean(ARG_POSITIVE_REQUIRES_CALLBACK, positiveRequiresCallback)
+                    putBoolean(ARG_NEGATIVE_REQUIRES_CALLBACK, negativeRequiresCallback)
                 }
                 this.onPositive = onPositive
                 this.onNegative = onNegative
@@ -594,6 +604,8 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
         private const val ARG_NEGATIVE_TEXT = "negativeText"
         private const val ARG_NEUTRAL_TEXT = "neutralText"
         private const val ARG_DANGER_POSITIVE = "dangerPositive"
+        private const val ARG_POSITIVE_REQUIRES_CALLBACK = "positiveRequiresCallback"
+        private const val ARG_NEGATIVE_REQUIRES_CALLBACK = "negativeRequiresCallback"
     }
 }
 

@@ -9,15 +9,16 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogDirectLinkUploadConfigBinding
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
@@ -117,14 +118,20 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
     }
 
     private fun alertTestResult(result: String) {
-        alert {
-            setTitle("result")
-            setMessage(result)
-            okButton()
-            negativeButton(R.string.copy_text) {
-                appCtx.sendToClip(result)
-            }
-        }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = "result",
+                message = result,
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(R.string.copy_text),
+                positiveRequiresCallback = false,
+                negativeRequiresCallback = true,
+                onPositive = {},
+                onNegative = {
+                    appCtx.sendToClip(result)
+                }
+            )
+        )
     }
 
 }
