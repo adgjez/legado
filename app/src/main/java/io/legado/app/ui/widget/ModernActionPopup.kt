@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
+import android.view.MotionEvent
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -12,24 +13,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
 import android.widget.PopupWindow
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.annotation.MenuRes
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import io.legado.app.R
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.utils.dpToPx
 
 object ModernActionPopup {
@@ -107,52 +100,85 @@ object ModernActionPopup {
         actions: List<Action>,
         constraints: PopupConstraints,
         dismiss: () -> Unit
-    ): ComposeView {
-        val density = context.resources.displayMetrics.density
-        val maxWidthDp = (constraints.maxWidthPx / density).dp
-        val maxHeightDp = (constraints.maxHeightPx / density).dp
-        val minWidthDp = minOf(132.dp, maxWidthDp)
-        return ComposeView(context).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent {
-                val style = rememberAppDialogStyle()
-                val palette = style.toMiuixPalette()
-                CompositionLocalProvider(
-                    LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
-                ) {
-                    LegadoMiuixCard(
-                        modifier = Modifier
-                            .widthIn(min = minWidthDp, max = minOf(280.dp, maxWidthDp))
-                            .heightIn(max = maxHeightDp),
-                        color = style.surface,
-                        contentColor = style.primaryText,
-                        cornerRadius = style.panelRadius,
-                        insidePadding = PaddingValues(6.dp)
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.heightIn(max = maxHeightDp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            itemsIndexed(
-                                items = actions,
-                                key = { index, action -> "${action.title}#$index" }
-                            ) { _, action ->
-                                LegadoMiuixChoiceRow(
-                                    text = action.title,
-                                    selected = action.checked,
-                                    palette = palette,
-                                    onClick = {
-                                        dismiss()
-                                        action.invoke()
-                                    },
-                                    minHeight = 42.dp,
-                                    compact = true,
-                                    showSelectedMark = action.checked
-                                )
-                            }
-                        }
-                    }
+    ): View {
+        val maxWidth = minOf(280.dpToPx(), constraints.maxWidthPx).coerceAtLeast(1)
+        val minWidth = minOf(132.dpToPx(), maxWidth).coerceAtLeast(1)
+        val actionRadius = UiCorner.actionRadius(context)
+        val selectedBackground = ColorUtils.blendARGB(
+            ContextCompat.getColor(context, R.color.background_menu),
+            context.accentColor,
+            0.08f
+        )
+        val pressedBackground = ColorUtils.setAlphaComponent(
+            context.accentColor,
+            if (ColorUtils.calculateLuminance(context.accentColor) > 0.5) 42 else 52
+        )
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
+            background = UiCorner.opaqueRounded(
+                ContextCompat.getColor(context, R.color.dialog_surface),
+                UiCorner.panelRadius(context)
+            )
+        }
+        actions.forEach { action ->
+            val row = TextView(context).apply {
+                text = action.title
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                textSize = 15f
+                gravity = Gravity.CENTER_VERTICAL
+                includeFontPadding = false
+                minHeight = 42.dpToPx()
+                setTextColor(if (action.checked) context.accentColor else context.primaryTextColor)
+                setPadding(14.dpToPx(), 9.dpToPx(), 14.dpToPx(), 9.dpToPx())
+                isSelected = action.checked
+                background = UiCorner.actionSelector(
+                    if (action.checked) selectedBackground else Color.TRANSPARENT,
+                    pressedBackground,
+                    actionRadius
+                )
+                setOnClickListener {
+                    dismiss()
+                    action.invoke()
                 }
+                setOnTouchListener { view, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> view.alpha = 0.78f
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_CANCEL -> view.alpha = 1f
+                    }
+                    false
+                }
+            }
+            list.addView(
+                row,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 1.dpToPx()
+                    bottomMargin = 1.dpToPx()
+                }
+            )
+        }
+        return ScrollView(context).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(
+                list,
+                ScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            minimumWidth = minWidth
+            layoutParams = ViewGroup.LayoutParams(maxWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(0, 0, 0, 0)
+            clipToPadding = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                elevation = 0f
             }
         }
     }
