@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -210,8 +211,23 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
                                     null
                                 },
                                 shape = RoundedCornerShape(style.actionRadius),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = style.primaryText,
+                                    unfocusedTextColor = style.primaryText,
+                                    disabledTextColor = style.secondaryText,
+                                    focusedContainerColor = style.fieldSurface,
+                                    unfocusedContainerColor = style.fieldSurface,
+                                    disabledContainerColor = style.fieldSurface.copy(alpha = 0.58f),
+                                    cursorColor = style.accent,
+                                    focusedBorderColor = Color.Transparent,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    disabledBorderColor = Color.Transparent,
+                                    focusedLabelColor = style.accent,
+                                    unfocusedLabelColor = style.secondaryText
+                                ),
                                 textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                    color = style.primaryText
+                                    color = style.primaryText,
+                                    fontFamily = style.bodyFontFamily
                                 )
                             )
                         }
