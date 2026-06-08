@@ -59,6 +59,8 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.utils.ColorUtils
 import kotlin.math.roundToInt
 
+private const val MAX_SAVEABLE_MULTI_CHOICE_ITEMS = 128
+
 @Stable
 data class AppDialogStyle(
     val accent: Color,
@@ -349,12 +351,21 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                 val itemLabels = remember {
                     args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
                 }
-                val checkedValues = remember(itemLabels) {
+                val initialCheckedValues = remember(itemLabels) {
                     val initialChecked = args.getBooleanArray(ARG_CHECKED) ?: booleanArrayOf()
-                    mutableStateListOf<Boolean>().apply {
-                        addAll(itemLabels.mapIndexed { index, _ ->
-                            initialChecked.getOrNull(index) ?: false
-                        })
+                    List(itemLabels.size) { index -> initialChecked.getOrNull(index) ?: false }
+                }
+                val saveCheckedState = itemLabels.size <= MAX_SAVEABLE_MULTI_CHOICE_ITEMS
+                val saveableChecked = if (saveCheckedState) {
+                    rememberSaveable(itemLabels) { mutableStateOf(initialCheckedValues) }
+                } else {
+                    null
+                }
+                val localChecked = if (saveCheckedState) {
+                    null
+                } else {
+                    remember(itemLabels) {
+                        mutableStateListOf<Boolean>().apply { addAll(initialCheckedValues) }
                     }
                 }
                 val positiveText = args.getString(ARG_POSITIVE_TEXT)
@@ -379,11 +390,22 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                             itemsIndexed(itemLabels) { index, label ->
                                 LegadoMiuixChoiceRow(
                                     text = label,
-                                    selected = checkedValues.getOrNull(index) ?: false,
+                                    selected = saveableChecked?.value?.getOrNull(index)
+                                        ?: localChecked?.getOrNull(index)
+                                        ?: false,
                                     palette = palette,
                                     onClick = {
-                                        if (index in checkedValues.indices) {
-                                            checkedValues[index] = !checkedValues[index]
+                                        if (index in itemLabels.indices) {
+                                            val state = saveableChecked
+                                            if (state != null) {
+                                                state.value = state.value.toggleAt(index, itemLabels.size)
+                                            } else {
+                                                localChecked?.let { values ->
+                                                    if (index in values.indices) {
+                                                        values[index] = !values[index]
+                                                    }
+                                                }
+                                            }
                                         }
                                     },
                                     minHeight = 42.dp
@@ -406,7 +428,9 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                                 palette = palette,
                                 onClick = {
                                     val result = BooleanArray(itemLabels.size) { index ->
-                                        checkedValues.getOrNull(index) ?: false
+                                        saveableChecked?.value?.getOrNull(index)
+                                            ?: localChecked?.getOrNull(index)
+                                            ?: false
                                     }
                                     dismissAllowingStateLoss()
                                     onPositive?.invoke(result)
@@ -451,6 +475,13 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
         private const val ARG_MESSAGE = "message"
         private const val ARG_POSITIVE_TEXT = "positiveText"
         private const val ARG_NEGATIVE_TEXT = "negativeText"
+    }
+}
+
+private fun List<Boolean>.toggleAt(index: Int, size: Int): List<Boolean> {
+    if (index !in 0 until size) return this
+    return MutableList(size) { i -> getOrNull(i) ?: false }.apply {
+        this[index] = !this[index]
     }
 }
 
