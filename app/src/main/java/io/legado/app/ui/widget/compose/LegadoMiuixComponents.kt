@@ -183,6 +183,7 @@ fun <T> LegadoMiuixSelectField(
     options: List<T>,
     selected: T,
     optionLabel: (T) -> String,
+    optionDescription: ((T) -> String)? = null,
     onSelected: (T) -> Unit,
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,
@@ -212,15 +213,26 @@ fun <T> LegadoMiuixSelectField(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = optionLabel(selected),
-                    modifier = Modifier.weight(1f),
-                    color = palette.primaryText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = optionLabel(selected),
+                        color = palette.primaryText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    optionDescription?.invoke(selected)?.takeIf { it.isNotBlank() }?.let {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = it,
+                            color = palette.secondaryText,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
                 Text(
                     text = if (expanded) "^" else "v",
                     color = palette.secondaryText,
@@ -254,15 +266,26 @@ fun <T> LegadoMiuixSelectField(
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = optionLabel(option),
-                            modifier = Modifier.weight(1f),
-                            color = if (isSelected) palette.accent else palette.primaryText,
-                            fontSize = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = optionLabel(option),
+                                color = if (isSelected) palette.accent else palette.primaryText,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            optionDescription?.invoke(option)?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = it,
+                                    color = palette.secondaryText,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                         if (isSelected) {
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(

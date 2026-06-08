@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,8 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -52,6 +51,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.ai.AiWorldBookManager
@@ -59,6 +60,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiWorldBookBinding
 import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiWorldBookEntry
+import io.legado.app.ui.widget.compose.LegadoMiuixActionRow
+import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixPalette
+import io.legado.app.ui.widget.compose.LegadoMiuixSelectField
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 
@@ -101,6 +106,17 @@ private data class WorldBookSelectOption(
     val label: String,
     val description: String = ""
 )
+
+private fun AiComposeStyle.toWorldBookMiuixPalette(): LegadoMiuixPalette {
+    return LegadoMiuixPalette(
+        accent = colors.accent,
+        surface = colors.cardSurface,
+        surfaceVariant = colors.toolSurface.copy(alpha = 0.78f),
+        primaryText = colors.primaryText,
+        secondaryText = colors.secondaryText,
+        danger = colors.danger
+    )
+}
 
 data class AiWorldBookImportPayload(
     val id: Long,
@@ -442,7 +458,8 @@ private fun WorldBookTopBar(
                 )
             }
         }
-        onAdd?.let {
+        onAdd?.let { addAction ->
+            val palette = style.toWorldBookMiuixPalette()
             Box {
                 IconButton(onClick = { addMenuExpanded = true }) {
                     Icon(
@@ -451,48 +468,65 @@ private fun WorldBookTopBar(
                         tint = style.colors.accent
                     )
                 }
-                DropdownMenu(
-                    expanded = addMenuExpanded,
-                    onDismissRequest = { addMenuExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("新增世界书", color = style.colors.primaryText) },
-                        onClick = {
-                            addMenuExpanded = false
-                            it()
+                if (addMenuExpanded) {
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        onDismissRequest = { addMenuExpanded = false },
+                        properties = PopupProperties(focusable = true)
+                    ) {
+                        LegadoMiuixCard(
+                            modifier = Modifier
+                                .width(188.dp)
+                                .padding(top = 46.dp),
+                            color = palette.surface,
+                            contentColor = palette.primaryText,
+                            cornerRadius = style.metrics.chipRadius,
+                            insidePadding = PaddingValues(vertical = 6.dp)
+                        ) {
+                            WorldBookAddMenuItem("新增世界书", palette, style) {
+                                addMenuExpanded = false
+                                addAction()
+                            }
+                            onImportLocal?.let { action ->
+                                WorldBookAddMenuItem("本地导入", palette, style) {
+                                    addMenuExpanded = false
+                                    action()
+                                }
+                            }
+                            onImportNetwork?.let { action ->
+                                WorldBookAddMenuItem("网络导入", palette, style) {
+                                    addMenuExpanded = false
+                                    action()
+                                }
+                            }
+                            onImportPaste?.let { action ->
+                                WorldBookAddMenuItem("粘贴导入", palette, style) {
+                                    addMenuExpanded = false
+                                    action()
+                                }
+                            }
                         }
-                    )
-                    onImportLocal?.let { action ->
-                        DropdownMenuItem(
-                            text = { Text("本地导入", color = style.colors.primaryText) },
-                            onClick = {
-                                addMenuExpanded = false
-                                action()
-                            }
-                        )
-                    }
-                    onImportNetwork?.let { action ->
-                        DropdownMenuItem(
-                            text = { Text("网络导入", color = style.colors.primaryText) },
-                            onClick = {
-                                addMenuExpanded = false
-                                action()
-                            }
-                        )
-                    }
-                    onImportPaste?.let { action ->
-                        DropdownMenuItem(
-                            text = { Text("粘贴导入", color = style.colors.primaryText) },
-                            onClick = {
-                                addMenuExpanded = false
-                                action()
-                            }
-                        )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun WorldBookAddMenuItem(
+    text: String,
+    palette: LegadoMiuixPalette,
+    style: AiComposeStyle,
+    onClick: () -> Unit
+) {
+    LegadoMiuixActionRow(
+        text = text,
+        palette = palette,
+        onClick = onClick,
+        cornerRadius = style.metrics.chipRadius,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+    )
 }
 
 @Composable
@@ -964,70 +998,18 @@ private fun LabeledSelect(
     modifier: Modifier = Modifier.fillMaxWidth(),
     onValueChange: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val selected = options.firstOrNull { it.value == value } ?: options.first()
-    Column(modifier = modifier.padding(top = 10.dp)) {
-        Text(label, color = style.colors.secondaryText, fontSize = 12.sp)
-        Box {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 54.dp)
-                    .clip(RoundedCornerShape(style.metrics.chipRadius))
-                    .background(style.colors.cardSurface)
-                    .border(style.metrics.strokeWidth, style.colors.stroke, RoundedCornerShape(style.metrics.chipRadius))
-                    .clickable { expanded = true }
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = selected.label,
-                        color = style.colors.primaryText,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (selected.description.isNotBlank()) {
-                        Text(
-                            text = selected.description,
-                            color = style.colors.secondaryText,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                Icon(
-                    painter = painterResource(R.drawable.ic_expand_more),
-                    contentDescription = null,
-                    tint = style.colors.secondaryText,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(option.label, color = style.colors.primaryText)
-                                if (option.description.isNotBlank()) {
-                                    Text(option.description, color = style.colors.secondaryText, fontSize = 12.sp)
-                                }
-                            }
-                        },
-                        onClick = {
-                            expanded = false
-                            onValueChange(option.value)
-                        }
-                    )
-                }
-            }
-        }
-    }
+    LegadoMiuixSelectField(
+        label = label,
+        options = options,
+        selected = selected,
+        optionLabel = { it.label },
+        optionDescription = { it.description },
+        onSelected = { onValueChange(it.value) },
+        palette = style.toWorldBookMiuixPalette(),
+        modifier = modifier.padding(top = 10.dp),
+        cornerRadius = style.metrics.chipRadius
+    )
 }
 
 @Composable
