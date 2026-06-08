@@ -1,5 +1,6 @@
 package io.legado.app.ui.widget.compose
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -38,6 +39,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import top.yukonga.miuix.kmp.basic.Button as MiuixButton
+import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card as MiuixCard
+import top.yukonga.miuix.kmp.basic.CardDefaults as MiuixCardDefaults
+import top.yukonga.miuix.kmp.basic.Slider as MiuixSlider
+import top.yukonga.miuix.kmp.basic.SliderDefaults as MiuixSliderDefaults
+import top.yukonga.miuix.kmp.basic.Switch as MiuixSwitch
+import top.yukonga.miuix.kmp.basic.SwitchDefaults as MiuixSwitchDefaults
 
 @Immutable
 data class LegadoMiuixPalette(
@@ -61,6 +70,10 @@ fun AppDialogStyle.toMiuixPalette(): LegadoMiuixPalette {
     )
 }
 
+private fun canUseRealMiuix(): Boolean {
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+}
+
 @Composable
 fun LegadoMiuixCard(
     modifier: Modifier = Modifier,
@@ -70,6 +83,19 @@ fun LegadoMiuixCard(
     insidePadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
+    if (canUseRealMiuix()) {
+        MiuixCard(
+            modifier = modifier,
+            cornerRadius = cornerRadius,
+            insideMargin = insidePadding,
+            colors = MiuixCardDefaults.defaultColors(
+                color = color,
+                contentColor = contentColor
+            ),
+            content = content
+        )
+        return
+    }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(cornerRadius),
@@ -105,6 +131,32 @@ fun LegadoMiuixActionButton(
         danger -> palette.danger
         else -> palette.primaryText
     }
+    if (canUseRealMiuix()) {
+        MiuixButton(
+            onClick = onClick,
+            modifier = modifier,
+            cornerRadius = cornerRadius,
+            minWidth = minWidth,
+            minHeight = minHeight,
+            insideMargin = insidePadding,
+            colors = MiuixButtonDefaults.buttonColors(
+                color = background,
+                disabledColor = background.copy(alpha = 0.46f),
+                contentColor = content,
+                disabledContentColor = content.copy(alpha = 0.38f)
+            )
+        ) {
+            Text(
+                text = text,
+                color = content,
+                fontSize = 14.sp,
+                fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        return
+    }
     Surface(
         modifier = modifier
             .defaultMinSize(minWidth = minWidth, minHeight = minHeight)
@@ -139,6 +191,24 @@ fun LegadoMiuixSwitch(
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier
 ) {
+    if (canUseRealMiuix()) {
+        MiuixSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = modifier,
+            colors = MiuixSwitchDefaults.switchColors(
+                checkedThumbColor = palette.onAccent,
+                uncheckedThumbColor = palette.secondaryText.copy(alpha = 0.72f),
+                disabledCheckedThumbColor = palette.onAccent.copy(alpha = 0.42f),
+                disabledUncheckedThumbColor = palette.secondaryText.copy(alpha = 0.32f),
+                checkedTrackColor = palette.accent,
+                uncheckedTrackColor = palette.surfaceVariant,
+                disabledCheckedTrackColor = palette.accent.copy(alpha = 0.24f),
+                disabledUncheckedTrackColor = palette.surfaceVariant.copy(alpha = 0.46f)
+            )
+        )
+        return
+    }
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
@@ -161,6 +231,26 @@ fun LegadoMiuixSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int = 0
 ) {
+    if (canUseRealMiuix()) {
+        MiuixSlider(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier.fillMaxWidth(),
+            valueRange = valueRange,
+            steps = steps,
+            colors = MiuixSliderDefaults.sliderColors(
+                foregroundColor = palette.accent,
+                disabledForegroundColor = palette.accent.copy(alpha = 0.28f),
+                backgroundColor = palette.surfaceVariant,
+                disabledBackgroundColor = palette.surfaceVariant.copy(alpha = 0.44f),
+                thumbColor = palette.onAccent,
+                disabledThumbColor = palette.onAccent.copy(alpha = 0.42f),
+                keyPointColor = palette.secondaryText.copy(alpha = 0.32f),
+                keyPointForegroundColor = palette.onAccent.copy(alpha = 0.68f)
+            )
+        )
+        return
+    }
     Slider(
         value = value,
         onValueChange = onValueChange,
