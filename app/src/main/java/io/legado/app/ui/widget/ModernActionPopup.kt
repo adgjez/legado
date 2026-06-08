@@ -168,7 +168,7 @@ object ModernActionPopup {
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(
                 list,
-                ScrollView.LayoutParams(
+                ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
