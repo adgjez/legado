@@ -31,7 +31,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -181,14 +180,6 @@ fun AppDialogFrame(
 
 class ComposeTextInputDialog : ComposeDialogFragment() {
 
-    private var titleText: String = ""
-    private var messageText: String? = null
-    private var hintText: String = ""
-    private var initialText: String = ""
-    private var readOnly: Boolean = false
-    private var positiveText: String = ""
-    private var negativeText: String = ""
-    private var neutralText: String? = null
     private var validateInput: ((String) -> Boolean)? = null
     private var onPositive: ((String) -> Unit)? = null
     private var onNeutral: (() -> Unit)? = null
@@ -198,14 +189,26 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        val args = arguments ?: Bundle()
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                var text by rememberSaveable { mutableStateOf(initialText) }
+                val readOnly = args.getBoolean(ARG_READ_ONLY)
+                val hintText = args.getString(ARG_HINT).orEmpty()
+                val positiveText = args.getString(ARG_POSITIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.ok) }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val neutralText = args.getString(ARG_NEUTRAL_TEXT)?.takeIf { it.isNotBlank() }
+                var text by rememberSaveable {
+                    mutableStateOf(args.getString(ARG_INITIAL_TEXT).orEmpty())
+                }
                 val style = rememberAppDialogStyle()
                 AppDialogFrame(
-                    title = titleText,
-                    message = messageText,
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
                     content = {
                         SelectionContainer {
                             OutlinedTextField(
@@ -264,20 +267,22 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
                             onClick = { dismissAllowingStateLoss() },
                             cornerRadius = style.actionRadius
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        LegadoMiuixActionButton(
-                            text = positiveText,
-                            palette = palette,
-                            onClick = {
-                                val current = text
-                                if (validateInput?.invoke(current) != false) {
-                                    dismissAllowingStateLoss()
-                                    onPositive?.invoke(current)
-                                }
-                            },
-                            primary = true,
-                            cornerRadius = style.actionRadius
-                        )
+                        onPositive?.let { positiveCallback ->
+                            Spacer(modifier = Modifier.width(8.dp))
+                            LegadoMiuixActionButton(
+                                text = positiveText,
+                                palette = palette,
+                                onClick = {
+                                    val current = text
+                                    if (validateInput?.invoke(current) != false) {
+                                        dismissAllowingStateLoss()
+                                        positiveCallback.invoke(current)
+                                    }
+                                },
+                                primary = true,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
                     }
                 )
             }
@@ -299,30 +304,35 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
             onNeutral: (() -> Unit)? = null
         ): ComposeTextInputDialog {
             return ComposeTextInputDialog().apply {
-                titleText = title
-                hintText = hint
-                initialText = initialValue
-                messageText = message
-                this.readOnly = readOnly
-                this.positiveText = positiveText
-                this.negativeText = negativeText
-                this.neutralText = neutralText
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putString(ARG_HINT, hint)
+                    putString(ARG_INITIAL_TEXT, initialValue)
+                    putString(ARG_MESSAGE, message)
+                    putBoolean(ARG_READ_ONLY, readOnly)
+                    putString(ARG_POSITIVE_TEXT, positiveText)
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                    putString(ARG_NEUTRAL_TEXT, neutralText)
+                }
                 this.validateInput = validateInput
                 this.onPositive = onPositive
                 this.onNeutral = onNeutral
             }
         }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_HINT = "hint"
+        private const val ARG_INITIAL_TEXT = "initialText"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_READ_ONLY = "readOnly"
+        private const val ARG_POSITIVE_TEXT = "positiveText"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
+        private const val ARG_NEUTRAL_TEXT = "neutralText"
     }
 }
 
 class ComposeMultiChoiceDialog : ComposeDialogFragment() {
 
-    private var titleText: String = ""
-    private var messageText: String? = null
-    private var itemLabels: List<String> = emptyList()
-    private var initialChecked: BooleanArray = booleanArrayOf()
-    private var positiveText: String = ""
-    private var negativeText: String = ""
     private var onPositive: ((BooleanArray) -> Unit)? = null
 
     override fun onCreateView(
@@ -330,32 +340,50 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        val args = arguments ?: Bundle()
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val style = rememberAppDialogStyle()
-                val checked = remember {
-                    mutableStateListOf<Boolean>().apply {
-                        addAll(
-                            itemLabels.mapIndexed { index, _ ->
-                                initialChecked.getOrNull(index) ?: false
-                            }
-                        )
-                    }
+                val itemLabels = remember {
+                    args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
                 }
+                var checkedValues by rememberSaveable {
+                    val initialChecked = args.getBooleanArray(ARG_CHECKED) ?: booleanArrayOf()
+                    mutableStateOf(
+                        itemLabels.mapIndexed { index, _ ->
+                            initialChecked.getOrNull(index) ?: false
+                        }
+                    )
+                }
+                val positiveText = args.getString(ARG_POSITIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.ok) }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val canSubmit = onPositive != null
                 AppDialogFrame(
-                    title = titleText,
-                    message = messageText,
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
+                    scrollContent = false,
                     content = {
                         val palette = style.toMiuixPalette()
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            itemLabels.forEachIndexed { index, label ->
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(itemLabels) { index, label ->
                                 LegadoMiuixChoiceRow(
                                     text = label,
-                                    selected = checked[index],
+                                    selected = checkedValues.getOrNull(index) ?: false,
                                     palette = palette,
                                     onClick = {
-                                        checked[index] = !checked[index]
+                                        checkedValues = checkedValues.toMutableList().also {
+                                            it[index] = !(it.getOrNull(index) ?: false)
+                                        }
                                     },
                                     minHeight = 42.dp
                                 )
@@ -370,18 +398,22 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
                             onClick = { dismissAllowingStateLoss() },
                             cornerRadius = style.actionRadius
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        LegadoMiuixActionButton(
-                            text = positiveText,
-                            palette = palette,
-                            onClick = {
-                                val result = BooleanArray(checked.size) { checked[it] }
-                                dismissAllowingStateLoss()
-                                onPositive?.invoke(result)
-                            },
-                            primary = true,
-                            cornerRadius = style.actionRadius
-                        )
+                        if (canSubmit) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            LegadoMiuixActionButton(
+                                text = positiveText,
+                                palette = palette,
+                                onClick = {
+                                    val result = BooleanArray(itemLabels.size) { index ->
+                                        checkedValues.getOrNull(index) ?: false
+                                    }
+                                    dismissAllowingStateLoss()
+                                    onPositive?.invoke(result)
+                                },
+                                primary = true,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
                     }
                 )
             }
@@ -398,16 +430,26 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
             negativeText: String,
             onPositive: (BooleanArray) -> Unit
         ): ComposeMultiChoiceDialog {
+            val safeLabels = labels.toList()
             return ComposeMultiChoiceDialog().apply {
-                titleText = title
-                itemLabels = labels
-                initialChecked = checked
-                messageText = message
-                this.positiveText = positiveText
-                this.negativeText = negativeText
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putStringArrayList(ARG_LABELS, ArrayList(safeLabels))
+                    putBooleanArray(ARG_CHECKED, checked.copyOf())
+                    putString(ARG_MESSAGE, message)
+                    putString(ARG_POSITIVE_TEXT, positiveText)
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                }
                 this.onPositive = onPositive
             }
         }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_LABELS = "labels"
+        private const val ARG_CHECKED = "checked"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_POSITIVE_TEXT = "positiveText"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
     }
 }
 
