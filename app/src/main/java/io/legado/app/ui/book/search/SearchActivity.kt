@@ -579,8 +579,9 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                 binding.tvBookShow.gone()
                 binding.rvBookshelfSearch.gone()
             } else {
-                appDb.bookDao.flowSearch(key).conflate().collect {
-                    if (it.isEmpty()) {
+                appDb.bookDao.flowSearchDisplayInfos(key).conflate().collect { displayInfos ->
+                    val books = displayInfos.map { it.toBook() }
+                    if (books.isEmpty()) {
                         binding.llBookshelfHintCard.gone()
                         binding.tvBookShow.gone()
                         binding.rvBookshelfSearch.gone()
@@ -589,7 +590,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
                         binding.tvBookShow.visible()
                         binding.rvBookshelfSearch.visible()
                     }
-                    bookAdapter.setItems(it)
+                    bookAdapter.setItems(books)
                 }
             }
         }
