@@ -5,20 +5,33 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +40,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -35,16 +50,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.ui.widget.compose.AppDialogSliderRow
-import io.legado.app.ui.widget.compose.AppDialogSwitchRow
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixSection
 import io.legado.app.ui.widget.compose.LegadoMiuixSelectField
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
+import kotlin.math.roundToInt
 
 data class BookshelfConfigValues(
     val groupStyle: Int,
@@ -241,24 +254,28 @@ private fun BookshelfConfigContent(
         title = texts.showTitle,
         style = style
     ) {
-        AppDialogSwitchRow(
+        BookshelfSwitchRow(
             text = stringResource(R.string.show_unread),
             checked = values.showUnread,
+            style = style,
             onCheckedChange = { onValuesChange(values.copy(showUnread = it)) }
         )
-        AppDialogSwitchRow(
+        BookshelfSwitchRow(
             text = stringResource(R.string.show_last_update_time),
             checked = values.showLastUpdateTime,
+            style = style,
             onCheckedChange = { onValuesChange(values.copy(showLastUpdateTime = it)) }
         )
-        AppDialogSwitchRow(
+        BookshelfSwitchRow(
             text = stringResource(R.string.show_wait_up_count),
             checked = values.showWaitUpCount,
+            style = style,
             onCheckedChange = { onValuesChange(values.copy(showWaitUpCount = it)) }
         )
-        AppDialogSwitchRow(
+        BookshelfSwitchRow(
             text = stringResource(R.string.show_bookshelf_fast_scroller),
             checked = values.showFastScroller,
+            style = style,
             onCheckedChange = { onValuesChange(values.copy(showFastScroller = it)) }
         )
     }
@@ -291,10 +308,11 @@ private fun BookshelfConfigContent(
         title = texts.marginTitle,
         style = style
     ) {
-        AppDialogSliderRow(
+        BookshelfSliderRow(
             title = texts.marginLabel,
             value = values.margin,
             range = 0..60,
+            style = style,
             onValueChange = { onValuesChange(values.copy(margin = it)) }
         )
     }
@@ -307,7 +325,6 @@ private fun BookshelfConfigPanel(
     content: @Composable () -> Unit,
     actions: @Composable () -> Unit
 ) {
-    val palette = style.toMiuixPalette()
     LegadoMiuixCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -344,6 +361,7 @@ private fun BookshelfConfigPanel(
                     .fillMaxWidth()
                     .heightIn(max = 500.dp)
                     .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 content()
             }
@@ -361,13 +379,121 @@ private fun ConfigSection(
     content: @Composable () -> Unit
 ) {
     if (!visible) return
-    val palette = style.toMiuixPalette()
-    LegadoMiuixSection(
-        title = title,
-        palette = palette,
-        cornerRadius = style.actionRadius
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(style.actionRadius),
+        color = style.fieldSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        content()
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(
+                text = title,
+                color = style.accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(bottom = 8.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun BookshelfSwitchRow(
+    text: String,
+    checked: Boolean,
+    style: AppDialogStyle,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val trackWidth = 46.dp
+    val trackHeight = 26.dp
+    val thumbSize = 20.dp
+    val edge = 3.dp
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) trackWidth - thumbSize - edge else edge,
+        label = "bookshelfSwitchThumb"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .clickable { onCheckedChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            color = style.primaryText,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Box(
+            modifier = Modifier
+                .size(trackWidth, trackHeight)
+                .clip(RoundedCornerShape(50))
+                .background(if (checked) style.accent else style.surface)
+                .border(
+                    width = 1.dp,
+                    color = if (checked) Color.Transparent else style.stroke,
+                    shape = RoundedCornerShape(50)
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = thumbOffset)
+                    .size(thumbSize)
+                    .clip(CircleShape)
+                    .background(if (checked) Color.White else style.secondaryText.copy(alpha = 0.58f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookshelfSliderRow(
+    title: String,
+    value: Int,
+    range: IntRange,
+    style: AppDialogStyle,
+    onValueChange: (Int) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                color = style.primaryText,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = value.toString(),
+                color = style.secondaryText,
+                fontSize = 13.sp
+            )
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onValueChange(it.roundToInt().coerceIn(range.first, range.last)) },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = (range.last - range.first - 1).coerceAtLeast(0),
+            colors = SliderDefaults.colors(
+                activeTrackColor = style.accent,
+                inactiveTrackColor = style.surface,
+                thumbColor = style.accent,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = style.secondaryText.copy(alpha = 0.24f)
+            )
+        )
     }
 }
 
@@ -403,7 +529,6 @@ private fun BookshelfSegmentedControl(
     style: AppDialogStyle,
     onSelected: (Int) -> Unit
 ) {
-    val palette = style.toMiuixPalette()
     Column {
         Text(
             text = label,
@@ -434,8 +559,9 @@ private fun BookshelfSegmentedControl(
                         insidePadding = PaddingValues(horizontal = 6.dp)
                     ) {
                         Row(
+                            modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                            horizontalArrangement = Arrangement.Center
                         ) {
                             Text(
                                 text = option.label,
@@ -464,7 +590,7 @@ private fun BookshelfFooterActions(
     val palette = style.toMiuixPalette()
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
         LegadoMiuixActionButton(
