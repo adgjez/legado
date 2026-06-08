@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.drawable.ColorDrawable
 import android.view.Window
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +15,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -48,6 +53,7 @@ import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.windowSize
 import splitties.systemservices.windowManager
+import kotlin.math.roundToInt
 
 class NumberPickerDialog(private val context: Context, private val isDecimalMode: Boolean = false) {
 
@@ -88,6 +94,7 @@ class NumberPickerDialog(private val context: Context, private val isDecimalMode
         val dialog = Dialog(context).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             window?.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
+            window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
         dialog.setContentView(
             ComposeView(context).apply {
@@ -119,6 +126,7 @@ class NumberPickerDialog(private val context: Context, private val isDecimalMode
                 420.dpToPx()
             )
             dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
         dialog.show()
     }
@@ -146,10 +154,13 @@ private fun NumberPickerContent(
     var inputText by remember(currentValue, isDecimalMode) {
         mutableStateOf(formatPickerValue(currentValue, isDecimalMode))
     }
-    fun committedValue(): Int {
-        val committed = parsePickerValue(inputText, isDecimalMode)
+    fun inputValueOrCurrent(): Int {
+        return parsePickerValue(inputText, isDecimalMode)
             ?.coerceIn(safeMin, safeMax)
             ?: currentValue
+    }
+    fun committedValue(): Int {
+        val committed = inputValueOrCurrent()
         currentValue = committed
         inputText = formatPickerValue(committed, isDecimalMode)
         return committed
@@ -160,6 +171,9 @@ private fun NumberPickerContent(
         LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 520.dp)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 18.dp, vertical = 12.dp),
             color = style.surface,
             contentColor = style.primaryText,
@@ -183,10 +197,10 @@ private fun NumberPickerContent(
             ) {
                 StepButton(
                     text = "-",
-                    enabled = currentValue > safeMin,
+                    enabled = inputValueOrCurrent() > safeMin,
                     palette = palette,
                     onClick = {
-                        currentValue = (currentValue - 1).coerceAtLeast(safeMin)
+                        currentValue = (inputValueOrCurrent() - 1).coerceAtLeast(safeMin)
                         inputText = formatPickerValue(currentValue, isDecimalMode)
                     }
                 )
@@ -196,7 +210,11 @@ private fun NumberPickerContent(
                     modifier = Modifier.weight(1f),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
-                        keyboardType = if (isDecimalMode) KeyboardType.Decimal else KeyboardType.Number
+                        keyboardType = when {
+                            safeMin < 0 -> KeyboardType.Text
+                            isDecimalMode -> KeyboardType.Decimal
+                            else -> KeyboardType.Number
+                        }
                     ),
                     textStyle = LocalTextStyle.current.copy(
                         color = style.primaryText,
@@ -216,10 +234,10 @@ private fun NumberPickerContent(
                 )
                 StepButton(
                     text = "+",
-                    enabled = currentValue < safeMax,
+                    enabled = inputValueOrCurrent() < safeMax,
                     palette = palette,
                     onClick = {
-                        currentValue = (currentValue + 1).coerceAtMost(safeMax)
+                        currentValue = (inputValueOrCurrent() + 1).coerceAtMost(safeMax)
                         inputText = formatPickerValue(currentValue, isDecimalMode)
                     }
                 )
@@ -312,7 +330,7 @@ private fun parsePickerValue(value: String, decimalMode: Boolean): Int? {
     val normalized = value.trim()
     if (normalized.isEmpty()) return null
     return if (decimalMode) {
-        normalized.toDoubleOrNull()?.let { (it * 10).toInt() }
+        normalized.toDoubleOrNull()?.let { (it * 10).roundToInt() }
     } else {
         normalized.toIntOrNull()
     }
