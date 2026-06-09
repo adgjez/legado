@@ -79,7 +79,7 @@ class AiProviderManageActivity : BaseActivity<ViewBinding>() {
                 providers = providers,
                 modelCounts = modelCounts,
                 currentProviderId = currentProviderId,
-                onBack = ::finish,
+                onBack = ::supportFinishAfterTransition,
                 onAdd = { openEdit(null) },
                 onOpenProvider = ::openEdit,
                 onShowActions = ::showActions
