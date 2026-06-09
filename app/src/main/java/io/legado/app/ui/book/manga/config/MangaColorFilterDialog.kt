@@ -10,12 +10,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,6 +42,7 @@ import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import kotlinx.coroutines.delay
 
 class MangaColorFilterDialog : ComposeDialogFragment() {
 
@@ -44,6 +51,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
     private val mConfig =
         GSON.fromJsonObject<MangaColorFilterConfig>(AppConfig.mangaColorFilter).getOrNull()
             ?: MangaColorFilterConfig()
+    private var latestConfig = mConfig.copy()
     private val callback get() = activity as? Callback
 
     override fun onStart() {
@@ -76,10 +84,33 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
         var green by rememberSaveable { mutableIntStateOf(mConfig.g) }
         var blue by rememberSaveable { mutableIntStateOf(mConfig.b) }
         var alpha by rememberSaveable { mutableIntStateOf(mConfig.a) }
+        var hasUserChanges by rememberSaveable { mutableStateOf(false) }
 
-        fun updateConfig(block: MangaColorFilterConfig.() -> Unit) {
-            mConfig.block()
-            callback?.updateColorFilter(mConfig)
+        fun currentConfig(): MangaColorFilterConfig {
+            return MangaColorFilterConfig(
+                r = red,
+                g = green,
+                b = blue,
+                a = alpha,
+                l = brightness
+            )
+        }
+
+        fun markChanged() {
+            latestConfig = currentConfig()
+            hasUserChanges = true
+        }
+
+        SideEffect {
+            latestConfig = currentConfig()
+        }
+
+        LaunchedEffect(brightness, red, green, blue, alpha, hasUserChanges) {
+            if (!hasUserChanges) {
+                return@LaunchedEffect
+            }
+            delay(180)
+            callback?.updateColorFilter(latestConfig)
         }
 
         LegadoMiuixCard(
@@ -92,7 +123,10 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
             insidePadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
@@ -110,7 +144,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     range = 0..255,
                     onValueChange = { value ->
                         brightness = value
-                        updateConfig { l = value }
+                        markChanged()
                     }
                 )
                 AppDialogSliderRow(
@@ -119,7 +153,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     range = 0..255,
                     onValueChange = { value ->
                         red = value
-                        updateConfig { r = value }
+                        markChanged()
                     }
                 )
                 AppDialogSliderRow(
@@ -128,7 +162,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     range = 0..255,
                     onValueChange = { value ->
                         green = value
-                        updateConfig { g = value }
+                        markChanged()
                     }
                 )
                 AppDialogSliderRow(
@@ -137,7 +171,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     range = 0..255,
                     onValueChange = { value ->
                         blue = value
-                        updateConfig { b = value }
+                        markChanged()
                     }
                 )
                 AppDialogSliderRow(
@@ -146,7 +180,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     range = 0..255,
                     onValueChange = { value ->
                         alpha = value
-                        updateConfig { a = value }
+                        markChanged()
                     }
                 )
             }
@@ -155,7 +189,7 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
-        AppConfig.mangaColorFilter = mConfig.toJson()
+        AppConfig.mangaColorFilter = latestConfig.toJson()
     }
 
     interface Callback {
