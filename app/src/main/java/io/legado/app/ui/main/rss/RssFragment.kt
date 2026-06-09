@@ -108,6 +108,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
     private var lastRenderedWebSourceUrl: String? = null
     private var rssTopOverlaySpace = 0
     private var rssTopOverlayEnabled = false
+    private var pendingRenderCurrentSort = false
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -122,6 +123,13 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         super.onResume()
         if (usingModernRss != AppConfig.modernRssPage) {
             applyRssMode()
+        }
+        if (pendingRenderCurrentSort && usingModernRss) {
+            binding.root.post {
+                if (pendingRenderCurrentSort) {
+                    renderCurrentSort()
+                }
+            }
         }
     }
 
@@ -156,6 +164,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         groupsFlowJob = null
         rssFlowJob?.cancel()
         rssFlowJob = null
+        pendingRenderCurrentSort = false
         rssWebView?.let { webView ->
             binding.rssWebContainer.removeView(webView)
             webView.stopLoading()
@@ -513,6 +522,11 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
             renderEmptyState()
             return
         }
+        if (!canCommitRssChildFragment()) {
+            pendingRenderCurrentSort = true
+            return
+        }
+        pendingRenderCurrentSort = false
         binding.swipeRefreshLayout.isEnabled = true
         selectedTagIndex = selectedTagIndex.coerceIn(0, currentSorts.lastIndex)
         selectedTagIndex = validRssSortIndex(selectedTagIndex) ?: return
@@ -536,6 +550,13 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
                 }
             }
         }
+    }
+
+    private fun canCommitRssChildFragment(): Boolean {
+        return isAdded &&
+                view != null &&
+                !childFragmentManager.isStateSaved &&
+                viewLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
