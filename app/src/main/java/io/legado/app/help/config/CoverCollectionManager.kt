@@ -103,6 +103,12 @@ object CoverCollectionManager {
         loadIndex(isNight).firstOrNull { it.id == id }
     }
 
+    fun cachedName(isNight: Boolean, id: String?): String? {
+        if (id.isNullOrBlank()) return null
+        val cache = if (isNight) nightCache else dayCache
+        return cache?.firstOrNull { it.id == id }?.name
+    }
+
     suspend fun create(name: String, isNight: Boolean): Collection = withContext(IO) {
         val cleanName = name.trim().ifBlank { if (isNight) "Night collection" else "Day collection" }
         val collection = Collection(

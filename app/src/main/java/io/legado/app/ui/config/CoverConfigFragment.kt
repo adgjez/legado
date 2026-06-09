@@ -1,214 +1,219 @@
 package io.legado.app.ui.config
 
-import android.annotation.SuppressLint
-import android.content.SharedPreferences
-import android.net.Uri
-import android.os.Bundle
-import android.view.View
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.CoverCollectionManager
-import io.legado.app.lib.prefs.SwitchPreference
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
-import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.externalFiles
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.getPrefString
-import io.legado.app.utils.inputStream
-import io.legado.app.utils.putPrefString
-import io.legado.app.utils.readUri
-import io.legado.app.utils.removePref
+import io.legado.app.ui.config.compose.ComposeSettingFragment
+import io.legado.app.ui.config.compose.SettingActionSpec
+import io.legado.app.ui.config.compose.SettingChoiceOption
+import io.legado.app.ui.config.compose.SettingChoiceSpec
+import io.legado.app.ui.config.compose.SettingPageSpec
+import io.legado.app.ui.config.compose.SettingSectionSpec
+import io.legado.app.ui.config.compose.SettingSwitchSpec
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
-import java.io.FileOutputStream
 import java.util.UUID
 
-class CoverConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener {
+class CoverConfigFragment : ComposeSettingFragment() {
 
-    private val requestCodeCover = 111
-    private val requestCodeCoverDark = 112
-    private val selectImage = registerForActivityResult(HandleFileContract()) {
-        it.uri?.let { uri ->
-            when (it.requestCode) {
-                requestCodeCover -> setCoverFromUri(PreferKey.defaultCover, uri)
-                requestCodeCoverDark -> setCoverFromUri(PreferKey.defaultCoverDark, uri)
-            }
+    override val titleRes: Int = R.string.cover_config
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            CoverCollectionManager.load(false)
+            CoverCollectionManager.load(true)
+            refreshSettings()
         }
     }
 
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        addPreferencesFromResource(R.xml.pref_config_cover)
-        upPreferenceSummary(PreferKey.coverCollectionDay, getPrefString(PreferKey.coverCollectionDay))
-        upPreferenceSummary(PreferKey.coverCollectionNight, getPrefString(PreferKey.coverCollectionNight))
-        findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
-            ?.isEnabled = getPrefBoolean(PreferKey.coverShowName)
-        findPreference<SwitchPreference>(PreferKey.coverShowAuthorN)
-            ?.isEnabled = getPrefBoolean(PreferKey.coverShowNameN)
+    override fun buildPageSpec(): SettingPageSpec {
+        return SettingPageSpec(
+            titleRes = titleRes,
+            sections = listOf(
+                SettingSectionSpec(
+                    items = listOf(
+                        SettingSwitchSpec(
+                            key = "loadCoverOnlyWifi",
+                            title = getString(R.string.only_wifi),
+                            summary = getString(R.string.only_wifi_summary),
+                            checked = booleanSetting("loadCoverOnlyWifi", false),
+                            onCheckedChange = {
+                                updateBooleanSetting("loadCoverOnlyWifi", it)
+                            }
+                        ),
+                        SettingSwitchSpec(
+                            key = "loadCoverHighQuality",
+                            title = getString(R.string.load_cover_high_quality),
+                            summary = getString(R.string.load_cover_high_quality_summary),
+                            checked = booleanSetting("loadCoverHighQuality", false),
+                            onCheckedChange = {
+                                updateBooleanSetting("loadCoverHighQuality", it)
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_COVER_RULE,
+                            title = getString(R.string.cover_rule),
+                            summary = getString(R.string.cover_rule_summary),
+                            onClick = {
+                                showDialogFragment(CoverRuleConfigDialog())
+                            }
+                        ),
+                        SettingSwitchSpec(
+                            key = "useDefaultCover",
+                            title = getString(R.string.use_default_cover),
+                            summary = getString(R.string.use_default_cover_s),
+                            checked = booleanSetting("useDefaultCover", false),
+                            onCheckedChange = {
+                                updateBooleanSetting("useDefaultCover", it)
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_COVER_COLLECTION_MANAGE,
+                            title = getString(R.string.cover_collection_manage),
+                            onClick = {
+                                startActivity<CoverCollectionManageActivity>()
+                            }
+                        )
+                    )
+                ),
+                coverCollectionSection(isNight = false),
+                coverCollectionSection(isNight = true)
+            )
+        )
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        activity?.setTitle(R.string.cover_config)
-        listView.setEdgeEffectColor(primaryColor)
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
-    }
-
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        sharedPreferences ?: return
+    override fun onSettingPreferenceChanged(key: String) {
         when (key) {
-            PreferKey.defaultCover,
-            PreferKey.defaultCoverDark,
             PreferKey.coverCollectionDay,
-            PreferKey.coverCollectionNight -> {
-                upPreferenceSummary(key, getPrefString(key))
-            }
+            PreferKey.coverCollectionNight -> refreshSettings()
 
-            PreferKey.coverShowName -> {
-                findPreference<SwitchPreference>(PreferKey.coverShowAuthor)
-                    ?.isEnabled = getPrefBoolean(key)
-                BookCover.upDefaultCover()
-            }
-
+            PreferKey.coverShowName,
             PreferKey.coverShowNameN -> {
-                findPreference<SwitchPreference>(PreferKey.coverShowAuthorN)
-                    ?.isEnabled = getPrefBoolean(key)
                 BookCover.upDefaultCover()
+                refreshSettings()
             }
 
             PreferKey.coverShowAuthor,
             PreferKey.coverShowAuthorN,
             PreferKey.coverCollectionModeDay,
-            PreferKey.coverCollectionModeNight -> {
-                refreshCoverCollection()
-            }
+            PreferKey.coverCollectionModeNight -> refreshCoverCollection()
         }
     }
 
-    @SuppressLint("PrivateResource")
-    override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            "coverRule" -> showDialogFragment(CoverRuleConfigDialog())
-            "coverCollectionManage" -> startActivity<CoverCollectionManageActivity>()
-            PreferKey.coverCollectionDay -> selectCoverCollection(false)
-            PreferKey.coverCollectionNight -> selectCoverCollection(true)
-            PreferKey.defaultCover ->
-                if (getPrefString(preference.key).isNullOrEmpty()) {
-                    selectImage.launch {
-                        requestCode = requestCodeCover
-                        mode = HandleFileContract.IMAGE
-                    }
-                } else {
-                    showComposeActionListDialog(
-                        title = getString(R.string.select_image),
-                        labels = listOf(
-                            getString(R.string.delete),
-                            getString(R.string.select_image)
-                        ),
-                        dangerIndices = setOf(0)
-                    ) { i ->
-                        if (i == 0) {
-                            removePref(preference.key)
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestCodeCover
-                                mode = HandleFileContract.IMAGE
-                            }
-                        }
-                    }
-                }
-
-            PreferKey.defaultCoverDark ->
-                if (getPrefString(preference.key).isNullOrEmpty()) {
-                    selectImage.launch {
-                        requestCode = requestCodeCoverDark
-                        mode = HandleFileContract.IMAGE
-                    }
-                } else {
-                    showComposeActionListDialog(
-                        title = getString(R.string.select_image),
-                        labels = listOf(
-                            getString(R.string.delete),
-                            getString(R.string.select_image)
-                        ),
-                        dangerIndices = setOf(0)
-                    ) { i ->
-                        if (i == 0) {
-                            removePref(preference.key)
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestCodeCoverDark
-                                mode = HandleFileContract.IMAGE
-                            }
-                        }
-                    }
-                }
+    private fun coverCollectionSection(isNight: Boolean): SettingSectionSpec {
+        val collectionKey = if (isNight) {
+            PreferKey.coverCollectionNight
+        } else {
+            PreferKey.coverCollectionDay
         }
-        return super.onPreferenceTreeClick(preference)
+        val modeKey = if (isNight) {
+            PreferKey.coverCollectionModeNight
+        } else {
+            PreferKey.coverCollectionModeDay
+        }
+        val showNameKey = if (isNight) PreferKey.coverShowNameN else PreferKey.coverShowName
+        val showAuthorKey = if (isNight) PreferKey.coverShowAuthorN else PreferKey.coverShowAuthor
+        val showName = booleanSetting(showNameKey, true)
+        val mode = stringSetting(modeKey, CoverCollectionManager.MODE_RANDOM)
+        return SettingSectionSpec(
+            title = getString(if (isNight) R.string.night else R.string.day),
+            items = listOf(
+                SettingActionSpec(
+                    key = collectionKey,
+                    title = getString(R.string.cover_collection_select),
+                    summary = coverCollectionSummary(isNight, stringSetting(collectionKey, "")),
+                    onClick = { selectCoverCollection(isNight) }
+                ),
+                SettingChoiceSpec(
+                    key = modeKey,
+                    title = getString(R.string.cover_collection_mode),
+                    options = coverModeOptions(),
+                    selectedValue = mode,
+                    summary = coverModeLabel(mode),
+                    onSelected = {
+                        updateStringSetting(modeKey, it)
+                    }
+                ),
+                SettingSwitchSpec(
+                    key = showNameKey,
+                    title = getString(R.string.cover_show_name),
+                    summary = getString(R.string.cover_show_name_summary),
+                    checked = showName,
+                    onCheckedChange = {
+                        updateBooleanSetting(showNameKey, it)
+                    }
+                ),
+                SettingSwitchSpec(
+                    key = showAuthorKey,
+                    title = getString(R.string.cover_show_author),
+                    summary = getString(R.string.cover_show_author_summary),
+                    checked = booleanSetting(showAuthorKey, true),
+                    enabled = showName,
+                    onCheckedChange = {
+                        updateBooleanSetting(showAuthorKey, it)
+                    }
+                )
+            )
+        )
     }
 
-    private fun upPreferenceSummary(preferenceKey: String, value: String?) {
-        val preference = findPreference<Preference>(preferenceKey) ?: return
-        when (preferenceKey) {
-            PreferKey.defaultCover,
-            PreferKey.defaultCoverDark -> preference.summary = if (value.isNullOrBlank()) {
-                getString(R.string.select_image)
-            } else {
-                value
-            }
-
-            PreferKey.coverCollectionDay,
-            PreferKey.coverCollectionNight -> {
-                val isNight = preferenceKey == PreferKey.coverCollectionNight
-                lifecycleScope.launch {
-                    val collection = CoverCollectionManager.get(isNight, value)
-                    preference.summary = collection?.name ?: getString(R.string.cover_collection_none)
-                }
-            }
-
-            else -> preference.summary = value
+    private fun coverModeOptions(): List<SettingChoiceOption> {
+        val entries = resources.getStringArray(R.array.cover_collection_mode_entries)
+        val values = resources.getStringArray(R.array.cover_collection_mode_values)
+        return values.mapIndexed { index, value ->
+            SettingChoiceOption(
+                value = value,
+                label = entries.getOrElse(index) { value }
+            )
         }
+    }
+
+    private fun coverModeLabel(value: String): String {
+        return coverModeOptions()
+            .firstOrNull { it.value == value }
+            ?.label
+            ?.toString()
+            .orEmpty()
+    }
+
+    private fun coverCollectionSummary(
+        isNight: Boolean,
+        selectedId: String?
+    ): String {
+        return CoverCollectionManager.cachedName(isNight, selectedId)
+            ?: getString(R.string.cover_collection_none)
     }
 
     private fun selectCoverCollection(isNight: Boolean) {
         lifecycleScope.launch {
             val collections = CoverCollectionManager.load(isNight)
-            val items = arrayListOf(getString(R.string.cover_collection_none))
-            items.addAll(collections.map { "${it.name} (${it.images.size})" })
-            showComposeActionListDialog(
+            val labels = listOf(getString(R.string.cover_collection_none)) +
+                collections.map { "${it.name} (${it.images.size})" }
+            val selectedId = stringSetting(
+                if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay,
+                ""
+            )
+            showComposeChoiceListDialog(
                 title = getString(R.string.cover_collection_select),
-                labels = items
+                labels = labels,
+                selectedIndex = if (selectedId.isBlank()) {
+                    0
+                } else {
+                    collections.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 }
+                        ?.plus(1)
+                        ?: -1
+                }
             ) { index ->
                 val selected = if (index <= 0) null else collections.getOrNull(index - 1)
                 CoverCollectionManager.setSelected(isNight, selected?.id)
-                upPreferenceSummary(
-                    if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay,
-                    selected?.id
-                )
+                refreshSettings()
                 refreshCoverCollection()
             }
         }
@@ -220,28 +225,8 @@ class CoverConfigFragment : PreferenceFragment(),
         postEvent(EventBus.REFRESH_BOOK_INFO, false)
     }
 
-    private fun setCoverFromUri(preferenceKey: String, uri: Uri) {
-        readUri(uri) { fileDoc, inputStream ->
-            kotlin.runCatching {
-                var file = requireContext().externalFiles
-                val suffix = if (fileDoc.name.contains(".9.png", true)) {
-                    ".9.png"
-                } else {
-                    "." + fileDoc.name.substringAfterLast(".")
-                }
-                val fileName = uri.inputStream(requireContext()).getOrThrow().use {
-                    MD5Utils.md5Encode(it) + suffix
-                }
-                file = FileUtils.createFileIfNotExist(file, "covers", fileName)
-                FileOutputStream(file).use {
-                    inputStream.copyTo(it)
-                }
-                putPrefString(preferenceKey, file.absolutePath)
-                BookCover.upDefaultCover()
-            }.onFailure {
-                appCtx.toastOnUi(it.localizedMessage)
-            }
-        }
+    companion object {
+        private const val KEY_COVER_RULE = "coverRule"
+        private const val KEY_COVER_COLLECTION_MANAGE = "coverCollectionManage"
     }
-
 }
