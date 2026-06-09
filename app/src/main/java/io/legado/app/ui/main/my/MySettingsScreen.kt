@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 
@@ -140,7 +141,7 @@ internal fun MySettingsScreen(
         border = UiCorner.panelBorderColor(context),
         primaryText = Color(ContextCompat.getColor(context, R.color.primaryText)),
         secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary)),
-        accent = Color(ContextCompat.getColor(context, R.color.accent)),
+        accent = Color(context.accentColor),
         danger = style.danger,
         onAccent = Color.White
     )

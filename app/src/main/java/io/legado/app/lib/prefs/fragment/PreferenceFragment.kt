@@ -62,6 +62,10 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
             ?.unregisterOnSharedPreferenceChangeListener(composePreferenceChangeListener)
         observedPreferenceAdapter?.unregisterAdapterDataObserver(preferenceAdapterObserver)
         observedPreferenceAdapter = null
+        composeView?.let { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+            view.disposeComposition()
+        }
         composeView = null
         super.onDestroyView()
     }
@@ -144,7 +148,9 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setViewCompositionStrategy(
+                ViewCompositionStrategy.DisposeOnLifecycleDestroyed(viewLifecycleOwner.lifecycle)
+            )
             setContent {
                 ComposePreferenceScreen(
                     root = preferenceScreen,

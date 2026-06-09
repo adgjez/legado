@@ -27,7 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,6 +83,10 @@ private data class ComposePreferenceSection(
     val title: CharSequence?,
     val rows: List<Preference>
 )
+
+private fun ComposePreferenceSection.stableKey(index: Int): String {
+    return "$index:${title?.toString().orEmpty()}:${rows.firstOrNull()?.key.orEmpty()}"
+}
 
 private data class ComposePreferenceColors(
     val page: Color,
@@ -150,7 +154,10 @@ internal fun ComposePreferenceScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(sections, key = { it.title?.toString().orEmpty() + it.rows.firstOrNull()?.key.orEmpty() }) { section ->
+            itemsIndexed(
+                sections,
+                key = { index, section -> section.stableKey(index) }
+            ) { _, section ->
                 PreferenceSectionPanel(
                     section = section,
                     colors = colors,
