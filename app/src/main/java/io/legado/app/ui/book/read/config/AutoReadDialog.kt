@@ -99,17 +99,19 @@ class AutoReadDialog : ComposeDialogFragment() {
     ): View {
         val readActivity = activity as? ReadBookActivity
         val bottomDialog = readActivity?.bottomDialog ?: 0
-        if (!registeredBottomDialog && readActivity != null) {
+        val alreadyRegistered = registeredBottomDialog
+        val shouldDismissForExistingDialog = !alreadyRegistered && bottomDialog > 0
+        if (!alreadyRegistered && readActivity != null) {
             readActivity.bottomDialog = bottomDialog + 1
             registeredBottomDialog = true
         }
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            if (bottomDialog > 0) {
+            if (shouldDismissForExistingDialog) {
                 post { dismissAllowingStateLoss() }
             }
             setContent {
-                if (bottomDialog <= 0) {
+                if (!shouldDismissForExistingDialog) {
                     AutoReadContent(
                         onShowMenu = {
                             callBack?.showMenuBar()
