@@ -79,6 +79,28 @@ fun Fragment.showComposeSingleChoiceDialog(
     )
 }
 
+fun Fragment.showComposeChoiceListDialog(
+    title: CharSequence,
+    labels: List<CharSequence>,
+    selectedIndex: Int = -1,
+    message: CharSequence? = null,
+    descriptions: List<CharSequence> = emptyList(),
+    negativeText: CharSequence = getString(R.string.cancel),
+    onSelected: (Int) -> Unit
+) {
+    showDialogFragment(
+        ComposeChoiceListDialog.create(
+            title = title.toString(),
+            labels = labels.map { it.toString() },
+            selectedIndex = selectedIndex,
+            message = message?.toString(),
+            descriptions = descriptions.map { it.toString() },
+            negativeText = negativeText.toString(),
+            onSelected = onSelected
+        )
+    )
+}
+
 fun Fragment.showComposeMultiChoiceDialog(
     title: CharSequence,
     labels: List<CharSequence>,
@@ -201,6 +223,28 @@ fun AppCompatActivity.showComposeSingleChoiceDialog(
             negativeText = negativeText.toString(),
             allowNoSelection = allowNoSelection,
             onPositive = onPositive
+        )
+    )
+}
+
+fun AppCompatActivity.showComposeChoiceListDialog(
+    title: CharSequence,
+    labels: List<CharSequence>,
+    selectedIndex: Int = -1,
+    message: CharSequence? = null,
+    descriptions: List<CharSequence> = emptyList(),
+    negativeText: CharSequence = getString(R.string.cancel),
+    onSelected: (Int) -> Unit
+) {
+    showDialogFragment(
+        ComposeChoiceListDialog.create(
+            title = title.toString(),
+            labels = labels.map { it.toString() },
+            selectedIndex = selectedIndex,
+            message = message?.toString(),
+            descriptions = descriptions.map { it.toString() },
+            negativeText = negativeText.toString(),
+            onSelected = onSelected
         )
     )
 }

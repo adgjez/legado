@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.edit
 import androidx.fragment.app.Fragment
 import io.legado.app.R
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
@@ -178,15 +178,10 @@ abstract class ComposeSettingFragment : Fragment(),
     }
 
     private fun showChoiceDialog(item: SettingChoiceSpec) {
-        showComposeActionListDialog(
+        showComposeChoiceListDialog(
             title = item.title,
-            labels = item.options.map { option ->
-                if (option.value == item.selectedValue) {
-                    "${option.label}  ✓"
-                } else {
-                    option.label
-                }
-            },
+            labels = item.options.map { it.label },
+            selectedIndex = item.options.indexOfFirst { it.value == item.selectedValue },
             descriptions = item.options.map { it.description?.toString().orEmpty() },
             negativeText = getString(R.string.cancel),
             onSelected = { index ->

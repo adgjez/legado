@@ -11,7 +11,7 @@ import io.legado.app.ui.config.compose.SettingChoiceSpec
 import io.legado.app.ui.config.compose.SettingPageSpec
 import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.utils.postEvent
 
 class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
@@ -152,15 +152,13 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showDiscoveryLayoutDialog() {
-        showComposeActionListDialog(
+        showComposeChoiceListDialog(
             title = getString(R.string.discovery_page_layout),
-            labels = DISCOVERY_LAYOUT_VALUES.map {
-                val label = discoveryLayoutLabel(it)
-                if (it == AppConfig.discoveryPageLayout) "$label  ✓" else label
-            },
+            labels = DISCOVERY_LAYOUT_VALUES.map(::discoveryLayoutLabel),
+            selectedIndex = DISCOVERY_LAYOUT_VALUES.indexOf(AppConfig.discoveryPageLayout),
             negativeText = getString(R.string.cancel),
             onSelected = { index ->
-                val value = DISCOVERY_LAYOUT_VALUES.getOrNull(index) ?: return@showComposeActionListDialog
+                val value = DISCOVERY_LAYOUT_VALUES.getOrNull(index) ?: return@showComposeChoiceListDialog
                 AppConfig.discoveryPageLayout = value
                 refreshSettings()
             }
