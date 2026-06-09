@@ -243,8 +243,12 @@ fun LegadoMiuixSwitch(
         colors = SwitchDefaults.colors(
             checkedThumbColor = palette.onAccent,
             uncheckedThumbColor = palette.secondaryText.copy(alpha = 0.72f),
+            disabledCheckedThumbColor = palette.onAccent.copy(alpha = 0.42f),
+            disabledUncheckedThumbColor = palette.secondaryText.copy(alpha = 0.32f),
             checkedTrackColor = palette.accent,
-            uncheckedTrackColor = palette.surfaceVariant
+            uncheckedTrackColor = palette.surfaceVariant,
+            disabledCheckedTrackColor = palette.accent.copy(alpha = 0.24f),
+            disabledUncheckedTrackColor = palette.surfaceVariant.copy(alpha = 0.46f)
         )
     )
 }
