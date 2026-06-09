@@ -13,13 +13,13 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -30,6 +30,7 @@ import io.legado.app.utils.putPrefString
 import io.legado.app.utils.readUri
 import io.legado.app.utils.removePref
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
@@ -122,14 +123,18 @@ class WelcomeConfigFragment : PreferenceFragment(),
                         mode = HandleFileContract.IMAGE
                     }
                 } else {
-                    context?.selector(
-                        items = arrayListOf(
+                    showDialogFragment(
+                        ComposeActionListDialog.create(
+                            title = getString(R.string.select_image),
+                            labels = listOf(
                             getString(R.string.delete),
                             getString(R.string.select_image)
-                        )
-                    ) { _, i ->
-                        if (i == 0) {
-                            removePref(preference.key)
+                            ),
+                            dangerIndices = setOf(0),
+                            negativeText = getString(R.string.cancel),
+                            onSelected = { i ->
+                                if (i == 0) {
+                                    removePref(preference.key)
 //                            AppConfig.welcomeShowText = true
 //                            AppConfig.welcomeShowIcon = true
 //                            findPreference<SwitchPreference>(PreferKey.welcomeShowText)?.let {
@@ -138,14 +143,16 @@ class WelcomeConfigFragment : PreferenceFragment(),
 //                            findPreference<SwitchPreference>(PreferKey.welcomeShowIcon)?.let {
 //                                it.isChecked = true
 //                            }
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestWelcomeImage
-                                mode = HandleFileContract.IMAGE
+                                    BookCover.upDefaultCover()
+                                } else {
+                                    selectImage.launch {
+                                        requestCode = requestWelcomeImage
+                                        mode = HandleFileContract.IMAGE
+                                    }
+                                }
                             }
-                        }
-                    }
+                        )
+                    )
                 }
 
             PreferKey.welcomeImageDark ->
@@ -155,14 +162,18 @@ class WelcomeConfigFragment : PreferenceFragment(),
                         mode = HandleFileContract.IMAGE
                     }
                 } else {
-                    context?.selector(
-                        items = arrayListOf(
+                    showDialogFragment(
+                        ComposeActionListDialog.create(
+                            title = getString(R.string.select_image),
+                            labels = listOf(
                             getString(R.string.delete),
                             getString(R.string.select_image)
-                        )
-                    ) { _, i ->
-                        if (i == 0) {
-                            removePref(preference.key)
+                            ),
+                            dangerIndices = setOf(0),
+                            negativeText = getString(R.string.cancel),
+                            onSelected = { i ->
+                                if (i == 0) {
+                                    removePref(preference.key)
 //                            AppConfig.welcomeShowTextDark = true
 //                            AppConfig.welcomeShowIconDark = true
 //                            findPreference<SwitchPreference>(PreferKey.welcomeShowTextDark)?.let {
@@ -171,14 +182,16 @@ class WelcomeConfigFragment : PreferenceFragment(),
 //                            findPreference<SwitchPreference>(PreferKey.welcomeShowIconDark)?.let {
 //                                it.isChecked = true
 //                            }
-                            BookCover.upDefaultCover()
-                        } else {
-                            selectImage.launch {
-                                requestCode = requestWelcomeImageDark
-                                mode = HandleFileContract.IMAGE
+                                    BookCover.upDefaultCover()
+                                } else {
+                                    selectImage.launch {
+                                        requestCode = requestWelcomeImageDark
+                                        mode = HandleFileContract.IMAGE
+                                    }
+                                }
                             }
-                        }
-                    }
+                        )
+                    )
                 }
         }
         return super.onPreferenceTreeClick(preference)
