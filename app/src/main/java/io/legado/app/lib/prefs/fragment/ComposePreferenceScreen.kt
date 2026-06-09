@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,7 +55,6 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,6 +138,8 @@ internal fun ComposePreferenceScreen(
         }
         if (sectionIndex >= 0) {
             listState.animateScrollToItem(sectionIndex)
+        } else {
+            onScrollTargetConsumed()
         }
     }
     CompositionLocalProvider(
@@ -147,10 +149,11 @@ internal fun ComposePreferenceScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .background(colors.page),
+                .background(colors.page)
+                .navigationBarsPadding(),
             contentPadding = PaddingValues(
                 top = 8.dp,
-                bottom = dimensionResource(R.dimen.main_content_bottom_bar_padding) + 24.dp
+                bottom = 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

@@ -72,6 +72,7 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
 
     override fun onResume() {
         super.onResume()
+        observePreferenceAdapter()
         val targetKey = activity?.intent?.getStringExtra("targetKey")?.trim().orEmpty()
         if (targetKey.isNotBlank()) {
             composeScrollTargetKey.value = targetKey
