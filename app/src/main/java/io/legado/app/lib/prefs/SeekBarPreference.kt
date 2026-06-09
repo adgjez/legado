@@ -12,8 +12,10 @@ import io.legado.app.R
 import io.legado.app.utils.progressAdd
 
 class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs) {
-    private var mMinValue = 0
-    private var mMaxValue = 1000
+    var minValue = 0
+        private set
+    var maxValue = 1000
+        private set
 
     private var mSeekBar: SeekBar? = null
     private var mValueText: TextView? = null
@@ -23,7 +25,7 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
 
     var value: Int = 0
         set(value) {
-            field = value.coerceIn(mMinValue, mMaxValue)
+            field = value.coerceIn(minValue, maxValue)
             persistInt(field)
             mSeekBar?.progress = field
             mValueText?.text = field.toString()
@@ -32,8 +34,8 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
     init {
         layoutResource = R.layout.view_preference_seekbar
         val a = context.obtainStyledAttributes(attrs, R.styleable.NumberPickerPreference)
-        mMinValue = a.getInt(R.styleable.NumberPickerPreference_MinValue, mMinValue)
-        mMaxValue = a.getInt(R.styleable.NumberPickerPreference_MaxValue, mMaxValue)
+        minValue = a.getInt(R.styleable.NumberPickerPreference_MinValue, minValue)
+        maxValue = a.getInt(R.styleable.NumberPickerPreference_MaxValue, maxValue)
         a.recycle()
     }
 
@@ -46,12 +48,12 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
         (holder.findViewById(R.id.preference_title) as? TextView)?.text = title
         (holder.findViewById(R.id.preference_desc) as? TextView)?.text = summary
         mSeekBar?.apply {
-            max = mMaxValue - mMinValue
-            progress = value - mMinValue
+            max = maxValue - minValue
+            progress = value - minValue
 
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                    val newValue = progress + mMinValue
+                    val newValue = progress + minValue
                     mValueText?.text = newValue.toString()
                     if (fromUser) {
                         value = newValue
@@ -61,7 +63,7 @@ class SeekBarPreference(context: Context, attrs: AttributeSet) : Preference(cont
                 override fun onStartTrackingTouch(seekBar: SeekBar) {}
 
                 override fun onStopTrackingTouch(seekBar: SeekBar) {
-                    val newValue = seekBar.progress + mMinValue
+                    val newValue = seekBar.progress + minValue
                     if (callChangeListener(newValue)) {
                         value = newValue
                     }
