@@ -1,11 +1,14 @@
 package io.legado.app.ui.config
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout.LayoutParams as FrameLayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.activity.viewModels
+import androidx.appcompat.widget.Toolbar
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,17 +36,47 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.statusBarHeight
 import androidx.viewbinding.ViewBinding
 
 class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
 
     private lateinit var titleComposeView: ComposeView
+    private lateinit var menuToolbar: Toolbar
     private var titleText by mutableStateOf("")
 
     override val binding: ViewBinding by lazy {
         titleText = getString(R.string.setting)
         titleComposeView = ComposeView(this)
+        menuToolbar = Toolbar(this).apply {
+            title = ""
+            subtitle = ""
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setContentInsetsAbsolute(0, 0)
+            contentInsetStartWithNavigation = 0
+            contentInsetEndWithActions = 0
+        }
+        val topBarHost = FrameLayout(this).apply {
+            addView(
+                titleComposeView,
+                FrameLayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                menuToolbar,
+                FrameLayoutParams(
+                    128.dpToPx(),
+                    56.dpToPx(),
+                    Gravity.END or Gravity.BOTTOM
+                ).apply {
+                    topMargin = statusBarHeight
+                }
+            )
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(
@@ -51,7 +84,7 @@ class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             addView(
-                titleComposeView,
+                topBarHost,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -75,13 +108,16 @@ class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
     override val viewModel by viewModels<ConfigViewModel>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        setSupportActionBar(menuToolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
         titleComposeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
         )
         titleComposeView.setContent {
             ConfigTopBar(
                 title = titleText,
-                onBack = ::finish
+                onBack = ::supportFinishAfterTransition
             )
         }
         when (val configTag = intent.getStringExtra("configTag")) {
