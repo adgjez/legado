@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -61,7 +62,7 @@ class CoverRuleConfigDialog : ComposeDialogFragment() {
 
     @Composable
     private fun CoverRuleConfigContent(style: AppDialogStyle) {
-        val initialRule = BookCover.getCoverRule()
+        val initialRule = remember { BookCover.getCoverRule() }
         var enable by rememberSaveable { mutableStateOf(initialRule.enable) }
         var searchUrl by rememberSaveable { mutableStateOf(initialRule.searchUrl) }
         var coverRule by rememberSaveable { mutableStateOf(initialRule.coverRule) }
