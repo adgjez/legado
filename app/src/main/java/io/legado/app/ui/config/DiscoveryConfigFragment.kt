@@ -37,12 +37,16 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
                         SettingChoiceSpec(
                             key = KEY_DISCOVERY_MODE,
                             title = getString(R.string.modern_discovery_page),
-                            summary = getString(R.string.modern_discovery_page_summary),
                             options = pageModeOptions(
                                 entriesRes = R.array.discovery_page_mode_entries,
                                 valuesRes = R.array.discovery_page_mode_values
                             ),
                             selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY,
+                            summary = pageModeLabel(
+                                entriesRes = R.array.discovery_page_mode_entries,
+                                valuesRes = R.array.discovery_page_mode_values,
+                                selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY
+                            ),
                             onSelected = {
                                 updateBooleanSetting(
                                     PreferKey.modernDiscoveryPage,
@@ -126,6 +130,18 @@ class DiscoveryConfigFragment : ComposeSettingFragment() {
                 label = entries.getOrElse(index) { value }
             )
         }
+    }
+
+    private fun pageModeLabel(
+        entriesRes: Int,
+        valuesRes: Int,
+        selectedValue: String
+    ): String {
+        return pageModeOptions(entriesRes, valuesRes)
+            .firstOrNull { it.value == selectedValue }
+            ?.label
+            ?.toString()
+            .orEmpty()
     }
 
     companion object {

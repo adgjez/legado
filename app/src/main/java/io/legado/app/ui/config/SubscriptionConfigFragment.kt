@@ -32,12 +32,16 @@ class SubscriptionConfigFragment : ComposeSettingFragment() {
                         SettingChoiceSpec(
                             key = KEY_RSS_MODE,
                             title = getString(R.string.modern_rss_page),
-                            summary = getString(R.string.modern_rss_page_summary),
                             options = pageModeOptions(
                                 entriesRes = R.array.rss_page_mode_entries,
                                 valuesRes = R.array.page_mode_values
                             ),
                             selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY,
+                            summary = pageModeLabel(
+                                entriesRes = R.array.rss_page_mode_entries,
+                                valuesRes = R.array.page_mode_values,
+                                selectedValue = if (useModern) PAGE_MODE_MODERN else PAGE_MODE_LEGACY
+                            ),
                             onSelected = {
                                 updateBooleanSetting(
                                     PreferKey.modernRssPage,
@@ -86,6 +90,18 @@ class SubscriptionConfigFragment : ComposeSettingFragment() {
                 label = entries.getOrElse(index) { value }
             )
         }
+    }
+
+    private fun pageModeLabel(
+        entriesRes: Int,
+        valuesRes: Int,
+        selectedValue: String
+    ): String {
+        return pageModeOptions(entriesRes, valuesRes)
+            .firstOrNull { it.value == selectedValue }
+            ?.label
+            ?.toString()
+            .orEmpty()
     }
 
     companion object {
