@@ -46,6 +46,15 @@ class WelcomeConfigFragment : ComposeSettingFragment() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val welcomeShowTime = intSetting(PreferKey.welcomeShowTime, 500)
+        val safeWelcomeShowTime = welcomeShowTime.coerceIn(0, 800)
+        if (welcomeShowTime != safeWelcomeShowTime) {
+            updateIntSetting(PreferKey.welcomeShowTime, safeWelcomeShowTime)
+        }
+    }
+
     override fun buildPageSpec(): SettingPageSpec {
         return SettingPageSpec(
             titleRes = titleRes,
