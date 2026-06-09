@@ -16,7 +16,7 @@ import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -121,28 +121,24 @@ class CoverConfigFragment : PreferenceFragment(),
                         mode = HandleFileContract.IMAGE
                     }
                 } else {
-                    showDialogFragment(
-                        ComposeActionListDialog.create(
-                            title = getString(R.string.select_image),
-                            labels = listOf(
+                    showComposeActionListDialog(
+                        title = getString(R.string.select_image),
+                        labels = listOf(
                             getString(R.string.delete),
                             getString(R.string.select_image)
-                            ),
-                            dangerIndices = setOf(0),
-                            negativeText = getString(R.string.cancel),
-                            onSelected = { i ->
-                                if (i == 0) {
-                                    removePref(preference.key)
-                                    BookCover.upDefaultCover()
-                                } else {
-                                    selectImage.launch {
-                                        requestCode = requestCodeCover
-                                        mode = HandleFileContract.IMAGE
-                                    }
-                                }
+                        ),
+                        dangerIndices = setOf(0)
+                    ) { i ->
+                        if (i == 0) {
+                            removePref(preference.key)
+                            BookCover.upDefaultCover()
+                        } else {
+                            selectImage.launch {
+                                requestCode = requestCodeCover
+                                mode = HandleFileContract.IMAGE
                             }
-                        )
-                    )
+                        }
+                    }
                 }
 
             PreferKey.defaultCoverDark ->
@@ -152,28 +148,24 @@ class CoverConfigFragment : PreferenceFragment(),
                         mode = HandleFileContract.IMAGE
                     }
                 } else {
-                    showDialogFragment(
-                        ComposeActionListDialog.create(
-                            title = getString(R.string.select_image),
-                            labels = listOf(
+                    showComposeActionListDialog(
+                        title = getString(R.string.select_image),
+                        labels = listOf(
                             getString(R.string.delete),
                             getString(R.string.select_image)
-                            ),
-                            dangerIndices = setOf(0),
-                            negativeText = getString(R.string.cancel),
-                            onSelected = { i ->
-                                if (i == 0) {
-                                    removePref(preference.key)
-                                    BookCover.upDefaultCover()
-                                } else {
-                                    selectImage.launch {
-                                        requestCode = requestCodeCoverDark
-                                        mode = HandleFileContract.IMAGE
-                                    }
-                                }
+                        ),
+                        dangerIndices = setOf(0)
+                    ) { i ->
+                        if (i == 0) {
+                            removePref(preference.key)
+                            BookCover.upDefaultCover()
+                        } else {
+                            selectImage.launch {
+                                requestCode = requestCodeCoverDark
+                                mode = HandleFileContract.IMAGE
                             }
-                        )
-                    )
+                        }
+                    }
                 }
         }
         return super.onPreferenceTreeClick(preference)
@@ -207,22 +199,18 @@ class CoverConfigFragment : PreferenceFragment(),
             val collections = CoverCollectionManager.load(isNight)
             val items = arrayListOf(getString(R.string.cover_collection_none))
             items.addAll(collections.map { "${it.name} (${it.images.size})" })
-            showDialogFragment(
-                ComposeActionListDialog.create(
-                    title = getString(R.string.cover_collection_select),
-                    labels = items,
-                    negativeText = getString(R.string.cancel),
-                    onSelected = { index ->
-                        val selected = if (index <= 0) null else collections.getOrNull(index - 1)
-                        CoverCollectionManager.setSelected(isNight, selected?.id)
-                        upPreferenceSummary(
-                            if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay,
-                            selected?.id
-                        )
-                        refreshCoverCollection()
-                    }
+            showComposeActionListDialog(
+                title = getString(R.string.cover_collection_select),
+                labels = items
+            ) { index ->
+                val selected = if (index <= 0) null else collections.getOrNull(index - 1)
+                CoverCollectionManager.setSelected(isNight, selected?.id)
+                upPreferenceSummary(
+                    if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay,
+                    selected?.id
                 )
-            )
+                refreshCoverCollection()
+            }
         }
     }
 
