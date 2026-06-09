@@ -26,6 +26,7 @@ import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -198,14 +199,22 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
     }
 
     private fun confirmDelete(item: S3Container) {
-        alert(R.string.s3_container_delete) {
-            setMessage(getString(R.string.s3_container_delete_confirm, AppCloudStorage.containerDisplayLabel(item)))
-            okButton {
-                AppCloudStorage.deleteContainer(item.id)
-                reload()
-            }
-            cancelButton()
-        }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = getString(R.string.s3_container_delete),
+                message = getString(
+                    R.string.s3_container_delete_confirm,
+                    AppCloudStorage.containerDisplayLabel(item)
+                ),
+                positiveText = getString(R.string.delete),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    AppCloudStorage.deleteContainer(item.id)
+                    reload()
+                }
+            )
+        )
     }
 
     private fun testConnection(item: S3Container) {
