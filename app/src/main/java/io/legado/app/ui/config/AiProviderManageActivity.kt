@@ -15,13 +15,13 @@ import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -78,22 +78,25 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
 
     private fun confirmRemoveProvider(provider: AiProviderConfig) {
         val relatedModelCount = AppConfig.aiModelConfigList.count { it.providerId == provider.id }
-        alert(
-            title = provider.name,
-            message = getString(
-                if (relatedModelCount > 0) R.string.ai_remove_provider_confirm_with_models
-                else R.string.ai_remove_provider_confirm,
-                relatedModelCount
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = provider.name,
+                message = getString(
+                    if (relatedModelCount > 0) R.string.ai_remove_provider_confirm_with_models
+                    else R.string.ai_remove_provider_confirm,
+                    relatedModelCount
+                ),
+                positiveText = getString(R.string.delete),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
+                    notifyAiConfigChanged()
+                    reload()
+                    toastOnUi(R.string.ai_provider_removed)
+                }
             )
-        ) {
-            okButton {
-                AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
-                notifyAiConfigChanged()
-                reload()
-                toastOnUi(R.string.ai_provider_removed)
-            }
-            cancelButton()
-        }
+        )
     }
 
     private fun actionBackground() = UiCorner.actionSelector(
