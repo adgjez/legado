@@ -1,7 +1,6 @@
 package io.legado.app.ui.config
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -11,9 +10,6 @@ import androidx.core.content.edit
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.EditTextPreference
-import androidx.preference.ListPreference
-import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -33,11 +29,17 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.config.compose.ComposeSettingFragment
+import io.legado.app.ui.config.compose.SettingActionSpec
+import io.legado.app.ui.config.compose.SettingChoiceOption
+import io.legado.app.ui.config.compose.SettingChoiceSpec
+import io.legado.app.ui.config.compose.SettingPageSpec
+import io.legado.app.ui.config.compose.SettingSectionSpec
+import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.checkWrite
@@ -45,11 +47,9 @@ import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.launch
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
-import io.legado.app.utils.toEditable
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -60,14 +60,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 
-class BackupConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener,
-    MenuProvider {
+class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
 
     private companion object {
         const val KEY_WEB_DAV_ACCOUNT_MANAGE = "webDavAccountManage"
         const val KEY_S3_CONTAINER_MANAGE = "s3ContainerManage"
         const val KEY_LIBRARY_CONTAINER_MANAGE = "libraryContainerManage"
+        const val KEY_WEB_DAV_BACKUP = "web_dav_backup"
+        const val KEY_WEB_DAV_RESTORE = "web_dav_restore"
+        const val KEY_IMPORT_OLD = "import_old"
     }
 
     private val viewModel by activityViewModels<ConfigViewModel>()
@@ -119,51 +120,15 @@ class BackupConfigFragment : PreferenceFragment(),
         }
     }
 
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+    override val titleRes: Int = R.string.backup_restore
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         migrateCloudStoragePreferenceTypes()
-        addPreferencesFromResource(R.xml.pref_config_backup)
-        findPreference<EditTextPreference>(PreferKey.webDavDir)?.let {
-            it.setOnBindEditTextListener { editText ->
-                editText.text = AppConfig.webDavDir?.toEditable()
-                editText.setSelection(editText.text.length)
-            }
-        }
-        findPreference<EditTextPreference>(PreferKey.webDavDeviceName)?.let {
-            it.setOnBindEditTextListener { editText ->
-                editText.text = AppConfig.webDavDeviceName?.toEditable()
-                editText.setSelection(editText.text.length)
-            }
-        }
-        updateCloudStorageVisibility()
-        upWebDavAccountSummary()
-        findPreference<Preference>(PreferKey.syncThemePackages)?.let {
-            it.onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
-                if (newValue == true && !hasCloudStorageAccount()) {
-                    toastOnUi(R.string.cloud_storage_config_required)
-                    false
-                } else {
-                    true
-                }
-            }
-        }
-        listOf(
-            PreferKey.cloudStorageType,
-            PreferKey.webDavDir,
-            PreferKey.webDavDeviceName,
-            PreferKey.backupPath
-        ).forEach { upPreferenceSummary(it, getPrefString(it)) }
-        findPreference<io.legado.app.lib.prefs.Preference>("web_dav_restore")
-            ?.onLongClick {
-                restoreFromLocal()
-                true
-            }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        activity?.setTitle(R.string.backup_restore)
-        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-        listView.setEdgeEffectColor(primaryColor)
         activity?.addMenuProvider(this, viewLifecycleOwner)
         if (!LocalConfig.backupHelpVersionIsLast) {
             showHelp("webDavHelp")
@@ -187,13 +152,169 @@ class BackupConfigFragment : PreferenceFragment(),
         return false
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
+    override fun buildPageSpec(): SettingPageSpec {
+        val type = CloudStorageType.from(getPrefString(PreferKey.cloudStorageType))
+        val webDavVisible = type == CloudStorageType.WEBDAV
+        val s3Visible = type == CloudStorageType.S3
+        val syncBookProgress = booleanSetting(PreferKey.syncBookProgress, true)
+        return SettingPageSpec(
+            titleRes = titleRes,
+            sections = listOf(
+                SettingSectionSpec(
+                    title = getString(R.string.web_dav_set),
+                    items = listOf(
+                        choice(
+                            key = PreferKey.cloudStorageType,
+                            title = getString(R.string.cloud_storage),
+                            entriesRes = R.array.cloud_storage_types,
+                            valuesRes = R.array.cloud_storage_type_values,
+                            defaultValue = CloudStorageType.WEBDAV.name
+                        ),
+                        SettingActionSpec(
+                            key = KEY_WEB_DAV_ACCOUNT_MANAGE,
+                            title = getString(R.string.webdav_account_manage),
+                            summary = webDavAccountSummary(),
+                            visible = webDavVisible,
+                            onClick = ::showWebDavAccountDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.webDavDir,
+                            title = getString(R.string.sub_dir),
+                            summary = AppConfig.webDavDir ?: "legado",
+                            visible = webDavVisible,
+                            onClick = {
+                                showTextSettingDialog(
+                                    key = PreferKey.webDavDir,
+                                    title = getString(R.string.sub_dir),
+                                    initialValue = AppConfig.webDavDir ?: "legado"
+                                )
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.webDavDeviceName,
+                            title = getString(R.string.webdav_device_name),
+                            summary = AppConfig.webDavDeviceName ?: "",
+                            visible = webDavVisible,
+                            onClick = {
+                                showTextSettingDialog(
+                                    key = PreferKey.webDavDeviceName,
+                                    title = getString(R.string.webdav_device_name),
+                                    initialValue = AppConfig.webDavDeviceName ?: ""
+                                )
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_S3_CONTAINER_MANAGE,
+                            title = getString(R.string.s3_container_manage),
+                            summary = getString(R.string.s3_container_manage_summary),
+                            visible = s3Visible,
+                            onClick = {
+                                requireContext().startActivity<S3ContainerManageActivity>()
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_LIBRARY_CONTAINER_MANAGE,
+                            title = "书库容器",
+                            summary = "管理用于同步阅读章节缓存的独立 S3 容器",
+                            onClick = {
+                                requireContext().startActivity<LibraryContainerManageActivity>()
+                            }
+                        ),
+                        SettingSwitchSpec(
+                            key = PreferKey.autoSwitchS3Container,
+                            title = getString(R.string.s3_auto_switch_container),
+                            summary = getString(R.string.s3_auto_switch_container_summary),
+                            checked = booleanSetting(PreferKey.autoSwitchS3Container, true),
+                            visible = s3Visible,
+                            onCheckedChange = {
+                                updateBooleanSetting(PreferKey.autoSwitchS3Container, it)
+                            }
+                        ),
+                        SettingSwitchSpec(
+                            key = PreferKey.syncThemePackages,
+                            title = getString(R.string.sync_theme_packages),
+                            summary = getString(R.string.sync_theme_packages_summary),
+                            checked = booleanSetting(PreferKey.syncThemePackages, false),
+                            onCheckedChange = { checked ->
+                                if (checked && !hasCloudStorageAccount()) {
+                                    toastOnUi(R.string.cloud_storage_config_required)
+                                } else {
+                                    updateBooleanSetting(PreferKey.syncThemePackages, checked)
+                                }
+                            }
+                        ),
+                        switch(
+                            key = PreferKey.syncBookProgress,
+                            title = getString(R.string.sync_book_progress_t),
+                            summary = getString(R.string.sync_book_progress_s),
+                            defaultValue = true
+                        ),
+                        SettingSwitchSpec(
+                            key = PreferKey.syncBookProgressPlus,
+                            title = getString(R.string.sync_book_progress_plus_t),
+                            summary = getString(R.string.sync_book_progress_plus_s),
+                            checked = booleanSetting(PreferKey.syncBookProgressPlus, false),
+                            enabled = syncBookProgress,
+                            onCheckedChange = {
+                                updateBooleanSetting(PreferKey.syncBookProgressPlus, it)
+                            }
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.backup_restore),
+                    items = listOf(
+                        SettingActionSpec(
+                            key = PreferKey.backupPath,
+                            title = getString(R.string.backup_path),
+                            summary = AppConfig.backupPath ?: getString(R.string.select_backup_path),
+                            onClick = { selectBackupPath.launch() }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_WEB_DAV_BACKUP,
+                            title = getString(R.string.backup),
+                            summary = getString(R.string.backup_summary),
+                            onClick = { backup() }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_WEB_DAV_RESTORE,
+                            title = getString(R.string.restore),
+                            summary = getString(R.string.restore_summary),
+                            onClick = { restore() },
+                            onLongClick = { restoreFromLocal() }
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.restoreIgnore,
+                            title = getString(R.string.restore_ignore),
+                            summary = getString(R.string.restore_ignore_summary),
+                            onClick = ::backupIgnore
+                        ),
+                        SettingActionSpec(
+                            key = KEY_IMPORT_OLD,
+                            title = getString(R.string.menu_import_old_version),
+                            summary = getString(R.string.import_old_summary),
+                            onClick = { restoreOld.launch() }
+                        ),
+                        switch(
+                            key = PreferKey.onlyLatestBackup,
+                            title = getString(R.string.only_latest_backup_t),
+                            summary = getString(R.string.only_latest_backup_s),
+                            defaultValue = true
+                        ),
+                        switch(
+                            key = PreferKey.autoCheckNewBackup,
+                            title = getString(R.string.auto_check_new_backup_t),
+                            summary = getString(R.string.auto_check_new_backup_s),
+                            defaultValue = true
+                        )
+                    )
+                )
+            )
+        )
     }
 
     private fun migrateCloudStoragePreferenceTypes() {
-        val preferences = preferenceManager.sharedPreferences ?: return
+        val preferences = appCtx.defaultSharedPreferences
         val booleanDefaults = mapOf(
             PreferKey.s3PathStyle to true,
             PreferKey.autoSwitchS3Container to true,
@@ -212,29 +333,101 @@ class BackupConfigFragment : PreferenceFragment(),
         }
     }
 
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+    override fun onSettingPreferenceChanged(key: String) {
         when (key) {
-            PreferKey.backupPath -> upPreferenceSummary(key, getPrefString(key))
+            PreferKey.backupPath,
+            PreferKey.webDavDeviceName -> refreshSettings()
+
             PreferKey.cloudStorageType,
             PreferKey.webDavUrl,
             PreferKey.webDavAccount,
             PreferKey.webDavPassword,
-            PreferKey.webDavDir -> listView.post {
-                upPreferenceSummary(key, appCtx.getPrefString(key))
-                upWebDavAccountSummary()
-                updateCloudStorageVisibility()
+            PreferKey.webDavDir -> view?.post {
+                refreshSettings()
                 viewModel.upCloudStorageConfig()
             }
 
             PreferKey.s3Containers,
             PreferKey.s3ContainerSelections,
-            PreferKey.autoSwitchS3Container -> listView.post {
-                updateCloudStorageVisibility()
+            PreferKey.autoSwitchS3Container -> view?.post {
+                refreshSettings()
                 viewModel.upCloudStorageConfig()
             }
-
-            PreferKey.webDavDeviceName -> upPreferenceSummary(key, getPrefString(key))
         }
+    }
+
+    private fun switch(
+        key: String,
+        title: String,
+        summary: String,
+        defaultValue: Boolean
+    ): SettingSwitchSpec {
+        return SettingSwitchSpec(
+            key = key,
+            title = title,
+            summary = summary,
+            checked = booleanSetting(key, defaultValue),
+            onCheckedChange = { updateBooleanSetting(key, it) }
+        )
+    }
+
+    private fun choice(
+        key: String,
+        title: String,
+        entriesRes: Int,
+        valuesRes: Int,
+        defaultValue: String
+    ): SettingChoiceSpec {
+        val options = choiceOptions(entriesRes, valuesRes)
+        return SettingChoiceSpec(
+            key = key,
+            title = title,
+            summary = choiceLabel(options, stringSetting(key, defaultValue)),
+            options = options,
+            selectedValue = stringSetting(key, defaultValue),
+            onSelected = { updateStringSetting(key, it) }
+        )
+    }
+
+    private fun choiceOptions(
+        entriesRes: Int,
+        valuesRes: Int
+    ): List<SettingChoiceOption> {
+        val entries = resources.getStringArray(entriesRes)
+        val values = resources.getStringArray(valuesRes)
+        return values.mapIndexed { index, value ->
+            SettingChoiceOption(
+                value = value,
+                label = entries.getOrElse(index) { value }
+            )
+        }
+    }
+
+    private fun choiceLabel(
+        options: List<SettingChoiceOption>,
+        selectedValue: String
+    ): String {
+        return options.firstOrNull { it.value == selectedValue }
+            ?.label
+            ?.toString()
+            ?: selectedValue
+    }
+
+    private fun showTextSettingDialog(
+        key: String,
+        title: String,
+        initialValue: String
+    ) {
+        showComposeTextInputDialog(
+            title = title,
+            hint = title,
+            initialValue = initialValue,
+            onPositive = {
+                appCtx.defaultSharedPreferences.edit {
+                    putString(key, it.trim())
+                }
+            }
+        )
     }
 
     private fun hasCloudStorageAccount(): Boolean {
@@ -256,22 +449,11 @@ class BackupConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun updateCloudStorageVisibility() {
-        val type = CloudStorageType.from(getPrefString(PreferKey.cloudStorageType))
-        val webDavVisible = type == CloudStorageType.WEBDAV
-        val s3Visible = type == CloudStorageType.S3
-        listOf(KEY_WEB_DAV_ACCOUNT_MANAGE, PreferKey.webDavDir, PreferKey.webDavDeviceName)
-            .forEach { findPreference<Preference>(it)?.isVisible = webDavVisible }
-        listOf(KEY_S3_CONTAINER_MANAGE, PreferKey.autoSwitchS3Container)
-            .forEach { findPreference<Preference>(it)?.isVisible = s3Visible }
-    }
-
-    private fun upWebDavAccountSummary() {
-        val preference = findPreference<Preference>(KEY_WEB_DAV_ACCOUNT_MANAGE) ?: return
+    private fun webDavAccountSummary(): String {
         val url = getPrefString(PreferKey.webDavUrl).orEmpty()
         val account = getPrefString(PreferKey.webDavAccount).orEmpty()
         val password = getPrefString(PreferKey.webDavPassword).orEmpty()
-        preference.summary = when {
+        return when {
             url.isBlank() && account.isBlank() && password.isBlank() ->
                 getString(R.string.webdav_account_manage_summary)
             account.isBlank() ->
@@ -281,61 +463,6 @@ class BackupConfigFragment : PreferenceFragment(),
             else ->
                 "$url / $account"
         }
-    }
-
-    private fun upPreferenceSummary(preferenceKey: String, value: String?) {
-        val preference = findPreference<Preference>(preferenceKey) ?: return
-        when (preferenceKey) {
-            PreferKey.webDavUrl ->
-                if (value.isNullOrBlank()) {
-                    preference.summary = getString(R.string.web_dav_url_s)
-                } else {
-                    preference.summary = value
-                }
-
-            PreferKey.webDavAccount ->
-                if (value.isNullOrBlank()) {
-                    preference.summary = getString(R.string.web_dav_account_s)
-                } else {
-                    preference.summary = value
-                }
-
-            PreferKey.webDavPassword ->
-                if (value.isNullOrEmpty()) {
-                    preference.summary = getString(R.string.web_dav_pw_s)
-                } else {
-                    preference.summary = "*".repeat(value.length)
-                }
-
-            PreferKey.webDavDir -> preference.summary = when (value) {
-                null -> "legado"
-                else -> value
-            }
-
-            else -> {
-                if (preference is ListPreference) {
-                    val index = preference.findIndexOfValue(value)
-                    // Set the summary to reflect the new value.
-                    preference.summary = if (index >= 0) preference.entries[index] else null
-                } else {
-                    preference.summary = value
-                }
-            }
-        }
-    }
-
-    override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            PreferKey.backupPath -> selectBackupPath.launch()
-            PreferKey.restoreIgnore -> backupIgnore()
-            KEY_WEB_DAV_ACCOUNT_MANAGE -> showWebDavAccountDialog()
-            KEY_S3_CONTAINER_MANAGE -> requireContext().startActivity<S3ContainerManageActivity>()
-            KEY_LIBRARY_CONTAINER_MANAGE -> requireContext().startActivity<LibraryContainerManageActivity>()
-            "web_dav_backup" -> backup()
-            "web_dav_restore" -> restore()
-            "import_old" -> restoreOld.launch()
-        }
-        return super.onPreferenceTreeClick(preference)
     }
 
     /**
@@ -370,8 +497,7 @@ class BackupConfigFragment : PreferenceFragment(),
                     putString(PreferKey.webDavAccount, dialogBinding.editAccount.text?.toString()?.trim().orEmpty())
                     putString(PreferKey.webDavPassword, dialogBinding.editPassword.text?.toString().orEmpty())
                 }
-                upWebDavAccountSummary()
-                updateCloudStorageVisibility()
+                refreshSettings()
                 viewModel.upCloudStorageConfig()
             }
             cancelButton()
@@ -560,18 +686,18 @@ class BackupConfigFragment : PreferenceFragment(),
         }
         if (names.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
-            withContext(Main) {
-                context.selector(
-                    title = context.getString(R.string.select_restore_file),
-                    items = names
-                ) { _, index ->
-                    if (index in 0 until names.size) {
-                        listView.post {
-                            restoreWebDav(names[index])
+                withContext(Main) {
+                    context.selector(
+                        title = context.getString(R.string.select_restore_file),
+                        items = names
+                    ) { _, index ->
+                        if (index in 0 until names.size) {
+                            view?.post {
+                                restoreWebDav(names[index])
+                            }
                         }
                     }
                 }
-            }
         } else {
             throw NoStackTraceException("Cloud storage backup file not found")
         }
@@ -596,8 +722,7 @@ class BackupConfigFragment : PreferenceFragment(),
             putString(PreferKey.cloudStorageType, fallbackType.name)
         }
         withContext(Main) {
-            updateCloudStorageVisibility()
-            upPreferenceSummary(PreferKey.cloudStorageType, fallbackType.name)
+            refreshSettings()
         }
         AppCloudStorage.upConfig()
     }
