@@ -193,7 +193,7 @@ class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
                         SettingActionSpec(
                             key = PreferKey.webDavDeviceName,
                             title = getString(R.string.webdav_device_name),
-                            summary = AppConfig.webDavDeviceName ?: "",
+                            summary = getPrefString(PreferKey.webDavDeviceName),
                             visible = webDavVisible,
                             onClick = {
                                 showTextSettingDialog(
