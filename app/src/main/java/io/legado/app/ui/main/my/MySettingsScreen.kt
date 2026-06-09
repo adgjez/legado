@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -172,6 +173,7 @@ internal fun MySettingsScreen(
                         section = section,
                         colors = colors,
                         panelRadiusPx = panelRadiusPx,
+                        titleFontFamily = style.titleFontFamily,
                         themeModeLabel = themeModeLabel,
                         webServiceState = webServiceState,
                         onThemeModeClick = onThemeModeClick,
@@ -182,7 +184,11 @@ internal fun MySettingsScreen(
                 }
                 if (visibleSections.isEmpty()) {
                     item("empty") {
-                        EmptySettingsFrame(colors, panelRadiusPx)
+                        EmptySettingsFrame(
+                            colors = colors,
+                            panelRadiusPx = panelRadiusPx,
+                            titleFontFamily = style.titleFontFamily
+                        )
                     }
                 }
             }
@@ -195,6 +201,7 @@ private fun SettingsSectionCard(
     section: VisibleSection,
     colors: MySettingsColors,
     panelRadiusPx: Float,
+    titleFontFamily: FontFamily,
     themeModeLabel: String,
     webServiceState: MyWebServiceUiState,
     onThemeModeClick: () -> Unit,
@@ -220,6 +227,7 @@ private fun SettingsSectionCard(
             color = colors.accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
+            fontFamily = titleFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -401,7 +409,8 @@ private fun WebServiceRow(
 @Composable
 private fun EmptySettingsFrame(
     colors: MySettingsColors,
-    panelRadiusPx: Float
+    panelRadiusPx: Float,
+    titleFontFamily: FontFamily
 ) {
     val context = LocalContext.current
     val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
@@ -421,6 +430,7 @@ private fun EmptySettingsFrame(
             color = colors.accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
+            fontFamily = titleFontFamily,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
