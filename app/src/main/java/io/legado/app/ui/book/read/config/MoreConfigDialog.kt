@@ -90,6 +90,8 @@ class MoreConfigDialog : BasePrefDialogFragment() {
 
         override val applyActivityTitle: Boolean = false
 
+        override val autoOpenTargetItem: Boolean = false
+
         override fun onCreate(savedInstanceState: Bundle?) {
             super.onCreate(savedInstanceState)
             if (!CanvasRecorderFactory.isSupport) {

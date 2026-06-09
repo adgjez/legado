@@ -43,6 +43,8 @@ class AboutFragment : ComposeSettingFragment() {
 
     override val titleRes: Int = R.string.about
 
+    override val autoOpenTargetItem: Boolean = false
+
     override fun buildPageSpec(): SettingPageSpec {
         return SettingPageSpec(
             titleRes = titleRes,

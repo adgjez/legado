@@ -29,6 +29,8 @@ abstract class ComposeSettingFragment : Fragment(),
 
     protected open val applyActivityTitle: Boolean = true
 
+    protected open val autoOpenTargetItem: Boolean = true
+
     private val refreshTick = mutableIntStateOf(0)
     private val scrollTargetKey = mutableStateOf<String?>(null)
     private var targetKeyHandled = false
@@ -154,7 +156,9 @@ abstract class ComposeSettingFragment : Fragment(),
         targetKeyHandled = true
         scrollTargetKey.value = null
         view?.post {
-            handleItemClick(item)
+            if (autoOpenTargetItem) {
+                handleItemClick(item)
+            }
             activity?.intent?.removeExtra("targetKey")
         }
     }

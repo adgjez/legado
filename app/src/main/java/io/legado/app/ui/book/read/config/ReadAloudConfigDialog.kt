@@ -239,6 +239,8 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
 
         override val applyActivityTitle: Boolean = false
 
+        override val autoOpenTargetItem: Boolean = false
+
         private val speakEngineSummary: String
             get() {
                 val route = SpeechRoute.fromTtsEngineValue(ReadAloud.ttsEngine)
