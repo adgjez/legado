@@ -1,24 +1,89 @@
 package io.legado.app.ui.config
 
-import android.graphics.Color
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.EventBus
-import io.legado.app.databinding.ActivityConfigBinding
-import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import androidx.viewbinding.ViewBinding
 
-class ConfigActivity : VMBaseActivity<ActivityConfigBinding, ConfigViewModel>() {
+class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
 
-    override val binding by viewBinding(ActivityConfigBinding::inflate)
+    private lateinit var titleComposeView: ComposeView
+    private var titleText by mutableStateOf("")
+
+    override val binding: ViewBinding by lazy {
+        titleText = getString(R.string.setting)
+        titleComposeView = ComposeView(this)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            addView(
+                titleComposeView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+            addView(
+                FrameLayout(this@ConfigActivity).apply {
+                    id = R.id.configFrameLayout
+                },
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1f
+                )
+            )
+        }
+        object : ViewBinding {
+            override fun getRoot(): View = root
+        }
+    }
     override val viewModel by viewModels<ConfigViewModel>()
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        applyHeaderColors()
+        titleComposeView.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        titleComposeView.setContent {
+            ConfigTopBar(
+                title = titleText,
+                onBack = ::finish
+            )
+        }
         when (val configTag = intent.getStringExtra("configTag")) {
             ConfigTag.OTHER_CONFIG -> replaceFragment(configTag, OtherConfigFragment::class.java)
             ConfigTag.THEME_CONFIG -> replaceFragment(configTag, ThemeConfigFragment::class.java)
@@ -36,13 +101,12 @@ class ConfigActivity : VMBaseActivity<ActivityConfigBinding, ConfigViewModel>() 
 
     override fun setTitle(resId: Int) {
         super.setTitle(resId)
-        binding.titleBar.setTitle(resId)
-        applyHeaderColors()
+        titleText = getString(resId)
     }
 
-    override fun onResume() {
-        super.onResume()
-        applyHeaderColors()
+    override fun setTitle(title: CharSequence?) {
+        super.setTitle(title)
+        titleText = title?.toString().orEmpty()
     }
 
     fun <T : Fragment> replaceFragment(configTag: String, fragmentClass: Class<T>) {
@@ -61,11 +125,41 @@ class ConfigActivity : VMBaseActivity<ActivityConfigBinding, ConfigViewModel>() 
         }
     }
 
-    private fun applyHeaderColors() {
-        binding.titleBar.setTextColor(primaryTextColor)
-        binding.titleBar.setColorFilter(primaryTextColor)
-        binding.titleBar.setBackgroundColor(Color.TRANSPARENT)
-        binding.titleBar.elevation = 0f
-    }
+}
 
+@Composable
+private fun ConfigTopBar(
+    title: String,
+    onBack: () -> Unit
+) {
+    val palette = rememberAppSettingPalette()
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.bodyFontFamily)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    tint = palette.primaryText
+                )
+            }
+            Text(
+                text = title,
+                color = palette.primaryText,
+                fontFamily = palette.titleFontFamily,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
 }
