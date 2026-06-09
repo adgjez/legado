@@ -251,17 +251,26 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
     }
 
     private fun showModelActions(model: AiModelConfig) {
-        selector(model.modelId, listOf(getString(R.string.ai_set_current), getString(R.string.edit), getString(R.string.delete))) { _, index ->
-            when (index) {
-                0 -> {
-                    AppConfig.aiCurrentModelId = model.id
-                    notifyAiConfigChanged()
-                    reloadModels()
+        val actions = listOf(getString(R.string.ai_set_current), getString(R.string.edit), getString(R.string.delete))
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = model.modelId,
+                labels = actions,
+                dangerIndices = setOf(2),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    when (index) {
+                        0 -> {
+                            AppConfig.aiCurrentModelId = model.id
+                            notifyAiConfigChanged()
+                            reloadModels()
+                        }
+                        1 -> showEditModelDialog(model)
+                        2 -> confirmRemoveModel(model)
+                    }
                 }
-                1 -> showEditModelDialog(model)
-                2 -> confirmRemoveModel(model)
-            }
-        }
+            )
+        )
     }
 
     private fun confirmRemoveModel(model: AiModelConfig) {
