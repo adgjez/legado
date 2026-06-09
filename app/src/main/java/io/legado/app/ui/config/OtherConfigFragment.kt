@@ -3,15 +3,9 @@ package io.legado.app.ui.config
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.view.View
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
-import androidx.preference.ListPreference
-import androidx.preference.Preference
-import androidx.preference.SwitchPreferenceCompat
 import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
@@ -23,36 +17,38 @@ import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
 import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
-import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
+import io.legado.app.ui.config.compose.ComposeSettingFragment
+import io.legado.app.ui.config.compose.SettingActionSpec
+import io.legado.app.ui.config.compose.SettingChoiceOption
+import io.legado.app.ui.config.compose.SettingChoiceSpec
+import io.legado.app.ui.config.compose.SettingItemSpec
+import io.legado.app.ui.config.compose.SettingPageSpec
+import io.legado.app.ui.config.compose.SettingSectionSpec
+import io.legado.app.ui.config.compose.SettingSwitchSpec
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.restart
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import splitties.init.appCtx
 
 /**
  * 其它设置
  */
-class OtherConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener {
+class OtherConfigFragment : ComposeSettingFragment() {
 
     private val viewModel by activityViewModels<ConfigViewModel>()
     private val packageManager = appCtx.packageManager
@@ -66,145 +62,92 @@ class OtherConfigFragment : PreferenceFragment(),
         }
     }
 
-    private var onlyUpdateReadPref: Preference? = null
-    private var targetKeyHandled = false
-
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        putPrefBoolean(PreferKey.processText, isProcessTextEnabled())
-        addPreferencesFromResource(R.xml.pref_config_other)
-        upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
-        upPreferenceSummary(PreferKey.preDownloadNum, AppConfig.preDownloadNum.toString())
-        upPreferenceSummary(PreferKey.threadCount, AppConfig.threadCount.toString())
-        upPreferenceSummary(PreferKey.webPort, AppConfig.webPort.toString())
-        upPreferenceSummary(PreferKey.epubReadEngine, AppConfig.epubReadEngine)
-        AppConfig.defaultBookTreeUri?.let {
-            upPreferenceSummary(PreferKey.defaultBookTreeUri, it)
-        }
-        upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
-        upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
-        upPreferenceSummary(PreferKey.imageRetainNum, AppConfig.imageRetainNum.toString())
-        upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
-        onlyUpdateReadPref = findPreference<Preference>(PreferKey.onlyUpdateRead)?.also {
-            it.isVisible = AppConfig.autoRefreshBook
-        }
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        activity?.setTitle(R.string.other_setting)
-        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-        listView.setEdgeEffectColor(primaryColor)
-        consumeTargetKey()
-    }
+    override val titleRes: Int = R.string.other_setting
 
     override fun onResume() {
         super.onResume()
-        consumeTargetKey()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
-    }
-
-    override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            PreferKey.userAgent -> showUserAgentDialog()
-            PreferKey.customHosts -> showCustomHostsDialog()
-            PreferKey.videoSetting -> showDialogFragment(SettingsDialog(requireActivity()))
-            PreferKey.defaultBookTreeUri -> localBookTreeSelect.launch {
-                title = getString(R.string.select_book_folder)
-                mode = HandleFileContract.DIR_SYS
-            }
-
-            PreferKey.preDownloadNum -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.pre_download))
-                .setMaxValue(9999)
-                .setMinValue(0)
-                .setValue(AppConfig.preDownloadNum)
-                .show {
-                    AppConfig.preDownloadNum = it
-                }
-
-            PreferKey.threadCount -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.threads_num_title))
-                .setMaxValue(999)
-                .setMinValue(1)
-                .setValue(AppConfig.threadCount)
-                .show {
-                    AppConfig.threadCount = it
-                }
-
-            PreferKey.webPort -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.web_port_title))
-                .setMaxValue(60000)
-                .setMinValue(1024)
-                .setValue(AppConfig.webPort)
-                .show {
-                    AppConfig.webPort = it
-                }
-
-            PreferKey.cleanCache -> clearCache()
-            PreferKey.contentSelectMenuConfig -> ContentSelectMenuConfigDialog()
-                .show(parentFragmentManager, "contentSelectMenuConfig")
-            PreferKey.uploadRule -> showDialogFragment<DirectLinkUploadConfig>()
-            "discoverySubscriptionSettings" -> {
-                startActivity(Intent(requireContext(), ConfigActivity::class.java).apply {
-                    putExtra("configTag", ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG)
-                })
-            }
-            PreferKey.checkSource -> showDialogFragment<CheckSourceConfig>()
-            PreferKey.bitmapCacheSize -> {
-                NumberPickerDialog(requireContext())
-                    .setTitle(getString(R.string.bitmap_cache_size))
-                    .setMaxValue(1024)
-                    .setMinValue(1)
-                    .setValue(AppConfig.bitmapCacheSize)
-                    .show {
-                        AppConfig.bitmapCacheSize = it
-                        ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
-                    }
-            }
-            PreferKey.imageRetainNum -> NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.image_retain_number))
-                .setMaxValue(999)
-                .setMinValue(0)
-                .setValue(AppConfig.imageRetainNum)
-                .show {
-                    AppConfig.imageRetainNum = it
-                }
-
-            PreferKey.sourceEditMaxLine -> {
-                NumberPickerDialog(requireContext())
-                    .setTitle(getString(R.string.source_edit_text_max_line))
-                    .setMaxValue(Int.MAX_VALUE)
-                    .setMinValue(10)
-                    .setValue(AppConfig.sourceEditMaxLine)
-                    .show {
-                        AppConfig.sourceEditMaxLine = it
-                    }
-            }
-
-            PreferKey.clearWebViewData -> clearWebViewData()
-            "localPassword" -> alertLocalPassword()
-            PreferKey.shrinkDatabase -> shrinkDatabase()
+        val enabled = isProcessTextEnabled()
+        if (booleanSetting(PreferKey.processText, true) != enabled) {
+            updateBooleanSetting(PreferKey.processText, enabled)
         }
-        return super.onPreferenceTreeClick(preference)
     }
 
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        when (key) {
-            PreferKey.preDownloadNum -> {
-                upPreferenceSummary(key, AppConfig.preDownloadNum.toString())
-            }
+    override fun buildPageSpec(): SettingPageSpec {
+        return SettingPageSpec(
+            titleRes = titleRes,
+            sections = listOf(
+                SettingSectionSpec(
+                    items = listOf(
+                        choice(
+                            key = KEY_LANGUAGE,
+                            title = getString(R.string.language),
+                            entriesRes = R.array.language,
+                            valuesRes = R.array.language_value,
+                            defaultValue = "auto"
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.main_activity),
+                    items = listOf(
+                        switch(
+                            key = PreferKey.autoRefresh,
+                            title = getString(R.string.pt_auto_refresh),
+                            summary = getString(R.string.ps_auto_refresh),
+                            defaultValue = false
+                        ),
+                        switch(
+                            key = PreferKey.onlyUpdateRead,
+                            title = getString(R.string.only_update_read),
+                            summary = getString(R.string.ps_only_update_read),
+                            defaultValue = false,
+                            visible = booleanSetting(PreferKey.autoRefresh, false)
+                        ),
+                        switch(
+                            key = PreferKey.defaultToRead,
+                            title = getString(R.string.pt_default_read),
+                            summary = getString(R.string.ps_default_read),
+                            defaultValue = false
+                        ),
+                        switch(
+                            key = PreferKey.showReadRecord,
+                            title = getString(R.string.show_read_record),
+                            defaultValue = true
+                        ),
+                        SettingActionSpec(
+                            key = KEY_DISCOVERY_SUBSCRIPTION_SETTINGS,
+                            title = getString(R.string.discovery_subscription_settings_title),
+                            summary = getString(R.string.discovery_subscription_settings_summary),
+                            onClick = {
+                                startActivity(Intent(requireContext(), ConfigActivity::class.java).apply {
+                                    putExtra("configTag", ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG)
+                                })
+                            }
+                        ),
+                        choice(
+                            key = PreferKey.defaultHomePage,
+                            title = getString(R.string.default_home_page),
+                            entriesRes = R.array.default_home_page,
+                            valuesRes = R.array.default_home_page_value,
+                            defaultValue = "bookshelf"
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.other_setting),
+                    items = otherSettingItems()
+                )
+            )
+        )
+    }
 
+    override fun onSettingPreferenceChanged(key: String) {
+        when (key) {
             PreferKey.threadCount -> {
-                upPreferenceSummary(key, AppConfig.threadCount.toString())
                 postEvent(PreferKey.threadCount, "")
             }
 
             PreferKey.webPort -> {
-                upPreferenceSummary(key, AppConfig.webPort.toString())
                 if (WebService.isRun) {
                     WebService.stop(requireContext())
                     WebService.start(requireContext())
@@ -212,16 +155,11 @@ class OtherConfigFragment : PreferenceFragment(),
             }
 
             PreferKey.epubReadEngine -> {
-                upPreferenceSummary(key, AppConfig.epubReadEngine)
                 postEvent(EventBus.UP_CONFIG, arrayListOf(13))
             }
 
-            PreferKey.defaultBookTreeUri -> {
-                upPreferenceSummary(key, AppConfig.defaultBookTreeUri)
-            }
-
             PreferKey.recordLog -> {
-                AppConfig.recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
+                AppConfig.recordLog = booleanSetting(PreferKey.recordLog, false)
                 LogUtils.upLevel()
                 LogUtils.logDeviceInfo()
                 LiveEventBus.config().enableLogger(AppConfig.recordLog)
@@ -229,38 +167,13 @@ class OtherConfigFragment : PreferenceFragment(),
                 DispatchersMonitor.init()
             }
 
-            PreferKey.processText -> sharedPreferences?.let {
-                setProcessTextEnable(it.getBoolean(key, true))
+            PreferKey.processText -> {
+                setProcessTextEnable(booleanSetting(PreferKey.processText, true))
             }
 
             PreferKey.showReadRecord -> postEvent(EventBus.NOTIFY_MAIN, true)
-            PreferKey.language -> listView.postDelayed(1000) {
+            KEY_LANGUAGE -> view?.postDelayed(1000) {
                 appCtx.restart()
-            }
-
-            PreferKey.userAgent -> listView.post {
-                upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
-            }
-
-            PreferKey.checkSource -> listView.post {
-                upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
-            }
-
-            PreferKey.bitmapCacheSize -> {
-                upPreferenceSummary(key, AppConfig.bitmapCacheSize.toString())
-            }
-
-            PreferKey.imageRetainNum -> {
-                upPreferenceSummary(key, AppConfig.imageRetainNum.toString())
-            }
-
-            PreferKey.sourceEditMaxLine -> {
-                upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
-            }
-
-            PreferKey.autoRefresh -> {
-                val isEnabled = sharedPreferences?.getBoolean(key, false) ?: false
-                onlyUpdateReadPref?.isVisible = isEnabled
             }
 
             PreferKey.highBrush -> {
@@ -269,37 +182,349 @@ class OtherConfigFragment : PreferenceFragment(),
         }
     }
 
-    private fun upPreferenceSummary(preferenceKey: String, value: String?) {
-        val preference = findPreference<Preference>(preferenceKey) ?: return
-        when (preferenceKey) {
-            PreferKey.preDownloadNum -> preference.summary =
-                getString(R.string.pre_download_s, value)
-
-            PreferKey.threadCount -> preference.summary = getString(R.string.threads_num, value)
-            PreferKey.webPort -> preference.summary = getString(R.string.web_port_summary, value)
-            PreferKey.epubReadEngine -> {
-                val current = when (value) {
-                    "core" -> getString(R.string.epub_read_engine_core)
-                    else -> getString(R.string.epub_read_engine_text)
+    private fun otherSettingItems(): List<SettingItemSpec> {
+        return listOf(
+            SettingActionSpec(
+                key = PreferKey.contentSelectMenuConfig,
+                title = getString(R.string.content_select_menu_config),
+                summary = getString(R.string.content_select_menu_config_summary),
+                onClick = {
+                    ContentSelectMenuConfigDialog()
+                        .show(parentFragmentManager, "contentSelectMenuConfig")
                 }
-                preference.summary = "${getString(R.string.epub_read_engine_summary)}\n$current"
-            }
-            PreferKey.bitmapCacheSize -> preference.summary =
-                getString(R.string.bitmap_cache_size_summary, value)
-            PreferKey.imageRetainNum -> preference.summary =
-                getString(R.string.image_retain_number_summary, value)
+            ),
+            choice(
+                key = PreferKey.epubReadEngine,
+                title = getString(R.string.epub_read_engine),
+                summary = epubReadEngineSummary(),
+                entriesRes = R.array.epub_read_engine_entries,
+                valuesRes = R.array.epub_read_engine_values,
+                defaultValue = "text"
+            ),
+            SettingActionSpec(
+                key = KEY_LOCAL_PASSWORD,
+                title = getString(R.string.set_local_password),
+                summary = getString(R.string.set_local_password_summary),
+                onClick = ::alertLocalPassword
+            ),
+            SettingActionSpec(
+                key = PreferKey.userAgent,
+                title = getString(R.string.user_agent),
+                summary = AppConfig.userAgent,
+                onClick = ::showUserAgentDialog
+            ),
+            SettingActionSpec(
+                key = PreferKey.customHosts,
+                title = getString(R.string.custom_hosts),
+                summary = getString(R.string.custom_hosts_summary),
+                onClick = ::showCustomHostsDialog
+            ),
+            switch(
+                key = PreferKey.webServiceWakeLock,
+                title = getString(R.string.web_service_wake_lock),
+                summary = getString(R.string.web_service_wake_lock_summary),
+                defaultValue = false
+            ),
+            SettingActionSpec(
+                key = PreferKey.defaultBookTreeUri,
+                title = getString(R.string.book_tree_uri_t),
+                summary = AppConfig.defaultBookTreeUri ?: getString(R.string.book_tree_uri_s),
+                onClick = {
+                    localBookTreeSelect.launch {
+                        title = getString(R.string.select_book_folder)
+                        mode = HandleFileContract.DIR_SYS
+                    }
+                }
+            ),
+            numberAction(
+                key = PreferKey.sourceEditMaxLine,
+                title = getString(R.string.source_edit_text_max_line),
+                summary = getString(
+                    R.string.source_edit_max_line_summary,
+                    AppConfig.sourceEditMaxLine.toString()
+                ),
+                min = 10,
+                max = Int.MAX_VALUE,
+                value = AppConfig.sourceEditMaxLine,
+                onSelected = { AppConfig.sourceEditMaxLine = it }
+            ),
+            SettingActionSpec(
+                key = PreferKey.checkSource,
+                title = getString(R.string.check_source_config),
+                summary = CheckSource.summary,
+                onClick = { showDialogFragment<CheckSourceConfig>() }
+            ),
+            SettingActionSpec(
+                key = PreferKey.uploadRule,
+                title = getString(R.string.direct_link_upload_rule),
+                summary = getString(R.string.direct_link_upload_rule_summary),
+                onClick = { showDialogFragment<DirectLinkUploadConfig>() }
+            ),
+            switch(
+                key = PreferKey.cronet,
+                title = "Cronet",
+                summary = getString(R.string.pref_cronet_summary),
+                defaultValue = false
+            ),
+            switch(
+                key = PreferKey.antiAlias,
+                title = getString(R.string.anti_alias),
+                summary = getString(R.string.pref_anti_alias_summary),
+                defaultValue = false
+            ),
+            switch(
+                key = PreferKey.highBrush,
+                title = getString(R.string.high_brush_title),
+                summary = getString(R.string.high_brush_summary),
+                defaultValue = true
+            ),
+            numberAction(
+                key = PreferKey.bitmapCacheSize,
+                title = getString(R.string.bitmap_cache_size),
+                summary = getString(R.string.bitmap_cache_size_summary, AppConfig.bitmapCacheSize.toString()),
+                min = 1,
+                max = 1024,
+                value = AppConfig.bitmapCacheSize,
+                onSelected = {
+                    AppConfig.bitmapCacheSize = it
+                    ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
+                }
+            ),
+            numberAction(
+                key = PreferKey.imageRetainNum,
+                title = getString(R.string.image_retain_number),
+                summary = getString(R.string.image_retain_number_summary, AppConfig.imageRetainNum.toString()),
+                min = 0,
+                max = 999,
+                value = AppConfig.imageRetainNum,
+                onSelected = { AppConfig.imageRetainNum = it }
+            ),
+            numberAction(
+                key = PreferKey.preDownloadNum,
+                title = getString(R.string.pre_download),
+                summary = getString(R.string.pre_download_s, AppConfig.preDownloadNum.toString()),
+                min = 0,
+                max = 9999,
+                value = AppConfig.preDownloadNum,
+                onSelected = { AppConfig.preDownloadNum = it }
+            ),
+            switch(
+                key = PreferKey.replaceEnableDefault,
+                title = getString(R.string.replace_enable_default_t),
+                summary = getString(R.string.replace_enable_default_s),
+                defaultValue = true
+            ),
+            switch(
+                key = KEY_MEDIA_BUTTON_ON_EXIT,
+                title = getString(R.string.media_button_on_exit_title),
+                summary = getString(R.string.media_button_on_exit_summary),
+                defaultValue = true
+            ),
+            switch(
+                key = PreferKey.readAloudByMediaButton,
+                title = getString(R.string.read_aloud_by_media_button_title),
+                summary = getString(R.string.read_aloud_by_media_button_summary),
+                defaultValue = false
+            ),
+            switch(
+                key = PreferKey.ignoreAudioFocus,
+                title = getString(R.string.ignore_audio_focus_title),
+                summary = getString(R.string.ignore_audio_focus_summary),
+                defaultValue = false
+            ),
+            switch(
+                key = PreferKey.autoClearExpired,
+                title = getString(R.string.auto_clear_expired),
+                summary = getString(R.string.auto_clear_expired_summary),
+                defaultValue = true
+            ),
+            switch(
+                key = PreferKey.showAddToShelfAlert,
+                title = getString(R.string.show_add_to_shelf_alert_title),
+                summary = getString(R.string.show_add_to_shelf_alert_summary),
+                defaultValue = true
+            ),
+            choice(
+                key = PreferKey.updateToVariant,
+                title = getString(R.string.update_to_variant_title),
+                summary = getString(R.string.update_to_variant_summary),
+                entriesRes = R.array.default_app_variant,
+                valuesRes = R.array.default_app_variant_value,
+                defaultValue = "default_version"
+            ),
+            switch(
+                key = KEY_AUTO_UPDATE_VARIANT,
+                title = getString(R.string.auto_update),
+                summary = getString(R.string.auto_update_summary),
+                defaultValue = true
+            ),
+            switch(
+                key = PreferKey.showMangaUi,
+                title = getString(R.string.show_manga_ui),
+                defaultValue = true
+            ),
+            SettingActionSpec(
+                key = PreferKey.videoSetting,
+                title = getString(R.string.video_setting),
+                summary = getString(R.string.video_setting_summary),
+                onClick = { showDialogFragment(SettingsDialog(requireActivity())) }
+            ),
+            switch(
+                key = PreferKey.autoRefreshMediaToc,
+                title = getString(R.string.auto_refresh_media_toc),
+                summary = getString(R.string.auto_refresh_media_toc_summary),
+                defaultValue = true
+            ),
+            numberAction(
+                key = PreferKey.webPort,
+                title = getString(R.string.web_port_title),
+                summary = getString(R.string.web_port_summary, AppConfig.webPort.toString()),
+                min = 1024,
+                max = 60000,
+                value = AppConfig.webPort,
+                onSelected = { AppConfig.webPort = it }
+            ),
+            SettingActionSpec(
+                key = PreferKey.cleanCache,
+                title = getString(R.string.clear_cache),
+                summary = getString(R.string.clear_cache_summary),
+                onClick = ::clearCache
+            ),
+            SettingActionSpec(
+                key = PreferKey.clearWebViewData,
+                title = getString(R.string.clear_webview_data),
+                summary = getString(R.string.clear_webview_data_summary),
+                onClick = ::clearWebViewData
+            ),
+            SettingActionSpec(
+                key = PreferKey.shrinkDatabase,
+                title = getString(R.string.shrink_database),
+                summary = getString(R.string.shrink_database_summary),
+                onClick = ::shrinkDatabase
+            ),
+            numberAction(
+                key = PreferKey.threadCount,
+                title = getString(R.string.threads_num_title),
+                summary = getString(R.string.threads_num, AppConfig.threadCount.toString()),
+                min = 1,
+                max = 999,
+                value = AppConfig.threadCount,
+                onSelected = { AppConfig.threadCount = it }
+            ),
+            switch(
+                key = PreferKey.processText,
+                title = getString(R.string.add_to_text_context_menu_t),
+                summary = getString(R.string.add_to_text_context_menu_s),
+                defaultValue = true
+            ),
+            switch(
+                key = PreferKey.recordLog,
+                title = getString(R.string.record_log),
+                summary = getString(R.string.record_debug_log),
+                defaultValue = false
+            ),
+            switch(
+                key = PreferKey.recordHeapDump,
+                title = getString(R.string.record_heap_dump_t),
+                summary = getString(R.string.record_heap_dump_s),
+                defaultValue = false
+            )
+        )
+    }
 
-            PreferKey.sourceEditMaxLine -> preference.summary =
-                getString(R.string.source_edit_max_line_summary, value)
+    private fun switch(
+        key: String,
+        title: String,
+        summary: String? = null,
+        defaultValue: Boolean,
+        visible: Boolean = true
+    ): SettingSwitchSpec {
+        return SettingSwitchSpec(
+            key = key,
+            title = title,
+            summary = summary,
+            checked = booleanSetting(key, defaultValue),
+            visible = visible,
+            onCheckedChange = { updateBooleanSetting(key, it) }
+        )
+    }
 
-            else -> if (preference is ListPreference) {
-                val index = preference.findIndexOfValue(value)
-                // Set the summary to reflect the new value.
-                preference.summary = if (index >= 0) preference.entries[index] else null
-            } else {
-                preference.summary = value
-            }
+    private fun choice(
+        key: String,
+        title: String,
+        entriesRes: Int,
+        valuesRes: Int,
+        defaultValue: String,
+        summary: String? = null
+    ): SettingChoiceSpec {
+        val options = choiceOptions(entriesRes, valuesRes)
+        val selectedValue = stringSetting(key, defaultValue)
+        return SettingChoiceSpec(
+            key = key,
+            title = title,
+            summary = summary ?: choiceLabel(options, selectedValue),
+            options = options,
+            selectedValue = selectedValue,
+            onSelected = { updateStringSetting(key, it) }
+        )
+    }
+
+    private fun choiceOptions(
+        entriesRes: Int,
+        valuesRes: Int
+    ): List<SettingChoiceOption> {
+        val entries = resources.getStringArray(entriesRes)
+        val values = resources.getStringArray(valuesRes)
+        return values.mapIndexed { index, value ->
+            SettingChoiceOption(
+                value = value,
+                label = entries.getOrElse(index) { value }
+            )
         }
+    }
+
+    private fun choiceLabel(
+        options: List<SettingChoiceOption>,
+        selectedValue: String
+    ): String {
+        return options.firstOrNull { it.value == selectedValue }
+            ?.label
+            ?.toString()
+            ?: selectedValue
+    }
+
+    private fun numberAction(
+        key: String,
+        title: String,
+        summary: String,
+        min: Int,
+        max: Int,
+        value: Int,
+        onSelected: (Int) -> Unit
+    ): SettingActionSpec {
+        return SettingActionSpec(
+            key = key,
+            title = title,
+            summary = summary,
+            onClick = {
+                NumberPickerDialog(requireContext())
+                    .setTitle(title)
+                    .setMaxValue(max)
+                    .setMinValue(min)
+                    .setValue(value)
+                    .show {
+                        onSelected(it)
+                    }
+            }
+        )
+    }
+
+    private fun epubReadEngineSummary(): String {
+        val current = when (AppConfig.epubReadEngine) {
+            "core" -> getString(R.string.epub_read_engine_core)
+            else -> getString(R.string.epub_read_engine_text)
+        }
+        return "${getString(R.string.epub_read_engine_summary)}\n$current"
     }
 
     private fun showUserAgentDialog() {
@@ -369,19 +594,22 @@ class OtherConfigFragment : PreferenceFragment(),
     }
 
     private fun isProcessTextEnabled(): Boolean {
-        return packageManager.getComponentEnabledSetting(componentName) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        return packageManager.getComponentEnabledSetting(componentName) !=
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
     }
 
     private fun setProcessTextEnable(enable: Boolean) {
         if (enable) {
             packageManager.setComponentEnabledSetting(
                 componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP
             )
         } else {
             packageManager.setComponentEnabledSetting(
                 componentName,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP
             )
         }
     }
@@ -395,21 +623,11 @@ class OtherConfigFragment : PreferenceFragment(),
         )
     }
 
-    private fun consumeTargetKey() {
-        if (targetKeyHandled) return
-        val targetKey = activity?.intent?.getStringExtra("targetKey")?.trim().orEmpty()
-        if (targetKey.isBlank()) return
-        val preference = findPreference<Preference>(targetKey) ?: return
-        targetKeyHandled = true
-        listView.post {
-            scrollToComposePreference(preference)
-            if (preference is SwitchPreferenceCompat) {
-                preference.isChecked = !preference.isChecked
-            } else {
-                onPreferenceTreeClick(preference)
-            }
-            activity?.intent?.removeExtra("targetKey")
-        }
+    companion object {
+        private const val KEY_LANGUAGE = "language"
+        private const val KEY_LOCAL_PASSWORD = "localPassword"
+        private const val KEY_DISCOVERY_SUBSCRIPTION_SETTINGS = "discoverySubscriptionSettings"
+        private const val KEY_MEDIA_BUTTON_ON_EXIT = "mediaButtonOnExit"
+        private const val KEY_AUTO_UPDATE_VARIANT = "autoUpdateVariant"
     }
-
 }
