@@ -355,7 +355,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                     actionRow("readRecord", R.string.read_record, R.string.read_record_summary),
                     actionRow("fileManage", R.string.file_manage, R.string.file_manage_summary),
                     actionRow("about", R.string.about, null),
-                    actionRow("exit", R.string.exit, null, danger = true)
+                    actionRow("exit", R.string.exit, null)
                 )
             )
         )
