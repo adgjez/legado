@@ -213,12 +213,14 @@ fun LegadoMiuixSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     palette: LegadoMiuixPalette,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     if (canUseRealMiuix()) {
         MiuixSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             modifier = modifier,
             colors = MiuixSwitchDefaults.switchColors(
                 checkedThumbColor = palette.onAccent,
@@ -236,6 +238,7 @@ fun LegadoMiuixSwitch(
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         modifier = modifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = palette.onAccent,

@@ -199,7 +199,8 @@ private fun SettingRow(
                 LegadoMiuixSwitch(
                     checked = item.checked,
                     onCheckedChange = item.onCheckedChange,
-                    palette = palette
+                    palette = palette,
+                    enabled = item.enabled
                 )
             }
 
