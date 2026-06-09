@@ -32,6 +32,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -284,7 +285,10 @@ class ThemeConfigFragment : PreferenceFragment(),
         if (!getPrefString(bgKey).isNullOrEmpty()) {
             actions.add(getString(R.string.delete))
         }
-        context?.selector(items = actions) { _, i ->
+        showComposeActionListDialog(
+            title = getString(R.string.background_image),
+            labels = actions
+        ) { i ->
             when (i) {
                 0 -> alertImageBlurring(blurringKey) {
                     upTheme(isNight)
@@ -318,7 +322,13 @@ class ThemeConfigFragment : PreferenceFragment(),
         if (!getPrefString(bgKey).isNullOrEmpty()) {
             actions.add(getString(R.string.delete))
         }
-        context?.selector(items = actions) { _, i ->
+        showComposeActionListDialog(
+            title = getString(
+                if (isNight) R.string.book_info_background_image_night
+                else R.string.book_info_background_image
+            ),
+            labels = actions
+        ) { i ->
             when (i) {
                 0 -> selectImage.launch {
                     requestCode = if (isNight) requestCodeBookInfoBgDark else requestCodeBookInfoBg
