@@ -143,12 +143,11 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                     sections = sections,
                     subSearchItems = subSearchItems,
                     searchQuery = searchQueryState.value,
-                    themeModeValue = themeModeState.value,
-                    themeOptions = themeOptions,
+                    themeModeLabel = currentThemeModeLabel(),
                     webServiceState = webServiceState.value,
-                    onThemeModeSelected = ::setThemeMode,
+                    onThemeModeClick = ::showThemeModeActions,
                     onWebServiceCheckedChange = ::setWebServiceEnabled,
-                    onWebServiceLongClick = ::showWebServiceActions,
+                    onWebServiceClick = ::handleWebServiceClick,
                     onRowClick = ::handleRowClick
                 )
             }
@@ -207,6 +206,31 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
         }
     }
 
+    private fun currentThemeModeLabel(): String {
+        return themeOptions.firstOrNull { it.value == themeModeState.value }?.label
+            ?: themeOptions.firstOrNull()?.label
+            ?: getString(R.string.theme_mode)
+    }
+
+    private fun showThemeModeActions() {
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = getString(R.string.theme_mode),
+                labels = themeOptions.map { option ->
+                    if (option.value == themeModeState.value) {
+                        "${option.label}  ✓"
+                    } else {
+                        option.label
+                    }
+                },
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    themeOptions.getOrNull(index)?.value?.let(::setThemeMode)
+                }
+            )
+        )
+    }
+
     private fun setWebServiceEnabled(enabled: Boolean) {
         requireContext().putPrefBoolean(PreferKey.webService, enabled)
         if (enabled) {
@@ -215,6 +239,14 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
             WebService.stop(requireContext())
         }
         updateWebServiceState()
+    }
+
+    private fun handleWebServiceClick() {
+        if (WebService.isRun) {
+            showWebServiceActions()
+        } else {
+            setWebServiceEnabled(true)
+        }
     }
 
     private fun showWebServiceActions() {
