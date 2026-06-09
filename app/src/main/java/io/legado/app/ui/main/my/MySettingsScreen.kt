@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -111,6 +113,8 @@ private data class MySettingsColors(
     val onAccent: Color
 )
 
+private val SettingsHorizontalPadding = 12.dp
+
 @Composable
 internal fun MySettingsScreen(
     sections: List<MySettingsSectionModel>,
@@ -160,11 +164,12 @@ internal fun MySettingsScreen(
                 contentPadding = PaddingValues(
                     top = 8.dp,
                     bottom = dimensionResource(R.dimen.main_content_bottom_bar_padding) + 24.dp
-                )
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                item("settings_frame") {
-                    SettingsFrame(
-                        sections = visibleSections,
+                items(visibleSections, key = { it.title }) { section ->
+                    SettingsSectionCard(
+                        section = section,
                         colors = colors,
                         panelRadiusPx = panelRadiusPx,
                         themeModeLabel = themeModeLabel,
@@ -175,14 +180,19 @@ internal fun MySettingsScreen(
                         onRowClick = onRowClick
                     )
                 }
+                if (visibleSections.isEmpty()) {
+                    item("empty") {
+                        EmptySettingsFrame(colors, panelRadiusPx)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SettingsFrame(
-    sections: List<VisibleSection>,
+private fun SettingsSectionCard(
+    section: VisibleSection,
     colors: MySettingsColors,
     panelRadiusPx: Float,
     themeModeLabel: String,
@@ -197,7 +207,7 @@ private fun SettingsFrame(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = SettingsHorizontalPadding)
             .preferenceGroupBackground(
                 normalColor = colors.row,
                 panelImage = panelImage,
@@ -205,44 +215,6 @@ private fun SettingsFrame(
                 radiusPx = panelRadiusPx
             )
     ) {
-        if (sections.isEmpty()) {
-            EmptySettingsResult(colors)
-            return@Column
-        }
-        sections.forEachIndexed { sectionIndex, section ->
-            val lastSection = sectionIndex == sections.lastIndex
-            SettingsSectionBlock(
-                section = section,
-                colors = colors,
-                panelRadiusPx = panelRadiusPx,
-                themeModeLabel = themeModeLabel,
-                webServiceState = webServiceState,
-                isFirstSection = sectionIndex == 0,
-                isLastSection = lastSection,
-                onThemeModeClick = onThemeModeClick,
-                onWebServiceCheckedChange = onWebServiceCheckedChange,
-                onWebServiceClick = onWebServiceClick,
-                onRowClick = onRowClick
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsSectionBlock(
-    section: VisibleSection,
-    colors: MySettingsColors,
-    panelRadiusPx: Float,
-    themeModeLabel: String,
-    webServiceState: MyWebServiceUiState,
-    isFirstSection: Boolean,
-    isLastSection: Boolean,
-    onThemeModeClick: () -> Unit,
-    onWebServiceCheckedChange: (Boolean) -> Unit,
-    onWebServiceClick: () -> Unit,
-    onRowClick: (String, MySettingsSubSearchItem?) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = section.title,
             color = colors.accent,
@@ -254,14 +226,13 @@ private fun SettingsSectionBlock(
                 .fillMaxWidth()
                 .padding(
                     start = 16.dp,
-                    top = if (isFirstSection) 16.dp else 12.dp,
+                    top = 16.dp,
                     end = 16.dp,
                     bottom = 8.dp
                 )
         )
         section.rows.forEachIndexed { index, item ->
             val isLastRowInSection = index == section.rows.lastIndex
-            val isLastRowInFrame = isLastSection && isLastRowInSection
             val showDivider = !isLastRowInSection
             when (item.row.kind) {
                 MySettingsRowKind.ThemeMode -> SettingsActionRow(
@@ -269,7 +240,7 @@ private fun SettingsSectionBlock(
                     colors = colors,
                     panelRadiusPx = panelRadiusPx,
                     isFirst = false,
-                    isLast = isLastRowInFrame,
+                    isLast = isLastRowInSection,
                     showDivider = showDivider,
                     onClick = onThemeModeClick
                 )
@@ -280,7 +251,7 @@ private fun SettingsSectionBlock(
                     colors = colors,
                     panelRadiusPx = panelRadiusPx,
                     isFirst = false,
-                    isLast = isLastRowInFrame,
+                    isLast = isLastRowInSection,
                     showDivider = showDivider,
                     onCheckedChange = onWebServiceCheckedChange,
                     onClick = onWebServiceClick
@@ -291,7 +262,7 @@ private fun SettingsSectionBlock(
                     colors = colors,
                     panelRadiusPx = panelRadiusPx,
                     isFirst = false,
-                    isLast = isLastRowInFrame,
+                    isLast = isLastRowInSection,
                     showDivider = showDivider,
                     onClick = { onRowClick(item.row.key, item.searchTarget) }
                 )
@@ -428,10 +399,23 @@ private fun WebServiceRow(
 }
 
 @Composable
-private fun EmptySettingsResult(
-    colors: MySettingsColors
+private fun EmptySettingsFrame(
+    colors: MySettingsColors,
+    panelRadiusPx: Float
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    val context = LocalContext.current
+    val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SettingsHorizontalPadding)
+            .preferenceGroupBackground(
+                normalColor = colors.row,
+                panelImage = panelImage,
+                borderColor = colors.border,
+                radiusPx = panelRadiusPx
+            )
+    ) {
         Text(
             text = "搜索结果",
             color = colors.accent,
