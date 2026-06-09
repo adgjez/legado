@@ -2,12 +2,8 @@ package io.legado.app.ui.about
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
-import android.view.View
 import androidx.annotation.StringRes
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.Preference
-import androidx.preference.PreferenceFragmentCompat
 import io.legado.app.R
 import io.legado.app.constant.AppConst.appInfo
 import io.legado.app.constant.AppLog
@@ -16,6 +12,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.help.update.AppUpdateConfig
+import io.legado.app.ui.config.compose.ComposeSettingFragment
+import io.legado.app.ui.config.compose.SettingActionSpec
+import io.legado.app.ui.config.compose.SettingPageSpec
+import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
@@ -29,58 +29,117 @@ import io.legado.app.utils.list
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.sendMail
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.delay
 import splitties.init.appCtx
 import java.io.File
 
-class AboutFragment : PreferenceFragmentCompat() {
+class AboutFragment : ComposeSettingFragment() {
 
     private val waitDialog by lazy {
         WaitDialog(requireContext())
     }
 
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        addPreferencesFromResource(R.xml.about)
-        findPreference<Preference>("update_log")?.summary =
-            "${getString(R.string.version)} ${appInfo.versionName}"
-        updateAccelerationPreferenceSummary()
+    override val titleRes: Int = R.string.about
+
+    override fun buildPageSpec(): SettingPageSpec {
+        return SettingPageSpec(
+            titleRes = titleRes,
+            sections = listOf(
+                SettingSectionSpec(
+                    items = listOf(
+                        action(
+                            key = KEY_CONTRIBUTORS,
+                            title = getString(R.string.contributors),
+                            summary = getString(R.string.contributors_summary_sigma)
+                        ) {
+                            openUrl(R.string.contributors_url)
+                        },
+                        action(
+                            key = KEY_UPDATE_LOG,
+                            title = getString(R.string.update_log),
+                            summary = "${getString(R.string.version)} ${appInfo.versionName}"
+                        ) {
+                            showMdFile(getString(R.string.update_log), "updateLog.md")
+                        },
+                        action(
+                            key = KEY_CHECK_UPDATE,
+                            title = getString(R.string.check_update)
+                        ) {
+                            checkUpdate()
+                        },
+                        action(
+                            key = KEY_UPDATE_ACCELERATION,
+                            title = getString(R.string.update_acceleration_manage),
+                            summary = AppUpdateConfig.summary(requireContext())
+                        ) {
+                            showUpdateAccelerationManage()
+                        }
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.other),
+                    items = listOf(
+                        action(
+                            key = KEY_CRASH_LOG,
+                            title = getString(R.string.crash_log)
+                        ) {
+                            showDialogFragment<CrashLogsDialog>()
+                        },
+                        action(
+                            key = KEY_SAVE_LOG,
+                            title = getString(R.string.save_log)
+                        ) {
+                            saveLog()
+                        },
+                        action(
+                            key = KEY_CREATE_HEAP_DUMP,
+                            title = getString(R.string.create_heap_dump)
+                        ) {
+                            createHeapDump()
+                        },
+                        action(
+                            key = KEY_PRIVACY_POLICY,
+                            title = getString(R.string.privacy_policy)
+                        ) {
+                            showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
+                        },
+                        action(
+                            key = KEY_LICENSE,
+                            title = getString(R.string.license)
+                        ) {
+                            showMdFile(getString(R.string.license), "LICENSE.md")
+                        },
+                        action(
+                            key = KEY_DISCLAIMER,
+                            title = getString(R.string.disclaimer)
+                        ) {
+                            showMdFile(getString(R.string.disclaimer), "disclaimer.md")
+                        }
+                    )
+                )
+            )
+        )
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        listView.overScrollMode = View.OVER_SCROLL_NEVER
-    }
-
-    override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            "contributors" -> openUrl(R.string.contributors_url)
-            "update_log" -> showMdFile(getString(R.string.update_log), "updateLog.md")
-            "check_update" -> checkUpdate()
-            "update_acceleration_manage" -> showUpdateAccelerationManage()
-            "mail" -> requireContext().sendMail(getString(R.string.email))
-            "license" -> showMdFile(getString(R.string.license), "LICENSE.md")
-            "disclaimer" -> showMdFile(getString(R.string.disclaimer), "disclaimer.md")
-            "privacyPolicy" -> showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
-            "gzGzh" -> requireContext().sendToClip(getString(R.string.legado_gzh))
-            "crashLog" -> showDialogFragment<CrashLogsDialog>()
-            "saveLog" -> saveLog()
-            "createHeapDump" -> createHeapDump()
-        }
-        return super.onPreferenceTreeClick(preference)
-    }
-
-    private fun updateAccelerationPreferenceSummary() {
-        findPreference<Preference>("update_acceleration_manage")?.summary =
-            AppUpdateConfig.summary(requireContext())
+    private fun action(
+        key: String,
+        title: CharSequence,
+        summary: CharSequence? = null,
+        onClick: () -> Unit
+    ): SettingActionSpec {
+        return SettingActionSpec(
+            key = key,
+            title = title,
+            summary = summary,
+            onClick = onClick
+        )
     }
 
     private fun showUpdateAccelerationManage() {
         UpdateAcceleratorDialog.show(this) {
-            updateAccelerationPreferenceSummary()
+            refreshSettings()
         }
     }
 
@@ -233,6 +292,19 @@ class AboutFragment : PreferenceFragmentCompat() {
         } catch (e: Exception) {
             AppLog.put("保存Logcat失败\n$e", e)
         }
+    }
+
+    companion object {
+        private const val KEY_CONTRIBUTORS = "contributors"
+        private const val KEY_UPDATE_LOG = "update_log"
+        private const val KEY_CHECK_UPDATE = "check_update"
+        private const val KEY_UPDATE_ACCELERATION = "update_acceleration_manage"
+        private const val KEY_LICENSE = "license"
+        private const val KEY_DISCLAIMER = "disclaimer"
+        private const val KEY_PRIVACY_POLICY = "privacyPolicy"
+        private const val KEY_CRASH_LOG = "crashLog"
+        private const val KEY_SAVE_LOG = "saveLog"
+        private const val KEY_CREATE_HEAP_DUMP = "createHeapDump"
     }
 
 }
