@@ -113,13 +113,13 @@ class CheckSourceConfig : ComposeDialogFragment() {
                 ) {
                     CheckSourceNumberField(
                         value = timeoutText,
-                        onValueChange = { timeoutText = it.filter(Char::isDigit) },
+                        onValueChange = { timeoutText = it.filterAsciiDigits() },
                         label = stringResource(R.string.check_source_timeout),
                         style = style
                     )
                     CheckSourceNumberField(
                         value = threadCountText,
-                        onValueChange = { threadCountText = it.filter(Char::isDigit) },
+                        onValueChange = { threadCountText = it.filterAsciiDigits() },
                         label = stringResource(R.string.check_source_thread_count),
                         style = style
                     )
@@ -345,5 +345,9 @@ class CheckSourceConfig : ComposeDialogFragment() {
         CheckSource.putConfig()
         requireContext().putPrefString(PreferKey.checkSource, CheckSource.summary)
         dismissAllowingStateLoss()
+    }
+
+    private fun String.filterAsciiDigits(): String {
+        return filter { it in '0'..'9' }
     }
 }
