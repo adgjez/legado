@@ -73,7 +73,8 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val initialSelected = remember {
-                    ContentSelectConfig.selectedActionIds(requireContext()).toList()
+                    sanitizeActionIds(ContentSelectConfig.selectedActionIds(requireContext()))
+                        .toList()
                 }
                 var selectedActions by rememberSaveable {
                     mutableStateOf(initialSelected)
@@ -141,7 +142,7 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
         actions: Set<String>,
         defaultOpen: String
     ) {
-        val selected = actions.toMutableSet()
+        val selected = sanitizeActionIds(actions).toMutableSet()
         if (defaultOpen.isNotEmpty()) {
             selected += defaultOpen
         }
@@ -233,7 +234,7 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             )
             Checkbox(
                 checked = checked,
-                onCheckedChange = { onClick() },
+                onCheckedChange = null,
                 colors = CheckboxDefaults.colors(
                     checkedColor = style.accent,
                     uncheckedColor = style.secondaryText,
@@ -265,7 +266,7 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             )
             RadioButton(
                 selected = selected,
-                onClick = onClick,
+                onClick = null,
                 colors = RadioButtonDefaults.colors(
                     selectedColor = style.accent,
                     unselectedColor = style.secondaryText
@@ -287,6 +288,7 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             ActionItem(ContentSelectConfig.ACTION_ASK_AI, R.string.ask_ai),
             ActionItem(ContentSelectConfig.ACTION_GENERATE_IMAGE, R.string.ai_image_generate)
         )
+        private val knownActionIds = actionItems.map { it.id }.toSet()
 
         private val defaultOpenItems = listOf(
             DefaultOpenItem("", R.string.default_none),
@@ -294,5 +296,9 @@ class ContentSelectMenuConfigDialog : ComposeDialogFragment() {
             DefaultOpenItem(ContentSelectConfig.ACTION_DICT, R.string.default_dict),
             DefaultOpenItem(ContentSelectConfig.ACTION_ASK_AI, R.string.default_ask_ai)
         )
+
+        private fun sanitizeActionIds(ids: Iterable<String>): Set<String> {
+            return ids.filterTo(linkedSetOf()) { it in knownActionIds }
+        }
     }
 }
