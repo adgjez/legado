@@ -26,7 +26,9 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -121,11 +123,20 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
             AiReadAloudUsageRecord.TYPE_SFX to "音效",
             AiReadAloudUsageRecord.TYPE_AUDIO to "音频分析"
         )
-        selector("类型筛选", types.map { if (it.first == typeFilter) "${it.second} ✓" else it.second }) { _, index ->
-            typeFilter = types[index].first
-            selectedIds.clear()
-            load()
-        }
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = "类型筛选",
+                labels = types.map { if (it.first == typeFilter) "${it.second} ✓" else it.second },
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    types.getOrNull(index)?.let { selected ->
+                        typeFilter = selected.first
+                        selectedIds.clear()
+                        load()
+                    }
+                }
+            )
+        )
     }
 
     private fun toggleSelectAll() {
