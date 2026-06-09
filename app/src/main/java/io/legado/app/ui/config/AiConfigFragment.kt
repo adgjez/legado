@@ -1,12 +1,8 @@
 package io.legado.app.ui.config
 
 import android.content.Intent
-import android.content.SharedPreferences
-import android.os.Bundle
 import android.text.InputType
-import android.view.View
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -20,9 +16,11 @@ import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.prefs.SwitchPreference
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
-import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.config.compose.ComposeSettingFragment
+import io.legado.app.ui.config.compose.SettingActionSpec
+import io.legado.app.ui.config.compose.SettingPageSpec
+import io.legado.app.ui.config.compose.SettingSectionSpec
+import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
@@ -33,14 +31,12 @@ import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AiConfigFragment : PreferenceFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener {
+class AiConfigFragment : ComposeSettingFragment() {
 
     private val defaultSkillUrls = listOf(
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/.trae/skills/legado-book-source-tamer/SKILL.md",
@@ -48,16 +44,23 @@ class AiConfigFragment : PreferenceFragment(),
         "https://raw.githubusercontent.com/DandanLLab/legadoSkill/main/SKILL.md"
     )
 
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        addPreferencesFromResource(R.xml.pref_config_ai)
-        refreshUi()
+    private companion object {
+        const val KEY_IMPORT_DEFAULT_SKILL = "aiImportDefaultSkill"
+        const val KEY_MANAGE_NATIVE_TOOLS = "aiManageNativeTools"
+        const val KEY_CONTEXT_COMPRESSION = "aiContextCompression"
+        const val KEY_WORLD_BOOK_MANAGE = "aiWorldBookManage"
+        const val KEY_DEFAULT_MODEL_SETTINGS = "aiDefaultModelSettings"
+        const val KEY_IMAGE_GALLERY = "aiImageGallery"
+        const val KEY_IMAGE_PROVIDER_MANAGE = "aiImageProviderManage"
+        const val KEY_MANAGE_PROVIDERS = "aiManageProviders"
+        const val KEY_ADD_MCP_SERVER = "aiAddMcpServer"
+        const val KEY_MANAGE_MCP_SERVERS = "aiManageMcpServers"
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    override val titleRes: Int = R.string.ai_setting
+
+    override fun onViewCreated(view: android.view.View, savedInstanceState: android.os.Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        activity?.setTitle(R.string.ai_setting)
-        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-        listView.setEdgeEffectColor(primaryColor)
         observeEvent<Boolean>(EventBus.AI_CONFIG_CHANGED) {
             refreshUi()
         }
@@ -68,41 +71,236 @@ class AiConfigFragment : PreferenceFragment(),
         refreshUi()
     }
 
-    override fun onDestroy() {
-        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
-        super.onDestroy()
+    override fun buildPageSpec(): SettingPageSpec {
+        val canEnable = AppConfig.aiCurrentModelConfig != null
+        val currentProvider = AppConfig.aiCurrentProvider
+        val mcpServers = AppConfig.aiMcpServerList
+        val enabledMcpCount = mcpServers.count { it.enabled }
+        val imageProviders = AppConfig.aiImageProviderList
+        val skills = AppConfig.aiSkillList
+        val enabledSkillCount = skills.count { it.enabled }
+        val worldBooks = AppConfig.aiWorldBookList
+        return SettingPageSpec(
+            titleRes = titleRes,
+            sections = listOf(
+                SettingSectionSpec(
+                    title = getString(R.string.ai_assistant),
+                    items = listOf(
+                        SettingSwitchSpec(
+                            key = PreferKey.aiAssistantEnabled,
+                            title = getString(R.string.ai_enable),
+                            summary = getString(
+                                if (canEnable) {
+                                    R.string.ai_enable_summary
+                                } else {
+                                    R.string.ai_enable_summary_disabled
+                                }
+                            ),
+                            checked = AppConfig.aiAssistantEnabled,
+                            enabled = canEnable,
+                            onCheckedChange = { AppConfig.aiAssistantEnabled = it }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_IMPORT_DEFAULT_SKILL,
+                            title = getString(R.string.ai_import_default_skill),
+                            summary = getString(R.string.ai_import_default_skill_summary),
+                            onClick = ::importDefaultSkill
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiSkillPrompt,
+                            title = getString(R.string.ai_skill_prompt),
+                            summary = if (skills.isEmpty()) {
+                                getString(R.string.ai_skill_prompt_summary_empty)
+                            } else {
+                                getString(
+                                    R.string.ai_skill_prompt_summary,
+                                    enabledSkillCount,
+                                    skills.size
+                                )
+                            },
+                            onClick = ::showManageSkillsDialog
+                        ),
+                        SettingActionSpec(
+                            key = KEY_MANAGE_NATIVE_TOOLS,
+                            title = getString(R.string.ai_manage_native_tools),
+                            summary = "${getString(R.string.ai_manage_native_tools_summary)} · ${AiToolRegistry.effectiveEnabledToolNames().size}",
+                            onClick = ::showManageNativeToolsDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiReadToolMode,
+                            title = "正文问 AI 工具范围",
+                            summary = readToolModeLabel(),
+                            onClick = ::showReadToolModeDialog
+                        ),
+                        switch(
+                            key = PreferKey.aiEnterToSend,
+                            title = getString(R.string.ai_enter_to_send),
+                            summary = getString(R.string.ai_enter_to_send_summary),
+                            defaultValue = true
+                        ),
+                        switch(
+                            key = PreferKey.aiThinkingToolbarEnabled,
+                            title = "显示思考工具栏",
+                            summary = "关闭后聊天页不显示思考和工具调用过程卡片，不影响后台执行",
+                            defaultValue = true
+                        ),
+                        SettingActionSpec(
+                            key = KEY_CONTEXT_COMPRESSION,
+                            title = getString(R.string.ai_context_compression),
+                            summary = if (AppConfig.aiContextCompressionEnabled) {
+                                "${AppConfig.aiContextWindowTokens} / ${AppConfig.aiThinkingContextTokens}"
+                            } else {
+                                getString(R.string.ai_context_compression_summary_default)
+                            },
+                            onClick = ::showContextCompressionDialog
+                        ),
+                        SettingActionSpec(
+                            key = KEY_WORLD_BOOK_MANAGE,
+                            title = "世界书管理",
+                            summary = if (worldBooks.isEmpty()) {
+                                "未配置世界书"
+                            } else {
+                                "${worldBooks.count { it.enabled }}/${worldBooks.size} 启用 · ${worldBooks.sumOf { it.entries.size }} 条目"
+                            },
+                            onClick = {
+                                startActivity(Intent(requireContext(), AiWorldBookManageActivity::class.java))
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_DEFAULT_MODEL_SETTINGS,
+                            title = "默认模型",
+                            summary = "问AI ${modelLabel(AppConfig.aiAskModelConfig)} / 总结 ${modelLabel(AppConfig.aiSummaryModelConfig)} / 多角色 ${modelLabel(AppConfig.aiReadAloudRoleModelConfig)} / 生图 ${imageProviderLabel()}",
+                            onClick = ::showDefaultModelSettingsDialog
+                        ),
+                        SettingActionSpec(
+                            key = KEY_IMAGE_GALLERY,
+                            title = getString(R.string.ai_image_gallery),
+                            summary = getString(R.string.ai_image_gallery_summary),
+                            onClick = {
+                                startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
+                            }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_IMAGE_PROVIDER_MANAGE,
+                            title = getString(R.string.ai_image_provider_manage),
+                            summary = if (imageProviders.isEmpty()) {
+                                getString(R.string.ai_image_provider_summary_empty)
+                            } else {
+                                getString(
+                                    R.string.ai_image_provider_summary,
+                                    imageProviders.count { it.enabled },
+                                    imageProviders.size
+                                )
+                            },
+                            onClick = {
+                                startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
+                            }
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.ai_provider),
+                    items = listOf(
+                        SettingActionSpec(
+                            key = KEY_MANAGE_PROVIDERS,
+                            title = getString(R.string.ai_manage_providers),
+                            summary = if (AppConfig.aiProviderList.isEmpty()) {
+                                getString(R.string.ai_no_providers)
+                            } else {
+                                buildString {
+                                    append(currentProvider?.name ?: getString(R.string.ai_current_provider_summary_empty))
+                                    append(" · ")
+                                    append(getString(R.string.ai_manage_providers_summary, AppConfig.aiProviderList.size))
+                                }
+                            },
+                            onClick = {
+                                startActivity(Intent(requireContext(), AiProviderManageActivity::class.java))
+                            }
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.ai_mcp),
+                    items = listOf(
+                        SettingActionSpec(
+                            key = KEY_ADD_MCP_SERVER,
+                            title = getString(R.string.ai_add_mcp_server),
+                            summary = getString(R.string.ai_add_mcp_server_summary),
+                            onClick = { showEditMcpServerDialog() }
+                        ),
+                        SettingActionSpec(
+                            key = KEY_MANAGE_MCP_SERVERS,
+                            title = getString(R.string.ai_manage_mcp_servers),
+                            summary = if (mcpServers.isEmpty()) {
+                                getString(R.string.ai_no_mcp_servers)
+                            } else {
+                                getString(
+                                    R.string.ai_manage_mcp_servers_summary,
+                                    enabledMcpCount,
+                                    mcpServers.size
+                                )
+                            },
+                            onClick = ::showManageMcpServersDialog
+                        )
+                    )
+                ),
+                SettingSectionSpec(
+                    title = getString(R.string.ai_web_tools),
+                    items = listOf(
+                        SettingSwitchSpec(
+                            key = PreferKey.aiTavilyEnabled,
+                            title = getString(R.string.ai_tavily_enable),
+                            summary = getString(
+                                if (AppConfig.aiTavilyApiKey.isBlank()) {
+                                    R.string.ai_tavily_enable_summary_missing
+                                } else {
+                                    R.string.ai_tavily_enable_summary
+                                }
+                            ),
+                            checked = booleanSetting(PreferKey.aiTavilyEnabled, false),
+                            onCheckedChange = { updateBooleanSetting(PreferKey.aiTavilyEnabled, it) }
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiTavilyApiKey,
+                            title = getString(R.string.ai_tavily_api_key),
+                            summary = if (AppConfig.aiTavilyApiKey.isBlank()) {
+                                getString(R.string.ai_tavily_api_key_summary)
+                            } else {
+                                getString(R.string.ai_tavily_api_key_summary_ready)
+                            },
+                            onClick = ::showTavilyApiKeyDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiTavilyBaseUrl,
+                            title = getString(R.string.ai_tavily_base_url),
+                            summary = AppConfig.aiTavilyBaseUrl,
+                            onClick = ::showTavilyBaseUrlDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiTavilyTopic,
+                            title = getString(R.string.ai_tavily_topic),
+                            summary = tavilyTopicLabel(),
+                            onClick = ::showTavilyTopicDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiTavilySearchDepth,
+                            title = getString(R.string.ai_tavily_search_depth),
+                            summary = tavilySearchDepthLabel(),
+                            onClick = ::showTavilySearchDepthDialog
+                        ),
+                        SettingActionSpec(
+                            key = PreferKey.aiTavilyMaxResults,
+                            title = getString(R.string.ai_tavily_max_results),
+                            summary = AppConfig.aiTavilyMaxResults.toString(),
+                            onClick = ::showTavilyMaxResultsDialog
+                        )
+                    )
+                )
+            )
+        )
     }
 
-    override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        when (preference.key) {
-            "aiAddProvider", "aiManageProviders", "aiAddModel", "aiFetchModels", "aiManageModels" ->
-                startActivity(Intent(requireContext(), AiProviderManageActivity::class.java))
-            "aiAddMcpServer" -> showEditMcpServerDialog()
-            "aiManageMcpServers" -> showManageMcpServersDialog()
-            "aiManageNativeTools" -> showManageNativeToolsDialog()
-            PreferKey.aiReadToolMode -> showReadToolModeDialog()
-            PreferKey.aiTavilyApiKey -> showTavilyApiKeyDialog()
-            PreferKey.aiTavilyBaseUrl -> showTavilyBaseUrlDialog()
-            PreferKey.aiTavilyTopic -> showTavilyTopicDialog()
-            PreferKey.aiTavilySearchDepth -> showTavilySearchDepthDialog()
-            PreferKey.aiTavilyMaxResults -> showTavilyMaxResultsDialog()
-            PreferKey.aiSystemPrompt -> showSystemPromptDialog()
-            "aiContextCompression" -> showContextCompressionDialog()
-            "aiPersonaManage" -> showPersonaManageDialog()
-            "aiWorldBookManage" ->
-                startActivity(Intent(requireContext(), AiWorldBookManageActivity::class.java))
-            "aiDefaultModelSettings" -> showDefaultModelSettingsDialog()
-            "aiImageGallery" ->
-                startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
-            "aiImageProviderManage" ->
-                startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
-            "aiImportDefaultSkill" -> importDefaultSkill()
-            PreferKey.aiSkillPrompt -> showManageSkillsDialog()
-        }
-        return super.onPreferenceTreeClick(preference)
-    }
-
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+    override fun onSettingPreferenceChanged(key: String) {
         when (key) {
             PreferKey.aiAssistantEnabled -> refreshUi(notifyMain = true)
             PreferKey.aiAskModelId,
@@ -111,6 +309,49 @@ class AiConfigFragment : PreferenceFragment(),
             PreferKey.aiCurrentImageProviderId -> refreshUi()
             PreferKey.aiReadToolMode -> refreshUi()
         }
+    }
+
+    private fun switch(
+        key: String,
+        title: String,
+        summary: String,
+        defaultValue: Boolean
+    ): SettingSwitchSpec {
+        return SettingSwitchSpec(
+            key = key,
+            title = title,
+            summary = summary,
+            checked = booleanSetting(key, defaultValue),
+            onCheckedChange = { updateBooleanSetting(key, it) }
+        )
+    }
+
+    private fun readToolModeLabel(): String {
+        return when (AppConfig.aiReadToolMode) {
+            AppConfig.AI_READ_TOOL_MODE_ALL -> "全量工具"
+            AppConfig.AI_READ_TOOL_MODE_SAFE -> "阅读安全工具"
+            else -> "使用已启用工具"
+        }
+    }
+
+    private fun tavilyTopicLabel(): String {
+        return getString(
+            when (AppConfig.aiTavilyTopic) {
+                "news" -> R.string.ai_tavily_topic_news
+                "finance" -> R.string.ai_tavily_topic_finance
+                else -> R.string.ai_tavily_topic_general
+            }
+        )
+    }
+
+    private fun tavilySearchDepthLabel(): String {
+        return getString(
+            when (AppConfig.aiTavilySearchDepth) {
+                "advanced" -> R.string.ai_tavily_search_depth_advanced
+                "ultra-fast" -> R.string.ai_tavily_search_depth_ultra_fast
+                else -> R.string.ai_tavily_search_depth_basic
+            }
+        )
     }
 
     private fun showReadToolModeDialog() {
@@ -994,7 +1235,7 @@ class AiConfigFragment : PreferenceFragment(),
                             url(skillUrl)
                         }.use { response ->
                             if (response.isSuccessful) {
-                                return@runCatching skillUrl to response.body?.string().orEmpty()
+                                return@runCatching skillUrl to response.body.string()
                             }
                             lastError = "${response.code} ${response.message}"
                         }
@@ -1141,144 +1382,12 @@ class AiConfigFragment : PreferenceFragment(),
     }
 
     private fun refreshUi(notifyMain: Boolean = false) {
-        val currentProvider = AppConfig.aiCurrentProvider
-        val providerModels = currentProviderModels()
-        val mcpServers = AppConfig.aiMcpServerList
-        val enabledMcpCount = mcpServers.count { it.enabled }
         val canEnable = AppConfig.aiCurrentModelConfig != null
-        val storedEnabled = preferenceManager.sharedPreferences
-            ?.getBoolean(PreferKey.aiAssistantEnabled, false) == true
+        val storedEnabled = booleanSetting(PreferKey.aiAssistantEnabled, false)
         if (!canEnable && storedEnabled) {
             AppConfig.aiAssistantEnabled = false
         }
-        findPreference<SwitchPreference>(PreferKey.aiAssistantEnabled)?.apply {
-            isEnabled = canEnable
-            isChecked = AppConfig.aiAssistantEnabled
-            summary = getString(
-                if (canEnable) R.string.ai_enable_summary else R.string.ai_enable_summary_disabled
-            )
-        }
-        findPreference<Preference>("aiManageProviders")?.summary =
-            if (AppConfig.aiProviderList.isEmpty()) {
-                getString(R.string.ai_no_providers)
-            } else {
-                buildString {
-                    append(currentProvider?.name ?: getString(R.string.ai_current_provider_summary_empty))
-                    append(" · ")
-                    append(getString(R.string.ai_manage_providers_summary, AppConfig.aiProviderList.size))
-                }
-            }
-        findPreference<Preference>("aiManageModels")?.summary =
-            if (providerModels.isEmpty()) {
-                getString(
-                    if (currentProvider == null) {
-                        R.string.ai_current_model_summary_empty
-                    } else {
-                        R.string.ai_current_model_summary_no_provider_models
-                    }
-                )
-            } else {
-                buildString {
-                    append(AppConfig.aiCurrentModelConfig?.modelId ?: providerModels.first().modelId)
-                    append(" · ")
-                    append(getString(R.string.ai_manage_models_summary, providerModels.size))
-                }
-            }
-        findPreference<Preference>("aiAddModel")?.summary =
-            getString(R.string.ai_add_model_summary_modern)
-        findPreference<Preference>("aiFetchModels")?.summary =
-            getString(R.string.ai_fetch_models_summary_modern)
-        findPreference<Preference>("aiManageMcpServers")?.summary =
-            if (mcpServers.isEmpty()) {
-                getString(R.string.ai_no_mcp_servers)
-            } else {
-                getString(
-                    R.string.ai_manage_mcp_servers_summary,
-                    enabledMcpCount,
-                    mcpServers.size
-                )
-            }
-        findPreference<SwitchPreference>(PreferKey.aiTavilyEnabled)?.summary =
-            getString(
-                if (AppConfig.aiTavilyApiKey.isBlank()) {
-                    R.string.ai_tavily_enable_summary_missing
-                } else {
-                    R.string.ai_tavily_enable_summary
-                }
-            )
-        findPreference<Preference>(PreferKey.aiTavilyApiKey)?.summary =
-            if (AppConfig.aiTavilyApiKey.isBlank()) {
-                getString(R.string.ai_tavily_api_key_summary)
-            } else {
-                getString(R.string.ai_tavily_api_key_summary_ready)
-            }
-        findPreference<Preference>(PreferKey.aiTavilyBaseUrl)?.summary = AppConfig.aiTavilyBaseUrl
-        findPreference<Preference>(PreferKey.aiTavilyTopic)?.summary = getString(
-            when (AppConfig.aiTavilyTopic) {
-                "news" -> R.string.ai_tavily_topic_news
-                "finance" -> R.string.ai_tavily_topic_finance
-                else -> R.string.ai_tavily_topic_general
-            }
-        )
-        findPreference<Preference>(PreferKey.aiTavilySearchDepth)?.summary = getString(
-            when (AppConfig.aiTavilySearchDepth) {
-                "advanced" -> R.string.ai_tavily_search_depth_advanced
-                "ultra-fast" -> R.string.ai_tavily_search_depth_ultra_fast
-                else -> R.string.ai_tavily_search_depth_basic
-            }
-        )
-        findPreference<Preference>(PreferKey.aiTavilyMaxResults)?.summary =
-            AppConfig.aiTavilyMaxResults.toString()
-        findPreference<Preference>(PreferKey.aiSystemPrompt)?.summary =
-            getString(R.string.ai_system_prompt_summary)
-        findPreference<Preference>("aiContextCompression")?.summary =
-            if (AppConfig.aiContextCompressionEnabled) {
-                "${AppConfig.aiContextWindowTokens} / ${AppConfig.aiThinkingContextTokens}"
-            } else {
-                getString(R.string.ai_context_compression_summary_default)
-            }
-        findPreference<Preference>("aiPersonaManage")?.summary =
-            AppConfig.aiCurrentPersona?.name
-                ?: getString(R.string.ai_persona_manage_summary_empty)
-        val worldBooks = AppConfig.aiWorldBookList
-        findPreference<Preference>("aiWorldBookManage")?.summary =
-            if (worldBooks.isEmpty()) {
-                "未配置世界书"
-            } else {
-                "${worldBooks.count { it.enabled }}/${worldBooks.size} 启用 · ${worldBooks.sumOf { it.entries.size }} 条目"
-            }
-        findPreference<Preference>("aiDefaultModelSettings")?.summary =
-            "问AI ${modelLabel(AppConfig.aiAskModelConfig)} / 总结 ${modelLabel(AppConfig.aiSummaryModelConfig)} / 多角色 ${modelLabel(AppConfig.aiReadAloudRoleModelConfig)} / 生图 ${imageProviderLabel()}"
-        val imageProviders = AppConfig.aiImageProviderList
-        findPreference<Preference>("aiImageProviderManage")?.summary =
-            if (imageProviders.isEmpty()) {
-                getString(R.string.ai_image_provider_summary_empty)
-            } else {
-                getString(
-                    R.string.ai_image_provider_summary,
-                    imageProviders.count { it.enabled },
-                    imageProviders.size
-                )
-            }
-        val skills = AppConfig.aiSkillList
-        val enabledSkillCount = skills.count { it.enabled }
-        findPreference<Preference>(PreferKey.aiSkillPrompt)?.summary =
-            if (skills.isEmpty()) {
-                getString(R.string.ai_skill_prompt_summary_empty)
-            } else {
-                getString(R.string.ai_skill_prompt_summary, enabledSkillCount, skills.size)
-            }
-        findPreference<Preference>("aiManageNativeTools")?.summary = run {
-            val enabledTools = AiToolRegistry.effectiveEnabledToolNames()
-            "${getString(R.string.ai_manage_native_tools_summary)} · ${enabledTools.size}"
-        }
-        findPreference<Preference>(PreferKey.aiReadToolMode)?.summary = run {
-            when (AppConfig.aiReadToolMode) {
-                AppConfig.AI_READ_TOOL_MODE_ALL -> "全量工具"
-                AppConfig.AI_READ_TOOL_MODE_SAFE -> "阅读安全工具"
-                else -> "使用已启用工具"
-            }
-        }
+        refreshSettings()
         if (notifyMain || (!canEnable && storedEnabled)) {
             postEvent(EventBus.NOTIFY_MAIN, false)
         }
