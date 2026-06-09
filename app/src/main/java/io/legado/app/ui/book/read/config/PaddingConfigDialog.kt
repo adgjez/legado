@@ -50,7 +50,6 @@ import io.legado.app.utils.postEvent
 class PaddingConfigDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.9f
-    override val maxWidthDp: Int = 560
 
     override fun onStart() {
         super.onStart()
