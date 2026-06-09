@@ -14,10 +14,10 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.DialogRecyclerViewBinding
 import io.legado.app.databinding.ItemThemeConfigBinding
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -74,13 +74,19 @@ class ThemeListDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
     }
 
     fun delete(index: Int) {
-        alert(R.string.delete, R.string.sure_del) {
-            yesButton {
-                ThemeConfig.delConfig(index)
-                initData()
-            }
-            noButton()
-        }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = getString(R.string.delete),
+                message = getString(R.string.sure_del),
+                positiveText = getString(R.string.delete),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    ThemeConfig.delConfig(index)
+                    initData()
+                }
+            )
+        )
     }
 
     fun share(index: Int) {
