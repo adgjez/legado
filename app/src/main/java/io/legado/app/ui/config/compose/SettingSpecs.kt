@@ -3,7 +3,7 @@ package io.legado.app.ui.config.compose
 import androidx.annotation.StringRes
 
 data class SettingPageSpec(
-    @StringRes val titleRes: Int,
+    @param:StringRes val titleRes: Int,
     val sections: List<SettingSectionSpec>
 )
 
@@ -70,6 +70,7 @@ data class SettingActionSpec(
     override val key: String,
     override val title: CharSequence,
     val onClick: () -> Unit,
+    val onLongClick: (() -> Unit)? = null,
     override val summary: CharSequence? = null,
     override val visible: Boolean = true,
     override val enabled: Boolean = true,

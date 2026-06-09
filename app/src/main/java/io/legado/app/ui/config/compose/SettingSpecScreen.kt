@@ -2,6 +2,7 @@ package io.legado.app.ui.config.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -195,11 +197,10 @@ private fun SettingRow(
                 radiusPx = panelRadiusPx,
                 isLast = isLast
             )
-            .clickable(
-                enabled = item.enabled,
+            .settingRowClick(
+                item = item,
                 interactionSource = interactionSource,
-                indication = null,
-                onClick = { onItemClick(item) }
+                onItemClick = onItemClick
             )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
@@ -239,6 +240,33 @@ private fun SettingRow(
             is SettingSliderSpec -> Unit
             is SettingActionSpec -> Unit
         }
+    }
+}
+
+private fun Modifier.settingRowClick(
+    item: SettingItemSpec,
+    interactionSource: MutableInteractionSource,
+    onItemClick: (SettingItemSpec) -> Unit
+): Modifier {
+    val action = item as? SettingActionSpec
+    val onLongClick = action?.onLongClick
+    return if (onLongClick != null) {
+        combinedClickable(
+            enabled = item.enabled,
+            interactionSource = interactionSource,
+            indication = null,
+            role = Role.Button,
+            onClick = { onItemClick(item) },
+            onLongClick = onLongClick
+        )
+    } else {
+        clickable(
+            enabled = item.enabled,
+            interactionSource = interactionSource,
+            indication = null,
+            role = Role.Button,
+            onClick = { onItemClick(item) }
+        )
     }
 }
 
