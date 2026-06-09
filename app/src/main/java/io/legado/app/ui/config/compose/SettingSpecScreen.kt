@@ -255,7 +255,7 @@ private fun Modifier.settingRowClick(
             enabled = item.enabled,
             interactionSource = interactionSource,
             indication = null,
-            role = Role.Button,
+            role = item.clickRole(),
             onClick = { onItemClick(item) },
             onLongClick = onLongClick
         )
@@ -264,9 +264,18 @@ private fun Modifier.settingRowClick(
             enabled = item.enabled,
             interactionSource = interactionSource,
             indication = null,
-            role = Role.Button,
+            role = item.clickRole(),
             onClick = { onItemClick(item) }
         )
+    }
+}
+
+private fun SettingItemSpec.clickRole(): Role {
+    return when (this) {
+        is SettingSwitchSpec -> Role.Switch
+        is SettingActionSpec,
+        is SettingChoiceSpec -> Role.Button
+        is SettingSliderSpec -> Role.Button
     }
 }
 
