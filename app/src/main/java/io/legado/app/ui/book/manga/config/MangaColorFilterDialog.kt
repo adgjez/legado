@@ -35,7 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.widget.compose.AppDialogSliderRow
+import io.legado.app.ui.widget.compose.AppDialogSliderGrid
+import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
@@ -138,50 +139,54 @@ class MangaColorFilterDialog : ComposeDialogFragment() {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                AppDialogSliderRow(
-                    title = stringResource(R.string.brightness),
-                    value = brightness,
-                    range = 0..255,
-                    onValueChange = { value ->
-                        brightness = value
-                        markChanged()
-                    }
-                )
-                AppDialogSliderRow(
-                    title = "R",
-                    value = red,
-                    range = 0..255,
-                    onValueChange = { value ->
-                        red = value
-                        markChanged()
-                    }
-                )
-                AppDialogSliderRow(
-                    title = "G",
-                    value = green,
-                    range = 0..255,
-                    onValueChange = { value ->
-                        green = value
-                        markChanged()
-                    }
-                )
-                AppDialogSliderRow(
-                    title = "B",
-                    value = blue,
-                    range = 0..255,
-                    onValueChange = { value ->
-                        blue = value
-                        markChanged()
-                    }
-                )
-                AppDialogSliderRow(
-                    title = "A",
-                    value = alpha,
-                    range = 0..255,
-                    onValueChange = { value ->
-                        alpha = value
-                        markChanged()
-                    }
+                AppDialogSliderGrid(
+                    items = listOf(
+                        AppDialogSliderItem(
+                            title = stringResource(R.string.brightness),
+                            value = brightness,
+                            range = 0..255,
+                            onValueChange = { value ->
+                                brightness = value
+                                markChanged()
+                            }
+                        ),
+                        AppDialogSliderItem(
+                            title = "R",
+                            value = red,
+                            range = 0..255,
+                            onValueChange = { value ->
+                                red = value
+                                markChanged()
+                            }
+                        ),
+                        AppDialogSliderItem(
+                            title = "G",
+                            value = green,
+                            range = 0..255,
+                            onValueChange = { value ->
+                                green = value
+                                markChanged()
+                            }
+                        ),
+                        AppDialogSliderItem(
+                            title = "B",
+                            value = blue,
+                            range = 0..255,
+                            onValueChange = { value ->
+                                blue = value
+                                markChanged()
+                            }
+                        ),
+                        AppDialogSliderItem(
+                            title = "A",
+                            value = alpha,
+                            range = 0..255,
+                            onValueChange = { value ->
+                                alpha = value
+                                markChanged()
+                            }
+                        )
+                    )
                 )
             }
         }

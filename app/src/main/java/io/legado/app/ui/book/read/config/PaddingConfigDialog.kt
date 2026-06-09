@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -38,10 +39,12 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.ui.widget.compose.AppDialogSliderRow
+import io.legado.app.ui.widget.compose.AppDialogSliderGrid
+import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.LegadoMiuixSection
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
@@ -49,7 +52,7 @@ import io.legado.app.utils.postEvent
 
 class PaddingConfigDialog : ComposeDialogFragment() {
 
-    override val widthFraction: Float = 0.9f
+    override val widthFraction: Float = 0.96f
 
     override fun onStart() {
         super.onStart()
@@ -98,12 +101,12 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 620.dp)
+                    .heightIn(max = 640.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
                 HeaderSection(style = style)
-                BodySection()
+                BodySection(style = style)
                 FooterSection(style = style)
             }
         }
@@ -117,106 +120,95 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingRight) }
 
-        PaddingSectionTitle(
+        LegadoMiuixSection(
             title = stringResource(R.string.header),
-            showLine = showLine,
-            style = style,
-            onShowLineChange = {
-                showLine = it
-                ReadBookConfig.showHeaderLine = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_top),
-            value = top,
-            range = 0..100,
-            onValueChange = {
-                top = it
-                ReadBookConfig.headerPaddingTop = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_bottom),
-            value = bottom,
-            range = 0..100,
-            onValueChange = {
-                bottom = it
-                ReadBookConfig.headerPaddingBottom = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_left),
-            value = left,
-            range = 0..100,
-            onValueChange = {
-                left = it
-                ReadBookConfig.headerPaddingLeft = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_right),
-            value = right,
-            range = 0..100,
-            onValueChange = {
-                right = it
-                ReadBookConfig.headerPaddingRight = it
-                postHeaderFooterChanged()
-            }
-        )
+            palette = style.toMiuixPalette(),
+            cornerRadius = style.actionRadius
+        ) {
+            PaddingSectionLineSwitch(
+                showLine = showLine,
+                style = style,
+                onShowLineChange = {
+                    showLine = it
+                    ReadBookConfig.showHeaderLine = it
+                    postHeaderFooterChanged()
+                }
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            PaddingSliderGrid(
+                top = top,
+                bottom = bottom,
+                left = left,
+                right = right,
+                topRange = 0..100,
+                bottomRange = 0..100,
+                sideRange = 0..100,
+                onTopChange = {
+                    top = it
+                    ReadBookConfig.headerPaddingTop = it
+                    postHeaderFooterChanged()
+                },
+                onBottomChange = {
+                    bottom = it
+                    ReadBookConfig.headerPaddingBottom = it
+                    postHeaderFooterChanged()
+                },
+                onLeftChange = {
+                    left = it
+                    ReadBookConfig.headerPaddingLeft = it
+                    postHeaderFooterChanged()
+                },
+                onRightChange = {
+                    right = it
+                    ReadBookConfig.headerPaddingRight = it
+                    postHeaderFooterChanged()
+                }
+            )
+        }
     }
 
     @Composable
-    private fun BodySection() {
+    private fun BodySection(style: AppDialogStyle) {
         var top by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingTop) }
         var bottom by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingBottom) }
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingRight) }
 
-        PaddingSectionTitle(title = stringResource(R.string.main_body))
-        PaddingSlider(
-            title = stringResource(R.string.padding_top),
-            value = top,
-            range = 0..200,
-            onValueChange = {
-                top = it
-                ReadBookConfig.paddingTop = it
-                postBodyChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_bottom),
-            value = bottom,
-            range = 0..100,
-            onValueChange = {
-                bottom = it
-                ReadBookConfig.paddingBottom = it
-                postBodyChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_left),
-            value = left,
-            range = 0..100,
-            onValueChange = {
-                left = it
-                ReadBookConfig.paddingLeft = it
-                postBodyChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_right),
-            value = right,
-            range = 0..100,
-            onValueChange = {
-                right = it
-                ReadBookConfig.paddingRight = it
-                postBodyChanged()
-            }
-        )
+        LegadoMiuixSection(
+            title = stringResource(R.string.main_body),
+            palette = style.toMiuixPalette(),
+            cornerRadius = style.actionRadius
+        ) {
+            PaddingSliderGrid(
+                top = top,
+                bottom = bottom,
+                left = left,
+                right = right,
+                topRange = 0..200,
+                bottomRange = 0..100,
+                sideRange = 0..100,
+                onTopChange = {
+                    top = it
+                    ReadBookConfig.paddingTop = it
+                    postBodyChanged()
+                },
+                onBottomChange = {
+                    bottom = it
+                    ReadBookConfig.paddingBottom = it
+                    postBodyChanged()
+                },
+                onLeftChange = {
+                    left = it
+                    ReadBookConfig.paddingLeft = it
+                    postBodyChanged()
+                },
+                onRightChange = {
+                    right = it
+                    ReadBookConfig.paddingRight = it
+                    postBodyChanged()
+                }
+            )
+        }
     }
 
     @Composable
@@ -227,115 +219,124 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingRight) }
 
-        PaddingSectionTitle(
+        LegadoMiuixSection(
             title = stringResource(R.string.footer),
-            showLine = showLine,
-            style = style,
-            onShowLineChange = {
-                showLine = it
-                ReadBookConfig.showFooterLine = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_top),
-            value = top,
-            range = 0..100,
-            onValueChange = {
-                top = it
-                ReadBookConfig.footerPaddingTop = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_bottom),
-            value = bottom,
-            range = 0..100,
-            onValueChange = {
-                bottom = it
-                ReadBookConfig.footerPaddingBottom = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_left),
-            value = left,
-            range = 0..100,
-            onValueChange = {
-                left = it
-                ReadBookConfig.footerPaddingLeft = it
-                postHeaderFooterChanged()
-            }
-        )
-        PaddingSlider(
-            title = stringResource(R.string.padding_right),
-            value = right,
-            range = 0..100,
-            onValueChange = {
-                right = it
-                ReadBookConfig.footerPaddingRight = it
-                postHeaderFooterChanged()
-            }
-        )
-    }
-
-    @Composable
-    private fun PaddingSectionTitle(
-        title: String,
-        showLine: Boolean? = null,
-        style: AppDialogStyle = rememberAppDialogStyle(),
-        onShowLineChange: ((Boolean) -> Unit)? = null
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 2.dp, bottom = 1.dp),
-            verticalAlignment = Alignment.CenterVertically
+            palette = style.toMiuixPalette(),
+            cornerRadius = style.actionRadius
         ) {
-            Text(
-                text = title,
-                color = style.accent,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = style.titleFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+            PaddingSectionLineSwitch(
+                showLine = showLine,
+                style = style,
+                onShowLineChange = {
+                    showLine = it
+                    ReadBookConfig.showFooterLine = it
+                    postHeaderFooterChanged()
+                }
             )
-            if (showLine != null && onShowLineChange != null) {
-                Text(
-                    text = stringResource(R.string.showLine),
-                    color = style.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                LegadoMiuixSwitch(
-                    checked = showLine,
-                    onCheckedChange = onShowLineChange,
-                    palette = style.toMiuixPalette()
-                )
-            }
+            Spacer(modifier = Modifier.height(6.dp))
+            PaddingSliderGrid(
+                top = top,
+                bottom = bottom,
+                left = left,
+                right = right,
+                topRange = 0..100,
+                bottomRange = 0..100,
+                sideRange = 0..100,
+                onTopChange = {
+                    top = it
+                    ReadBookConfig.footerPaddingTop = it
+                    postHeaderFooterChanged()
+                },
+                onBottomChange = {
+                    bottom = it
+                    ReadBookConfig.footerPaddingBottom = it
+                    postHeaderFooterChanged()
+                },
+                onLeftChange = {
+                    left = it
+                    ReadBookConfig.footerPaddingLeft = it
+                    postHeaderFooterChanged()
+                },
+                onRightChange = {
+                    right = it
+                    ReadBookConfig.footerPaddingRight = it
+                    postHeaderFooterChanged()
+                }
+            )
         }
     }
 
     @Composable
-    private fun PaddingSlider(
-        title: String,
-        value: Int,
-        range: IntRange,
-        onValueChange: (Int) -> Unit
+    private fun PaddingSectionLineSwitch(
+        showLine: Boolean,
+        style: AppDialogStyle,
+        onShowLineChange: (Boolean) -> Unit
     ) {
-        AppDialogSliderRow(
-            title = title,
-            value = value,
-            range = range,
-            onValueChange = { nextValue ->
-                if (nextValue != value) {
-                    onValueChange(nextValue)
-                }
-            }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.showLine),
+                color = style.primaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            LegadoMiuixSwitch(
+                checked = showLine,
+                onCheckedChange = onShowLineChange,
+                palette = style.toMiuixPalette()
+            )
+        }
+    }
+
+    @Composable
+    private fun PaddingSliderGrid(
+        top: Int,
+        bottom: Int,
+        left: Int,
+        right: Int,
+        topRange: IntRange,
+        bottomRange: IntRange,
+        sideRange: IntRange,
+        onTopChange: (Int) -> Unit,
+        onBottomChange: (Int) -> Unit,
+        onLeftChange: (Int) -> Unit,
+        onRightChange: (Int) -> Unit
+    ) {
+        AppDialogSliderGrid(
+            items = listOf(
+                AppDialogSliderItem(
+                    title = stringResource(R.string.padding_top),
+                    value = top,
+                    range = topRange,
+                    onValueChange = { if (it != top) onTopChange(it) }
+                ),
+                AppDialogSliderItem(
+                    title = stringResource(R.string.padding_bottom),
+                    value = bottom,
+                    range = bottomRange,
+                    onValueChange = { if (it != bottom) onBottomChange(it) }
+                ),
+                AppDialogSliderItem(
+                    title = stringResource(R.string.padding_left),
+                    value = left,
+                    range = sideRange,
+                    onValueChange = { if (it != left) onLeftChange(it) }
+                ),
+                AppDialogSliderItem(
+                    title = stringResource(R.string.padding_right),
+                    value = right,
+                    range = sideRange,
+                    onValueChange = { if (it != right) onRightChange(it) }
+                )
+            )
         )
     }
 

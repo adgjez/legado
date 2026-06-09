@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -988,41 +989,102 @@ fun AppDialogSliderRow(
     title: String,
     value: Int,
     range: IntRange,
-    onValueChange: (Int) -> Unit
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
     LegadoMiuixCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         color = style.fieldSurface,
         contentColor = style.primaryText,
         cornerRadius = style.actionRadius,
-        insidePadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
+        insidePadding = PaddingValues(
+            horizontal = if (compact) 11.dp else 13.dp,
+            vertical = if (compact) 8.dp else 10.dp
+        )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                color = style.primaryText,
-                fontSize = 15.sp
-            )
-            Text(
-                text = value.toString(),
-                color = style.secondaryText,
-                fontSize = 13.sp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    modifier = Modifier.weight(1f),
+                    color = style.primaryText,
+                    fontSize = if (compact) 13.sp else 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = value.toString(),
+                    color = style.secondaryText,
+                    fontSize = if (compact) 12.sp else 13.sp
+                )
+            }
+            LegadoMiuixSlider(
+                value = value.toFloat(),
+                onValueChange = { onValueChange(it.roundToInt().coerceIn(range.first, range.last)) },
+                palette = palette,
+                valueRange = range.first.toFloat()..range.last.toFloat(),
+                steps = (range.last - range.first - 1).coerceAtLeast(0)
             )
         }
-        LegadoMiuixSlider(
-            value = value.toFloat(),
-            onValueChange = { onValueChange(it.roundToInt().coerceIn(range.first, range.last)) },
-            palette = palette,
-            valueRange = range.first.toFloat()..range.last.toFloat(),
-            steps = (range.last - range.first - 1).coerceAtLeast(0)
-        )
+    }
+}
+
+data class AppDialogSliderItem(
+    val title: String,
+    val value: Int,
+    val range: IntRange,
+    val onValueChange: (Int) -> Unit
+)
+
+@Composable
+fun AppDialogSliderGrid(
+    items: List<AppDialogSliderItem>,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val twoColumns = maxWidth >= 330.dp
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (twoColumns) {
+                items.chunked(2).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { item ->
+                            AppDialogSliderRow(
+                                title = item.title,
+                                value = item.value,
+                                range = item.range,
+                                onValueChange = item.onValueChange,
+                                modifier = Modifier.weight(1f),
+                                compact = true
+                            )
+                        }
+                        if (rowItems.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            } else {
+                items.forEach { item ->
+                    AppDialogSliderRow(
+                        title = item.title,
+                        value = item.value,
+                        range = item.range,
+                        onValueChange = item.onValueChange
+                    )
+                }
+            }
         }
     }
 }
