@@ -21,12 +21,13 @@ import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.cloud.S3ContainerScope
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -161,25 +162,34 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
             if (item.enabled) Action.DISABLE else Action.ENABLE,
             Action.DELETE
         )
-        selector(AppCloudStorage.containerDisplayLabel(item), actions.map { getString(it.titleRes) }) { _, index ->
-            when (actions[index]) {
-                Action.EDIT -> showEditDialog(item)
-                Action.TEST -> testConnection(item)
-                Action.REFRESH -> refreshCapacity(item)
-                Action.SET_DEFAULT -> {
-                    if (!item.enabled) {
-                        toastOnUi(R.string.s3_container_disabled)
-                        return@selector
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = AppCloudStorage.containerDisplayLabel(item),
+                labels = actions.map { getString(it.titleRes) },
+                dangerIndices = setOf(actions.indexOf(Action.DELETE)).filter { it >= 0 }.toSet(),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    when (actions.getOrNull(index)) {
+                        Action.EDIT -> showEditDialog(item)
+                        Action.TEST -> testConnection(item)
+                        Action.REFRESH -> refreshCapacity(item)
+                        Action.SET_DEFAULT -> {
+                            if (!item.enabled) {
+                                toastOnUi(R.string.s3_container_disabled)
+                            } else {
+                                AppCloudStorage.selectContainer(S3ContainerScope.DEFAULT, item.id)
+                                toastOnUi(R.string.s3_container_set_default_success)
+                                reload()
+                            }
+                        }
+                        Action.ENABLE -> updateItem(item.copy(enabled = true, isFull = false))
+                        Action.DISABLE -> updateItem(item.copy(enabled = false))
+                        Action.DELETE -> confirmDelete(item)
+                        null -> Unit
                     }
-                    AppCloudStorage.selectContainer(S3ContainerScope.DEFAULT, item.id)
-                    toastOnUi(R.string.s3_container_set_default_success)
-                    reload()
                 }
-                Action.ENABLE -> updateItem(item.copy(enabled = true, isFull = false))
-                Action.DISABLE -> updateItem(item.copy(enabled = false))
-                Action.DELETE -> confirmDelete(item)
-            }
-        }
+            )
+        )
     }
 
     private fun updateItem(item: S3Container) {
