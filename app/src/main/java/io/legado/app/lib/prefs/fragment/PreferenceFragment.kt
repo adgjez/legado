@@ -16,6 +16,7 @@ import androidx.preference.PreferenceGroup
 import androidx.preference.MultiSelectListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.lib.prefs.EditTextPreferenceDialog
 import io.legado.app.lib.prefs.ListPreferenceDialog
 import io.legado.app.lib.prefs.MultiSelectListPreferenceDialog
@@ -29,7 +30,19 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
     private val composePreferenceChangeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             refreshComposePreferences()
+            composeView?.post { refreshComposePreferences() }
+            composeView?.postDelayed({ refreshComposePreferences() }, 80L)
         }
+    private val preferenceAdapterObserver = object : RecyclerView.AdapterDataObserver() {
+        override fun onChanged() = refreshComposePreferences()
+        override fun onItemRangeChanged(positionStart: Int, itemCount: Int) = refreshComposePreferences()
+        override fun onItemRangeChanged(positionStart: Int, itemCount: Int, payload: Any?) = refreshComposePreferences()
+        override fun onItemRangeInserted(positionStart: Int, itemCount: Int) = refreshComposePreferences()
+        override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) = refreshComposePreferences()
+        override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) = refreshComposePreferences()
+    }
+    private var observedPreferenceAdapter: RecyclerView.Adapter<*>? = null
+    private val composeScrollTargetKey = androidx.compose.runtime.mutableStateOf<String?>(null)
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -39,6 +52,7 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
         listView.applyNavigationBarPadding()
         listView.itemAnimator = null
         installComposePreferenceContent()
+        observePreferenceAdapter()
         preferenceManager.sharedPreferences
             ?.registerOnSharedPreferenceChangeListener(composePreferenceChangeListener)
     }
@@ -46,8 +60,19 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
     override fun onDestroyView() {
         preferenceManager.sharedPreferences
             ?.unregisterOnSharedPreferenceChangeListener(composePreferenceChangeListener)
+        observedPreferenceAdapter?.unregisterAdapterDataObserver(preferenceAdapterObserver)
+        observedPreferenceAdapter = null
         composeView = null
         super.onDestroyView()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val targetKey = activity?.intent?.getStringExtra("targetKey")?.trim().orEmpty()
+        if (targetKey.isNotBlank()) {
+            composeScrollTargetKey.value = targetKey
+        }
+        refreshComposePreferences()
     }
 
     /**
@@ -104,6 +129,12 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
         composeRefreshTick.intValue += 1
     }
 
+    protected fun scrollToComposePreference(preference: Preference) {
+        preference.key?.takeIf { it.isNotBlank() }?.let { key ->
+            composeScrollTargetKey.value = key
+        }
+    }
+
     private fun installComposePreferenceContent() {
         val parent = listView.parent as? ViewGroup ?: return
         listView.visibility = View.GONE
@@ -120,11 +151,23 @@ abstract class PreferenceFragment : PreferenceFragmentCompat() {
                     refreshTick = composeRefreshTick.intValue,
                     onPreferenceClick = ::handleComposePreferenceClick,
                     onSwitchChange = ::handleComposeSwitchChange,
-                    onSeekChange = ::handleComposeSeekChange
+                    onSeekChange = ::handleComposeSeekChange,
+                    scrollTargetKey = composeScrollTargetKey.value,
+                    onScrollTargetConsumed = {
+                        composeScrollTargetKey.value = null
+                    }
                 )
             }
         }
         parent.addView(composeView)
+    }
+
+    private fun observePreferenceAdapter() {
+        val adapter = listView.adapter ?: return
+        if (observedPreferenceAdapter === adapter) return
+        observedPreferenceAdapter?.unregisterAdapterDataObserver(preferenceAdapterObserver)
+        observedPreferenceAdapter = adapter
+        adapter.registerAdapterDataObserver(preferenceAdapterObserver)
     }
 
     private fun handleComposePreferenceClick(preference: Preference) {

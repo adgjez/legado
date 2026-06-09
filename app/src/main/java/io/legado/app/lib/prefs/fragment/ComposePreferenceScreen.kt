@@ -5,10 +5,14 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +38,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +67,10 @@ import androidx.preference.PreferenceGroup
 import androidx.preference.SwitchPreferenceCompat
 import io.legado.app.R
 import io.legado.app.lib.prefs.ColorPreference
+import io.legado.app.lib.prefs.IconListPreference
 import io.legado.app.lib.prefs.SeekBarPreference
+import io.legado.app.lib.prefs.Preference as LegadoPreference
+import io.legado.app.lib.prefs.SwitchPreference as LegadoSwitchPreference
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
@@ -93,7 +101,9 @@ internal fun ComposePreferenceScreen(
     refreshTick: Int,
     onPreferenceClick: (Preference) -> Unit,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit,
-    onSeekChange: (SeekBarPreference, Int) -> Unit
+    onSeekChange: (SeekBarPreference, Int) -> Unit,
+    scrollTargetKey: String?,
+    onScrollTargetConsumed: () -> Unit
 ) {
     val context = LocalContext.current
     val style = rememberAppDialogStyle()
@@ -135,7 +145,9 @@ internal fun ComposePreferenceScreen(
                     titleFontFamily = style.titleFontFamily,
                     onPreferenceClick = onPreferenceClick,
                     onSwitchChange = onSwitchChange,
-                    onSeekChange = onSeekChange
+                    onSeekChange = onSeekChange,
+                    scrollTargetKey = scrollTargetKey,
+                    onScrollTargetConsumed = onScrollTargetConsumed
                 )
             }
         }
@@ -150,7 +162,9 @@ private fun PreferenceSectionPanel(
     titleFontFamily: FontFamily,
     onPreferenceClick: (Preference) -> Unit,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit,
-    onSeekChange: (SeekBarPreference, Int) -> Unit
+    onSeekChange: (SeekBarPreference, Int) -> Unit,
+    scrollTargetKey: String?,
+    onScrollTargetConsumed: () -> Unit
 ) {
     val context = LocalContext.current
     val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
@@ -188,13 +202,16 @@ private fun PreferenceSectionPanel(
                 showDivider = index != section.rows.lastIndex,
                 onPreferenceClick = onPreferenceClick,
                 onSwitchChange = onSwitchChange,
-                onSeekChange = onSeekChange
+                onSeekChange = onSeekChange,
+                scrollTargetKey = scrollTargetKey,
+                onScrollTargetConsumed = onScrollTargetConsumed
             )
         }
     }
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun PreferenceRow(
     preference: Preference,
     colors: ComposePreferenceColors,
@@ -203,8 +220,17 @@ private fun PreferenceRow(
     showDivider: Boolean,
     onPreferenceClick: (Preference) -> Unit,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit,
-    onSeekChange: (SeekBarPreference, Int) -> Unit
+    onSeekChange: (SeekBarPreference, Int) -> Unit,
+    scrollTargetKey: String?,
+    onScrollTargetConsumed: () -> Unit
 ) {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(scrollTargetKey, preference.key) {
+        if (!scrollTargetKey.isNullOrBlank() && preference.key == scrollTargetKey) {
+            bringIntoViewRequester.bringIntoView()
+            onScrollTargetConsumed()
+        }
+    }
     if (preference is SeekBarPreference) {
         SeekBarPreferenceRow(
             preference = preference,
@@ -212,7 +238,8 @@ private fun PreferenceRow(
             panelRadiusPx = panelRadiusPx,
             isLast = isLast,
             showDivider = showDivider,
-            onSeekChange = onSeekChange
+            onSeekChange = onSeekChange,
+            modifier = Modifier.bringIntoViewRequester(bringIntoViewRequester)
         )
         return
     }
@@ -223,6 +250,7 @@ private fun PreferenceRow(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(bringIntoViewRequester)
             .defaultMinSize(minHeight = 60.dp)
             .preferenceRowDecoration(
                 pressed = pressed,
@@ -232,11 +260,14 @@ private fun PreferenceRow(
                 radiusPx = panelRadiusPx,
                 isLast = isLast
             )
-            .clickable(
+            .combinedClickable(
                 enabled = enabled && preference.isSelectable,
                 interactionSource = interactionSource,
                 indication = null,
-                onClick = { onPreferenceClick(preference) }
+                onClick = { onPreferenceClick(preference) },
+                onLongClick = {
+                    preference.performComposeLongClick()
+                }
             )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
@@ -252,6 +283,14 @@ private fun PreferenceRow(
             enabled = enabled,
             onSwitchChange = onSwitchChange
         )
+    }
+}
+
+private fun Preference.performComposeLongClick(): Boolean {
+    return when (this) {
+        is LegadoPreference -> performLongClick()
+        is LegadoSwitchPreference -> performLongClick()
+        else -> false
     }
 }
 
@@ -311,6 +350,17 @@ private fun PreferenceWidget(
             )
         }
 
+        is IconListPreference -> {
+            preference.selectedIconDrawable()?.let { drawable ->
+                Spacer(modifier = Modifier.width(12.dp))
+                DrawablePreview(
+                    drawable = drawable,
+                    enabled = enabled,
+                    modifier = Modifier.size(42.dp)
+                )
+            }
+        }
+
         is ListPreference -> {
             val entry = preference.entry?.toString().orEmpty()
             if (entry.isNotBlank()) {
@@ -345,20 +395,48 @@ private fun PreferenceWidget(
 }
 
 @Composable
+private fun DrawablePreview(
+    drawable: Drawable,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val alpha = if (enabled) 1f else 0.42f
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .drawWithCache {
+                onDrawBehind {
+                    drawIntoCanvas { canvas ->
+                        drawable.alpha = (alpha * 255).toInt().coerceIn(0, 255)
+                        drawable.bounds = Rect(0, 0, size.width.toInt(), size.height.toInt())
+                        drawable.draw(canvas.nativeCanvas)
+                    }
+                }
+            }
+    )
+}
+
+@Composable
 private fun SeekBarPreferenceRow(
     preference: SeekBarPreference,
     colors: ComposePreferenceColors,
     panelRadiusPx: Float,
     isLast: Boolean,
     showDivider: Boolean,
-    onSeekChange: (SeekBarPreference, Int) -> Unit
+    onSeekChange: (SeekBarPreference, Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val enabled = preference.isEnabled
     var sliderValue by remember(preference.key, preference.value) {
         mutableFloatStateOf(preference.value.toFloat())
     }
+    fun commitValue(value: Int) {
+        val nextValue = value.coerceIn(preference.minValue, preference.maxValue)
+        sliderValue = nextValue.toFloat()
+        onSeekChange(preference, nextValue)
+    }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 72.dp)
             .preferenceRowDecoration(
@@ -392,7 +470,7 @@ private fun SeekBarPreferenceRow(
             valueRange = preference.minValue.toFloat()..preference.maxValue.toFloat(),
             onValueChange = { sliderValue = it },
             onValueChangeFinished = {
-                onSeekChange(preference, sliderValue.toInt())
+                commitValue(sliderValue.toInt())
             },
             colors = SliderDefaults.colors(
                 thumbColor = colors.accent,
@@ -404,7 +482,46 @@ private fun SeekBarPreferenceRow(
             ),
             modifier = Modifier.fillMaxWidth()
         )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            StepControlButton(
+                text = "-",
+                enabled = enabled && sliderValue.toInt() > preference.minValue,
+                colors = colors
+            ) {
+                commitValue(sliderValue.toInt() - 1)
+            }
+            StepControlButton(
+                text = "+",
+                enabled = enabled && sliderValue.toInt() < preference.maxValue,
+                colors = colors
+            ) {
+                commitValue(sliderValue.toInt() + 1)
+            }
+        }
     }
+}
+
+@Composable
+private fun StepControlButton(
+    text: String,
+    enabled: Boolean,
+    colors: ComposePreferenceColors,
+    onClick: () -> Unit
+) {
+    Text(
+        text = text,
+        color = if (enabled) colors.accent else colors.disabledText,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(colors.accent.copy(alpha = if (enabled) 0.10f else 0.04f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+    )
 }
 
 private fun PreferenceGroup.toComposeSections(): List<ComposePreferenceSection> {

@@ -412,7 +412,7 @@ class OtherConfigFragment : PreferenceFragment(),
         val preference = findPreference<Preference>(targetKey) ?: return
         targetKeyHandled = true
         listView.post {
-            scrollToPreference(preference)
+            scrollToComposePreference(preference)
             if (preference is SwitchPreferenceCompat) {
                 preference.isChecked = !preference.isChecked
             } else {

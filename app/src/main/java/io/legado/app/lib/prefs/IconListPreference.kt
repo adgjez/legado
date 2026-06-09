@@ -103,6 +103,15 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         }
     }
 
+    fun selectedIconDrawable(): Drawable? {
+        val selectedIndex = findIndexOfValue(value)
+        return if (selectedIndex >= 0) {
+            mEntryDrawables.getOrNull(selectedIndex)
+        } else {
+            null
+        }
+    }
+
     private fun getActivity(): FragmentActivity? {
         val context = context
         if (context is FragmentActivity) {
