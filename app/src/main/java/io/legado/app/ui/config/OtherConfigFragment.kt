@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import com.jeremyliao.liveeventbus.LiveEventBus
+import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
@@ -210,7 +211,7 @@ class OtherConfigFragment : ComposeSettingFragment() {
             SettingActionSpec(
                 key = PreferKey.userAgent,
                 title = getString(R.string.user_agent),
-                summary = AppConfig.userAgent,
+                summary = userAgentValue(),
                 onClick = ::showUserAgentDialog
             ),
             SettingActionSpec(
@@ -531,7 +532,7 @@ class OtherConfigFragment : ComposeSettingFragment() {
         showComposeTextInputDialog(
             title = getString(R.string.user_agent),
             hint = getString(R.string.user_agent),
-            initialValue = AppConfig.userAgent,
+            initialValue = userAgentValue(),
             onPositive = { userAgent ->
                 if (userAgent.isNullOrBlank()) {
                     removePref(PreferKey.userAgent)
@@ -540,6 +541,11 @@ class OtherConfigFragment : ComposeSettingFragment() {
                 }
             }
         )
+    }
+
+    private fun userAgentValue(): String {
+        return stringSetting(PreferKey.userAgent, "")
+            .ifBlank { DEFAULT_USER_AGENT }
     }
 
     @SuppressLint("InflateParams")
@@ -629,5 +635,9 @@ class OtherConfigFragment : ComposeSettingFragment() {
         private const val KEY_DISCOVERY_SUBSCRIPTION_SETTINGS = "discoverySubscriptionSettings"
         private const val KEY_MEDIA_BUTTON_ON_EXIT = "mediaButtonOnExit"
         private const val KEY_AUTO_UPDATE_VARIANT = "autoUpdateVariant"
+        private val DEFAULT_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" +
+                BuildConfig.Cronet_Main_Version +
+                " Safari/537.36"
     }
 }

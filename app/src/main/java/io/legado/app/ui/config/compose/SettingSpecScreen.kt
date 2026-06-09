@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,13 +72,28 @@ fun SettingSpecScreen(
         }
     }
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val targetTitleOffsetPx = with(density) { 38.dp.roundToPx() }
+    val targetRowOffsetPx = with(density) { 72.dp.roundToPx() }
     LaunchedEffect(scrollTargetKey, sections) {
         val targetKey = scrollTargetKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val sectionIndex = sections.indexOfFirst { section ->
-            section.items.any { it.key == targetKey || targetKey in it.searchKeys }
+        var targetSectionIndex = -1
+        var targetRowIndex = -1
+        sections.forEachIndexed { sectionIndex, section ->
+            if (targetSectionIndex >= 0) return@forEachIndexed
+            val rowIndex = section.items.indexOfFirst {
+                it.key == targetKey || targetKey in it.searchKeys
+            }
+            if (rowIndex >= 0) {
+                targetSectionIndex = sectionIndex
+                targetRowIndex = rowIndex
+            }
         }
-        if (sectionIndex >= 0) {
-            listState.animateScrollToItem(sectionIndex)
+        if (targetSectionIndex >= 0) {
+            val section = sections[targetSectionIndex]
+            val scrollOffset = targetRowIndex * targetRowOffsetPx +
+                if (section.title.isNullOrBlank()) 0 else targetTitleOffsetPx
+            listState.animateScrollToItem(targetSectionIndex, scrollOffset)
             onTargetReady(targetKey)
         } else {
             onTargetMissing()
