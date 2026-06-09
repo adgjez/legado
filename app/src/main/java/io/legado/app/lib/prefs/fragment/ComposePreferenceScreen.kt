@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
@@ -125,10 +126,21 @@ internal fun ComposePreferenceScreen(
     val sections = remember(root, refreshTick) {
         root?.toComposeSections().orEmpty()
     }
+    val listState = rememberLazyListState()
+    LaunchedEffect(scrollTargetKey, sections) {
+        val targetKey = scrollTargetKey?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val sectionIndex = sections.indexOfFirst { section ->
+            section.rows.any { it.key == targetKey }
+        }
+        if (sectionIndex >= 0) {
+            listState.animateScrollToItem(sectionIndex)
+        }
+    }
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.page),
@@ -266,9 +278,7 @@ private fun PreferenceRow(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = { onPreferenceClick(preference) },
-                onLongClick = {
-                    preference.performComposeLongClick()
-                }
+                onLongClick = preference.composeLongClickHandler()
             )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
@@ -287,11 +297,21 @@ private fun PreferenceRow(
     }
 }
 
-private fun Preference.performComposeLongClick(): Boolean {
+private fun Preference.composeLongClickHandler(): (() -> Unit)? {
     return when (this) {
-        is LegadoPreference -> performLongClick()
-        is LegadoSwitchPreference -> performLongClick()
-        else -> false
+        is LegadoPreference -> if (hasLongClickListener()) {
+            { performLongClick() }
+        } else {
+            null
+        }
+
+        is LegadoSwitchPreference -> if (hasLongClickListener()) {
+            { performLongClick() }
+        } else {
+            null
+        }
+
+        else -> null
     }
 }
 

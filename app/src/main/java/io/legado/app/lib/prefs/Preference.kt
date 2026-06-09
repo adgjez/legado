@@ -136,6 +136,10 @@ open class Preference(context: Context, attrs: AttributeSet) :
         onLongClick = listener
     }
 
+    fun hasLongClickListener(): Boolean {
+        return onLongClick != null
+    }
+
     fun performLongClick(): Boolean {
         return onLongClick?.invoke(this) == true
     }
