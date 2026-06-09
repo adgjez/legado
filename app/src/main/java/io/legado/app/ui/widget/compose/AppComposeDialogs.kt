@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -1046,10 +1047,11 @@ data class AppDialogSliderItem(
 @Composable
 fun AppDialogSliderGrid(
     items: List<AppDialogSliderItem>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    minTwoColumnWidth: Dp = 330.dp
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val twoColumns = maxWidth >= 330.dp
+        val twoColumns = maxWidth >= minTwoColumnWidth
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)

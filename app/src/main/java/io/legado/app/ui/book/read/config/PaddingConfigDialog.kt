@@ -39,7 +39,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.ui.widget.compose.AppDialogSliderRow
+import io.legado.app.ui.widget.compose.AppDialogSliderGrid
+import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
@@ -51,7 +52,7 @@ import io.legado.app.utils.postEvent
 
 class PaddingConfigDialog : ComposeDialogFragment() {
 
-    override val widthFraction: Float = 0.96f
+    override val widthFraction: Float = 1f
 
     override fun onStart() {
         super.onStart()
@@ -91,11 +92,11 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp),
+                .padding(horizontal = 10.dp, vertical = 12.dp),
             color = style.surface,
             contentColor = style.primaryText,
             cornerRadius = style.panelRadius,
-            insidePadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
+            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -309,53 +310,35 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         onLeftChange: (Int) -> Unit,
         onRightChange: (Int) -> Unit
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AppDialogSliderRow(
+        AppDialogSliderGrid(
+            minTwoColumnWidth = 220.dp,
+            items = listOf(
+                AppDialogSliderItem(
                     title = stringResource(R.string.padding_top),
                     value = top,
                     range = topRange,
-                    onValueChange = { if (it != top) onTopChange(it) },
-                    modifier = Modifier.weight(1f),
-                    compact = true
-                )
-                AppDialogSliderRow(
+                    onValueChange = { if (it != top) onTopChange(it) }
+                ),
+                AppDialogSliderItem(
                     title = stringResource(R.string.padding_bottom),
                     value = bottom,
                     range = bottomRange,
-                    onValueChange = { if (it != bottom) onBottomChange(it) },
-                    modifier = Modifier.weight(1f),
-                    compact = true
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AppDialogSliderRow(
+                    onValueChange = { if (it != bottom) onBottomChange(it) }
+                ),
+                AppDialogSliderItem(
                     title = stringResource(R.string.padding_left),
                     value = left,
                     range = sideRange,
-                    onValueChange = { if (it != left) onLeftChange(it) },
-                    modifier = Modifier.weight(1f),
-                    compact = true
-                )
-                AppDialogSliderRow(
+                    onValueChange = { if (it != left) onLeftChange(it) }
+                ),
+                AppDialogSliderItem(
                     title = stringResource(R.string.padding_right),
                     value = right,
                     range = sideRange,
-                    onValueChange = { if (it != right) onRightChange(it) },
-                    modifier = Modifier.weight(1f),
-                    compact = true
+                    onValueChange = { if (it != right) onRightChange(it) }
                 )
-            }
-        }
+            )
+        )
     }
 
     private fun postBodyChanged() {
