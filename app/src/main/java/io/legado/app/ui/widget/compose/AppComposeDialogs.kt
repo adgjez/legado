@@ -60,6 +60,7 @@ import io.legado.app.utils.ColorUtils
 import kotlin.math.roundToInt
 
 private const val MAX_SAVEABLE_MULTI_CHOICE_ITEMS = 128
+private const val MAX_ACTION_LIST_ITEMS = 64
 
 @Stable
 data class AppDialogStyle(
@@ -799,38 +800,26 @@ class ComposeActionListDialog : ComposeDialogFragment() {
                     scrollContent = false,
                     content = {
                         val palette = style.toMiuixPalette()
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 420.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            itemsIndexed(itemLabels) { index, label ->
-                                val danger = index in dangerIndices
-                                LegadoMiuixActionRow(
-                                    text = label,
-                                    palette = palette,
-                                    onClick = {
-                                        if (canSelect) {
+                        if (canSelect) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 420.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                itemsIndexed(itemLabels) { index, label ->
+                                    LegadoMiuixActionRow(
+                                        text = label,
+                                        palette = palette,
+                                        onClick = {
                                             dismissAllowingStateLoss()
                                             onSelected?.invoke(index)
-                                        }
-                                    },
-                                    danger = danger,
-                                    cornerRadius = style.actionRadius
-                                )
-                                itemDescriptions.getOrNull(index)
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { description ->
-                                        Text(
-                                            text = description,
-                                            color = style.secondaryText,
-                                            fontSize = 11.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(horizontal = 12.dp)
-                                        )
-                                    }
+                                        },
+                                        description = itemDescriptions.getOrNull(index),
+                                        danger = index in dangerIndices,
+                                        cornerRadius = style.actionRadius
+                                    )
+                                }
                             }
                         }
                     },
@@ -858,6 +847,9 @@ class ComposeActionListDialog : ComposeDialogFragment() {
             negativeText: String,
             onSelected: (Int) -> Unit
         ): ComposeActionListDialog {
+            require(labels.size <= MAX_ACTION_LIST_ITEMS) {
+                "ComposeActionListDialog is for small action menus only."
+            }
             return ComposeActionListDialog().apply {
                 arguments = Bundle().apply {
                     putString(ARG_TITLE, title)

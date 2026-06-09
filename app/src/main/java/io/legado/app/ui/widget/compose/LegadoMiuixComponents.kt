@@ -607,6 +607,7 @@ fun LegadoMiuixActionRow(
     palette: LegadoMiuixPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    description: String? = null,
     danger: Boolean = false,
     cornerRadius: Dp = 16.dp
 ) {
@@ -619,13 +620,25 @@ fun LegadoMiuixActionRow(
         cornerRadius = cornerRadius,
         insidePadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp)
     ) {
-        Text(
-            text = text,
-            color = if (danger) palette.danger else palette.primaryText,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column {
+            Text(
+                text = text,
+                color = if (danger) palette.danger else palette.primaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            description?.takeIf { it.isNotBlank() }?.let {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = it,
+                    color = palette.secondaryText,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
