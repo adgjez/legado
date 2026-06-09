@@ -48,6 +48,15 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                             } else {
                                 PAGE_MODE_LEGACY
                             },
+                            summary = pageModeLabel(
+                                entriesRes = R.array.discovery_page_mode_entries,
+                                valuesRes = R.array.discovery_page_mode_values,
+                                selectedValue = if (useModernDiscovery) {
+                                    PAGE_MODE_MODERN
+                                } else {
+                                    PAGE_MODE_LEGACY
+                                }
+                            ),
                             onSelected = {
                                 updateBooleanSetting(
                                     PreferKey.modernDiscoveryPage,
@@ -90,6 +99,15 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                             } else {
                                 PAGE_MODE_LEGACY
                             },
+                            summary = pageModeLabel(
+                                entriesRes = R.array.rss_page_mode_entries,
+                                valuesRes = R.array.page_mode_values,
+                                selectedValue = if (useModernRss) {
+                                    PAGE_MODE_MODERN
+                                } else {
+                                    PAGE_MODE_LEGACY
+                                }
+                            ),
                             onSelected = {
                                 updateBooleanSetting(
                                     PreferKey.modernRssPage,
@@ -175,6 +193,18 @@ class DiscoverySubscriptionConfigFragment : ComposeSettingFragment() {
                 label = entries.getOrElse(index) { value }
             )
         }
+    }
+
+    private fun pageModeLabel(
+        entriesRes: Int,
+        valuesRes: Int,
+        selectedValue: String
+    ): String {
+        return pageModeOptions(entriesRes, valuesRes)
+            .firstOrNull { it.value == selectedValue }
+            ?.label
+            ?.toString()
+            .orEmpty()
     }
 
     companion object {
