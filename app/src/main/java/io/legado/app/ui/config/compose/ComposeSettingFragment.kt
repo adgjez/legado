@@ -27,6 +27,8 @@ abstract class ComposeSettingFragment : Fragment(),
     @get:StringRes
     protected abstract val titleRes: Int
 
+    protected open val applyActivityTitle: Boolean = true
+
     private val refreshTick = mutableIntStateOf(0)
     private val scrollTargetKey = mutableStateOf<String?>(null)
     private var targetKeyHandled = false
@@ -60,13 +62,17 @@ abstract class ComposeSettingFragment : Fragment(),
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        activity?.setTitle(titleRes)
+        if (applyActivityTitle) {
+            activity?.setTitle(titleRes)
+        }
     }
 
     override fun onResume() {
         super.onResume()
         prefs.registerOnSharedPreferenceChangeListener(this)
-        activity?.setTitle(titleRes)
+        if (applyActivityTitle) {
+            activity?.setTitle(titleRes)
+        }
         consumeTargetKey()
         refreshSettings()
     }
