@@ -1,9 +1,6 @@
 package io.legado.app.lib.prefs.fragment
 
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Rect
-import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -49,32 +46,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceGroup
 import androidx.preference.SwitchPreferenceCompat
-import io.legado.app.R
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.IconListPreference
 import io.legado.app.lib.prefs.SeekBarPreference
 import io.legado.app.lib.prefs.Preference as LegadoPreference
 import io.legado.app.lib.prefs.SwitchPreference as LegadoSwitchPreference
 import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.AppSettingPalette
+import io.legado.app.ui.widget.compose.AppSettingSectionTitle
+import io.legado.app.ui.widget.compose.appSettingPanelBackground
+import io.legado.app.ui.widget.compose.appSettingRowDecoration
+import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import kotlin.math.roundToInt
 
 private val PanelHorizontalPadding = 12.dp
@@ -88,19 +83,6 @@ private fun ComposePreferenceSection.stableKey(index: Int): String {
     return "$index:${title?.toString().orEmpty()}:${rows.firstOrNull()?.key.orEmpty()}"
 }
 
-private data class ComposePreferenceColors(
-    val page: Color,
-    val row: Int,
-    val rowPressed: Int,
-    val divider: Color,
-    val border: Int?,
-    val primaryText: Color,
-    val secondaryText: Color,
-    val accent: Color,
-    val disabledText: Color,
-    val onAccent: Color
-)
-
 @Composable
 internal fun ComposePreferenceScreen(
     root: PreferenceGroup?,
@@ -111,22 +93,8 @@ internal fun ComposePreferenceScreen(
     scrollTargetKey: String?,
     onScrollTargetConsumed: () -> Unit
 ) {
-    val context = LocalContext.current
-    val style = rememberAppDialogStyle()
-    val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
-    val panelRadiusPx = UiCorner.panelRadius(context)
-    val colors = ComposePreferenceColors(
-        page = Color(context.backgroundColor),
-        row = UiCorner.surfaceColor(rowBaseColor),
-        rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true),
-        divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line)),
-        border = UiCorner.panelBorderColor(context),
-        primaryText = Color(ContextCompat.getColor(context, R.color.primaryText)),
-        secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary)),
-        accent = style.accent,
-        disabledText = Color(ContextCompat.getColor(context, R.color.tv_text_summary)).copy(alpha = 0.48f),
-        onAccent = Color.White
-    )
+    val colors = rememberAppSettingPalette()
+    val panelRadiusPx = colors.panelRadiusPx
     val sections = remember(root, refreshTick) {
         root?.toComposeSections().orEmpty()
     }
@@ -143,7 +111,7 @@ internal fun ComposePreferenceScreen(
         }
     }
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = colors.bodyFontFamily)
     ) {
         LazyColumn(
             state = listState,
@@ -165,7 +133,6 @@ internal fun ComposePreferenceScreen(
                     section = section,
                     colors = colors,
                     panelRadiusPx = panelRadiusPx,
-                    titleFontFamily = style.titleFontFamily,
                     onPreferenceClick = onPreferenceClick,
                     onSwitchChange = onSwitchChange,
                     onSeekChange = onSeekChange,
@@ -180,9 +147,8 @@ internal fun ComposePreferenceScreen(
 @Composable
 private fun PreferenceSectionPanel(
     section: ComposePreferenceSection,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     panelRadiusPx: Float,
-    titleFontFamily: FontFamily,
     onPreferenceClick: (Preference) -> Unit,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit,
     onSeekChange: (SeekBarPreference, Int) -> Unit,
@@ -195,27 +161,14 @@ private fun PreferenceSectionPanel(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = PanelHorizontalPadding)
-            .preferencePanelBackground(
+            .appSettingPanelBackground(
                 normalColor = colors.row,
                 panelImage = panelImage,
                 borderColor = colors.border,
                 radiusPx = panelRadiusPx
             )
     ) {
-        if (!section.title.isNullOrBlank()) {
-            Text(
-                text = section.title.toString(),
-                color = colors.accent,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                fontFamily = titleFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
-            )
-        }
+        AppSettingSectionTitle(title = section.title, palette = colors)
         section.rows.forEachIndexed { index, preference ->
             PreferenceRow(
                 preference = preference,
@@ -237,7 +190,7 @@ private fun PreferenceSectionPanel(
 @OptIn(ExperimentalFoundationApi::class)
 private fun PreferenceRow(
     preference: Preference,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     panelRadiusPx: Float,
     isLast: Boolean,
     showDivider: Boolean,
@@ -275,7 +228,7 @@ private fun PreferenceRow(
             .fillMaxWidth()
             .bringIntoViewRequester(bringIntoViewRequester)
             .defaultMinSize(minHeight = 60.dp)
-            .preferenceRowDecoration(
+            .appSettingRowDecoration(
                 pressed = pressed,
                 pressedColor = colors.rowPressed,
                 dividerColor = colors.divider,
@@ -328,7 +281,7 @@ private fun Preference.composeLongClickHandler(): (() -> Unit)? {
 @Composable
 private fun PreferenceText(
     preference: Preference,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -360,7 +313,7 @@ private fun PreferenceText(
 @Composable
 private fun PreferenceWidget(
     preference: Preference,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     enabled: Boolean,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit
 ) {
@@ -392,7 +345,7 @@ private fun PreferenceWidget(
             }
         }
 
-        is ListPreference -> {
+        is androidx.preference.ListPreference -> {
             val entry = preference.entry?.toString().orEmpty()
             if (entry.isNotBlank()) {
                 Spacer(modifier = Modifier.width(12.dp))
@@ -450,7 +403,7 @@ private fun DrawablePreview(
 @Composable
 private fun SeekBarPreferenceRow(
     preference: SeekBarPreference,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     panelRadiusPx: Float,
     isLast: Boolean,
     showDivider: Boolean,
@@ -470,7 +423,7 @@ private fun SeekBarPreferenceRow(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 72.dp)
-            .preferenceRowDecoration(
+            .appSettingRowDecoration(
                 pressed = false,
                 pressedColor = colors.rowPressed,
                 dividerColor = colors.divider,
@@ -546,7 +499,7 @@ private fun SeekBarPreferenceRow(
 private fun StepControlButton(
     text: String,
     enabled: Boolean,
-    colors: ComposePreferenceColors,
+    colors: AppSettingPalette,
     onClick: () -> Unit
 ) {
     Text(
@@ -604,80 +557,4 @@ private fun PreferenceGroup.visibleRows(): List<Preference> {
         }
     }
     return rows
-}
-
-private fun Modifier.preferencePanelBackground(
-    normalColor: Int,
-    panelImage: Drawable?,
-    borderColor: Int?,
-    radiusPx: Float
-): Modifier {
-    return drawWithCache {
-        val path = Path()
-        val rect = RectF(0f, 0f, size.width, size.height)
-        path.addRoundRect(rect, radiusPx, radiusPx, Path.Direction.CW)
-        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = normalColor
-        }
-        val strokePaint = borderColor?.let { color ->
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = 1f
-                this.color = color
-            }
-        }
-        onDrawBehind {
-            drawIntoCanvas { canvas ->
-                val nativeCanvas = canvas.nativeCanvas
-                nativeCanvas.drawPath(path, fillPaint)
-                panelImage?.let { drawable ->
-                    drawable.bounds = Rect(0, 0, size.width.toInt(), size.height.toInt())
-                    drawable.draw(nativeCanvas)
-                }
-                strokePaint?.let { nativeCanvas.drawPath(path, it) }
-            }
-        }
-    }
-}
-
-private fun Modifier.preferenceRowDecoration(
-    pressed: Boolean,
-    pressedColor: Int,
-    dividerColor: Color,
-    showDivider: Boolean,
-    radiusPx: Float,
-    isLast: Boolean
-): Modifier {
-    return drawWithCache {
-        val path = Path()
-        val rect = RectF(0f, 0f, size.width, size.height)
-        val bottom = if (isLast) radiusPx else 0f
-        path.addRoundRect(
-            rect,
-            floatArrayOf(0f, 0f, 0f, 0f, bottom, bottom, bottom, bottom),
-            Path.Direction.CW
-        )
-        val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = pressedColor
-        }
-        val dividerInset = 16.dp.toPx()
-        onDrawBehind {
-            if (pressed) {
-                drawIntoCanvas { canvas ->
-                    canvas.nativeCanvas.drawPath(path, pressedPaint)
-                }
-            }
-            if (showDivider) {
-                val y = size.height - 1f
-                drawLine(
-                    color = dividerColor,
-                    start = Offset(dividerInset, y),
-                    end = Offset(size.width - dividerInset, y),
-                    strokeWidth = 1f
-                )
-            }
-        }
-    }
 }
