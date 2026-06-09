@@ -337,7 +337,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         onRightChange: (Int) -> Unit
     ) {
         AppDialogSliderGrid(
-            minTwoColumnWidth = 220.dp,
+            minTwoColumnWidth = 300.dp,
             items = listOf(
                 AppDialogSliderItem(
                     title = stringResource(R.string.top),

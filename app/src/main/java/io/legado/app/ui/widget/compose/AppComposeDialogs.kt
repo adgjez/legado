@@ -1088,7 +1088,7 @@ private fun AppDialogSliderStepButton(
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
+            .size(40.dp)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
