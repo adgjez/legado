@@ -6,6 +6,7 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -71,6 +72,7 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
 
     private var bottomDialogRegistered = false
     private var closeActionPicker: (() -> Boolean)? = null
+    private var actionPickerBackCallback: OnBackPressedCallback? = null
 
     override fun onStart() {
         super.onStart()
@@ -82,6 +84,17 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
             keyCode == KeyEvent.KEYCODE_BACK &&
                 event.action == KeyEvent.ACTION_UP &&
                 closeActionPicker?.invoke() == true
+        }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        actionPickerBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                closeActionPicker?.invoke()
+            }
+        }.also { callback ->
+            activity?.onBackPressedDispatcher?.addCallback(viewLifecycleOwner, callback)
         }
     }
 
@@ -119,9 +132,16 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
         }
     }
 
+    override fun onDestroyView() {
+        dialog?.setOnKeyListener(null)
+        actionPickerBackCallback?.remove()
+        actionPickerBackCallback = null
+        closeActionPicker = null
+        super.onDestroyView()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        closeActionPicker = null
         AppConfig.detectClickArea()
     }
 
@@ -141,6 +161,7 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
                     true
                 }
             }
+            actionPickerBackCallback?.isEnabled = activeSlotIndex != null
         }
 
         Box(
@@ -310,6 +331,7 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
             contentAlignment = Alignment.Center
         ) {
             val panelWidth = minOf(maxWidth * 0.9f, 322.dp)
+            val listMaxHeight = minOf(maxHeight * 0.7f, 430.dp)
             LegadoMiuixFloatingPanel(
                 visible = true,
                 palette = palette,
@@ -335,7 +357,7 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 430.dp)
+                        .heightIn(max = listMaxHeight)
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
