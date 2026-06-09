@@ -606,8 +606,6 @@ private fun PreferenceGroup.visibleRows(): List<Preference> {
     return rows
 }
 
-private fun CharSequence.isNotBlank(): Boolean = toString().isNotBlank()
-
 private fun Modifier.preferencePanelBackground(
     normalColor: Int,
     panelImage: Drawable?,
