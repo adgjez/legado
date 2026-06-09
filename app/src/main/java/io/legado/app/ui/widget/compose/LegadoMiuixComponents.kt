@@ -261,12 +261,14 @@ fun LegadoMiuixSlider(
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int = 0,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onValueChangeFinished: (() -> Unit)? = null
 ) {
     if (canUseRealMiuix()) {
         MiuixSlider(
             value = value,
             onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
             modifier = modifier.fillMaxWidth(),
             valueRange = valueRange,
             steps = steps,
@@ -287,6 +289,7 @@ fun LegadoMiuixSlider(
     Slider(
         value = value,
         onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
         modifier = modifier.fillMaxWidth(),
         valueRange = valueRange,
         steps = steps,
