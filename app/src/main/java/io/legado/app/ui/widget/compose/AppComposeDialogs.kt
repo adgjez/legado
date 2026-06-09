@@ -1027,34 +1027,7 @@ fun AppDialogSliderRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (showStepper) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    AppDialogSliderStepButton(
-                        text = "-",
-                        enabled = value > range.first,
-                        palette = palette,
-                        onClick = {
-                            onValueChange((value - safeStep).coerceIn(range.first, range.last))
-                        }
-                    )
-                    Text(
-                        text = value.toString(),
-                        color = style.secondaryText,
-                        fontSize = if (compact) 12.sp else 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.width(28.dp),
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
-                    AppDialogSliderStepButton(
-                        text = "+",
-                        enabled = value < range.last,
-                        palette = palette,
-                        onClick = {
-                            onValueChange((value + safeStep).coerceIn(range.first, range.last))
-                        }
-                    )
-                } else {
+                if (!showStepper) {
                     Text(
                         text = value.toString(),
                         color = style.secondaryText,
@@ -1069,6 +1042,39 @@ fun AppDialogSliderRow(
                 valueRange = range.first.toFloat()..range.last.toFloat(),
                 steps = (range.last - range.first - 1).coerceAtLeast(0)
             )
+            if (showStepper) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppDialogSliderStepButton(
+                        text = "-",
+                        enabled = value > range.first,
+                        palette = palette,
+                        onClick = {
+                            onValueChange((value - safeStep).coerceIn(range.first, range.last))
+                        }
+                    )
+                    Text(
+                        text = value.toString(),
+                        color = style.secondaryText,
+                        fontSize = if (compact) 12.sp else 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.width(34.dp),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                    AppDialogSliderStepButton(
+                        text = "+",
+                        enabled = value < range.last,
+                        palette = palette,
+                        onClick = {
+                            onValueChange((value + safeStep).coerceIn(range.first, range.last))
+                        }
+                    )
+                }
+            }
         }
     }
 }
