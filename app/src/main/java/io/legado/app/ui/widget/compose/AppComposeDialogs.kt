@@ -850,13 +850,20 @@ class ComposeActionListDialog : ComposeDialogFragment() {
             require(labels.size <= MAX_ACTION_LIST_ITEMS) {
                 "ComposeActionListDialog is for small action menus only."
             }
+            val safeLabels = labels.toList()
+            val safeDescriptions = List(safeLabels.size) { index ->
+                descriptions.getOrNull(index).orEmpty()
+            }
+            val safeDangerIndices = dangerIndices.filterTo(linkedSetOf()) {
+                it in safeLabels.indices
+            }
             return ComposeActionListDialog().apply {
                 arguments = Bundle().apply {
                     putString(ARG_TITLE, title)
-                    putStringArrayList(ARG_LABELS, ArrayList(labels))
+                    putStringArrayList(ARG_LABELS, ArrayList(safeLabels))
                     putString(ARG_MESSAGE, message)
-                    putStringArrayList(ARG_DESCRIPTIONS, ArrayList(descriptions))
-                    putIntegerArrayList(ARG_DANGER_INDICES, ArrayList(dangerIndices))
+                    putStringArrayList(ARG_DESCRIPTIONS, ArrayList(safeDescriptions))
+                    putIntegerArrayList(ARG_DANGER_INDICES, ArrayList(safeDangerIndices))
                     putString(ARG_NEGATIVE_TEXT, negativeText)
                 }
                 this.onSelected = onSelected
