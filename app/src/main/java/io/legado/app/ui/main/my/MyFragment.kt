@@ -6,22 +6,19 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
-import androidx.preference.Preference
-import androidx.preference.PreferenceGroup
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.prefs.NameListPreference
-import io.legado.app.lib.prefs.SwitchPreference
-import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.service.WebService
 import io.legado.app.ui.about.AboutActivity
@@ -32,34 +29,35 @@ import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
-import io.legado.app.ui.config.BookInfoManageActivity
-import io.legado.app.ui.config.BubbleManageActivity
-import io.legado.app.ui.config.NavigationBarManageActivity
-import io.legado.app.ui.config.ThemeManageActivity
 import io.legado.app.ui.dict.rule.DictRuleActivity
 import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.replace.ReplaceRuleActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
-import io.legado.app.utils.LogUtils
-import io.legado.app.utils.applyMainBottomBarPadding
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.LogUtils
 import org.xmlpull.v1.XmlPullParser
 
-class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInterface {
+class MyFragment() : BaseFragment(R.layout.fragment_my_config),
+    MainFragmentInterface,
+    SharedPreferences.OnSharedPreferenceChangeListener {
 
     constructor(position: Int) : this() {
-        val bundle = Bundle()
-        bundle.putInt("position", position)
-        arguments = bundle
+        arguments = Bundle().apply {
+            putInt("position", position)
+        }
     }
 
     override val position: Int? get() = arguments?.getInt("position")
@@ -68,16 +66,39 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     private val settingsSearchView by lazy(LazyThreadSafetyMode.NONE) {
         binding.root.findViewById<SearchView>(R.id.search_view)
     }
+    private val searchQueryState = mutableStateOf("")
+    private val themeModeState = mutableStateOf("0")
+    private val webServiceState = mutableStateOf(
+        MyWebServiceUiState(checked = false, summary = "")
+    )
+    private val sections by lazy(LazyThreadSafetyMode.NONE) { buildSections() }
+    private val themeOptions by lazy(LazyThreadSafetyMode.NONE) { buildThemeOptions() }
+    private val subSearchItems by lazy(LazyThreadSafetyMode.NONE) { buildSubSearchItems() }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
-        val fragmentTag = "prefFragment"
-        var preferenceFragment = childFragmentManager.findFragmentByTag(fragmentTag)
-        if (preferenceFragment == null) preferenceFragment = MyPreferenceFragment()
-        childFragmentManager.beginTransaction()
-            .replace(R.id.pre_fragment, preferenceFragment, fragmentTag).commit()
+        requireContext().putPrefBoolean(PreferKey.webService, WebService.isRun)
         initSearchView()
         applySearchBarStyle()
+        installComposeContent()
+        updateSettingsState()
+    }
+
+    override fun observeLiveBus() {
+        observeEventSticky<String>(EventBus.WEB_SERVICE) {
+            updateWebServiceState()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        requireContext().defaultSharedPreferences.registerOnSharedPreferenceChangeListener(this)
+        updateSettingsState()
+    }
+
+    override fun onPause() {
+        requireContext().defaultSharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
+        super.onPause()
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -88,6 +109,51 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         when (item.itemId) {
             R.id.menu_help -> showHelp("appHelp")
         }
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        when (key) {
+            PreferKey.webService -> {
+                if (requireContext().getPrefBoolean(PreferKey.webService)) {
+                    WebService.start(requireContext())
+                } else {
+                    WebService.stop(requireContext())
+                }
+                updateWebServiceState()
+            }
+
+            PreferKey.themeMode -> {
+                themeModeState.value = requireContext().getPrefString(PreferKey.themeMode, "0") ?: "0"
+            }
+
+            "recordLog" -> LogUtils.upLevel()
+        }
+    }
+
+    private fun installComposeContent() {
+        binding.preFragment.removeAllViews()
+        val composeView = ComposeView(requireContext()).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                MySettingsScreen(
+                    sections = sections,
+                    subSearchItems = subSearchItems,
+                    searchQuery = searchQueryState.value,
+                    themeModeValue = themeModeState.value,
+                    themeOptions = themeOptions,
+                    webServiceState = webServiceState.value,
+                    onThemeModeSelected = ::setThemeMode,
+                    onWebServiceCheckedChange = ::setWebServiceEnabled,
+                    onWebServiceLongClick = ::showWebServiceActions,
+                    onRowClick = ::handleRowClick
+                )
+            }
+        }
+        binding.preFragment.addView(composeView)
     }
 
     private fun initSearchView() {
@@ -109,8 +175,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
     }
 
     private fun applySearchQuery(query: String?) {
-        (childFragmentManager.findFragmentByTag("prefFragment") as? MyPreferenceFragment)
-            ?.filterMainPreferences(query)
+        searchQueryState.value = query?.trim().orEmpty()
     }
 
     private fun applySearchBarStyle() {
@@ -118,298 +183,239 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         TopBarSearchStyle.apply(settingsSearchView)
     }
 
-    /**
-     * 配置
-     */
-    class MyPreferenceFragment : PreferenceFragment(),
-        SharedPreferences.OnSharedPreferenceChangeListener {
+    private fun updateSettingsState() {
+        themeModeState.value = requireContext().getPrefString(PreferKey.themeMode, "0") ?: "0"
+        updateWebServiceState()
+    }
 
-        private data class SubSearchItem(
-            val ownerKey: String,
-            val title: String,
-            val summary: String,
-            val key: String,
-            val ownerConfigTag: String? = null,
-        ) {
-            val searchText: String = listOf(title, summary, key).joinToString(" ").lowercase()
+    private fun updateWebServiceState() {
+        webServiceState.value = MyWebServiceUiState(
+            checked = WebService.isRun,
+            summary = if (WebService.isRun) {
+                WebService.hostAddress
+            } else {
+                getString(R.string.web_service_desc)
+            }
+        )
+    }
+
+    private fun setThemeMode(value: String) {
+        requireContext().putPrefString(PreferKey.themeMode, value)
+        themeModeState.value = value
+        view?.post {
+            ThemeConfig.applyDayNight(requireContext())
         }
+    }
 
-        private val subSearchItems by lazy(LazyThreadSafetyMode.NONE) { buildSubSearchItems() }
-        private val ownerMatchedSubItems = hashMapOf<String, List<SubSearchItem>>()
-        private var activeSearchKeyword: String = ""
-        private val originalSummaries = hashMapOf<String, CharSequence?>()
+    private fun setWebServiceEnabled(enabled: Boolean) {
+        requireContext().putPrefBoolean(PreferKey.webService, enabled)
+        if (enabled) {
+            WebService.start(requireContext())
+        } else {
+            WebService.stop(requireContext())
+        }
+        updateWebServiceState()
+    }
 
-        override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-            putPrefBoolean(PreferKey.webService, WebService.isRun)
-            addPreferencesFromResource(R.xml.pref_main)
-            findPreference<SwitchPreference>("webService")?.onLongClick {
-                if (!WebService.isRun) {
-                    return@onLongClick false
-                }
-                context?.selector(arrayListOf("复制地址", "浏览器打开")) { _, i ->
-                    when (i) {
-                        0 -> context?.sendToClip(it.summary.toString())
-                        1 -> context?.openUrl(it.summary.toString())
+    private fun showWebServiceActions() {
+        val url = WebService.hostAddress.takeIf { WebService.isRun } ?: return
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = getString(R.string.web_service),
+                labels = listOf(
+                    getString(R.string.copy_text),
+                    getString(R.string.open_in_browser)
+                ),
+                descriptions = listOf(url, url),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    when (index) {
+                        0 -> requireContext().sendToClip(url)
+                        1 -> requireContext().openUrl(url)
                     }
                 }
-                true
+            )
+        )
+    }
+
+    private fun handleRowClick(key: String, searchTarget: MySettingsSubSearchItem?) {
+        if (searchTarget != null) {
+            startActivity<ConfigActivity> {
+                putExtra("configTag", searchTarget.ownerConfigTag)
+                putExtra("targetKey", searchTarget.key)
             }
-            observeEventSticky<String>(EventBus.WEB_SERVICE) {
-                findPreference<SwitchPreference>(PreferKey.webService)?.let {
-                    it.isChecked = WebService.isRun
-                    it.summary = if (WebService.isRun) {
-                        WebService.hostAddress
-                    } else {
-                        getString(R.string.web_service_desc)
-                    }
-                }
+            return
+        }
+        when (key) {
+            "bookSourceManage" -> startActivity<BookSourceActivity>()
+            "rssSourceManage" -> startActivity<RssSourceActivity>()
+            "replaceManage" -> startActivity<ReplaceRuleActivity>()
+            "dictRuleManage" -> startActivity<DictRuleActivity>()
+            "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
+            "bookmark" -> startActivity<AllBookmarkActivity>()
+            "setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.OTHER_CONFIG)
             }
-            findPreference<NameListPreference>(PreferKey.themeMode)?.let {
-                it.setOnPreferenceChangeListener { _, _ ->
-                    view?.post { ThemeConfig.applyDayNight(requireContext()) }
-                    true
-                }
+
+            "web_dav_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.BACKUP_CONFIG)
             }
-        }
 
-        override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-            super.onViewCreated(view, savedInstanceState)
-            listView.clipToPadding = false
-            listView.applyMainBottomBarPadding()
-            listView.setEdgeEffectColor(primaryColor)
-        }
-
-        override fun onResume() {
-            super.onResume()
-            preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
-        }
-
-        override fun onPause() {
-            preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
-            super.onPause()
-        }
-
-        override fun onSharedPreferenceChanged(
-            sharedPreferences: SharedPreferences?,
-            key: String?
-        ) {
-            when (key) {
-                PreferKey.webService -> {
-                    if (requireContext().getPrefBoolean("webService")) {
-                        WebService.start(requireContext())
-                    } else {
-                        WebService.stop(requireContext())
-                    }
-                }
-
-                "recordLog" -> LogUtils.upLevel()
+            "cacheManage" -> startActivity<CacheManageActivity>()
+            "theme_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.THEME_CONFIG)
             }
-        }
 
-        fun filterMainPreferences(query: String?) {
-            val keyword = query?.trim().orEmpty().lowercase()
-            activeSearchKeyword = keyword
-            ownerMatchedSubItems.clear()
-            val root = preferenceScreen ?: return
-            if (keyword.isBlank()) {
-                restoreMainSummaries(root)
-                resetVisibility(root)
-                return
+            "ai_setting" -> startActivity<ConfigActivity> {
+                putExtra("configTag", ConfigTag.AI_CONFIG)
             }
-            filterMainGroup(root, keyword)
-        }
 
-        private fun filterMainGroup(group: PreferenceGroup, keyword: String): Boolean {
-            var anyVisible = false
-            for (index in 0 until group.preferenceCount) {
-                val preference = group.getPreference(index)
-                val visible = when (preference) {
-                    is PreferenceGroup -> filterMainGroup(preference, keyword) || matchesMainPreference(preference, keyword)
-                    else -> matchesMainPreference(preference, keyword)
-                }
-                preference.isVisible = visible
-                anyVisible = anyVisible || visible
-            }
-            group.isVisible = anyVisible || group == preferenceScreen
-            return anyVisible
+            "fileManage" -> startActivity<FileManageActivity>()
+            "readRecord" -> startActivity<ReadRecordActivity>()
+            "about" -> startActivity<AboutActivity>()
+            "exit" -> activity?.finish()
         }
+    }
 
-        private fun resetVisibility(group: PreferenceGroup) {
-            group.isVisible = true
-            for (index in 0 until group.preferenceCount) {
-                val preference = group.getPreference(index)
-                preference.isVisible = true
-                if (preference is PreferenceGroup) {
-                    resetVisibility(preference)
-                }
-            }
-        }
-
-        private fun matchesMainPreference(preference: Preference, keyword: String): Boolean {
-            val key = preference.key.orEmpty()
-            val titleText = preference.title?.toString().orEmpty().lowercase()
-            val summaryText = preference.summary?.toString().orEmpty().lowercase()
-            val keyText = key.lowercase()
-            val matchedSubItems = subSearchItems
-                .filter { it.ownerKey == key && it.searchText.contains(keyword) }
-            if (matchedSubItems.isNotEmpty()) {
-                ownerMatchedSubItems[key] = matchedSubItems
-            }
-            updateSearchSummary(preference, matchedSubItems)
-            return titleText.contains(keyword)
-                || summaryText.contains(keyword)
-                || keyText.contains(keyword)
-                || matchedSubItems.isNotEmpty()
-        }
-
-        private fun buildSubSearchItems(): List<SubSearchItem> {
-            return listOf(
-                Triple("theme_setting", R.xml.pref_config_theme, ConfigTag.THEME_CONFIG),
-                Triple("web_dav_setting", R.xml.pref_config_backup, ConfigTag.BACKUP_CONFIG),
-                Triple("coverConfig", R.xml.pref_config_cover, ConfigTag.COVER_CONFIG),
-                Triple("ai_setting", R.xml.pref_config_ai, ConfigTag.AI_CONFIG),
-                Triple("setting", R.xml.pref_config_other, ConfigTag.OTHER_CONFIG),
-                Triple(
-                    "setting",
-                    R.xml.pref_config_discovery_subscription,
-                    ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG
+    private fun buildSections(): List<MySettingsSectionModel> {
+        return listOf(
+            MySettingsSectionModel(
+                title = getString(R.string.config_category_content),
+                rows = listOf(
+                    actionRow("bookSourceManage", R.string.book_source_manage, R.string.book_source_manage_desc),
+                    actionRow("rssSourceManage", R.string.rss_source_manage, R.string.rss_source_manage_summary),
+                    actionRow("txtTocRuleManage", R.string.txt_toc_rule, R.string.config_txt_toc_rule),
+                    actionRow("replaceManage", R.string.replace_purify, R.string.replace_purify_desc),
+                    actionRow("dictRuleManage", R.string.dict_rule, R.string.config_dict_rule)
                 )
-            ).flatMap { (ownerKey, xmlRes, ownerConfigTag) ->
-                buildPreferenceXmlSearchItems(ownerKey, xmlRes, ownerConfigTag)
-            }
-        }
+            ),
+            MySettingsSectionModel(
+                title = getString(R.string.config_category_appearance),
+                rows = listOf(
+                    MySettingsRowModel(
+                        key = PreferKey.themeMode,
+                        title = getString(R.string.theme_mode),
+                        summary = getString(R.string.theme_mode_desc),
+                        kind = MySettingsRowKind.ThemeMode
+                    ),
+                    actionRow("theme_setting", R.string.theme_setting, R.string.theme_setting_s),
+                    actionRow("ai_setting", R.string.ai_setting, R.string.ai_setting_summary)
+                )
+            ),
+            MySettingsSectionModel(
+                title = getString(R.string.config_category_sync),
+                rows = listOf(
+                    actionRow("web_dav_setting", R.string.backup_restore, R.string.web_dav_set_import_old),
+                    actionRow("cacheManage", R.string.cache_manage_title, R.string.cache_manage_summary),
+                    MySettingsRowModel(
+                        key = PreferKey.webService,
+                        title = getString(R.string.web_service),
+                        summary = getString(R.string.web_service_desc),
+                        kind = MySettingsRowKind.WebService
+                    )
+                )
+            ),
+            MySettingsSectionModel(
+                title = getString(R.string.config_category_tools),
+                rows = listOf(
+                    actionRow("setting", R.string.other_setting, R.string.other_setting_s),
+                    actionRow("bookmark", R.string.bookmark, R.string.all_bookmark),
+                    actionRow("readRecord", R.string.read_record, R.string.read_record_summary),
+                    actionRow("fileManage", R.string.file_manage, R.string.file_manage_summary),
+                    actionRow("about", R.string.about, null),
+                    actionRow("exit", R.string.exit, null, danger = true)
+                )
+            )
+        )
+    }
 
-        private fun buildPreferenceXmlSearchItems(
-            ownerKey: String,
-            xmlRes: Int,
-            ownerConfigTag: String
-        ): List<SubSearchItem> {
-            val items = ArrayList<SubSearchItem>()
-            val parser: XmlResourceParser = resources.getXml(xmlRes)
-            try {
-                var eventType = parser.eventType
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    if (eventType == XmlPullParser.START_TAG) {
-                        val title = collectPreferenceAttr(parser, "title").orEmpty()
-                        val key = collectPreferenceAttr(parser, "key").orEmpty()
-                        if (title.isNotBlank() && key.isNotBlank()) {
-                            items.add(
-                                SubSearchItem(
-                                    ownerKey = ownerKey,
-                                    title = title,
-                                    summary = collectPreferenceAttr(parser, "summary").orEmpty(),
-                                    key = key.removePrefix("search_jump_"),
-                                    ownerConfigTag = ownerConfigTag
-                                )
+    private fun actionRow(
+        key: String,
+        titleRes: Int,
+        summaryRes: Int?,
+        danger: Boolean = false
+    ): MySettingsRowModel {
+        return MySettingsRowModel(
+            key = key,
+            title = getString(titleRes),
+            summary = summaryRes?.let(::getString),
+            danger = danger
+        )
+    }
+
+    private fun buildThemeOptions(): List<MySettingsThemeOption> {
+        val labels = resources.getStringArray(R.array.theme_mode)
+        val values = resources.getStringArray(R.array.theme_mode_v)
+        return labels.mapIndexed { index, label ->
+            MySettingsThemeOption(
+                value = values.getOrElse(index) { index.toString() },
+                label = label
+            )
+        }.ifEmpty {
+            listOf(MySettingsThemeOption("0", getString(R.string.theme_mode)))
+        }
+    }
+
+    private fun buildSubSearchItems(): List<MySettingsSubSearchItem> {
+        return listOf(
+            Triple("theme_setting", R.xml.pref_config_theme, ConfigTag.THEME_CONFIG),
+            Triple("web_dav_setting", R.xml.pref_config_backup, ConfigTag.BACKUP_CONFIG),
+            Triple("ai_setting", R.xml.pref_config_ai, ConfigTag.AI_CONFIG),
+            Triple("setting", R.xml.pref_config_other, ConfigTag.OTHER_CONFIG),
+            Triple(
+                "setting",
+                R.xml.pref_config_discovery_subscription,
+                ConfigTag.DISCOVERY_SUBSCRIPTION_CONFIG
+            )
+        ).flatMap { (ownerKey, xmlRes, ownerConfigTag) ->
+            buildPreferenceXmlSearchItems(ownerKey, xmlRes, ownerConfigTag)
+        }
+    }
+
+    private fun buildPreferenceXmlSearchItems(
+        ownerKey: String,
+        xmlRes: Int,
+        ownerConfigTag: String
+    ): List<MySettingsSubSearchItem> {
+        val items = ArrayList<MySettingsSubSearchItem>()
+        val parser: XmlResourceParser = resources.getXml(xmlRes)
+        try {
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    val title = collectPreferenceAttr(parser, "title").orEmpty()
+                    val key = collectPreferenceAttr(parser, "key").orEmpty()
+                    if (title.isNotBlank() && key.isNotBlank()) {
+                        items.add(
+                            MySettingsSubSearchItem(
+                                ownerKey = ownerKey,
+                                title = title,
+                                summary = collectPreferenceAttr(parser, "summary").orEmpty(),
+                                key = key.removePrefix("search_jump_"),
+                                ownerConfigTag = ownerConfigTag
                             )
-                        }
-                    }
-                    eventType = parser.next()
-                }
-            } finally {
-                parser.close()
-            }
-            return items
-        }
-
-        private fun updateSearchSummary(preference: Preference, matchedItems: List<SubSearchItem>) {
-            val key = preference.key ?: return
-            if (!originalSummaries.containsKey(key)) {
-                originalSummaries[key] = preference.summary
-            }
-            preference.summary = if (matchedItems.isEmpty()) {
-                originalSummaries[key]
-            } else {
-                matchedItems.first().title
-            }
-        }
-
-        private fun restoreMainSummaries(group: PreferenceGroup) {
-            for (index in 0 until group.preferenceCount) {
-                val preference = group.getPreference(index)
-                preference.key?.let { key ->
-                    if (originalSummaries.containsKey(key)) {
-                        preference.summary = originalSummaries[key]
+                        )
                     }
                 }
-                if (preference is PreferenceGroup) {
-                    restoreMainSummaries(preference)
-                }
+                eventType = parser.next()
             }
+        } finally {
+            parser.close()
         }
+        return items
+    }
 
-        private fun collectPreferenceAttr(parser: XmlResourceParser, attrName: String): String? {
-            val namespace = "http://schemas.android.com/apk/res/android"
-            val attrValue = parser.getAttributeValue(namespace, attrName)?.trim().orEmpty()
-            if (attrValue.isBlank()) return null
-            val attrRes = parser.getAttributeResourceValue(namespace, attrName, 0)
-            return if (attrRes != 0) {
-                runCatching { getString(attrRes) }.getOrNull()?.trim().orEmpty().takeIf { it.isNotBlank() }
-            } else {
-                attrValue.removePrefix("@").takeIf { it.isNotBlank() }
-            }
+    private fun collectPreferenceAttr(parser: XmlResourceParser, attrName: String): String? {
+        val namespace = "http://schemas.android.com/apk/res/android"
+        val attrValue = parser.getAttributeValue(namespace, attrName)?.trim().orEmpty()
+        if (attrValue.isBlank()) return null
+        val attrRes = parser.getAttributeResourceValue(namespace, attrName, 0)
+        return if (attrRes != 0) {
+            runCatching {
+                getString(attrRes)
+            }.getOrNull()?.trim().orEmpty().takeIf { it.isNotBlank() }
+        } else {
+            attrValue.removePrefix("@").takeIf { it.isNotBlank() }
         }
-
-        override fun onPreferenceTreeClick(preference: Preference): Boolean {
-            when (preference.key) {
-                "bookSourceManage" -> startActivity<BookSourceActivity>()
-                "rssSourceManage" -> startActivity<RssSourceActivity>()
-                "replaceManage" -> startActivity<ReplaceRuleActivity>()
-                "dictRuleManage" -> startActivity<DictRuleActivity>()
-                "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
-                "bookmark" -> startActivity<AllBookmarkActivity>()
-                "setting" -> startActivity<ConfigActivity> {
-                    putExtra("configTag", ConfigTag.OTHER_CONFIG)
-                }
-
-                "web_dav_setting" -> startActivity<ConfigActivity> {
-                    putExtra("configTag", ConfigTag.BACKUP_CONFIG)
-                }
-
-                "cacheManage" -> startActivity<CacheManageActivity>()
-
-                "theme_setting" -> startActivity<ConfigActivity> {
-                    putExtra("configTag", ConfigTag.THEME_CONFIG)
-                }
-
-                "theme_manage" -> startActivity<ThemeManageActivity>()
-
-                "navigation_bar_manage" -> startActivity<NavigationBarManageActivity>()
-
-                "book_info_manage" -> startActivity<BookInfoManageActivity>()
-
-                "bubble_manage" -> startActivity<BubbleManageActivity>()
-
-                "coverConfig" -> startActivity<ConfigActivity> {
-                    putExtra("configTag", ConfigTag.COVER_CONFIG)
-                }
-
-                "ai_setting" -> startActivity<ConfigActivity> {
-                    putExtra("configTag", ConfigTag.AI_CONFIG)
-                }
-
-                "fileManage" -> startActivity<FileManageActivity>()
-                "readRecord" -> startActivity<ReadRecordActivity>()
-                "about" -> startActivity<AboutActivity>()
-                "exit" -> activity?.finish()
-                else -> Unit
-            }
-            if (activeSearchKeyword.isNotBlank()) {
-                ownerMatchedSubItems[preference.key.orEmpty()]
-                    ?.firstOrNull()
-                    ?.let { item ->
-                        item.ownerConfigTag?.let { configTag ->
-                            startActivity<ConfigActivity> {
-                                putExtra("configTag", configTag)
-                                putExtra("targetKey", item.key)
-                            }
-                            return true
-                        }
-                    }
-            }
-            return super.onPreferenceTreeClick(preference)
-        }
-
-
     }
 }
