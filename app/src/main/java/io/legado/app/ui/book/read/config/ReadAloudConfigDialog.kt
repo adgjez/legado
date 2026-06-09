@@ -57,6 +57,8 @@ private const val KEY_READ_ALOUD_SPEAKER_MANAGE = "readAloudSpeakerManage"
 private const val KEY_READ_ALOUD_LOUDNESS_RESET = "readAloudSpeakerLoudnessReset"
 private const val KEY_MEDIA_BUTTON_PER_NEXT = "mediaButtonPerNext"
 private const val KEY_SYS_TTS_CONFIG = "sysTtsConfig"
+private const val SPEAKER_MANAGE_SUMMARY =
+    "管理多角色可用发言人；未绑定或失效时朗读会自动回退到默认配音，不在正文里反复提示"
 
 enum class ReadAloudConfigGroup(
     val title: String,
@@ -478,7 +480,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 action(
                     key = KEY_READ_ALOUD_SPEAKER_MANAGE,
                     title = "发言人管理",
-                    summary = "管理多角色可用发言人；未绑定或失效时朗读会自动回退到默认配音，不在正文里反复提示",
+                    summary = SPEAKER_MANAGE_SUMMARY,
                     onClick = { startActivity<SpeakerGroupManageActivity>() }
                 ),
                 choice(
@@ -648,7 +650,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 action(
                     key = KEY_READ_ALOUD_SPEAKER_MANAGE,
                     title = "发言人管理",
-                    summary = "创建分组，并从不同朗读引擎选择可复用发言人",
+                    summary = SPEAKER_MANAGE_SUMMARY,
                     onClick = { startActivity<SpeakerGroupManageActivity>() }
                 ),
                 action(
