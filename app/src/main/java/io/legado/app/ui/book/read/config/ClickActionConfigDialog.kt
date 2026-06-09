@@ -2,13 +2,16 @@ package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,12 +70,18 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
     override val dialogHeight: Int = ViewGroup.LayoutParams.MATCH_PARENT
 
     private var bottomDialogRegistered = false
+    private var closeActionPicker: (() -> Boolean)? = null
 
     override fun onStart() {
         super.onStart()
         dialog?.window?.run {
             setBackgroundDrawableResource(R.color.transparent)
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+        dialog?.setOnKeyListener { _, keyCode, event ->
+            keyCode == KeyEvent.KEYCODE_BACK &&
+                event.action == KeyEvent.ACTION_UP &&
+                closeActionPicker?.invoke() == true
         }
     }
 
@@ -111,6 +121,7 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
 
     override fun onDestroy() {
         super.onDestroy()
+        closeActionPicker = null
         AppConfig.detectClickArea()
     }
 
@@ -121,6 +132,16 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
             mutableStateOf(clickSlots.map { it.currentValue() })
         }
         var activeSlotIndex by remember { mutableStateOf<Int?>(null) }
+        SideEffect {
+            closeActionPicker = {
+                if (activeSlotIndex == null) {
+                    false
+                } else {
+                    activeSlotIndex = null
+                    true
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -281,20 +302,25 @@ class ClickActionConfigDialog : ComposeDialogFragment() {
         onSelected: (Int) -> Unit
     ) {
         val palette = style.toMiuixPalette()
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.26f))
                 .clickable(onClick = onDismiss),
             contentAlignment = Alignment.Center
         ) {
+            val panelWidth = minOf(maxWidth * 0.9f, 322.dp)
             LegadoMiuixFloatingPanel(
                 visible = true,
                 palette = palette,
-                width = 322.dp,
+                width = panelWidth,
                 cornerRadius = style.panelRadius,
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
-                modifier = Modifier.clickable(enabled = false, onClick = {})
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                )
             ) {
                 Text(
                     text = stringResource(R.string.select_action),
