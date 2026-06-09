@@ -10,9 +10,11 @@ import android.widget.LinearLayout
 import androidx.activity.viewModels
 import androidx.appcompat.widget.Toolbar
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -38,8 +41,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.statusBarHeight
+import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import androidx.viewbinding.ViewBinding
+
+private const val CONFIG_MENU_HOST_WIDTH_DP = 128
 
 class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
 
@@ -69,13 +74,21 @@ class ConfigActivity : VMBaseActivity<ViewBinding, ConfigViewModel>() {
             addView(
                 menuToolbar,
                 FrameLayoutParams(
-                    128.dpToPx(),
+                    CONFIG_MENU_HOST_WIDTH_DP.dpToPx(),
                     56.dpToPx(),
                     Gravity.END or Gravity.BOTTOM
-                ).apply {
-                    topMargin = statusBarHeight
-                }
+                )
             )
+            setOnApplyWindowInsetsListenerCompat { _, windowInsets ->
+                val top = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+                (menuToolbar.layoutParams as? FrameLayoutParams)?.let { params ->
+                    if (params.topMargin != top) {
+                        params.topMargin = top
+                        menuToolbar.layoutParams = params
+                    }
+                }
+                windowInsets
+            }
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -196,6 +209,7 @@ private fun ConfigTopBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            Spacer(modifier = Modifier.width(CONFIG_MENU_HOST_WIDTH_DP.dp))
         }
     }
 }
