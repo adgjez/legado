@@ -19,7 +19,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
@@ -185,15 +184,23 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
     }
 
     private fun showRecordActions(record: AiReadAloudUsageRecord) {
-        selector(typeLabel(record.type), listOf("删除")) { _, index ->
-            if (index == 0) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    appDb.aiReadAloudUsageRecordDao.delete(record.id)
-                    selectedIds.remove(record.id)
-                    launch(Dispatchers.Main) { load() }
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = typeLabel(record.type),
+                labels = listOf("删除"),
+                dangerIndices = setOf(0),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    if (index == 0) {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            appDb.aiReadAloudUsageRecordDao.delete(record.id)
+                            selectedIds.remove(record.id)
+                            launch(Dispatchers.Main) { load() }
+                        }
+                    }
                 }
-            }
-        }
+            )
+        )
     }
 
     private inner class UsageAdapter : RecyclerView.Adapter<UsageHolder>() {
