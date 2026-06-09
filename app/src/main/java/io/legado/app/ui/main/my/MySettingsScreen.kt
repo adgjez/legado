@@ -1,43 +1,52 @@
 package io.legado.app.ui.main.my
 
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.drawable.Drawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import io.legado.app.R
-import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.utils.ColorUtils
 
 internal enum class MySettingsRowKind {
     Action,
@@ -91,8 +100,10 @@ private data class VisibleRow(
 
 private data class MySettingsColors(
     val page: Color,
-    val section: Color,
-    val row: Color,
+    val row: Int,
+    val rowPressed: Int,
+    val divider: Color,
+    val border: Int?,
     val primaryText: Color,
     val secondaryText: Color,
     val accent: Color,
@@ -114,17 +125,17 @@ internal fun MySettingsScreen(
 ) {
     val context = LocalContext.current
     val style = rememberAppDialogStyle()
+    val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
+    val panelRadiusPx = UiCorner.panelRadius(context)
     val colors = MySettingsColors(
         page = Color(context.backgroundColor),
-        section = if (AppConfig.isNightTheme) {
-            Color(ColorUtils.blendColors(0xff24262b.toInt(), context.backgroundColor, 0.18f))
-        } else {
-            Color(ColorUtils.blendColors(0xfffbfcfe.toInt(), context.backgroundColor, 0.22f))
-        },
-        row = style.surface,
-        primaryText = style.primaryText,
-        secondaryText = style.secondaryText,
-        accent = style.accent,
+        row = UiCorner.surfaceColor(rowBaseColor),
+        rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true),
+        divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line)),
+        border = UiCorner.panelBorderColor(context),
+        primaryText = Color(ContextCompat.getColor(context, R.color.primaryText)),
+        secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary)),
+        accent = Color(ContextCompat.getColor(context, R.color.accent)),
         danger = style.danger,
         onAccent = Color.White
     )
@@ -139,7 +150,7 @@ internal fun MySettingsScreen(
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.page)
@@ -147,19 +158,15 @@ internal fun MySettingsScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = 12.dp,
-                    end = 16.dp,
+                    top = 8.dp,
                     bottom = dimensionResource(R.dimen.main_content_bottom_bar_padding) + 24.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                )
             ) {
-                items(visibleSections, key = { it.title }) { section ->
-                    SettingsSectionCard(
-                        section = section,
+                item("settings_frame") {
+                    SettingsFrame(
+                        sections = visibleSections,
                         colors = colors,
-                        panelRadius = style.panelRadius,
-                        actionRadius = style.actionRadius,
+                        panelRadiusPx = panelRadiusPx,
                         themeModeLabel = themeModeLabel,
                         webServiceState = webServiceState,
                         onThemeModeClick = onThemeModeClick,
@@ -168,33 +175,16 @@ internal fun MySettingsScreen(
                         onRowClick = onRowClick
                     )
                 }
-                if (visibleSections.isEmpty()) {
-                    item("empty") {
-                        SettingsSurface(
-                            color = colors.section,
-                            radius = style.panelRadius,
-                            modifier = Modifier.fillMaxWidth(),
-                            padding = PaddingValues(horizontal = 18.dp, vertical = 18.dp)
-                        ) {
-                            Text(
-                                text = "没有匹配的设置",
-                                color = colors.secondaryText,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
             }
         }
     }
 }
 
 @Composable
-private fun SettingsSectionCard(
-    section: VisibleSection,
+private fun SettingsFrame(
+    sections: List<VisibleSection>,
     colors: MySettingsColors,
-    panelRadius: Dp,
-    actionRadius: Dp,
+    panelRadiusPx: Float,
     themeModeLabel: String,
     webServiceState: MyWebServiceUiState,
     onThemeModeClick: () -> Unit,
@@ -202,46 +192,109 @@ private fun SettingsSectionCard(
     onWebServiceClick: () -> Unit,
     onRowClick: (String, MySettingsSubSearchItem?) -> Unit
 ) {
-    SettingsSurface(
-        color = colors.section,
-        radius = panelRadius,
-        modifier = Modifier.fillMaxWidth(),
-        padding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+    val context = LocalContext.current
+    val panelImage = UiCorner.panelImageDrawable(context, panelRadiusPx)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .preferenceGroupBackground(
+                normalColor = colors.row,
+                panelImage = panelImage,
+                borderColor = colors.border,
+                radiusPx = panelRadiusPx
+            )
     ) {
+        if (sections.isEmpty()) {
+            EmptySettingsResult(colors)
+            return@Column
+        }
+        sections.forEachIndexed { sectionIndex, section ->
+            val lastSection = sectionIndex == sections.lastIndex
+            SettingsSectionBlock(
+                section = section,
+                colors = colors,
+                panelRadiusPx = panelRadiusPx,
+                themeModeLabel = themeModeLabel,
+                webServiceState = webServiceState,
+                isFirstSection = sectionIndex == 0,
+                isLastSection = lastSection,
+                onThemeModeClick = onThemeModeClick,
+                onWebServiceCheckedChange = onWebServiceCheckedChange,
+                onWebServiceClick = onWebServiceClick,
+                onRowClick = onRowClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionBlock(
+    section: VisibleSection,
+    colors: MySettingsColors,
+    panelRadiusPx: Float,
+    themeModeLabel: String,
+    webServiceState: MyWebServiceUiState,
+    isFirstSection: Boolean,
+    isLastSection: Boolean,
+    onThemeModeClick: () -> Unit,
+    onWebServiceCheckedChange: (Boolean) -> Unit,
+    onWebServiceClick: () -> Unit,
+    onRowClick: (String, MySettingsSubSearchItem?) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = section.title,
             color = colors.accent,
             fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = 16.dp,
+                    top = if (isFirstSection) 16.dp else 12.dp,
+                    end = 16.dp,
+                    bottom = 8.dp
+                )
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            section.rows.forEach { item ->
-                when (item.row.kind) {
-                    MySettingsRowKind.ThemeMode -> SettingsActionRow(
-                        item = item.copy(summary = themeModeLabel),
-                        colors = colors,
-                        actionRadius = actionRadius,
-                        onClick = onThemeModeClick
-                    )
-                    MySettingsRowKind.WebService -> WebServiceRow(
-                        item = item,
-                        state = webServiceState,
-                        colors = colors,
-                        actionRadius = actionRadius,
-                        onCheckedChange = onWebServiceCheckedChange,
-                        onClick = onWebServiceClick
-                    )
-                    MySettingsRowKind.Action -> SettingsActionRow(
-                        item = item,
-                        colors = colors,
-                        actionRadius = actionRadius,
-                        onClick = { onRowClick(item.row.key, item.searchTarget) }
-                    )
-                }
+        section.rows.forEachIndexed { index, item ->
+            val isLastRowInSection = index == section.rows.lastIndex
+            val isLastRowInFrame = isLastSection && isLastRowInSection
+            val showDivider = !isLastRowInSection
+            when (item.row.kind) {
+                MySettingsRowKind.ThemeMode -> SettingsActionRow(
+                    item = item.copy(summary = themeModeLabel),
+                    colors = colors,
+                    panelRadiusPx = panelRadiusPx,
+                    isFirst = false,
+                    isLast = isLastRowInFrame,
+                    showDivider = showDivider,
+                    onClick = onThemeModeClick
+                )
+
+                MySettingsRowKind.WebService -> WebServiceRow(
+                    item = item,
+                    state = webServiceState,
+                    colors = colors,
+                    panelRadiusPx = panelRadiusPx,
+                    isFirst = false,
+                    isLast = isLastRowInFrame,
+                    showDivider = showDivider,
+                    onCheckedChange = onWebServiceCheckedChange,
+                    onClick = onWebServiceClick
+                )
+
+                MySettingsRowKind.Action -> SettingsActionRow(
+                    item = item,
+                    colors = colors,
+                    panelRadiusPx = panelRadiusPx,
+                    isFirst = false,
+                    isLast = isLastRowInFrame,
+                    showDivider = showDivider,
+                    onClick = { onRowClick(item.row.key, item.searchTarget) }
+                )
             }
         }
     }
@@ -251,46 +304,56 @@ private fun SettingsSectionCard(
 private fun SettingsActionRow(
     item: VisibleRow,
     colors: MySettingsColors,
-    actionRadius: Dp,
+    panelRadiusPx: Float,
+    isFirst: Boolean,
+    isLast: Boolean,
+    showDivider: Boolean,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     val textColor = if (item.row.danger) colors.danger else colors.primaryText
-    SettingsSurface(
-        color = if (item.row.danger) colors.danger.copy(alpha = 0.12f) else colors.row,
-        radius = actionRadius,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        padding = PaddingValues(horizontal = 15.dp, vertical = 12.dp)
+            .defaultMinSize(minHeight = 60.dp)
+            .preferenceRowDecoration(
+                pressed = pressed,
+                danger = item.row.danger,
+                pressedColor = colors.rowPressed,
+                dangerColor = colors.danger,
+                dividerColor = colors.divider,
+                showDivider = showDivider,
+                radiusPx = panelRadiusPx,
+                isFirst = isFirst,
+                isLast = isLast
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.row.title,
+                color = textColor,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (item.summary.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = item.row.title,
-                    color = textColor,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
+                    text = item.summary,
+                    color = colors.secondaryText,
+                    fontSize = 14.sp,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (item.summary.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = item.summary,
-                        color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = ">",
-                color = colors.secondaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold
-            )
         }
     }
 }
@@ -300,69 +363,189 @@ private fun WebServiceRow(
     item: VisibleRow,
     state: MyWebServiceUiState,
     colors: MySettingsColors,
-    actionRadius: Dp,
+    panelRadiusPx: Float,
+    isFirst: Boolean,
+    isLast: Boolean,
+    showDivider: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
-    SettingsSurface(
-        color = colors.row,
-        radius = actionRadius,
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        padding = PaddingValues(horizontal = 15.dp, vertical = 11.dp)
+            .defaultMinSize(minHeight = 60.dp)
+            .preferenceRowDecoration(
+                pressed = pressed,
+                danger = false,
+                pressedColor = colors.rowPressed,
+                dangerColor = colors.danger,
+                dividerColor = colors.divider,
+                showDivider = showDivider,
+                radiusPx = panelRadiusPx,
+                isFirst = isFirst,
+                isLast = isLast
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.row.title,
-                    color = colors.primaryText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = state.summary,
-                    color = colors.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Switch(
-                checked = state.checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = colors.onAccent,
-                    checkedTrackColor = colors.accent,
-                    uncheckedThumbColor = colors.secondaryText.copy(alpha = 0.72f),
-                    uncheckedTrackColor = colors.section
-                )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.row.title,
+                color = colors.primaryText,
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = state.summary,
+                color = colors.secondaryText,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Switch(
+            checked = state.checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = colors.onAccent,
+                checkedTrackColor = colors.accent,
+                uncheckedThumbColor = colors.secondaryText.copy(alpha = 0.72f),
+                uncheckedTrackColor = Color(colors.row),
+                uncheckedBorderColor = colors.secondaryText.copy(alpha = 0.28f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun EmptySettingsResult(
+    colors: MySettingsColors
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "搜索结果",
+            color = colors.accent,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 60.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = "没有匹配的设置",
+                color = colors.secondaryText,
+                fontSize = 14.sp
             )
         }
     }
 }
 
-@Composable
-private fun SettingsSurface(
-    color: Color,
-    radius: Dp,
-    modifier: Modifier,
-    padding: PaddingValues,
-    content: @Composable () -> Unit
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(radius),
-        color = color,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Column(modifier = Modifier.padding(padding)) {
-            content()
+private fun Modifier.preferenceGroupBackground(
+    normalColor: Int,
+    panelImage: Drawable?,
+    borderColor: Int?,
+    radiusPx: Float
+): Modifier {
+    return drawWithCache {
+        val path = Path()
+        val rect = RectF(0f, 0f, size.width, size.height)
+        path.addRoundRect(rect, radiusPx, radiusPx, Path.Direction.CW)
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = normalColor
+        }
+        val strokePaint = borderColor?.let { color ->
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+                this.color = color
+            }
+        }
+        onDrawBehind {
+            drawIntoCanvas { canvas ->
+                val nativeCanvas = canvas.nativeCanvas
+                nativeCanvas.drawPath(path, fillPaint)
+                panelImage?.let { drawable ->
+                    drawable.bounds = Rect(
+                        0,
+                        0,
+                        size.width.toInt(),
+                        size.height.toInt()
+                    )
+                    drawable.draw(nativeCanvas)
+                }
+                strokePaint?.let { nativeCanvas.drawPath(path, it) }
+            }
+        }
+    }
+}
+
+private fun Modifier.preferenceRowDecoration(
+    pressed: Boolean,
+    danger: Boolean,
+    pressedColor: Int,
+    dangerColor: Color,
+    dividerColor: Color,
+    showDivider: Boolean,
+    radiusPx: Float,
+    isFirst: Boolean,
+    isLast: Boolean
+): Modifier {
+    return drawWithCache {
+        val path = Path()
+        val rect = RectF(0f, 0f, size.width, size.height)
+        val top = if (isFirst) radiusPx else 0f
+        val bottom = if (isLast) radiusPx else 0f
+        path.addRoundRect(
+            rect,
+            floatArrayOf(top, top, top, top, bottom, bottom, bottom, bottom),
+            Path.Direction.CW
+        )
+        val dangerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = dangerColor.copy(alpha = 0.10f).toArgb()
+        }
+        val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = pressedColor
+        }
+        val dividerInset = 16.dp.toPx()
+        onDrawBehind {
+            drawIntoCanvas { canvas ->
+                val nativeCanvas = canvas.nativeCanvas
+                if (danger) {
+                    nativeCanvas.drawPath(path, dangerPaint)
+                }
+                if (pressed) {
+                    nativeCanvas.drawPath(path, pressedPaint)
+                }
+            }
+            if (showDivider) {
+                val y = size.height - 1f
+                drawLine(
+                    color = dividerColor,
+                    start = Offset(dividerInset, y),
+                    end = Offset(size.width - dividerInset, y),
+                    strokeWidth = 1f
+                )
+            }
         }
     }
 }
