@@ -16,13 +16,14 @@ import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.main.ai.AiProviderConfig
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -58,12 +59,21 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
     }
 
     private fun showActions(provider: AiProviderConfig) {
-        selector(provider.name, listOf(getString(R.string.edit), getString(R.string.delete))) { _, index ->
-            when (index) {
-                0 -> openEdit(provider)
-                1 -> confirmRemoveProvider(provider)
-            }
-        }
+        val actions = listOf(getString(R.string.edit), getString(R.string.delete))
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = provider.name,
+                labels = actions,
+                dangerIndices = setOf(1),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    when (index) {
+                        0 -> openEdit(provider)
+                        1 -> confirmRemoveProvider(provider)
+                    }
+                }
+            )
+        )
     }
 
     private fun confirmRemoveProvider(provider: AiProviderConfig) {
