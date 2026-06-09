@@ -12,11 +12,12 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiImageProviderEditBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -88,13 +89,24 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun selectType() {
-        selector(
-            getString(R.string.ai_image_provider_type),
-            listOf(getString(R.string.ai_image_provider_openai), getString(R.string.ai_image_provider_js))
-        ) { _, index ->
-            providerType = if (index == 0) AiImageProviderConfig.TYPE_OPENAI else AiImageProviderConfig.TYPE_JS
-            refreshTypeUi()
-        }
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = getString(R.string.ai_image_provider_type),
+                labels = listOf(
+                    getString(R.string.ai_image_provider_openai),
+                    getString(R.string.ai_image_provider_js)
+                ),
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    providerType = if (index == 0) {
+                        AiImageProviderConfig.TYPE_OPENAI
+                    } else {
+                        AiImageProviderConfig.TYPE_JS
+                    }
+                    refreshTypeUi()
+                }
+            )
+        )
     }
 
     private fun refreshTypeUi() = binding.run {
