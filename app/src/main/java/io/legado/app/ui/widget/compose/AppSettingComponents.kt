@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -53,22 +54,45 @@ fun rememberAppSettingPalette(): AppSettingPalette {
     val dialogStyle = rememberAppDialogStyle()
     val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
     val secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary))
-    return AppSettingPalette(
-        page = Color(context.backgroundColor),
-        row = UiCorner.surfaceColor(rowBaseColor),
-        rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true),
-        divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line)),
-        border = UiCorner.panelBorderColor(context),
-        primaryText = Color(ContextCompat.getColor(context, R.color.primaryText)),
-        secondaryText = secondaryText,
-        accent = Color(context.accentColor),
-        danger = dialogStyle.danger,
-        disabledText = secondaryText.copy(alpha = 0.48f),
-        onAccent = Color.White,
-        panelRadiusPx = UiCorner.panelRadius(context),
-        bodyFontFamily = dialogStyle.bodyFontFamily,
-        titleFontFamily = dialogStyle.titleFontFamily
-    )
+    val page = Color(context.backgroundColor)
+    val row = UiCorner.surfaceColor(rowBaseColor)
+    val rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true)
+    val divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line))
+    val border = UiCorner.panelBorderColor(context)
+    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
+    val accent = Color(context.accentColor)
+    val panelRadiusPx = UiCorner.panelRadius(context)
+    return remember(
+        page,
+        row,
+        rowPressed,
+        divider,
+        border,
+        primaryText,
+        secondaryText,
+        accent,
+        dialogStyle.danger,
+        panelRadiusPx,
+        dialogStyle.bodyFontFamily,
+        dialogStyle.titleFontFamily
+    ) {
+        AppSettingPalette(
+            page = page,
+            row = row,
+            rowPressed = rowPressed,
+            divider = divider,
+            border = border,
+            primaryText = primaryText,
+            secondaryText = secondaryText,
+            accent = accent,
+            danger = dialogStyle.danger,
+            disabledText = secondaryText.copy(alpha = 0.48f),
+            onAccent = Color.White,
+            panelRadiusPx = panelRadiusPx,
+            bodyFontFamily = dialogStyle.bodyFontFamily,
+            titleFontFamily = dialogStyle.titleFontFamily
+        )
+    }
 }
 
 @Composable
@@ -148,23 +172,29 @@ fun Modifier.appSettingRowDecoration(
             floatArrayOf(top, top, top, top, bottom, bottom, bottom, bottom),
             Path.Direction.CW
         )
-        val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = pressedColor
+        val pressedPaint = if (pressed) {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = pressedColor
+            }
+        } else {
+            null
         }
-        val dangerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = dangerColor.copy(alpha = 0.10f).toArgb()
+        val dangerPaint = if (danger) {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.FILL
+                color = dangerColor.copy(alpha = 0.10f).toArgb()
+            }
+        } else {
+            null
         }
         val dividerInset = 16.dp.toPx()
         onDrawBehind {
-            drawIntoCanvas { canvas ->
-                val nativeCanvas = canvas.nativeCanvas
-                if (danger) {
-                    nativeCanvas.drawPath(path, dangerPaint)
-                }
-                if (pressed) {
-                    nativeCanvas.drawPath(path, pressedPaint)
+            if (dangerPaint != null || pressedPaint != null) {
+                drawIntoCanvas { canvas ->
+                    val nativeCanvas = canvas.nativeCanvas
+                    dangerPaint?.let { nativeCanvas.drawPath(path, it) }
+                    pressedPaint?.let { nativeCanvas.drawPath(path, it) }
                 }
             }
             if (showDivider) {
