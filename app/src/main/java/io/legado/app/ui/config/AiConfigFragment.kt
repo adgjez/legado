@@ -23,6 +23,7 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageProviderConfig
@@ -123,9 +124,12 @@ class AiConfigFragment : PreferenceFragment(),
             "阅读安全工具",
             "全量工具"
         )
-        requireContext().selector("正文问 AI 工具范围", labels.mapIndexed { index, label ->
-            if (values[index] == AppConfig.aiReadToolMode) "$label ✓" else label
-        }) { _, _, index ->
+        showComposeActionListDialog(
+            title = "正文问 AI 工具范围",
+            labels = labels.mapIndexed { index, label ->
+                if (values[index] == AppConfig.aiReadToolMode) "$label ✓" else label
+            }
+        ) { index ->
             AppConfig.aiReadToolMode = values[index]
             refreshUi()
         }
@@ -932,7 +936,10 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_tavily_topic_news),
             getString(R.string.ai_tavily_topic_finance)
         )
-        context?.selector(getString(R.string.ai_tavily_topic), labels) { _, _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.ai_tavily_topic),
+            labels = labels
+        ) { index ->
             AppConfig.aiTavilyTopic = values[index]
             refreshUi()
         }
@@ -945,7 +952,10 @@ class AiConfigFragment : PreferenceFragment(),
             getString(R.string.ai_tavily_search_depth_advanced),
             getString(R.string.ai_tavily_search_depth_ultra_fast)
         )
-        context?.selector(getString(R.string.ai_tavily_search_depth), labels) { _, _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.ai_tavily_search_depth),
+            labels = labels
+        ) { index ->
             AppConfig.aiTavilySearchDepth = values[index]
             refreshUi()
         }
