@@ -8,6 +8,7 @@ import androidx.fragment.app.DialogFragment
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.LogUtils
 import io.legado.app.utils.setBackgroundKeepPadding
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.windowSize
@@ -78,6 +79,8 @@ abstract class ComposeDialogFragment : DialogFragment() {
         kotlin.runCatching {
             manager.beginTransaction().remove(this).commit()
             super.show(manager, tag)
+        }.onFailure {
+            LogUtils.e("ComposeDialogFragment", "show failed: ${it.stackTraceToString()}")
         }
     }
 }

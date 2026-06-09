@@ -60,6 +60,7 @@ object ModernActionPopup {
     data class Action(
         val title: String,
         val checked: Boolean = false,
+        val enabled: Boolean = true,
         val invoke: () -> Unit
     )
 
@@ -201,7 +202,15 @@ object ModernActionPopup {
         for (index in 0 until popupMenu.menu.size()) {
             val item = popupMenu.menu.getItem(index)
             if (item.isVisible) {
-                actions.add(Action(item.title.toString(), item.isChecked) { onClick(item) })
+                actions.add(
+                    Action(
+                        title = item.title.toString(),
+                        checked = item.isChecked,
+                        enabled = item.isEnabled
+                    ) {
+                        onClick(item)
+                    }
+                )
             }
         }
         return show(anchor, actions, previousPopup, maxHeightRatio, bottomGapDp)
@@ -281,17 +290,22 @@ object ModernActionPopup {
                                 palette = palette,
                                 onClick = {
                                     onDismiss()
-                                    action.invoke()
+                                    anchorPostAction(action.invoke)
                                 },
                                 minHeight = 42.dp,
                                 compact = true,
-                                showSelectedMark = action.checked
+                                showSelectedMark = action.checked,
+                                enabled = action.enabled
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    private fun anchorPostAction(action: () -> Unit) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post(action)
     }
 
     private fun calculateAnchorSnapshot(

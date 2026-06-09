@@ -335,16 +335,20 @@ fun LegadoMiuixChoiceRow(
     description: String? = null,
     minHeight: Dp = 40.dp,
     compact: Boolean = false,
-    showSelectedMark: Boolean = true
+    showSelectedMark: Boolean = true,
+    enabled: Boolean = true
 ) {
+    val contentAlpha = if (enabled) 1f else 0.42f
+    val selectedColor = palette.accent.copy(alpha = contentAlpha)
+    val primaryColor = palette.primaryText.copy(alpha = contentAlpha)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = minHeight)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(if (compact) 13.dp else 16.dp),
         color = if (selected) palette.accent.copy(alpha = 0.14f) else palette.surfaceVariant,
-        contentColor = if (selected) palette.accent else palette.primaryText,
+        contentColor = if (selected) selectedColor else primaryColor,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
@@ -358,7 +362,7 @@ fun LegadoMiuixChoiceRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = text,
-                    color = if (selected) palette.accent else palette.primaryText,
+                    color = if (selected) selectedColor else primaryColor,
                     fontSize = if (compact) 13.sp else 14.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 2,
@@ -368,7 +372,7 @@ fun LegadoMiuixChoiceRow(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = it,
-                        color = palette.secondaryText,
+                        color = palette.secondaryText.copy(alpha = contentAlpha),
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -386,7 +390,7 @@ fun LegadoMiuixChoiceRow(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(palette.accent)
+                                .background(selectedColor)
                         )
                     }
                 }
