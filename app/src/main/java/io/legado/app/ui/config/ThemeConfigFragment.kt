@@ -16,7 +16,6 @@ import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogImageBlurringBinding
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.config.AppConfig
@@ -25,7 +24,6 @@ import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.prefs.ColorPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
@@ -33,6 +31,7 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -251,28 +250,22 @@ class ThemeConfigFragment : PreferenceFragment(),
         return true
     }
 
-    @SuppressLint("InflateParams")
     private fun alertSaveTheme(key: String) {
-        alert(R.string.theme_name) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "name"
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let { themeName ->
-                    when (key) {
-                        "saveDayTheme" -> {
-                            ThemeConfig.saveDayTheme(requireContext(), themeName)
-                        }
+        showComposeTextInputDialog(
+            title = getString(R.string.theme_name),
+            hint = "name",
+            onPositive = { themeName ->
+                when (key) {
+                    "saveDayTheme" -> {
+                        ThemeConfig.saveDayTheme(requireContext(), themeName)
+                    }
 
-                        "saveNightTheme" -> {
-                            ThemeConfig.saveNightTheme(requireContext(), themeName)
-                        }
+                    "saveNightTheme" -> {
+                        ThemeConfig.saveNightTheme(requireContext(), themeName)
                     }
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun selectBgAction(isNight: Boolean) {

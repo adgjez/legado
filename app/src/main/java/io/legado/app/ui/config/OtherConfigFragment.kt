@@ -18,7 +18,6 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditCodeBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
@@ -35,6 +34,7 @@ import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
 import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
@@ -302,24 +302,19 @@ class OtherConfigFragment : PreferenceFragment(),
         }
     }
 
-    @SuppressLint("InflateParams")
     private fun showUserAgentDialog() {
-        alert(getString(R.string.user_agent)) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = getString(R.string.user_agent)
-                editView.setText(AppConfig.userAgent)
-            }
-            customView { alertBinding.root }
-            okButton {
-                val userAgent = alertBinding.editView.text?.toString()
+        showComposeTextInputDialog(
+            title = getString(R.string.user_agent),
+            hint = getString(R.string.user_agent),
+            initialValue = AppConfig.userAgent,
+            onPositive = { userAgent ->
                 if (userAgent.isNullOrBlank()) {
                     removePref(PreferKey.userAgent)
                 } else {
                     putPrefString(PreferKey.userAgent, userAgent)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     @SuppressLint("InflateParams")
@@ -392,18 +387,12 @@ class OtherConfigFragment : PreferenceFragment(),
     }
 
     private fun alertLocalPassword() {
-        context?.alert(R.string.set_local_password, R.string.set_local_password_summary) {
-            val editTextBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "password"
-            }
-            customView {
-                editTextBinding.root
-            }
-            okButton {
-                LocalConfig.password = editTextBinding.editView.text.toString()
-            }
-            cancelButton()
-        }
+        showComposeTextInputDialog(
+            title = getString(R.string.set_local_password),
+            hint = "password",
+            message = getString(R.string.set_local_password_summary),
+            onPositive = { LocalConfig.password = it }
+        )
     }
 
     private fun consumeTargetKey() {
