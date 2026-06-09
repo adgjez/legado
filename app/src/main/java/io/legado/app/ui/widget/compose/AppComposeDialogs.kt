@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,18 @@ import kotlin.math.roundToInt
 
 private const val MAX_SAVEABLE_MULTI_CHOICE_ITEMS = 128
 private const val MAX_ACTION_LIST_ITEMS = 64
+
+@Composable
+private fun DismissWhenCallbackMissing(
+    missing: Boolean,
+    dismiss: () -> Unit
+) {
+    LaunchedEffect(missing) {
+        if (missing) {
+            dismiss()
+        }
+    }
+}
 
 @Stable
 data class AppDialogStyle(
@@ -230,6 +243,10 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                DismissWhenCallbackMissing(
+                    missing = onPositive == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
                 val readOnly = args.getBoolean(ARG_READ_ONLY)
                 val hintText = args.getString(ARG_HINT).orEmpty()
                 val positiveText = args.getString(ARG_POSITIVE_TEXT)
@@ -381,6 +398,10 @@ class ComposeMultiChoiceDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                DismissWhenCallbackMissing(
+                    missing = onPositive == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
                 val style = rememberAppDialogStyle()
                 val itemLabels = remember {
                     args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
@@ -546,6 +567,11 @@ class ComposeConfirmDialog : ComposeDialogFragment() {
                 val positiveRequiresCallback = args.getBoolean(ARG_POSITIVE_REQUIRES_CALLBACK, true)
                 val negativeRequiresCallback = args.getBoolean(ARG_NEGATIVE_REQUIRES_CALLBACK, false)
                 val messageInContent = args.getBoolean(ARG_MESSAGE_IN_CONTENT)
+                DismissWhenCallbackMissing(
+                    missing = positiveRequiresCallback && onPositive == null ||
+                        negativeRequiresCallback && onNegative == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
                 AppDialogFrame(
                     title = args.getString(ARG_TITLE).orEmpty(),
                     message = args.getString(ARG_MESSAGE),
@@ -661,6 +687,10 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                DismissWhenCallbackMissing(
+                    missing = onPositive == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
                 val style = rememberAppDialogStyle()
                 val itemLabels = remember {
                     args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
@@ -780,6 +810,10 @@ class ComposeActionListDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                DismissWhenCallbackMissing(
+                    missing = onSelected == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
                 val style = rememberAppDialogStyle()
                 val itemLabels = remember {
                     args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()

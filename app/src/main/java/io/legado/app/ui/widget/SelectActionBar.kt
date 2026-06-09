@@ -103,7 +103,11 @@ class SelectActionBar @JvmOverloads constructor(
             val item = getItem(index)
             if (item.isVisible) {
                 actions.add(
-                    ModernActionPopup.Action(item.title.toString()) {
+                    ModernActionPopup.Action(
+                        title = item.title.toString(),
+                        checked = item.isChecked,
+                        enabled = item.isEnabled
+                    ) {
                         menuItemClickListener?.onMenuItemClick(item)
                     }
                 )
