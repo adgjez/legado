@@ -260,7 +260,8 @@ fun LegadoMiuixSlider(
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int = 0
+    steps: Int = 0,
+    enabled: Boolean = true
 ) {
     if (canUseRealMiuix()) {
         MiuixSlider(
@@ -269,6 +270,7 @@ fun LegadoMiuixSlider(
             modifier = modifier.fillMaxWidth(),
             valueRange = valueRange,
             steps = steps,
+            enabled = enabled,
             colors = MiuixSliderDefaults.sliderColors(
                 foregroundColor = palette.accent,
                 disabledForegroundColor = palette.accent.copy(alpha = 0.28f),
@@ -288,12 +290,18 @@ fun LegadoMiuixSlider(
         modifier = modifier.fillMaxWidth(),
         valueRange = valueRange,
         steps = steps,
+        enabled = enabled,
         colors = SliderDefaults.colors(
             activeTrackColor = palette.accent,
             inactiveTrackColor = palette.surfaceVariant,
             thumbColor = palette.onAccent,
             activeTickColor = palette.onAccent.copy(alpha = 0.72f),
-            inactiveTickColor = palette.secondaryText.copy(alpha = 0.32f)
+            inactiveTickColor = palette.secondaryText.copy(alpha = 0.32f),
+            disabledActiveTrackColor = palette.accent.copy(alpha = 0.28f),
+            disabledInactiveTrackColor = palette.surfaceVariant.copy(alpha = 0.44f),
+            disabledThumbColor = palette.onAccent.copy(alpha = 0.42f),
+            disabledActiveTickColor = palette.onAccent.copy(alpha = 0.34f),
+            disabledInactiveTickColor = palette.secondaryText.copy(alpha = 0.18f)
         )
     )
 }

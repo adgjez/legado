@@ -337,7 +337,8 @@ private fun SettingSliderRow(
             palette = palette,
             valueRange = item.valueRange.first.toFloat()..item.valueRange.last.toFloat(),
             steps = (item.valueRange.last - item.valueRange.first - 1).coerceAtLeast(0),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = item.enabled
         )
     }
 }
