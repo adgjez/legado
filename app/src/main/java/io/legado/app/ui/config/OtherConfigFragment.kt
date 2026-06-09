@@ -34,6 +34,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.book.read.config.ContentSelectMenuConfigDialog
 import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.code.addJsonPattern
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
@@ -343,33 +344,33 @@ class OtherConfigFragment : PreferenceFragment(),
     }
 
     private fun clearCache() {
-        requireContext().alert(
-            titleResource = R.string.clear_cache,
-            messageResource = R.string.sure_del
-        ) {
-            okButton {
-                viewModel.clearCache()
-            }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.clear_cache),
+            message = getString(R.string.sure_del),
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.no),
+            onPositive = { viewModel.clearCache() }
+        )
     }
 
     private fun shrinkDatabase() {
-        alert(R.string.sure, R.string.shrink_database) {
-            okButton {
-                viewModel.shrinkDatabase()
-            }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.sure),
+            message = getString(R.string.shrink_database),
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.no),
+            onPositive = { viewModel.shrinkDatabase() }
+        )
     }
 
     private fun clearWebViewData() {
-        alert(R.string.clear_webview_data, R.string.sure_del) {
-            okButton {
-                viewModel.clearWebViewData()
-            }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.clear_webview_data),
+            message = getString(R.string.sure_del),
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.no),
+            onPositive = { viewModel.clearWebViewData() }
+        )
     }
 
     private fun isProcessTextEnabled(): Boolean {
