@@ -27,6 +27,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -47,6 +48,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -992,10 +994,13 @@ fun AppDialogSliderRow(
     range: IntRange,
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    showStepper: Boolean = false,
+    step: Int = 1
 ) {
     val style = rememberAppDialogStyle()
     val palette = style.toMiuixPalette()
+    val safeStep = step.coerceAtLeast(1)
     LegadoMiuixCard(
         modifier = modifier.fillMaxWidth(),
         color = style.fieldSurface,
@@ -1020,11 +1025,40 @@ fun AppDialogSliderRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = value.toString(),
-                    color = style.secondaryText,
-                    fontSize = if (compact) 12.sp else 13.sp
-                )
+                if (showStepper) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    AppDialogSliderStepButton(
+                        text = "-",
+                        enabled = value > range.first,
+                        palette = palette,
+                        onClick = {
+                            onValueChange((value - safeStep).coerceIn(range.first, range.last))
+                        }
+                    )
+                    Text(
+                        text = value.toString(),
+                        color = style.secondaryText,
+                        fontSize = if (compact) 12.sp else 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.width(28.dp),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
+                    )
+                    AppDialogSliderStepButton(
+                        text = "+",
+                        enabled = value < range.last,
+                        palette = palette,
+                        onClick = {
+                            onValueChange((value + safeStep).coerceIn(range.first, range.last))
+                        }
+                    )
+                } else {
+                    Text(
+                        text = value.toString(),
+                        color = style.secondaryText,
+                        fontSize = if (compact) 12.sp else 13.sp
+                    )
+                }
             }
             LegadoMiuixSlider(
                 value = value.toFloat(),
@@ -1037,11 +1071,50 @@ fun AppDialogSliderRow(
     }
 }
 
+@Composable
+private fun AppDialogSliderStepButton(
+    text: String,
+    enabled: Boolean,
+    palette: LegadoMiuixPalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(24.dp)
+            .height(24.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(9.dp),
+        color = if (enabled) {
+            palette.accent.copy(alpha = 0.14f)
+        } else {
+            palette.surfaceVariant.copy(alpha = 0.56f)
+        },
+        contentColor = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                color = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+        }
+    }
+}
+
 data class AppDialogSliderItem(
     val title: String,
     val value: Int,
     val range: IntRange,
-    val onValueChange: (Int) -> Unit
+    val onValueChange: (Int) -> Unit,
+    val showStepper: Boolean = false,
+    val step: Int = 1
 )
 
 @Composable
@@ -1069,7 +1142,9 @@ fun AppDialogSliderGrid(
                                 range = item.range,
                                 onValueChange = item.onValueChange,
                                 modifier = Modifier.weight(1f),
-                                compact = true
+                                compact = true,
+                                showStepper = item.showStepper,
+                                step = item.step
                             )
                         }
                         if (rowItems.size == 1) {
@@ -1083,7 +1158,9 @@ fun AppDialogSliderGrid(
                         title = item.title,
                         value = item.value,
                         range = item.range,
-                        onValueChange = item.onValueChange
+                        onValueChange = item.onValueChange,
+                        showStepper = item.showStepper,
+                        step = item.step
                     )
                 }
             }

@@ -44,7 +44,6 @@ import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixSection
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
@@ -52,7 +51,8 @@ import io.legado.app.utils.postEvent
 
 class PaddingConfigDialog : ComposeDialogFragment() {
 
-    override val widthFraction: Float = 1f
+    override val widthFraction: Float = 0.94f
+    override val maxWidthDp: Int? = 430
 
     override fun onStart() {
         super.onStart()
@@ -92,18 +92,18 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         LegadoMiuixCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             color = style.surface,
             contentColor = style.primaryText,
             cornerRadius = style.panelRadius,
-            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp)
+            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 640.dp)
+                    .heightIn(max = 540.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(9.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 HeaderSection(style = style)
                 BodySection(style = style)
@@ -120,10 +120,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingRight) }
 
-        LegadoMiuixSection(
+        PaddingSection(
             title = stringResource(R.string.header),
-            palette = style.toMiuixPalette(),
-            cornerRadius = style.actionRadius
+            style = style
         ) {
             PaddingSectionLineSwitch(
                 showLine = showLine,
@@ -134,7 +133,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     postHeaderFooterChanged()
                 }
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             PaddingSliderGrid(
                 top = top,
                 bottom = bottom,
@@ -174,10 +173,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingRight) }
 
-        LegadoMiuixSection(
+        PaddingSection(
             title = stringResource(R.string.main_body),
-            palette = style.toMiuixPalette(),
-            cornerRadius = style.actionRadius
+            style = style
         ) {
             PaddingSliderGrid(
                 top = top,
@@ -219,10 +217,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingLeft) }
         var right by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingRight) }
 
-        LegadoMiuixSection(
+        PaddingSection(
             title = stringResource(R.string.footer),
-            palette = style.toMiuixPalette(),
-            cornerRadius = style.actionRadius
+            style = style
         ) {
             PaddingSectionLineSwitch(
                 showLine = showLine,
@@ -233,7 +230,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     postHeaderFooterChanged()
                 }
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             PaddingSliderGrid(
                 top = top,
                 bottom = bottom,
@@ -267,32 +264,61 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     }
 
     @Composable
+    private fun PaddingSection(
+        title: String,
+        style: AppDialogStyle,
+        content: @Composable () -> Unit
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                color = style.accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 2.dp)
+            )
+            content()
+        }
+    }
+
+    @Composable
     private fun PaddingSectionLineSwitch(
         showLine: Boolean,
         style: AppDialogStyle,
         onShowLineChange: (Boolean) -> Unit
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
+        LegadoMiuixCard(
+            modifier = Modifier.fillMaxWidth(),
+            color = style.fieldSurface,
+            contentColor = style.primaryText,
+            cornerRadius = style.actionRadius,
+            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = stringResource(R.string.showLine),
-                color = style.primaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            LegadoMiuixSwitch(
-                checked = showLine,
-                onCheckedChange = onShowLineChange,
-                palette = style.toMiuixPalette()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.showLine),
+                    color = style.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                LegadoMiuixSwitch(
+                    checked = showLine,
+                    onCheckedChange = onShowLineChange,
+                    palette = style.toMiuixPalette()
+                )
+            }
         }
     }
 
@@ -317,25 +343,29 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     title = stringResource(R.string.padding_top),
                     value = top,
                     range = topRange,
-                    onValueChange = { if (it != top) onTopChange(it) }
+                    onValueChange = { if (it != top) onTopChange(it) },
+                    showStepper = true
                 ),
                 AppDialogSliderItem(
                     title = stringResource(R.string.padding_bottom),
                     value = bottom,
                     range = bottomRange,
-                    onValueChange = { if (it != bottom) onBottomChange(it) }
+                    onValueChange = { if (it != bottom) onBottomChange(it) },
+                    showStepper = true
                 ),
                 AppDialogSliderItem(
                     title = stringResource(R.string.padding_left),
                     value = left,
                     range = sideRange,
-                    onValueChange = { if (it != left) onLeftChange(it) }
+                    onValueChange = { if (it != left) onLeftChange(it) },
+                    showStepper = true
                 ),
                 AppDialogSliderItem(
                     title = stringResource(R.string.padding_right),
                     value = right,
                     range = sideRange,
-                    onValueChange = { if (it != right) onRightChange(it) }
+                    onValueChange = { if (it != right) onRightChange(it) },
+                    showStepper = true
                 )
             )
         )
