@@ -16,8 +16,10 @@ import io.legado.app.R
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefInt
 
 abstract class ComposeSettingFragment : Fragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
@@ -105,6 +107,13 @@ abstract class ComposeSettingFragment : Fragment(),
         return requireContext().getPrefString(key, defaultValue) ?: defaultValue
     }
 
+    protected fun intSetting(
+        key: String,
+        defaultValue: Int
+    ): Int {
+        return requireContext().getPrefInt(key, defaultValue)
+    }
+
     protected fun updateBooleanSetting(
         key: String,
         value: Boolean
@@ -117,6 +126,13 @@ abstract class ComposeSettingFragment : Fragment(),
         value: String
     ) {
         prefs.edit { putString(key, value) }
+    }
+
+    protected fun updateIntSetting(
+        key: String,
+        value: Int
+    ) {
+        requireContext().putPrefInt(key, value)
     }
 
     private fun consumeTargetKey() {
@@ -157,6 +173,7 @@ abstract class ComposeSettingFragment : Fragment(),
             is SettingActionSpec -> item.onClick()
             is SettingSwitchSpec -> item.onCheckedChange(!item.checked)
             is SettingChoiceSpec -> showChoiceDialog(item)
+            is SettingSliderSpec -> Unit
         }
     }
 

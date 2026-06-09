@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,12 +41,14 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
+import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.ui.widget.compose.toMiuixPalette
+import kotlin.math.roundToInt
 
 private val PanelHorizontalPadding = 12.dp
 
@@ -150,6 +154,16 @@ private fun SettingRow(
     isLast: Boolean,
     onItemClick: (SettingItemSpec) -> Unit
 ) {
+    if (item is SettingSliderSpec) {
+        SettingSliderRow(
+            item = item,
+            colors = colors,
+            panelRadiusPx = panelRadiusPx,
+            showDivider = showDivider,
+            isLast = isLast
+        )
+        return
+    }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     Row(
@@ -205,8 +219,72 @@ private fun SettingRow(
                 )
             }
 
+            is SettingSliderSpec -> Unit
             is SettingActionSpec -> Unit
         }
+    }
+}
+
+@Composable
+private fun SettingSliderRow(
+    item: SettingSliderSpec,
+    colors: AppSettingPalette,
+    panelRadiusPx: Float,
+    showDivider: Boolean,
+    isLast: Boolean
+) {
+    var sliderValue by remember(item.key, item.value) {
+        mutableFloatStateOf(item.value.toFloat())
+    }
+    val palette = rememberAppDialogStyle().toMiuixPalette()
+    fun commit(value: Int) {
+        val nextValue = value.coerceIn(item.valueRange.first, item.valueRange.last)
+        sliderValue = nextValue.toFloat()
+        item.onValueChange(nextValue)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 72.dp)
+            .appSettingRowDecoration(
+                pressed = false,
+                pressedColor = colors.rowPressed,
+                dividerColor = colors.divider,
+                showDivider = showDivider,
+                radiusPx = panelRadiusPx,
+                isLast = isLast
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SettingText(
+                item = item,
+                colors = colors,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = sliderValue.toInt().toString(),
+                color = if (item.enabled) colors.accent else colors.disabledText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        LegadoMiuixSlider(
+            value = sliderValue,
+            onValueChange = {
+                val nextValue = it.roundToInt().coerceIn(item.valueRange.first, item.valueRange.last)
+                if (sliderValue.toInt() != nextValue) {
+                    commit(nextValue)
+                } else {
+                    sliderValue = it
+                }
+            },
+            palette = palette,
+            valueRange = item.valueRange.first.toFloat()..item.valueRange.last.toFloat(),
+            steps = (item.valueRange.last - item.valueRange.first - 1).coerceAtLeast(0),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

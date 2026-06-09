@@ -54,6 +54,18 @@ data class SettingChoiceSpec(
             ?: selectedValue
 }
 
+data class SettingSliderSpec(
+    override val key: String,
+    override val title: CharSequence,
+    val value: Int,
+    val valueRange: IntRange,
+    val onValueChange: (Int) -> Unit,
+    override val summary: CharSequence? = null,
+    override val visible: Boolean = true,
+    override val enabled: Boolean = true,
+    override val searchKeys: List<String> = emptyList()
+) : SettingItemSpec
+
 data class SettingActionSpec(
     override val key: String,
     override val title: CharSequence,
