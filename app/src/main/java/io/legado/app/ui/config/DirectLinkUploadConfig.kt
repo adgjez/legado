@@ -9,8 +9,8 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogDirectLinkUploadConfigBinding
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
@@ -101,9 +101,18 @@ class DirectLinkUploadConfig : BaseDialogFragment(R.layout.dialog_direct_link_up
     }
 
     private fun importDefault() {
-        requireContext().selector(DirectLinkUpload.defaultRules) { _, rule, _ ->
-            upView(rule)
-        }
+        val rules = DirectLinkUpload.defaultRules
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = getString(R.string.import_default_rule),
+                labels = rules.map { it.summary },
+                descriptions = rules.map { it.uploadUrl },
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    rules.getOrNull(index)?.let(::upView)
+                }
+            )
+        )
     }
 
     private fun test() {
