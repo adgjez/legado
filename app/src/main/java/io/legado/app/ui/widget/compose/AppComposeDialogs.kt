@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -1078,32 +1080,36 @@ private fun AppDialogSliderStepButton(
     palette: LegadoMiuixPalette,
     onClick: () -> Unit
 ) {
-    Surface(
+    Box(
         modifier = Modifier
-            .width(24.dp)
-            .height(24.dp)
+            .size(36.dp)
             .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(9.dp),
-        color = if (enabled) {
-            palette.accent.copy(alpha = 0.14f)
-        } else {
-            palette.surfaceVariant.copy(alpha = 0.56f)
-        },
-        contentColor = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            modifier = Modifier.size(24.dp),
+            shape = RoundedCornerShape(9.dp),
+            color = if (enabled) {
+                palette.accent.copy(alpha = 0.14f)
+            } else {
+                palette.surfaceVariant.copy(alpha = 0.56f)
+            },
+            contentColor = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
-            Text(
-                text = text,
-                color = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = text,
+                    color = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.46f),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
         }
     }
 }

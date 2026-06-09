@@ -340,28 +340,28 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             minTwoColumnWidth = 220.dp,
             items = listOf(
                 AppDialogSliderItem(
-                    title = stringResource(R.string.padding_top),
+                    title = stringResource(R.string.top),
                     value = top,
                     range = topRange,
                     onValueChange = { if (it != top) onTopChange(it) },
                     showStepper = true
                 ),
                 AppDialogSliderItem(
-                    title = stringResource(R.string.padding_bottom),
+                    title = stringResource(R.string.bottom),
                     value = bottom,
                     range = bottomRange,
                     onValueChange = { if (it != bottom) onBottomChange(it) },
                     showStepper = true
                 ),
                 AppDialogSliderItem(
-                    title = stringResource(R.string.padding_left),
+                    title = stringResource(R.string.left),
                     value = left,
                     range = sideRange,
                     onValueChange = { if (it != left) onLeftChange(it) },
                     showStepper = true
                 ),
                 AppDialogSliderItem(
-                    title = stringResource(R.string.padding_right),
+                    title = stringResource(R.string.right),
                     value = right,
                     range = sideRange,
                     onValueChange = { if (it != right) onRightChange(it) },
