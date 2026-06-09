@@ -107,6 +107,9 @@ class IconListPreference(context: Context, attrs: AttributeSet) : ListPreference
         val selectedIndex = findIndexOfValue(value)
         return if (selectedIndex >= 0) {
             mEntryDrawables.getOrNull(selectedIndex)
+                ?.constantState
+                ?.newDrawable()
+                ?.mutate()
         } else {
             null
         }

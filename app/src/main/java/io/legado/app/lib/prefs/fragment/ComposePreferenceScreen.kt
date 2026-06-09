@@ -74,6 +74,7 @@ import io.legado.app.lib.prefs.SwitchPreference as LegadoSwitchPreference
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import kotlin.math.roundToInt
 
 private val PanelHorizontalPadding = 12.dp
 
@@ -468,7 +469,14 @@ private fun SeekBarPreferenceRow(
             value = sliderValue,
             enabled = enabled,
             valueRange = preference.minValue.toFloat()..preference.maxValue.toFloat(),
-            onValueChange = { sliderValue = it },
+            onValueChange = {
+                val nextValue = it.roundToInt().coerceIn(preference.minValue, preference.maxValue)
+                if (sliderValue.toInt() != nextValue) {
+                    commitValue(nextValue)
+                } else {
+                    sliderValue = it
+                }
+            },
             onValueChangeFinished = {
                 commitValue(sliderValue.toInt())
             },
