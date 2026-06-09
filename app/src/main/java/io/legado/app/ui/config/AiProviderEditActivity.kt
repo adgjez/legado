@@ -44,6 +44,7 @@ import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
@@ -274,15 +275,21 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
     }
 
     private fun confirmRemoveModel(model: AiModelConfig) {
-        alert(title = model.modelId, message = getString(R.string.ai_remove_model_confirm)) {
-            okButton {
-                AppConfig.aiModelConfigList = AppConfig.aiModelConfigList.filterNot { it.id == model.id }
-                notifyAiConfigChanged()
-                reloadModels()
-                toastOnUi(R.string.ai_model_removed)
-            }
-            cancelButton()
-        }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = model.modelId,
+                message = getString(R.string.ai_remove_model_confirm),
+                positiveText = getString(R.string.delete),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    AppConfig.aiModelConfigList = AppConfig.aiModelConfigList.filterNot { it.id == model.id }
+                    notifyAiConfigChanged()
+                    reloadModels()
+                    toastOnUi(R.string.ai_model_removed)
+                }
+            )
+        )
     }
 
     private fun fetchModels() {
