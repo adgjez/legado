@@ -17,6 +17,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,6 +51,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
     private val config = GSON.fromJsonObject<MangaFooterConfig>(AppConfig.mangaFooterConfig)
         .getOrNull()
         ?: MangaFooterConfig()
+    private var latestConfig = config.copy()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -83,9 +85,27 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
         var hideFooter by rememberSaveable { mutableStateOf(config.hideFooter) }
         var footerOrientation by rememberSaveable { mutableStateOf(config.footerOrientation) }
 
-        fun updateConfig(block: MangaFooterConfig.() -> Unit) {
-            config.block()
-            postEvent(EventBus.UP_MANGA_CONFIG, config)
+        fun currentConfig(): MangaFooterConfig {
+            return MangaFooterConfig(
+                hideChapterLabel = hideChapterLabel,
+                hideChapter = hideChapter,
+                hidePageNumberLabel = hidePageNumberLabel,
+                hidePageNumber = hidePageNumber,
+                hideProgressRatioLabel = hideProgressRatioLabel,
+                hideProgressRatio = hideProgressRatio,
+                footerOrientation = footerOrientation,
+                hideFooter = hideFooter,
+                hideChapterName = hideChapterName
+            )
+        }
+
+        fun updateConfig() {
+            latestConfig = currentConfig()
+            postEvent(EventBus.UP_MANGA_CONFIG, latestConfig)
+        }
+
+        SideEffect {
+            latestConfig = currentConfig()
         }
 
         LegadoMiuixCard(
@@ -126,7 +146,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hideChapterLabel,
                                 onChanged = { checked ->
                                     hideChapterLabel = checked
-                                    updateConfig { hideChapterLabel = checked }
+                                    updateConfig()
                                 }
                             ),
                             MangaFooterSwitchRow(
@@ -134,7 +154,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hideChapter,
                                 onChanged = { checked ->
                                     hideChapter = checked
-                                    updateConfig { hideChapter = checked }
+                                    updateConfig()
                                 }
                             ),
                             MangaFooterSwitchRow(
@@ -142,7 +162,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hideChapterName,
                                 onChanged = { checked ->
                                     hideChapterName = checked
-                                    updateConfig { hideChapterName = checked }
+                                    updateConfig()
                                 }
                             )
                         )
@@ -156,7 +176,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hidePageNumberLabel,
                                 onChanged = { checked ->
                                     hidePageNumberLabel = checked
-                                    updateConfig { hidePageNumberLabel = checked }
+                                    updateConfig()
                                 }
                             ),
                             MangaFooterSwitchRow(
@@ -164,7 +184,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hidePageNumber,
                                 onChanged = { checked ->
                                     hidePageNumber = checked
-                                    updateConfig { hidePageNumber = checked }
+                                    updateConfig()
                                 }
                             )
                         )
@@ -178,7 +198,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hideProgressRatioLabel,
                                 onChanged = { checked ->
                                     hideProgressRatioLabel = checked
-                                    updateConfig { hideProgressRatioLabel = checked }
+                                    updateConfig()
                                 }
                             ),
                             MangaFooterSwitchRow(
@@ -186,7 +206,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 checked = hideProgressRatio,
                                 onChanged = { checked ->
                                     hideProgressRatio = checked
-                                    updateConfig { hideProgressRatio = checked }
+                                    updateConfig()
                                 }
                             )
                         )
@@ -198,7 +218,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                         onSelected = { index ->
                             val newValue = index == 1
                             hideFooter = newValue
-                            updateConfig { hideFooter = newValue }
+                            updateConfig()
                         }
                     )
                     AppDialogOptionGroup(
@@ -215,7 +235,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
                                 ReaderInfoBarView.ALIGN_LEFT
                             }
                             footerOrientation = newValue
-                            updateConfig { footerOrientation = newValue }
+                            updateConfig()
                         }
                     )
                 }
@@ -249,7 +269,7 @@ class MangaFooterSettingDialog : ComposeDialogFragment() {
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
-        AppConfig.mangaFooterConfig = GSON.toJson(config)
+        AppConfig.mangaFooterConfig = GSON.toJson(latestConfig)
     }
 
     private data class MangaFooterSwitchRow(
