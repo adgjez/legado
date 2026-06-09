@@ -18,7 +18,6 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.databinding.ActivityThemeManageBinding
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.primaryTextColor
@@ -26,6 +25,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -156,31 +156,41 @@ class AiReadAloudUsageRecordActivity : BaseActivity<ActivityThemeManageBinding>(
             toastOnUi("请先长按选择记录")
             return
         }
-        alert("删除记录") {
-            setMessage("确定删除选中的 ${ids.size} 条消耗记录？")
-            okButton {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    appDb.aiReadAloudUsageRecordDao.deleteByIds(ids)
-                    selectedIds.clear()
-                    launch(Dispatchers.Main) { load() }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = "删除记录",
+                message = "确定删除选中的 ${ids.size} 条消耗记录？",
+                positiveText = getString(R.string.delete),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        appDb.aiReadAloudUsageRecordDao.deleteByIds(ids)
+                        selectedIds.clear()
+                        launch(Dispatchers.Main) { load() }
+                    }
                 }
-            }
-            cancelButton()
-        }
+            )
+        )
     }
 
     private fun confirmClearAll() {
-        alert("清空记录") {
-            setMessage("确定清空所有朗读 AI 消耗记录？")
-            okButton {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    appDb.aiReadAloudUsageRecordDao.clear()
-                    selectedIds.clear()
-                    launch(Dispatchers.Main) { load() }
+        showDialogFragment(
+            ComposeConfirmDialog.create(
+                title = "清空记录",
+                message = "确定清空所有朗读 AI 消耗记录？",
+                positiveText = getString(R.string.clear),
+                negativeText = getString(R.string.cancel),
+                dangerPositive = true,
+                onPositive = {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        appDb.aiReadAloudUsageRecordDao.clear()
+                        selectedIds.clear()
+                        launch(Dispatchers.Main) { load() }
+                    }
                 }
-            }
-            cancelButton()
-        }
+            )
+        )
     }
 
     private fun showRecordActions(record: AiReadAloudUsageRecord) {
