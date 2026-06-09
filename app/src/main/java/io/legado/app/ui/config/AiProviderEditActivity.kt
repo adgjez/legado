@@ -43,9 +43,11 @@ import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
+import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -129,10 +131,19 @@ class AiProviderEditActivity : BaseActivity<ActivityAiProviderEditBinding>() {
     private fun showApiModeSelector() {
         val modes = listOf(AI_API_MODE_CHAT_COMPLETIONS, AI_API_MODE_RESPONSES)
         val labels = listOf(getString(R.string.ai_provider_mode_chat), getString(R.string.ai_provider_mode_responses))
-        selector(getString(R.string.ai_api_mode), labels) { _, index ->
-            apiMode = modes[index]
-            renderApiMode()
-        }
+        showDialogFragment(
+            ComposeActionListDialog.create(
+                title = getString(R.string.ai_api_mode),
+                labels = labels,
+                negativeText = getString(R.string.cancel),
+                onSelected = { index ->
+                    modes.getOrNull(index)?.let { selectedMode ->
+                        apiMode = selectedMode
+                        renderApiMode()
+                    }
+                }
+            )
+        )
     }
 
     private fun renderApiMode() {
