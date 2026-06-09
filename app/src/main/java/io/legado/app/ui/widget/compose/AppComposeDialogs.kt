@@ -766,6 +766,120 @@ class ComposeSingleChoiceDialog : ComposeDialogFragment() {
     }
 }
 
+class ComposeActionListDialog : ComposeDialogFragment() {
+
+    private var onSelected: ((Int) -> Unit)? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val args = arguments ?: Bundle()
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                val style = rememberAppDialogStyle()
+                val itemLabels = remember {
+                    args.getStringArrayList(ARG_LABELS)?.toList().orEmpty()
+                }
+                val itemDescriptions = remember {
+                    args.getStringArrayList(ARG_DESCRIPTIONS)?.toList().orEmpty()
+                }
+                val dangerIndices = remember {
+                    args.getIntegerArrayList(ARG_DANGER_INDICES)?.toSet().orEmpty()
+                }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val canSelect = onSelected != null
+                AppDialogFrame(
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
+                    scrollContent = false,
+                    content = {
+                        val palette = style.toMiuixPalette()
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            itemsIndexed(itemLabels) { index, label ->
+                                val danger = index in dangerIndices
+                                LegadoMiuixActionRow(
+                                    text = label,
+                                    palette = palette,
+                                    onClick = {
+                                        if (canSelect) {
+                                            dismissAllowingStateLoss()
+                                            onSelected?.invoke(index)
+                                        }
+                                    },
+                                    danger = danger,
+                                    cornerRadius = style.actionRadius
+                                )
+                                itemDescriptions.getOrNull(index)
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { description ->
+                                        Text(
+                                            text = description,
+                                            color = style.secondaryText,
+                                            fontSize = 11.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(horizontal = 12.dp)
+                                        )
+                                    }
+                            }
+                        }
+                    },
+                    actions = {
+                        val palette = style.toMiuixPalette()
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
+                            onClick = { dismissAllowingStateLoss() },
+                            cornerRadius = style.actionRadius
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun create(
+            title: String,
+            labels: List<String>,
+            message: String? = null,
+            descriptions: List<String> = emptyList(),
+            dangerIndices: Set<Int> = emptySet(),
+            negativeText: String,
+            onSelected: (Int) -> Unit
+        ): ComposeActionListDialog {
+            return ComposeActionListDialog().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putStringArrayList(ARG_LABELS, ArrayList(labels))
+                    putString(ARG_MESSAGE, message)
+                    putStringArrayList(ARG_DESCRIPTIONS, ArrayList(descriptions))
+                    putIntegerArrayList(ARG_DANGER_INDICES, ArrayList(dangerIndices))
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                }
+                this.onSelected = onSelected
+            }
+        }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_LABELS = "labels"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_DESCRIPTIONS = "descriptions"
+        private const val ARG_DANGER_INDICES = "dangerIndices"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
+    }
+}
+
 @Composable
 fun AppDialogSwitchRow(
     text: String,
