@@ -99,8 +99,10 @@ class AutoReadDialog : ComposeDialogFragment() {
     ): View {
         val readActivity = activity as? ReadBookActivity
         val bottomDialog = readActivity?.bottomDialog ?: 0
-        readActivity?.bottomDialog = bottomDialog + 1
-        registeredBottomDialog = readActivity != null
+        if (!registeredBottomDialog && readActivity != null) {
+            readActivity.bottomDialog = bottomDialog + 1
+            registeredBottomDialog = true
+        }
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             if (bottomDialog > 0) {
