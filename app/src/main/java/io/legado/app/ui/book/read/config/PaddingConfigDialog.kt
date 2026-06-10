@@ -6,9 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,32 +23,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
@@ -66,18 +57,11 @@ import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.postEvent
 import kotlin.math.roundToInt
 
-private enum class PaddingEdge {
-    Top,
-    Bottom,
-    Left,
-    Right
-}
-
 private data class PaddingItem(
-    val edge: PaddingEdge,
     val label: String,
     val value: Int,
-    val range: IntRange
+    val range: IntRange,
+    val onValueChange: (Int) -> Unit
 )
 
 class PaddingConfigDialog : ComposeDialogFragment() {
@@ -161,7 +145,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                 postHeaderFooterChanged()
             }
         ) {
-            PaddingDirectionEditor(
+            PaddingSliderRows(
                 style = style,
                 top = top,
                 bottom = bottom,
@@ -205,7 +189,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             title = stringResource(R.string.main_body),
             style = style
         ) {
-            PaddingDirectionEditor(
+            PaddingSliderRows(
                 style = style,
                 top = top,
                 bottom = bottom,
@@ -256,7 +240,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                 postHeaderFooterChanged()
             }
         ) {
-            PaddingDirectionEditor(
+            PaddingSliderRows(
                 style = style,
                 top = top,
                 bottom = bottom,
@@ -349,7 +333,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     }
 
     @Composable
-    private fun PaddingDirectionEditor(
+    private fun PaddingSliderRows(
         style: AppDialogStyle,
         top: Int,
         bottom: Int,
@@ -363,355 +347,124 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         onLeftChange: (Int) -> Unit,
         onRightChange: (Int) -> Unit
     ) {
-        var activeName by rememberSaveable { mutableStateOf(PaddingEdge.Top.name) }
-        var editingName by rememberSaveable { mutableStateOf<String?>(null) }
-        var editingText by rememberSaveable { mutableStateOf("") }
-        val active = activeName.toPaddingEdge()
-        val values = listOf(
-            PaddingItem(PaddingEdge.Top, stringResource(R.string.top), top, topRange),
-            PaddingItem(PaddingEdge.Bottom, stringResource(R.string.bottom), bottom, bottomRange),
-            PaddingItem(PaddingEdge.Left, stringResource(R.string.left), left, sideRange),
-            PaddingItem(PaddingEdge.Right, stringResource(R.string.right), right, sideRange)
+        val items = listOf(
+            PaddingItem(stringResource(R.string.top), top, topRange) { if (it != top) onTopChange(it) },
+            PaddingItem(stringResource(R.string.bottom), bottom, bottomRange) { if (it != bottom) onBottomChange(it) },
+            PaddingItem(stringResource(R.string.left), left, sideRange) { if (it != left) onLeftChange(it) },
+            PaddingItem(stringResource(R.string.right), right, sideRange) { if (it != right) onRightChange(it) }
         )
-        val activeItem = values.first { it.edge == active }
-        val editingItem = editingName
-            ?.toPaddingEdge()
-            ?.let { edge -> values.firstOrNull { it.edge == edge } }
-
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                values.chunked(2).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        rowItems.forEach { item ->
-                            PaddingValueChip(
-                                item = item,
-                                selected = item.edge == active,
-                                style = style,
-                                modifier = Modifier.weight(1f),
-                                onClick = { activeName = item.edge.name }
-                            )
-                        }
+            items.chunked(2).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    rowItems.forEach { item ->
+                        PaddingSliderTile(
+                            item = item,
+                            style = style,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
-            }
-            ActivePaddingControl(
-                item = activeItem,
-                style = style,
-                onExactInputRequest = {
-                    editingName = activeItem.edge.name
-                    editingText = activeItem.value.toString()
-                },
-                onValueChange = { value ->
-                    applyPaddingChange(
-                        edge = activeItem.edge,
-                        value = value,
-                        onTopChange = onTopChange,
-                        onBottomChange = onBottomChange,
-                        onLeftChange = onLeftChange,
-                        onRightChange = onRightChange
-                    )
-                }
-            )
-            if (editingItem != null) {
-                PaddingExactInputPanel(
-                    item = editingItem,
-                    text = editingText,
-                    style = style,
-                    onTextChange = { text ->
-                        editingText = text.filter { it.isDigit() }.take(3)
-                    },
-                    onCancel = {
-                        editingName = null
-                        editingText = ""
-                    },
-                    onConfirm = {
-                        editingText.toIntOrNull()
-                            ?.coerceIn(editingItem.range)
-                            ?.takeIf { value -> value != editingItem.value }
-                            ?.let { value ->
-                                applyPaddingChange(
-                                    edge = editingItem.edge,
-                                    value = value,
-                                    onTopChange = onTopChange,
-                                    onBottomChange = onBottomChange,
-                                    onLeftChange = onLeftChange,
-                                    onRightChange = onRightChange
-                                )
-                            }
-                        editingName = null
-                        editingText = ""
-                    }
-                )
             }
         }
     }
 
     @Composable
-    private fun PaddingValueChip(
-        item: PaddingItem,
-        selected: Boolean,
-        style: AppDialogStyle,
-        modifier: Modifier = Modifier,
-        onClick: () -> Unit
-    ) {
-        Surface(
-            modifier = modifier
-                .heightIn(min = 42.dp)
-                .clickable(onClick = onClick),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = if (selected) style.accent.copy(alpha = 0.14f) else style.surface.copy(alpha = 0.72f),
-            contentColor = if (selected) style.accent else style.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = item.label,
-                    modifier = Modifier.weight(1f),
-                    color = if (selected) style.accent else style.primaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = item.value.toString(),
-                    color = if (selected) style.accent else style.secondaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.End,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    private fun ActivePaddingControl(
+    private fun PaddingSliderTile(
         item: PaddingItem,
         style: AppDialogStyle,
-        onExactInputRequest: () -> Unit,
-        onValueChange: (Int) -> Unit
+        modifier: Modifier = Modifier
     ) {
         val palette = style.toMiuixPalette()
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = modifier.heightIn(min = 60.dp),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.surface.copy(alpha = 0.72f),
+            contentColor = style.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = 1.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 7.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = item.label,
+                        modifier = Modifier.weight(1f),
+                        color = style.primaryText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    PaddingValuePill(
+                        item = item,
+                        style = style
+                    )
+                }
+                LegadoMiuixSlider(
+                    value = item.value.toFloat(),
+                    onValueChange = { value ->
+                        val newValue = value.roundToInt().coerceIn(item.range)
+                        if (newValue != item.value) {
+                            item.onValueChange(newValue)
+                        }
+                    },
+                    palette = palette,
+                    valueRange = item.range.first.toFloat()..item.range.last.toFloat(),
+                    steps = (item.range.last - item.range.first - 1).coerceAtLeast(0)
+                )
+            }
+        }
+    }
+
+    @Composable
+    private fun PaddingValuePill(
+        item: PaddingItem,
+        style: AppDialogStyle
+    ) {
+        Surface(
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.fieldSurface,
+            contentColor = style.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = 1.dp
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.label,
-                    modifier = Modifier.weight(1f),
-                    color = style.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
                 PaddingStepButton(
                     text = "-",
                     enabled = item.value > item.range.first,
                     style = style,
-                    onClick = { onValueChange((item.value - 1).coerceIn(item.range)) }
+                    onClick = { item.onValueChange((item.value - 1).coerceIn(item.range)) }
                 )
-                PaddingValueButton(
-                    value = item.value,
-                    style = style,
-                    onClick = onExactInputRequest
+                Text(
+                    text = item.value.toString(),
+                    modifier = Modifier.width(26.dp),
+                    color = style.primaryText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
                 )
                 PaddingStepButton(
                     text = "+",
                     enabled = item.value < item.range.last,
                     style = style,
-                    onClick = { onValueChange((item.value + 1).coerceIn(item.range)) }
-                )
-            }
-            LegadoMiuixSlider(
-                value = item.value.toFloat(),
-                onValueChange = { value ->
-                    val newValue = value.roundToInt().coerceIn(item.range)
-                    if (newValue != item.value) {
-                        onValueChange(newValue)
-                    }
-                },
-                palette = palette,
-                valueRange = item.range.first.toFloat()..item.range.last.toFloat(),
-                steps = (item.range.last - item.range.first - 1).coerceAtLeast(0)
-            )
-        }
-    }
-
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    private fun PaddingValueButton(
-        value: Int,
-        style: AppDialogStyle,
-        onClick: () -> Unit
-    ) {
-        Surface(
-            modifier = Modifier
-                .width(46.dp)
-                .height(34.dp)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onClick
-                ),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.surface.copy(alpha = 0.72f),
-            contentColor = style.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = value.toString(),
-                    color = style.primaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun PaddingExactInputPanel(
-        item: PaddingItem,
-        text: String,
-        style: AppDialogStyle,
-        onTextChange: (String) -> Unit,
-        onCancel: () -> Unit,
-        onConfirm: () -> Unit
-    ) {
-        val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(item.edge) {
-            focusRequester.requestFocus()
-        }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.surface.copy(alpha = 0.78f),
-            contentColor = style.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 9.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = item.label,
-                    modifier = Modifier.weight(1f),
-                    color = style.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                BasicTextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    textStyle = LocalTextStyle.current.copy(
-                        color = style.primaryText,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    ),
-                    modifier = Modifier
-                        .width(64.dp)
-                        .focusRequester(focusRequester),
-                    decorationBox = { innerTextField ->
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(style.actionRadius),
-                            color = style.fieldSurface,
-                            contentColor = style.primaryText,
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.dp
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(34.dp)
-                                    .padding(horizontal = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (text.isEmpty()) {
-                                    Text(
-                                        text = item.value.toString(),
-                                        color = style.secondaryText.copy(alpha = 0.56f),
-                                        fontSize = 13.sp,
-                                        maxLines = 1
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        }
-                    }
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                PaddingInlineButton(
-                    text = stringResource(android.R.string.cancel),
-                    primary = false,
-                    style = style,
-                    onClick = onCancel
-                )
-                Spacer(modifier = Modifier.width(5.dp))
-                PaddingInlineButton(
-                    text = stringResource(android.R.string.ok),
-                    primary = true,
-                    style = style,
-                    onClick = onConfirm
-                )
-            }
-        }
-    }
-
-    @Composable
-    private fun PaddingInlineButton(
-        text: String,
-        primary: Boolean,
-        style: AppDialogStyle,
-        onClick: () -> Unit
-    ) {
-        Surface(
-            modifier = Modifier
-                .heightIn(min = 34.dp)
-                .clickable(onClick = onClick),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = if (primary) style.accent.copy(alpha = 0.14f) else style.fieldSurface,
-            contentColor = if (primary) style.accent else style.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Box(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = text,
-                    color = if (primary) style.accent else style.primaryText,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                    onClick = { item.onValueChange((item.value + 1).coerceIn(item.range)) }
                 )
             }
         }
@@ -726,7 +479,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     ) {
         Surface(
             modifier = Modifier
-                .size(34.dp)
+                .size(28.dp)
                 .clickable(enabled = enabled, onClick = onClick),
             shape = RoundedCornerShape(style.actionRadius),
             color = if (enabled) style.accent.copy(alpha = 0.12f) else style.surface.copy(alpha = 0.56f),
@@ -741,32 +494,12 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                 Text(
                     text = text,
                     color = if (enabled) style.accent else style.secondaryText.copy(alpha = 0.46f),
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
             }
         }
-    }
-
-    private fun applyPaddingChange(
-        edge: PaddingEdge,
-        value: Int,
-        onTopChange: (Int) -> Unit,
-        onBottomChange: (Int) -> Unit,
-        onLeftChange: (Int) -> Unit,
-        onRightChange: (Int) -> Unit
-    ) {
-        when (edge) {
-            PaddingEdge.Top -> onTopChange(value)
-            PaddingEdge.Bottom -> onBottomChange(value)
-            PaddingEdge.Left -> onLeftChange(value)
-            PaddingEdge.Right -> onRightChange(value)
-        }
-    }
-
-    private fun String.toPaddingEdge(): PaddingEdge {
-        return runCatching { PaddingEdge.valueOf(this) }.getOrDefault(PaddingEdge.Top)
     }
 
     private fun postBodyChanged() {
