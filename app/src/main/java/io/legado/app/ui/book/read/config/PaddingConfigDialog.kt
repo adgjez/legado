@@ -38,11 +38,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
@@ -50,10 +52,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ReadBookConfig
@@ -70,6 +75,11 @@ private data class PaddingItem(
     val value: Int,
     val range: IntRange,
     val onValueChange: (Int) -> Unit
+)
+
+private data class PaddingFloatingKey(
+    val text: String,
+    val centerX: Float
 )
 
 class PaddingConfigDialog : ComposeDialogFragment() {
@@ -486,78 +496,160 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     ) {
         val density = LocalDensity.current
         val latestItem by rememberUpdatedState(item)
+        var floatingKey by remember { mutableStateOf<PaddingFloatingKey?>(null) }
         val thumbSize = 26.dp
         val endpointWidth = 30.dp
+        val floatingSize = 44.dp
+        val floatingLift = 46.dp
         val endpointWidthPx = with(density) { endpointWidth.toPx() }
         val thumbSizePx = with(density) { thumbSize.toPx() }
+        val floatingSizePx = with(density) { floatingSize.toPx() }
         val rangeSize = (item.range.last - item.range.first).coerceAtLeast(1)
         val fraction = ((item.value - item.range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
 
-        Surface(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(34.dp)
-                .pointerInput(item.range) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val width = size.width.toFloat()
-                        val touchSlop = viewConfiguration.touchSlop
-                        var totalX = 0f
-                        var totalY = 0f
-                        var dragging = false
-                        fun applyPosition(x: Float) {
-                            val usable = (width - thumbSizePx).coerceAtLeast(1f)
-                            val clamped = (x - thumbSizePx / 2f).coerceIn(0f, usable)
-                            val next = (latestItem.range.first + (clamped / usable) *
-                                (latestItem.range.last - latestItem.range.first))
-                                .roundToInt()
-                                .coerceIn(latestItem.range)
-                            if (next != latestItem.value) {
-                                latestItem.onValueChange(next)
-                            }
-                        }
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) break
-                            val delta = change.positionChange()
-                            totalX += delta.x
-                            totalY += delta.y
-                            if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
-                                dragging = true
-                            }
-                            if (dragging) {
-                                applyPosition(change.position.x)
-                                change.consume()
-                            }
-                        }
-                        if (!dragging) {
-                            when {
-                                down.position.x <= endpointWidthPx -> {
-                                    val next = (latestItem.value - 1).coerceIn(latestItem.range)
-                                    if (next != latestItem.value) latestItem.onValueChange(next)
-                                }
-                                down.position.x >= size.width - endpointWidthPx -> {
-                                    val next = (latestItem.value + 1).coerceIn(latestItem.range)
-                                    if (next != latestItem.value) latestItem.onValueChange(next)
-                                }
-                                else -> applyPosition(down.position.x)
-                            }
+        ) {
+            val widthPx = with(density) { maxWidth.toPx() }
+            val usablePx = (widthPx - thumbSizePx).coerceAtLeast(0f)
+            val thumbOffsetPx = (usablePx * fraction).roundToInt()
+            val enabledMinus = item.value > item.range.first
+            val enabledPlus = item.value < item.range.last
+
+            floatingKey?.let { key ->
+                val offsetX = (key.centerX - floatingSizePx / 2f)
+                    .coerceIn(0f, (widthPx - floatingSizePx).coerceAtLeast(0f))
+                    .roundToInt()
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = IntOffset(offsetX, -with(density) { floatingLift.roundToPx() }),
+                    properties = PopupProperties(focusable = false, clippingEnabled = false)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .size(floatingSize)
+                            .graphicsLayer {
+                                scaleX = 1.04f
+                                scaleY = 1.04f
+                            },
+                        shape = CircleShape,
+                        color = style.surface,
+                        contentColor = style.primaryText,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 12.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = key.text,
+                                color = style.accent,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
                         }
                     }
-            },
-            shape = CircleShape,
-            color = style.fieldSurface,
-            contentColor = style.primaryText,
-            tonalElevation = 0.dp,
-            shadowElevation = 1.dp
-        ) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val widthPx = with(density) { maxWidth.toPx() }
-                val usablePx = (widthPx - thumbSizePx).coerceAtLeast(0f)
-                val thumbOffsetPx = (usablePx * fraction).roundToInt()
-                val enabledMinus = item.value > item.range.first
-                val enabledPlus = item.value < item.range.last
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(item.range) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val width = size.width.toFloat()
+                            val touchSlop = viewConfiguration.touchSlop
+                            var totalX = 0f
+                            var totalY = 0f
+                            var dragging = false
+
+                            fun valueForPosition(x: Float): Int {
+                                val usable = (width - thumbSizePx).coerceAtLeast(1f)
+                                val clamped = (x - thumbSizePx / 2f).coerceIn(0f, usable)
+                                return (latestItem.range.first + (clamped / usable) *
+                                    (latestItem.range.last - latestItem.range.first))
+                                    .roundToInt()
+                                    .coerceIn(latestItem.range)
+                            }
+
+                            fun applyPosition(x: Float) {
+                                val next = valueForPosition(x)
+                                floatingKey = PaddingFloatingKey(next.toString(), x)
+                                if (next != latestItem.value) {
+                                    latestItem.onValueChange(next)
+                                }
+                            }
+
+                            try {
+                                floatingKey = when {
+                                    down.position.x <= endpointWidthPx -> {
+                                        PaddingFloatingKey("-", endpointWidthPx / 2f)
+                                    }
+                                    down.position.x >= width - endpointWidthPx -> {
+                                        PaddingFloatingKey("+", width - endpointWidthPx / 2f)
+                                    }
+                                    else -> {
+                                        PaddingFloatingKey(valueForPosition(down.position.x).toString(), down.position.x)
+                                    }
+                                }
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    val delta = change.positionChange()
+                                    totalX += delta.x
+                                    totalY += delta.y
+                                    if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
+                                        dragging = true
+                                    }
+                                    if (dragging) {
+                                        applyPosition(change.position.x)
+                                        change.consume()
+                                    } else {
+                                        floatingKey = when {
+                                            down.position.x <= endpointWidthPx -> {
+                                                PaddingFloatingKey("-", endpointWidthPx / 2f)
+                                            }
+                                            down.position.x >= width - endpointWidthPx -> {
+                                                PaddingFloatingKey("+", width - endpointWidthPx / 2f)
+                                            }
+                                            else -> {
+                                                PaddingFloatingKey(
+                                                    valueForPosition(change.position.x).toString(),
+                                                    change.position.x
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!dragging) {
+                                    when {
+                                        down.position.x <= endpointWidthPx -> {
+                                            val next = (latestItem.value - 1).coerceIn(latestItem.range)
+                                            if (next != latestItem.value) latestItem.onValueChange(next)
+                                        }
+                                        down.position.x >= size.width - endpointWidthPx -> {
+                                            val next = (latestItem.value + 1).coerceIn(latestItem.range)
+                                            if (next != latestItem.value) latestItem.onValueChange(next)
+                                        }
+                                        else -> applyPosition(down.position.x)
+                                    }
+                                }
+                            } finally {
+                                floatingKey = null
+                            }
+                        }
+                },
+                shape = CircleShape,
+                color = style.fieldSurface,
+                contentColor = style.primaryText,
+                tonalElevation = 0.dp,
+                shadowElevation = 1.dp
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
