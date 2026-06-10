@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -37,6 +35,8 @@ import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
+import io.legado.app.ui.widget.compose.LegadoMiuixPalette
+import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
@@ -334,16 +334,10 @@ private fun WebServiceRow(
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
-        Switch(
+        LegadoMiuixSwitch(
             checked = state.checked,
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onAccent,
-                checkedTrackColor = colors.accent,
-                uncheckedThumbColor = colors.secondaryText.copy(alpha = 0.72f),
-                uncheckedTrackColor = Color(colors.row),
-                uncheckedBorderColor = colors.secondaryText.copy(alpha = 0.28f)
-            )
+            palette = colors.toMiuixPalette()
         )
     }
 }
@@ -429,4 +423,16 @@ private fun MySettingsRowModel.effectiveSummary(
         MySettingsRowKind.WebService -> webServiceState.summary
         MySettingsRowKind.Action -> summary.orEmpty()
     }
+}
+
+private fun AppSettingPalette.toMiuixPalette(): LegadoMiuixPalette {
+    return LegadoMiuixPalette(
+        accent = accent,
+        surface = Color(row),
+        surfaceVariant = Color(row),
+        primaryText = primaryText,
+        secondaryText = secondaryText,
+        danger = danger,
+        onAccent = onAccent
+    )
 }
