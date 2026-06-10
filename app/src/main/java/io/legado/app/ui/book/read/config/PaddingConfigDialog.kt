@@ -6,6 +6,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -58,9 +60,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.postEvent
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -292,7 +292,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(style.actionRadius),
-            color = style.fieldSurface.copy(alpha = 0.72f),
+            color = style.fieldSurface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
@@ -328,14 +328,62 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        LegadoMiuixSwitch(
+                        PaddingLineSwitch(
                             checked = showLine,
                             onCheckedChange = onShowLineChange,
-                            palette = style.toMiuixPalette()
+                            style = style
                         )
                     }
                 }
                 content()
+            }
+        }
+    }
+
+    @Composable
+    private fun PaddingLineSwitch(
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+        style: AppDialogStyle
+    ) {
+        val thumbSize = 24.dp
+        val innerPadding = 2.dp
+        Surface(
+            modifier = Modifier
+                .width(48.dp)
+                .height(28.dp)
+                .clickable { onCheckedChange(!checked) },
+            shape = CircleShape,
+            color = if (checked) style.accent.copy(alpha = 0.86f) else style.surface,
+            contentColor = style.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = 2.dp
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                val targetOffset = if (checked) {
+                    maxWidth - thumbSize
+                } else {
+                    0.dp
+                }
+                val offset by animateDpAsState(
+                    targetValue = targetOffset,
+                    label = "paddingLineSwitchThumb"
+                )
+                Surface(
+                    modifier = Modifier
+                        .offset(x = offset)
+                        .size(thumbSize),
+                    shape = CircleShape,
+                    color = style.surface,
+                    contentColor = style.primaryText,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 5.dp
+                ) {}
             }
         }
     }
@@ -391,7 +439,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         Surface(
             modifier = modifier.heightIn(min = 58.dp),
             shape = RoundedCornerShape(style.actionRadius),
-            color = style.surface.copy(alpha = 0.72f),
+            color = style.surface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 1.dp
@@ -497,9 +545,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                             }
                         }
                     }
-                },
+            },
             shape = CircleShape,
-            color = style.fieldSurface.copy(alpha = 0.88f),
+            color = style.fieldSurface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 1.dp
