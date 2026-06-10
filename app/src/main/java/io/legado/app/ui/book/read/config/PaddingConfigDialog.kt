@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -47,11 +48,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -66,6 +69,7 @@ import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -77,7 +81,9 @@ private data class PaddingItem(
 )
 
 private data class PaddingFloatingSlider(
-    val value: Int
+    val value: Int,
+    val range: IntRange,
+    val onValueChange: (Int) -> Unit
 )
 
 class PaddingConfigDialog : ComposeDialogFragment() {
@@ -120,31 +126,85 @@ class PaddingConfigDialog : ComposeDialogFragment() {
 
     @Composable
     private fun PaddingConfigContent(style: AppDialogStyle) {
-        LegadoMiuixCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            color = style.surface,
-            contentColor = style.primaryText,
-            cornerRadius = style.panelRadius,
-            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
-        ) {
-            Column(
+        val configuration = LocalConfiguration.current
+        var floatingSlider by remember { mutableStateOf<PaddingFloatingSlider?>(null) }
+        val floatingWidth = (configuration.screenWidthDp.dp - 48.dp).coerceIn(240.dp, 340.dp)
+        val floatingHeight = 56.dp
+        val floatingThumbSize = 36.dp
+        val floatingEndpointWidth = 44.dp
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            LegadoMiuixCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 480.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                color = style.surface,
+                contentColor = style.primaryText,
+                cornerRadius = style.panelRadius,
+                insidePadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
             ) {
-                HeaderSection(style = style)
-                BodySection(style = style)
-                FooterSection(style = style)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HeaderSection(
+                        style = style,
+                        floatingWidth = floatingWidth,
+                        onFloatingSliderChange = { floatingSlider = it }
+                    )
+                    BodySection(
+                        style = style,
+                        floatingWidth = floatingWidth,
+                        onFloatingSliderChange = { floatingSlider = it }
+                    )
+                    FooterSection(
+                        style = style,
+                        floatingWidth = floatingWidth,
+                        onFloatingSliderChange = { floatingSlider = it }
+                    )
+                }
+            }
+
+            floatingSlider?.let { slider ->
+                Popup(
+                    alignment = Alignment.Center,
+                    properties = PopupProperties(focusable = false, clippingEnabled = false)
+                ) {
+                    PaddingFloatingSliderOverlay(
+                        value = slider.value,
+                        range = slider.range,
+                        style = style,
+                        screenWidth = configuration.screenWidthDp.dp,
+                        screenHeight = configuration.screenHeightDp.dp,
+                        sliderWidth = floatingWidth,
+                        sliderHeight = floatingHeight,
+                        endpointWidth = floatingEndpointWidth,
+                        thumbSize = floatingThumbSize,
+                        onValueChange = { value ->
+                            val next = value.coerceIn(slider.range)
+                            if (next != slider.value) {
+                                floatingSlider = slider.copy(value = next)
+                                slider.onValueChange(next)
+                            }
+                        },
+                        onDismiss = {
+                            floatingSlider = null
+                        }
+                    )
+                }
             }
         }
     }
 
     @Composable
-    private fun HeaderSection(style: AppDialogStyle) {
+    private fun HeaderSection(
+        style: AppDialogStyle,
+        floatingWidth: Dp,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit
+    ) {
         var showLine by rememberSaveable { mutableStateOf(ReadBookConfig.showHeaderLine) }
         var top by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingTop) }
         var bottom by rememberSaveable { mutableIntStateOf(ReadBookConfig.headerPaddingBottom) }
@@ -163,6 +223,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         ) {
             PaddingSliderRows(
                 style = style,
+                floatingWidth = floatingWidth,
                 top = top,
                 bottom = bottom,
                 left = left,
@@ -189,13 +250,18 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     right = it
                     ReadBookConfig.headerPaddingRight = it
                     postHeaderFooterChanged()
-                }
+                },
+                onFloatingSliderChange = onFloatingSliderChange
             )
         }
     }
 
     @Composable
-    private fun BodySection(style: AppDialogStyle) {
+    private fun BodySection(
+        style: AppDialogStyle,
+        floatingWidth: Dp,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit
+    ) {
         var top by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingTop) }
         var bottom by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingBottom) }
         var left by rememberSaveable { mutableIntStateOf(ReadBookConfig.paddingLeft) }
@@ -207,6 +273,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         ) {
             PaddingSliderRows(
                 style = style,
+                floatingWidth = floatingWidth,
                 top = top,
                 bottom = bottom,
                 left = left,
@@ -233,13 +300,18 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     right = it
                     ReadBookConfig.paddingRight = it
                     postBodyChanged()
-                }
+                },
+                onFloatingSliderChange = onFloatingSliderChange
             )
         }
     }
 
     @Composable
-    private fun FooterSection(style: AppDialogStyle) {
+    private fun FooterSection(
+        style: AppDialogStyle,
+        floatingWidth: Dp,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit
+    ) {
         var showLine by rememberSaveable { mutableStateOf(ReadBookConfig.showFooterLine) }
         var top by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingTop) }
         var bottom by rememberSaveable { mutableIntStateOf(ReadBookConfig.footerPaddingBottom) }
@@ -258,6 +330,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         ) {
             PaddingSliderRows(
                 style = style,
+                floatingWidth = floatingWidth,
                 top = top,
                 bottom = bottom,
                 left = left,
@@ -284,7 +357,8 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     right = it
                     ReadBookConfig.footerPaddingRight = it
                     postHeaderFooterChanged()
-                }
+                },
+                onFloatingSliderChange = onFloatingSliderChange
             )
         }
     }
@@ -399,6 +473,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     @Composable
     private fun PaddingSliderRows(
         style: AppDialogStyle,
+        floatingWidth: Dp,
         top: Int,
         bottom: Int,
         left: Int,
@@ -409,7 +484,8 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         onTopChange: (Int) -> Unit,
         onBottomChange: (Int) -> Unit,
         onLeftChange: (Int) -> Unit,
-        onRightChange: (Int) -> Unit
+        onRightChange: (Int) -> Unit,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit
     ) {
         val items = listOf(
             PaddingItem(stringResource(R.string.top), top, topRange) { if (it != top) onTopChange(it) },
@@ -430,6 +506,8 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                         PaddingSliderTile(
                             item = item,
                             style = style,
+                            floatingWidth = floatingWidth,
+                            onFloatingSliderChange = onFloatingSliderChange,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -442,6 +520,8 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     private fun PaddingSliderTile(
         item: PaddingItem,
         style: AppDialogStyle,
+        floatingWidth: Dp,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit,
         modifier: Modifier = Modifier
     ) {
         Surface(
@@ -481,7 +561,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                 }
                 PaddingStepperSlider(
                     item = item,
-                    style = style
+                    style = style,
+                    floatingWidth = floatingWidth,
+                    onFloatingSliderChange = onFloatingSliderChange
                 )
             }
         }
@@ -490,19 +572,20 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     @Composable
     private fun PaddingStepperSlider(
         item: PaddingItem,
-        style: AppDialogStyle
+        style: AppDialogStyle,
+        floatingWidth: Dp,
+        onFloatingSliderChange: (PaddingFloatingSlider?) -> Unit
     ) {
         val density = LocalDensity.current
         val latestItem by rememberUpdatedState(item)
-        var floatingSlider by remember { mutableStateOf<PaddingFloatingSlider?>(null) }
         val thumbSize = 26.dp
         val endpointWidth = 30.dp
-        val floatingHeight = 48.dp
         val floatingThumbSize = 36.dp
-        val floatingEndpointWidth = 44.dp
-        val floatingLift = 58.dp
         val endpointWidthPx = with(density) { endpointWidth.toPx() }
         val thumbSizePx = with(density) { thumbSize.toPx() }
+        val floatingUsablePx = with(density) {
+            (floatingWidth - floatingThumbSize).toPx().coerceAtLeast(1f)
+        }
         val rangeSize = (item.range.last - item.range.first).coerceAtLeast(1)
         val fraction = ((item.value - item.range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
 
@@ -517,28 +600,6 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             val enabledMinus = item.value > item.range.first
             val enabledPlus = item.value < item.range.last
 
-            floatingSlider?.let { slider ->
-                val floatingWidth = (maxWidth + 42.dp).coerceAtMost(220.dp)
-                val floatingWidthPx = with(density) { floatingWidth.toPx() }
-                val offsetX = ((widthPx - floatingWidthPx) / 2f).roundToInt()
-                Popup(
-                    alignment = Alignment.TopStart,
-                    offset = IntOffset(offsetX, -with(density) { floatingLift.roundToPx() }),
-                    properties = PopupProperties(focusable = false, clippingEnabled = false)
-                ) {
-                    PaddingFloatingStepperSlider(
-                        value = slider.value,
-                        range = item.range,
-                        style = style,
-                        modifier = Modifier
-                            .width(floatingWidth)
-                            .height(floatingHeight),
-                        endpointWidth = floatingEndpointWidth,
-                        thumbSize = floatingThumbSize
-                    )
-                }
-            }
-
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
@@ -547,9 +608,12 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val width = size.width.toFloat()
                             val touchSlop = viewConfiguration.touchSlop
+                            val longPressTimeoutMillis = viewConfiguration.longPressTimeoutMillis
                             var totalX = 0f
                             var totalY = 0f
                             var dragging = false
+                            var released = false
+                            var longPressed = false
 
                             fun valueForPosition(x: Float): Int {
                                 val usable = (width - thumbSizePx).coerceAtLeast(1f)
@@ -562,61 +626,83 @@ class PaddingConfigDialog : ComposeDialogFragment() {
 
                             fun applyPosition(x: Float) {
                                 val next = valueForPosition(x)
-                                floatingSlider = PaddingFloatingSlider(next)
                                 if (next != latestItem.value) {
                                     latestItem.onValueChange(next)
                                 }
                             }
 
+                            fun expandedValueForDrag(x: Float, startX: Float, startValue: Int): Int {
+                                val delta = ((x - startX) / floatingUsablePx * rangeSize).roundToInt()
+                                return (startValue + delta).coerceIn(latestItem.range)
+                            }
+
+                            fun showExpanded(value: Int) {
+                                onFloatingSliderChange(
+                                    PaddingFloatingSlider(
+                                        value = value,
+                                        range = latestItem.range,
+                                        onValueChange = latestItem.onValueChange
+                                    )
+                                )
+                            }
+
                             try {
-                                floatingSlider = when {
-                                    down.position.x <= endpointWidthPx -> {
-                                        PaddingFloatingSlider(
-                                            (latestItem.value - 1).coerceIn(latestItem.range)
-                                        )
+                                val startedBeforeLongPress = withTimeoutOrNull(longPressTimeoutMillis) {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            released = true
+                                            break
+                                        }
+                                        val delta = change.positionChange()
+                                        totalX += delta.x
+                                        totalY += delta.y
+                                        if (abs(totalX) > touchSlop || abs(totalY) > touchSlop) {
+                                            if (abs(totalX) > abs(totalY)) {
+                                                dragging = true
+                                                applyPosition(change.position.x)
+                                                change.consume()
+                                            }
+                                            break
+                                        }
                                     }
-                                    down.position.x >= width - endpointWidthPx -> {
-                                        PaddingFloatingSlider(
-                                            (latestItem.value + 1).coerceIn(latestItem.range)
+                                    true
+                                } ?: false
+
+                                longPressed = !released && !dragging && !startedBeforeLongPress
+
+                                if (longPressed) {
+                                    var expandedValue = latestItem.value
+                                    val startValue = expandedValue
+                                    showExpanded(expandedValue)
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+                                        val next = expandedValueForDrag(
+                                            x = change.position.x,
+                                            startX = down.position.x,
+                                            startValue = startValue
                                         )
+                                        if (next != expandedValue) {
+                                            expandedValue = next
+                                            showExpanded(next)
+                                            latestItem.onValueChange(next)
+                                        }
+                                        change.consume()
                                     }
-                                    else -> {
-                                        PaddingFloatingSlider(valueForPosition(down.position.x))
+                                } else if (dragging) {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+                                        applyPosition(change.position.x)
+                                        change.consume()
                                     }
                                 }
 
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (!change.pressed) break
-                                    val delta = change.positionChange()
-                                    totalX += delta.x
-                                    totalY += delta.y
-                                    if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
-                                        dragging = true
-                                    }
-                                    if (dragging) {
-                                        applyPosition(change.position.x)
-                                        change.consume()
-                                    } else {
-                                        floatingSlider = when {
-                                            down.position.x <= endpointWidthPx -> {
-                                                PaddingFloatingSlider(
-                                                    (latestItem.value - 1).coerceIn(latestItem.range)
-                                                )
-                                            }
-                                            down.position.x >= width - endpointWidthPx -> {
-                                                PaddingFloatingSlider(
-                                                    (latestItem.value + 1).coerceIn(latestItem.range)
-                                                )
-                                            }
-                                            else -> {
-                                                PaddingFloatingSlider(valueForPosition(change.position.x))
-                                            }
-                                        }
-                                    }
-                                }
-                                if (!dragging) {
+                                if (!released && !dragging && !longPressed) {
                                     when {
                                         down.position.x <= endpointWidthPx -> {
                                             val next = (latestItem.value - 1).coerceIn(latestItem.range)
@@ -630,7 +716,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                                     }
                                 }
                             } finally {
-                                floatingSlider = null
+                                onFloatingSliderChange(null)
                             }
                         }
                 },
@@ -681,19 +767,93 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     }
 
     @Composable
+    private fun PaddingFloatingSliderOverlay(
+        value: Int,
+        range: IntRange,
+        style: AppDialogStyle,
+        screenWidth: Dp,
+        screenHeight: Dp,
+        sliderWidth: Dp,
+        sliderHeight: Dp,
+        endpointWidth: Dp,
+        thumbSize: Dp,
+        onValueChange: (Int) -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        Box(
+            modifier = Modifier
+                .width(screenWidth)
+                .height(screenHeight)
+                .background(Color.Black.copy(alpha = 0.44f))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            PaddingFloatingStepperSlider(
+                value = value,
+                range = range,
+                style = style,
+                modifier = Modifier
+                    .width(sliderWidth)
+                    .height(sliderHeight),
+                endpointWidth = endpointWidth,
+                thumbSize = thumbSize,
+                onValueChange = onValueChange,
+                onDismiss = onDismiss
+            )
+        }
+    }
+
+    @Composable
     private fun PaddingFloatingStepperSlider(
         value: Int,
         range: IntRange,
         style: AppDialogStyle,
         modifier: Modifier = Modifier,
         endpointWidth: Dp,
-        thumbSize: Dp
+        thumbSize: Dp,
+        onValueChange: (Int) -> Unit,
+        onDismiss: () -> Unit
     ) {
         val density = LocalDensity.current
         val rangeSize = (range.last - range.first).coerceAtLeast(1)
         val fraction = ((value - range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
         Surface(
-            modifier = modifier,
+            modifier = modifier.pointerInput(range) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val width = size.width.toFloat()
+                    val endpointWidthPx = with(density) { endpointWidth.toPx() }
+                    val thumbSizePx = with(density) { thumbSize.toPx() }
+
+                    fun valueForPosition(x: Float): Int {
+                        val usable = (width - thumbSizePx).coerceAtLeast(1f)
+                        val clamped = (x - thumbSizePx / 2f).coerceIn(0f, usable)
+                        return (range.first + (clamped / usable) * (range.last - range.first))
+                            .roundToInt()
+                            .coerceIn(range)
+                    }
+
+                    when {
+                        down.position.x <= endpointWidthPx -> {
+                            onValueChange((value - 1).coerceIn(range))
+                        }
+                        down.position.x >= width - endpointWidthPx -> {
+                            onValueChange((value + 1).coerceIn(range))
+                        }
+                        else -> {
+                            onValueChange(valueForPosition(down.position.x))
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                onValueChange(valueForPosition(change.position.x))
+                                change.consume()
+                            }
+                        }
+                    }
+                    onDismiss()
+                }
+            },
             shape = CircleShape,
             color = style.fieldSurface,
             contentColor = style.primaryText,
