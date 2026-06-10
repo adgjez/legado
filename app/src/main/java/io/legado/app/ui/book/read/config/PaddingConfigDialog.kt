@@ -44,7 +44,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
@@ -52,8 +51,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,9 +76,8 @@ private data class PaddingItem(
     val onValueChange: (Int) -> Unit
 )
 
-private data class PaddingFloatingKey(
-    val text: String,
-    val centerX: Float
+private data class PaddingFloatingSlider(
+    val value: Int
 )
 
 class PaddingConfigDialog : ComposeDialogFragment() {
@@ -496,14 +494,15 @@ class PaddingConfigDialog : ComposeDialogFragment() {
     ) {
         val density = LocalDensity.current
         val latestItem by rememberUpdatedState(item)
-        var floatingKey by remember { mutableStateOf<PaddingFloatingKey?>(null) }
+        var floatingSlider by remember { mutableStateOf<PaddingFloatingSlider?>(null) }
         val thumbSize = 26.dp
         val endpointWidth = 30.dp
-        val floatingSize = 44.dp
-        val floatingLift = 46.dp
+        val floatingHeight = 48.dp
+        val floatingThumbSize = 36.dp
+        val floatingEndpointWidth = 44.dp
+        val floatingLift = 58.dp
         val endpointWidthPx = with(density) { endpointWidth.toPx() }
         val thumbSizePx = with(density) { thumbSize.toPx() }
-        val floatingSizePx = with(density) { floatingSize.toPx() }
         val rangeSize = (item.range.last - item.range.first).coerceAtLeast(1)
         val fraction = ((item.value - item.range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
 
@@ -518,39 +517,25 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             val enabledMinus = item.value > item.range.first
             val enabledPlus = item.value < item.range.last
 
-            floatingKey?.let { key ->
-                val offsetX = (key.centerX - floatingSizePx / 2f)
-                    .coerceIn(0f, (widthPx - floatingSizePx).coerceAtLeast(0f))
-                    .roundToInt()
+            floatingSlider?.let { slider ->
+                val floatingWidth = (maxWidth + 42.dp).coerceAtMost(220.dp)
+                val floatingWidthPx = with(density) { floatingWidth.toPx() }
+                val offsetX = ((widthPx - floatingWidthPx) / 2f).roundToInt()
                 Popup(
                     alignment = Alignment.TopStart,
                     offset = IntOffset(offsetX, -with(density) { floatingLift.roundToPx() }),
                     properties = PopupProperties(focusable = false, clippingEnabled = false)
                 ) {
-                    Surface(
+                    PaddingFloatingStepperSlider(
+                        value = slider.value,
+                        range = item.range,
+                        style = style,
                         modifier = Modifier
-                            .size(floatingSize)
-                            .graphicsLayer {
-                                scaleX = 1.04f
-                                scaleY = 1.04f
-                            },
-                        shape = CircleShape,
-                        color = style.surface,
-                        contentColor = style.primaryText,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 12.dp
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = key.text,
-                                color = style.accent,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1
-                            )
-                        }
-                    }
+                            .width(floatingWidth)
+                            .height(floatingHeight),
+                        endpointWidth = floatingEndpointWidth,
+                        thumbSize = floatingThumbSize
+                    )
                 }
             }
 
@@ -577,22 +562,26 @@ class PaddingConfigDialog : ComposeDialogFragment() {
 
                             fun applyPosition(x: Float) {
                                 val next = valueForPosition(x)
-                                floatingKey = PaddingFloatingKey(next.toString(), x)
+                                floatingSlider = PaddingFloatingSlider(next)
                                 if (next != latestItem.value) {
                                     latestItem.onValueChange(next)
                                 }
                             }
 
                             try {
-                                floatingKey = when {
+                                floatingSlider = when {
                                     down.position.x <= endpointWidthPx -> {
-                                        PaddingFloatingKey("-", endpointWidthPx / 2f)
+                                        PaddingFloatingSlider(
+                                            (latestItem.value - 1).coerceIn(latestItem.range)
+                                        )
                                     }
                                     down.position.x >= width - endpointWidthPx -> {
-                                        PaddingFloatingKey("+", width - endpointWidthPx / 2f)
+                                        PaddingFloatingSlider(
+                                            (latestItem.value + 1).coerceIn(latestItem.range)
+                                        )
                                     }
                                     else -> {
-                                        PaddingFloatingKey(valueForPosition(down.position.x).toString(), down.position.x)
+                                        PaddingFloatingSlider(valueForPosition(down.position.x))
                                     }
                                 }
 
@@ -610,18 +599,19 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                                         applyPosition(change.position.x)
                                         change.consume()
                                     } else {
-                                        floatingKey = when {
+                                        floatingSlider = when {
                                             down.position.x <= endpointWidthPx -> {
-                                                PaddingFloatingKey("-", endpointWidthPx / 2f)
+                                                PaddingFloatingSlider(
+                                                    (latestItem.value - 1).coerceIn(latestItem.range)
+                                                )
                                             }
                                             down.position.x >= width - endpointWidthPx -> {
-                                                PaddingFloatingKey("+", width - endpointWidthPx / 2f)
+                                                PaddingFloatingSlider(
+                                                    (latestItem.value + 1).coerceIn(latestItem.range)
+                                                )
                                             }
                                             else -> {
-                                                PaddingFloatingKey(
-                                                    valueForPosition(change.position.x).toString(),
-                                                    change.position.x
-                                                )
+                                                PaddingFloatingSlider(valueForPosition(change.position.x))
                                             }
                                         }
                                     }
@@ -640,7 +630,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                                     }
                                 }
                             } finally {
-                                floatingKey = null
+                                floatingSlider = null
                             }
                         }
                 },
@@ -687,6 +677,90 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     ) {}
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun PaddingFloatingStepperSlider(
+        value: Int,
+        range: IntRange,
+        style: AppDialogStyle,
+        modifier: Modifier = Modifier,
+        endpointWidth: Dp,
+        thumbSize: Dp
+    ) {
+        val density = LocalDensity.current
+        val rangeSize = (range.last - range.first).coerceAtLeast(1)
+        val fraction = ((value - range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
+        Surface(
+            modifier = modifier,
+            shape = CircleShape,
+            color = style.fieldSurface,
+            contentColor = style.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = 14.dp
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val widthPx = with(density) { maxWidth.toPx() }
+                val thumbSizePx = with(density) { thumbSize.toPx() }
+                val usablePx = (widthPx - thumbSizePx).coerceAtLeast(0f)
+                val thumbOffsetPx = (usablePx * fraction).roundToInt()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PaddingFloatingEndpointText(
+                        text = "-",
+                        enabled = value > range.first,
+                        style = style,
+                        modifier = Modifier.width(endpointWidth)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    PaddingFloatingEndpointText(
+                        text = "+",
+                        enabled = value < range.last,
+                        style = style,
+                        modifier = Modifier.width(endpointWidth)
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset { IntOffset(thumbOffsetPx, 0) }
+                        .size(thumbSize),
+                    shape = CircleShape,
+                    color = style.surface,
+                    contentColor = style.primaryText,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp
+                ) {}
+            }
+        }
+    }
+
+    @Composable
+    private fun PaddingFloatingEndpointText(
+        text: String,
+        enabled: Boolean,
+        style: AppDialogStyle,
+        modifier: Modifier = Modifier
+    ) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = if (enabled) style.accent else style.secondaryText.copy(alpha = 0.34f),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
         }
     }
 
