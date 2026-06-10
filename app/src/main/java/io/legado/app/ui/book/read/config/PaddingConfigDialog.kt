@@ -6,8 +6,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,11 +19,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalTextStyle
@@ -32,16 +36,20 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
@@ -50,11 +58,11 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.postEvent
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private data class PaddingItem(
@@ -380,9 +388,8 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         style: AppDialogStyle,
         modifier: Modifier = Modifier
     ) {
-        val palette = style.toMiuixPalette()
         Surface(
-            modifier = modifier.heightIn(min = 60.dp),
+            modifier = modifier.heightIn(min = 58.dp),
             shape = RoundedCornerShape(style.actionRadius),
             color = style.surface.copy(alpha = 0.72f),
             contentColor = style.primaryText,
@@ -408,97 +415,159 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    PaddingValuePill(
-                        item = item,
-                        style = style
+                    Text(
+                        text = item.value.toString(),
+                        color = style.accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
                     )
                 }
-                LegadoMiuixSlider(
-                    value = item.value.toFloat(),
-                    onValueChange = { value ->
-                        val newValue = value.roundToInt().coerceIn(item.range)
-                        if (newValue != item.value) {
-                            item.onValueChange(newValue)
-                        }
-                    },
-                    palette = palette,
-                    valueRange = item.range.first.toFloat()..item.range.last.toFloat(),
-                    steps = (item.range.last - item.range.first - 1).coerceAtLeast(0)
+                PaddingStepperSlider(
+                    item = item,
+                    style = style
                 )
             }
         }
     }
 
     @Composable
-    private fun PaddingValuePill(
+    private fun PaddingStepperSlider(
         item: PaddingItem,
         style: AppDialogStyle
     ) {
+        val density = LocalDensity.current
+        val latestItem by rememberUpdatedState(item)
+        val thumbSize = 26.dp
+        val endpointWidth = 30.dp
+        val endpointWidthPx = with(density) { endpointWidth.toPx() }
+        val thumbSizePx = with(density) { thumbSize.toPx() }
+        val rangeSize = (item.range.last - item.range.first).coerceAtLeast(1)
+        val fraction = ((item.value - item.range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
+
         Surface(
-            shape = RoundedCornerShape(style.actionRadius),
-            color = style.fieldSurface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .pointerInput(item.range) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val width = size.width.toFloat()
+                        val touchSlop = viewConfiguration.touchSlop
+                        var totalX = 0f
+                        var totalY = 0f
+                        var dragging = false
+                        fun applyPosition(x: Float) {
+                            val usable = (width - thumbSizePx).coerceAtLeast(1f)
+                            val clamped = (x - thumbSizePx / 2f).coerceIn(0f, usable)
+                            val next = (latestItem.range.first + (clamped / usable) *
+                                (latestItem.range.last - latestItem.range.first))
+                                .roundToInt()
+                                .coerceIn(latestItem.range)
+                            if (next != latestItem.value) {
+                                latestItem.onValueChange(next)
+                            }
+                        }
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            val delta = change.positionChange()
+                            totalX += delta.x
+                            totalY += delta.y
+                            if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
+                                dragging = true
+                            }
+                            if (dragging) {
+                                applyPosition(change.position.x)
+                                change.consume()
+                            }
+                        }
+                        if (!dragging) {
+                            when {
+                                down.position.x <= endpointWidthPx -> {
+                                    val next = (latestItem.value - 1).coerceIn(latestItem.range)
+                                    if (next != latestItem.value) latestItem.onValueChange(next)
+                                }
+                                down.position.x >= size.width - endpointWidthPx -> {
+                                    val next = (latestItem.value + 1).coerceIn(latestItem.range)
+                                    if (next != latestItem.value) latestItem.onValueChange(next)
+                                }
+                                else -> applyPosition(down.position.x)
+                            }
+                        }
+                    }
+                },
+            shape = CircleShape,
+            color = style.fieldSurface.copy(alpha = 0.88f),
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 1.dp
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PaddingStepButton(
-                    text = "-",
-                    enabled = item.value > item.range.first,
-                    style = style,
-                    onClick = { item.onValueChange((item.value - 1).coerceIn(item.range)) }
-                )
-                Text(
-                    text = item.value.toString(),
-                    modifier = Modifier.width(26.dp),
-                    color = style.primaryText,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-                PaddingStepButton(
-                    text = "+",
-                    enabled = item.value < item.range.last,
-                    style = style,
-                    onClick = { item.onValueChange((item.value + 1).coerceIn(item.range)) }
-                )
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val widthPx = with(density) { maxWidth.toPx() }
+                val usablePx = (widthPx - thumbSizePx).coerceAtLeast(0f)
+                val thumbOffsetPx = (usablePx * fraction).roundToInt()
+                val enabledMinus = item.value > item.range.first
+                val enabledPlus = item.value < item.range.last
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 2.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        PaddingEndpointText(
+                            text = "-",
+                            enabled = enabledMinus,
+                            style = style,
+                            modifier = Modifier.width(endpointWidth)
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        PaddingEndpointText(
+                            text = "+",
+                            enabled = enabledPlus,
+                            style = style,
+                            modifier = Modifier.width(endpointWidth)
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset { IntOffset(thumbOffsetPx, 0) }
+                            .size(thumbSize),
+                        shape = CircleShape,
+                        color = style.surface,
+                        contentColor = style.primaryText,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 3.dp
+                    ) {}
+                }
             }
         }
     }
 
     @Composable
-    private fun PaddingStepButton(
+    private fun PaddingEndpointText(
         text: String,
         enabled: Boolean,
         style: AppDialogStyle,
-        onClick: () -> Unit
+        modifier: Modifier = Modifier
     ) {
-        Surface(
-            modifier = Modifier
-                .size(28.dp)
-                .clickable(enabled = enabled, onClick = onClick),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = if (enabled) style.accent.copy(alpha = 0.12f) else style.surface.copy(alpha = 0.56f),
-            contentColor = if (enabled) style.accent else style.secondaryText.copy(alpha = 0.46f),
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = text,
-                    color = if (enabled) style.accent else style.secondaryText.copy(alpha = 0.46f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = text,
+                color = if (enabled) style.accent else style.secondaryText.copy(alpha = 0.36f),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
         }
     }
 
