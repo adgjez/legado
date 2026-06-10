@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -32,13 +33,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
@@ -77,8 +82,8 @@ private data class PaddingItem(
 
 class PaddingConfigDialog : ComposeDialogFragment() {
 
-    override val widthFraction: Float = 0.94f
-    override val maxWidthDp: Int? = 430
+    override val widthFraction: Float = 0.91f
+    override val maxWidthDp: Int? = 400
 
     override fun onStart() {
         super.onStart()
@@ -127,7 +132,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 500.dp)
+                    .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -314,6 +319,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                         text = title,
                         color = style.accent,
                         fontSize = 14.sp,
+                        fontFamily = style.titleFontFamily,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -323,6 +329,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(R.string.showLine),
+                            modifier = Modifier.widthIn(max = 72.dp),
                             color = style.secondaryText,
                             fontSize = 12.sp,
                             maxLines = 1,
@@ -426,6 +433,7 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     onConfirm = {
                         editingText.toIntOrNull()
                             ?.coerceIn(editingItem.range)
+                            ?.takeIf { value -> value != editingItem.value }
                             ?.let { value ->
                                 applyPaddingChange(
                                     edge = editingItem.edge,
@@ -517,19 +525,10 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                     style = style,
                     onClick = { onValueChange((item.value - 1).coerceIn(item.range)) }
                 )
-                Text(
-                    text = item.value.toString(),
-                    modifier = Modifier
-                        .width(38.dp)
-                        .combinedClickable(
-                            onClick = onExactInputRequest,
-                            onLongClick = onExactInputRequest
-                        ),
-                    color = style.primaryText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
+                PaddingValueButton(
+                    value = item.value,
+                    style = style,
+                    onClick = onExactInputRequest
                 )
                 PaddingStepButton(
                     text = "+",
@@ -553,6 +552,43 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         }
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    private fun PaddingValueButton(
+        value: Int,
+        style: AppDialogStyle,
+        onClick: () -> Unit
+    ) {
+        Surface(
+            modifier = Modifier
+                .width(46.dp)
+                .height(34.dp)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onClick
+                ),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = style.surface.copy(alpha = 0.72f),
+            contentColor = style.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = value.toString(),
+                    color = style.primaryText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+
     @Composable
     private fun PaddingExactInputPanel(
         item: PaddingItem,
@@ -562,6 +598,10 @@ class PaddingConfigDialog : ComposeDialogFragment() {
         onCancel: () -> Unit,
         onConfirm: () -> Unit
     ) {
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(item.edge) {
+            focusRequester.requestFocus()
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(style.actionRadius),
@@ -595,7 +635,9 @@ class PaddingConfigDialog : ComposeDialogFragment() {
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     ),
-                    modifier = Modifier.width(64.dp),
+                    modifier = Modifier
+                        .width(64.dp)
+                        .focusRequester(focusRequester),
                     decorationBox = { innerTextField ->
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
