@@ -1,6 +1,5 @@
 package io.legado.app.ui.config
 
-import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,12 +11,10 @@ import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogEditCodeBinding
 import io.legado.app.help.AppFreezeMonitor
 import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.model.CheckSource
 import io.legado.app.model.ImageProvider
 import io.legado.app.receiver.SharedReceiverActivity
@@ -33,10 +30,9 @@ import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.video.config.SettingsDialog
-import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
-import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.postEvent
@@ -259,7 +255,7 @@ class OtherConfigFragment : ComposeSettingFragment() {
                 key = PreferKey.uploadRule,
                 title = getString(R.string.direct_link_upload_rule),
                 summary = getString(R.string.direct_link_upload_rule_summary),
-                onClick = { showDialogFragment<DirectLinkUploadConfig>() }
+                onClick = { showDialogFragment<ComposeDirectLinkUploadDialog>() }
             ),
             switch(
                 key = PreferKey.cronet,
@@ -508,14 +504,13 @@ class OtherConfigFragment : ComposeSettingFragment() {
             title = title,
             summary = summary,
             onClick = {
-                NumberPickerDialog(requireContext())
-                    .setTitle(title)
-                    .setMaxValue(max)
-                    .setMinValue(min)
-                    .setValue(value)
-                    .show {
-                        onSelected(it)
-                    }
+                showComposeNumberPickerDialog(
+                    title = title,
+                    value = value,
+                    minValue = min,
+                    maxValue = max,
+                    onValue = onSelected
+                )
             }
         )
     }
@@ -548,25 +543,21 @@ class OtherConfigFragment : ComposeSettingFragment() {
             .ifBlank { DEFAULT_USER_AGENT }
     }
 
-    @SuppressLint("InflateParams")
     private fun showCustomHostsDialog() {
-        alert(getString(R.string.custom_hosts)) {
-            val alertBinding = DialogEditCodeBinding.inflate(layoutInflater).apply {
-                editViewC.hint = getString(R.string.json_format)
-                editView.addJsonPattern()
-                editView.setText(AppConfig.customHosts)
-            }
-            customView { alertBinding.root }
-            okButton {
-                val customHosts = alertBinding.editView.text?.toString()
+        showComposeTextInputDialog(
+            title = getString(R.string.custom_hosts),
+            hint = getString(R.string.json_format),
+            initialValue = AppConfig.customHosts.orEmpty(),
+            minLines = 8,
+            maxLines = 14,
+            onPositive = { customHosts ->
                 if (customHosts.isJsonObject()) {
-                    putPrefString(PreferKey.customHosts, customHosts!!)
+                    putPrefString(PreferKey.customHosts, customHosts)
                 } else {
                     removePref(PreferKey.customHosts)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun clearCache() {
