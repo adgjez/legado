@@ -1,37 +1,25 @@
 package io.legado.app.ui.config
 
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.SimpleItemAnimator
-import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.ActivityCoverCollectionManageBinding
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.ItemCoverCollectionBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.lib.cloud.CloudStorageType
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
-import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -47,8 +35,8 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
 
     override val binding by viewBinding(ActivityCoverCollectionManageBinding::inflate)
 
-    private var adapter: Adapter? = null
-    private var isNight = false
+    private val isNightState = mutableStateOf(false)
+    private val entriesState = mutableStateOf<List<CoverCollectionManager.Entry>>(emptyList())
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private val importZip = registerForActivityResult(HandleFileContract()) {
@@ -59,56 +47,48 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initView()
+        initComposeContent()
         loadCollections()
     }
 
-    private fun initView() = binding.run {
-        tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@CoverCollectionManageActivity, R.color.background_menu),
-            UiCorner.panelRadius(this@CoverCollectionManageActivity)
-        )
-        listOf(btnDay, btnNight).forEach {
-            it.background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(this@CoverCollectionManageActivity, R.color.background_card),
-                UiCorner.actionRadius(this@CoverCollectionManageActivity)
+    private fun initComposeContent() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        // Remove TabBar, RecyclerView, and AddButton (keep TitleBar at index 0)
+        while (container.childCount > 1) {
+            container.removeViewAt(1)
+        }
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
-        }
-        adapter = Adapter()
-        recyclerView.layoutManager = LinearLayoutManager(this@CoverCollectionManageActivity)
-        recyclerView.adapter = adapter
-        (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
-        btnDay.setOnClickListener {
-            if (isNight) {
-                isNight = false
-                updateTabs()
-                loadCollections()
+            setContent {
+                val style = rememberAppDialogStyle()
+                val palette = style.toMiuixPalette()
+                val settingPalette = io.legado.app.ui.widget.compose.rememberAppSettingPalette()
+                CoverCollectionManageScreen(
+                    isNight = isNightState.value,
+                    entries = entriesState.value,
+                    palette = settingPalette,
+                    miuixPalette = palette,
+                    onTabChanged = { night ->
+                        isNightState.value = night
+                        loadCollections()
+                    },
+                    onItemClick = ::openDetail,
+                    onItemMore = ::showActions,
+                    onAddClick = ::showAddActions
+                )
             }
         }
-        btnNight.setOnClickListener {
-            if (!isNight) {
-                isNight = true
-                updateTabs()
-                loadCollections()
-            }
-        }
-        btnAdd.setOnClickListener { showAddActions() }
-        root.applyUiBodyTypefaceDeep(this@CoverCollectionManageActivity.uiTypeface())
-        updateTabs()
+        container.addView(cv)
     }
 
     override fun onResume() {
         super.onResume()
         invalidateOptionsMenu()
         loadCollections()
-    }
-
-    private fun updateTabs() = binding.run {
-        btnDay.isSelected = !isNight
-        btnNight.isSelected = isNight
-        btnDay.setTextColor(if (!isNight) accentColor else primaryTextColor)
-        btnNight.setTextColor(if (isNight) accentColor else primaryTextColor)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -153,9 +133,13 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                 return@launch
             }
             val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
-            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
-                val container = containers[index]
-                if (container.id == selected) return@selector
+            showComposeChoiceListDialog(
+                title = getString(R.string.s3_bucket),
+                labels = containers.map(AppCloudStorage::containerDisplayLabel),
+                selectedIndex = containers.indexOfFirst { it.id == selected }
+            ) { index ->
+                val container = containers.getOrNull(index) ?: return@showComposeChoiceListDialog
+                if (container.id == selected) return@showComposeChoiceListDialog
                 AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
                 cloudContainerId = container.id
                 updateContainerMenu()
@@ -166,18 +150,19 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
 
     private fun loadCollections() {
         lifecycleScope.launch {
-            val items = CoverCollectionManager.loadEntries(isNight, cloudContainerId, CLOUD_SCOPE)
-            adapter?.setItems(items)
+            val items = CoverCollectionManager.loadEntries(isNightState.value, cloudContainerId, CLOUD_SCOPE)
+            entriesState.value = items
         }
     }
 
     private fun showAddActions() {
-        selector(
-            items = arrayListOf(
+        showComposeChoiceListDialog(
+            title = getString(R.string.add),
+            labels = arrayListOf(
                 getString(R.string.cover_collection_add),
                 getString(R.string.cover_collection_import_zip)
             )
-        ) { _, index ->
+        ) { index ->
             when (index) {
                 0 -> showCreateDialog()
                 1 -> importZip.launch {
@@ -189,44 +174,36 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
     }
 
     private fun showCreateDialog() {
-        alert(R.string.cover_collection_name) {
-            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = getString(R.string.cover_collection_name)
-            }
-            customView { dialogBinding.root }
-            okButton {
-                val name = dialogBinding.editView.text?.toString().orEmpty()
+        showComposeTextInputDialog(
+            title = getString(R.string.cover_collection_name),
+            hint = getString(R.string.cover_collection_name),
+            onPositive = { name ->
                 lifecycleScope.launch {
                     kotlin.runCatching {
-                        CoverCollectionManager.create(name, isNight)
+                        CoverCollectionManager.create(name, isNightState.value)
                     }.onFailure {
                         toastOnUi(it.localizedMessage)
                     }
                     loadCollections()
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showRenameDialog(entry: CoverCollectionManager.Entry) {
         if (entry.source == CoverCollectionManager.Source.REMOTE) return
-        alert(R.string.cover_collection_name) {
-            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = getString(R.string.cover_collection_name)
-                editView.setText(entry.collection.name)
-            }
-            customView { dialogBinding.root }
-            okButton {
-                val name = dialogBinding.editView.text?.toString().orEmpty()
+        showComposeTextInputDialog(
+            title = getString(R.string.cover_collection_name),
+            hint = getString(R.string.cover_collection_name),
+            initialValue = entry.collection.name,
+            onPositive = { name ->
                 lifecycleScope.launch {
                     kotlin.runCatching { CoverCollectionManager.rename(entry.collection, name) }
                         .onFailure { toastOnUi(it.localizedMessage) }
                     loadCollections()
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importZip(uri: Uri) {
@@ -240,7 +217,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                     }
                     target
                 }
-                CoverCollectionManager.importZip(this@CoverCollectionManageActivity, file, isNight)
+                CoverCollectionManager.importZip(this@CoverCollectionManageActivity, file, isNightState.value)
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }
@@ -291,60 +268,15 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
             if (entry.source != CoverCollectionManager.Source.REMOTE) add(CoverAction.DELETE_LOCAL)
             if (entry.source != CoverCollectionManager.Source.LOCAL) add(CoverAction.DELETE_REMOTE)
         }
-        selector(entry.collection.name, actions.map { getString(it.titleRes) }) { _, index ->
-            when (actions[index]) {
+        showComposeChoiceListDialog(entry.collection.name, actions.map { getString(it.titleRes) }) { index ->
+            val action = actions.getOrNull(index) ?: return@showComposeChoiceListDialog
+            when (action) {
                 CoverAction.RENAME -> showRenameDialog(entry)
                 CoverAction.EXPORT -> exportCollection(entry)
                 CoverAction.UPLOAD -> runAction { CoverCollectionManager.upload(entry, cloudContainerId, CLOUD_SCOPE) }
                 CoverAction.DOWNLOAD -> runAction { CoverCollectionManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
                 CoverAction.DELETE_LOCAL -> runAction { CoverCollectionManager.deleteLocal(entry) }
                 CoverAction.DELETE_REMOTE -> runAction { CoverCollectionManager.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE) }
-            }
-        }
-    }
-
-    private inner class Adapter :
-        RecyclerAdapter<CoverCollectionManager.Entry, ItemCoverCollectionBinding>(this@CoverCollectionManageActivity) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemCoverCollectionBinding {
-            return ItemCoverCollectionBinding.inflate(inflater, parent, false).apply {
-                root.background = UiCorner.panelRounded(
-                    root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
-                    UiCorner.panelRadius(root.context)
-                )
-                btnMore.background = UiCorner.actionSelector(
-                    Color.TRANSPARENT,
-                    ContextCompat.getColor(root.context, R.color.background_menu),
-                    UiCorner.actionRadius(root.context)
-                )
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemCoverCollectionBinding,
-            item: CoverCollectionManager.Entry,
-            payloads: MutableList<Any>
-        ) = binding.run {
-            val collection = item.collection
-            tvName.text = collection.name
-            val source = getString(when (item.source) {
-                CoverCollectionManager.Source.LOCAL -> R.string.theme_source_local
-                CoverCollectionManager.Source.REMOTE -> R.string.theme_source_remote
-                CoverCollectionManager.Source.BOTH -> R.string.theme_source_both
-            })
-            tvInfo.text = "${getString(R.string.cover_collection_images_count, collection.images.size)} · $source"
-            tvName.applyUiSectionTitleStyle(context)
-            tvInfo.applyUiLabelStyle(context)
-            tvInfo.setTextColor(secondaryTextColor)
-            Glide.with(ivPreview).load(collection.images.firstOrNull()).centerCrop().into(ivPreview)
-            btnMore.setOnClickListener { showActions(item) }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemCoverCollectionBinding) {
-            holder.itemView.setOnClickListener {
-                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let { openDetail(it) }
             }
         }
     }
