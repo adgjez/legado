@@ -1,40 +1,38 @@
 package io.legado.app.ui.rss.source.manage
 
-import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssSourceBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportRssSourceDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.applyTint
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
@@ -55,19 +53,20 @@ import kotlinx.coroutines.launch
  */
 class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceViewModel>(),
     MenuItem.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    RssSourceAdapter.CallBack {
+    SelectActionBar.CallBack {
 
     override val binding by viewBinding(ActivityRssSourceBinding::inflate)
     override val viewModel by viewModels<RssSourceViewModel>()
     private val importRecordKey = "rssSourceRecordKey"
-    private val adapter by lazy { RssSourceAdapter(this, this) }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
     private var sourceFlowJob: Job? = null
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
+    private val sourcesState = mutableStateListOf<RssSource>()
+    private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
+    private val isSelectMode = mutableStateOf(false)
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
         showDialogFragment(ImportRssSourceDialog(it))
@@ -79,28 +78,51 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
     }
     private val exportResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton {
-                    sendToClip(uri.toString())
-                }
-            }
+            showComposeConfirmDialog(
+                title = getString(R.string.export_success),
+                message = if (uri.toString().isAbsUrl()) {
+                    uri.toString() + "\n" + DirectLinkUpload.getSummary()
+                } else {
+                    uri.toString()
+                },
+                positiveText = getString(R.string.copy_text),
+                negativeText = getString(R.string.cancel),
+                onPositive = { sendToClip(uri.toString()) }
+            )
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initRecyclerView()
+        initComposeContent()
         initSearchView()
         initGroupFlow()
         upSourceFlow()
         initSelectActionBar()
+    }
+
+    private fun initComposeContent() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                RssSourceScreen(
+                    sources = sourcesState,
+                    selectedUrls = selectedUrls.value,
+                    isSelectMode = isSelectMode.value,
+                    onToggleSelect = ::toggleSourceSelection,
+                    onToggleEnabled = ::toggleSourceEnabled,
+                    onEdit = ::editSource,
+                    onShowMenu = ::showSourceMenu
+                )
+            }
+        }
+        container.addView(cv, index)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -150,47 +172,6 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         return super.onCompatOptionsItemSelected(item)
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_enable_selection -> viewModel.enableSelection(adapter.selection)
-            R.id.menu_disable_selection -> viewModel.disableSelection(adapter.selection)
-            R.id.menu_add_group -> selectionAddToGroups()
-            R.id.menu_remove_group -> selectionRemoveFromGroups()
-            R.id.menu_top_sel -> viewModel.topSource(*adapter.selection.toTypedArray())
-            R.id.menu_bottom_sel -> viewModel.bottomSource(*adapter.selection.toTypedArray())
-            R.id.menu_export_selection -> viewModel.saveToFile(adapter.selection) { file, name ->
-                exportResult.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData = HandleFileContract.FileData(
-                        name, file, "application/json"
-                    )
-                }
-            }
-
-            R.id.menu_share_source -> viewModel.saveToFile(adapter.selection) { file, name ->
-                share(file)
-            }
-
-            R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()
-        }
-        return true
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
-        binding.recyclerView.adapter = adapter
-        // When this page is opened, it is in selection mode
-        val dragSelectTouchHelper: DragSelectTouchHelper =
-            DragSelectTouchHelper(adapter.dragSelectCallback).setSlideArea(16, 50)
-        dragSelectTouchHelper.attachToRecyclerView(binding.recyclerView)
-        dragSelectTouchHelper.activeSlideSelect()
-        // Note: need judge selection first, so add ItemTouchHelper after it.
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
-    }
-
     private fun initSearchView() {
         binding.titleBar.findViewById<SearchView>(R.id.search_view).let {
             it.applyTint(primaryTextColor)
@@ -227,56 +208,93 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         }
     }
 
-    @SuppressLint("InflateParams")
-    private fun selectionAddToGroups() {
-        alert(titleResource = R.string.add_group) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-                editView.setFilterValues(groups.toList())
-                editView.dropDownHeight = 180.dpToPx()
+    override fun onMenuItemClick(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_enable_selection -> {
+                val selection = getSelectedSources()
+                viewModel.enableSelection(selection)
             }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
-                    if (it.isNotEmpty()) {
-                        viewModel.selectionAddToGroups(adapter.selection, it)
+            R.id.menu_disable_selection -> {
+                val selection = getSelectedSources()
+                viewModel.disableSelection(selection)
+            }
+            R.id.menu_add_group -> selectionAddToGroups()
+            R.id.menu_remove_group -> selectionRemoveFromGroups()
+            R.id.menu_top_sel -> {
+                val selection = getSelectedSources()
+                viewModel.topSource(*selection.toTypedArray())
+            }
+            R.id.menu_bottom_sel -> {
+                val selection = getSelectedSources()
+                viewModel.bottomSource(*selection.toTypedArray())
+            }
+            R.id.menu_export_selection -> {
+                val selection = getSelectedSources()
+                viewModel.saveToFile(selection) { file, name ->
+                    exportResult.launch {
+                        mode = HandleFileContract.EXPORT
+                        fileData = HandleFileContract.FileData(
+                            name, file, "application/json"
+                        )
                     }
                 }
             }
-            cancelButton()
+            R.id.menu_share_source -> {
+                val selection = getSelectedSources()
+                viewModel.saveToFile(selection) { file, _ ->
+                    share(file)
+                }
+            }
+            R.id.menu_check_selected_interval -> checkSelectedInterval()
         }
+        return true
     }
 
-    @SuppressLint("InflateParams")
-    private fun selectionRemoveFromGroups() {
-        alert(titleResource = R.string.remove_group) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-                editView.setFilterValues(groups.toList())
-                editView.dropDownHeight = 180.dpToPx()
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
-                    if (it.isNotEmpty()) {
-                        viewModel.selectionRemoveFromGroups(adapter.selection, it)
-                    }
+    private fun selectionAddToGroups() {
+        showComposeTextInputDialog(
+            title = getString(R.string.add_group),
+            hint = getString(R.string.group_name),
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { text ->
+                if (text.isNotEmpty()) {
+                    val selection = getSelectedSources()
+                    viewModel.selectionAddToGroups(selection, text)
                 }
             }
-            cancelButton()
-        }
+        )
+    }
+
+    private fun selectionRemoveFromGroups() {
+        showComposeTextInputDialog(
+            title = getString(R.string.remove_group),
+            hint = getString(R.string.group_name),
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { text ->
+                if (text.isNotEmpty()) {
+                    val selection = getSelectedSources()
+                    viewModel.selectionRemoveFromGroups(selection, text)
+                }
+            }
+        )
     }
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            adapter.selectAll()
+            selectedUrls.value = sourcesState.map { it.sourceUrl }.toSet()
         } else {
-            adapter.revertSelection()
+            selectedUrls.value = emptySet()
         }
+        isSelectMode.value = selectedUrls.value.isNotEmpty()
+        upCountView()
     }
 
     override fun revertSelection() {
-        adapter.revertSelection()
+        val allUrls = sourcesState.map { it.sourceUrl }.toSet()
+        selectedUrls.value = allUrls - selectedUrls.value
+        isSelectMode.value = selectedUrls.value.isNotEmpty()
+        upCountView()
     }
 
     override fun onClickSelectBarMainAction() {
@@ -284,10 +302,19 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
     }
 
     private fun delSourceDialog() {
-        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            yesButton { viewModel.del(*adapter.selection.toTypedArray()) }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del),
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            dangerPositive = true,
+            onPositive = {
+                val selection = getSelectedSources()
+                viewModel.del(*selection.toTypedArray())
+                selectedUrls.value = emptySet()
+                isSelectMode.value = false
+            }
+        )
     }
 
     private fun upGroupMenu() = groupMenu?.transaction { menu ->
@@ -332,92 +359,118 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             }.catch {
                 AppLog.put("订阅源管理界面更新数据出错", it)
             }.flowOn(IO).conflate().collect {
-                adapter.setItems(it, adapter.diffItemCallback)
+                sourcesState.clear()
+                sourcesState.addAll(it)
+                upCountView()
                 delay(100)
             }
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        adapter.upResumed(true)
-    }
-
-    override fun onPause() {
-        adapter.upResumed(false)
-        super.onPause()
-    }
-
-    override fun upCountView() {
-        binding.selectActionBar.upCountView(
-            adapter.selection.size,
-            adapter.itemCount
-        )
-    }
-
-    @SuppressLint("InflateParams")
     private fun showImportDialog() {
         val aCache = ACache.get(cacheDir = false)
         val cacheUrls: MutableList<String> = aCache
             .getAsString(importRecordKey)
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
-        alert(titleResource = R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
-                    cacheUrls.remove(it)
-                    aCache.put(importRecordKey, cacheUrls.joinToString(","))
-                }
-            }
-            customView { alertBinding.root }
-            okButton {
-                val text = alertBinding.editView.text?.toString()
-                text?.let {
-                    if (it.isAbsUrl() && !cacheUrls.contains(it)) {
-                        cacheUrls.add(0, it)
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "url",
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { text ->
+                if (text.isNotBlank()) {
+                    if (text.isAbsUrl() && !cacheUrls.contains(text)) {
+                        cacheUrls.add(0, text)
                         aCache.put(importRecordKey, cacheUrls.joinToString(","))
                     }
-                    showDialogFragment(
-                        ImportRssSourceDialog(it)
-                    )
+                    showDialogFragment(ImportRssSourceDialog(text))
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
-    override fun del(source: RssSource) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + source.sourceName)
-            noButton()
-            yesButton {
-                viewModel.del(source)
-            }
+    private fun toggleSourceSelection(source: RssSource) {
+        val current = selectedUrls.value.toMutableSet()
+        if (source.sourceUrl in current) {
+            current.remove(source.sourceUrl)
+        } else {
+            current.add(source.sourceUrl)
         }
+        selectedUrls.value = current
+        isSelectMode.value = current.isNotEmpty()
+        upCountView()
     }
 
-    override fun edit(source: RssSource) {
+    private fun toggleSourceEnabled(source: RssSource, enabled: Boolean) {
+        val updated = source.copy(enabled = enabled)
+        viewModel.update(updated)
+    }
+
+    private fun editSource(source: RssSource) {
         startActivity<RssSourceEditActivity> {
             putExtra("sourceUrl", source.sourceUrl)
         }
     }
 
-    override fun update(vararg source: RssSource) {
-        viewModel.update(*source)
+    private fun showSourceMenu(source: RssSource) {
+        val labels = listOf(
+            getString(R.string.selection_to_top),
+            getString(R.string.selection_to_bottom),
+            getString(R.string.delete)
+        )
+        showComposeActionListDialog(
+            title = source.sourceName,
+            labels = labels,
+            dangerIndices = setOf(2),
+            onSelected = { index ->
+                when (index) {
+                    0 -> viewModel.topSource(source)
+                    1 -> viewModel.bottomSource(source)
+                    2 -> {
+                        showComposeConfirmDialog(
+                            title = getString(R.string.draw),
+                            message = getString(R.string.sure_del) + "\n" + source.sourceName,
+                            positiveText = getString(R.string.yes),
+                            negativeText = getString(R.string.no),
+                            dangerPositive = true,
+                            onPositive = { viewModel.del(source) }
+                        )
+                    }
+                }
+            }
+        )
     }
 
-    override fun toTop(source: RssSource) {
-        viewModel.topSource(source)
+    private fun getSelectedSources(): List<RssSource> {
+        val urls = selectedUrls.value
+        return sourcesState.filter { it.sourceUrl in urls }
     }
 
-    override fun toBottom(source: RssSource) {
-        viewModel.bottomSource(source)
+    private fun checkSelectedInterval() {
+        val urls = selectedUrls.value
+        val positions = mutableListOf<Int>()
+        sourcesState.forEachIndexed { index, source ->
+            if (source.sourceUrl in urls) {
+                positions.add(index)
+            }
+        }
+        if (positions.isEmpty()) return
+        val minPos = positions.min()
+        val maxPos = positions.max()
+        val newSelected = urls.toMutableSet()
+        for (i in minPos..maxPos) {
+            newSelected.add(sourcesState[i].sourceUrl)
+        }
+        selectedUrls.value = newSelected
+        upCountView()
     }
 
-    override fun upOrder() {
-        viewModel.upOrder()
+    override fun upCountView() {
+        binding.selectActionBar.upCountView(
+            selectedUrls.value.size,
+            sourcesState.size
+        )
     }
 
 }
