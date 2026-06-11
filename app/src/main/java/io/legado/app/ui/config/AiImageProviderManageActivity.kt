@@ -4,31 +4,21 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
-import androidx.core.content.ContextCompat
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiProviderManageBinding
-import io.legado.app.databinding.DialogEditTextBinding
-import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readText
@@ -45,7 +35,8 @@ import java.util.UUID
 class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>() {
 
     override val binding by viewBinding(ActivityAiProviderManageBinding::inflate)
-    private val adapter by lazy { Adapter() }
+    private val providersState = mutableStateOf<List<AiImageProviderConfig>>(emptyList())
+    private val currentProviderIdState = mutableStateOf("")
     private val importRule = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
             lifecycleScope.launch {
@@ -63,14 +54,16 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
         result.uri?.let { uri ->
             val value = uri.toString()
             if (value.startsWith("http://", true) || value.startsWith("https://", true)) {
-                alert(R.string.upload_url) {
-                    setMessage(value)
-                    positiveButton(R.string.copy_text) {
+                showComposeConfirmDialog(
+                    title = getString(R.string.upload_url),
+                    message = value,
+                    positiveText = getString(R.string.copy_text),
+                    negativeText = getString(R.string.cancel),
+                    onPositive = {
                         sendToClip(value)
                         toastOnUi(R.string.copy_complete)
                     }
-                    negativeButton(R.string.cancel)
-                }
+                )
             } else {
                 toastOnUi(R.string.export_success)
             }
@@ -78,16 +71,21 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.title = getString(R.string.ai_image_provider_manage)
-        binding.tvSummary.text = getString(R.string.ai_image_provider_manage_summary)
-        binding.tvSummary.applyUiLabelStyle(this)
-        binding.tvSummary.setTextColor(secondaryTextColor)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        (binding.recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
-        binding.btnAdd.text = getString(R.string.add)
-        binding.btnAdd.background = actionBackground()
-        binding.btnAdd.setOnClickListener { showAddSelector() }
+        binding.composeRoot.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeRoot.setContent {
+            AiImageProviderManageScreen(
+                providers = providersState.value,
+                currentProviderId = currentProviderIdState.value,
+                onBack = { finish() },
+                onAdd = { showAddSelector() },
+                onOpenProvider = { provider ->
+                    openEdit(AiImageProviderEditActivity.newIntent(this, provider.id, provider.type))
+                },
+                onShowActions = { provider -> showActions(provider) }
+            )
+        }
     }
 
     override fun onResume() {
@@ -96,21 +94,24 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun reload() {
-        adapter.setItems(AppConfig.aiImageProviderList.sortedBy { it.order })
+        val providers = AppConfig.aiImageProviderList.sortedBy { it.order }
+        providersState.value = providers
+        currentProviderIdState.value = AppConfig.aiCurrentImageProviderId.orEmpty()
     }
 
     private fun showAddSelector() {
-        selector(
-            getString(R.string.add),
-            listOf(
-                getString(R.string.ai_image_provider_openai),
-                getString(R.string.ai_image_provider_js),
-                "导入 JS 生图规则"
-            )
-        ) { _, index ->
+        val labels = listOf(
+            getString(R.string.ai_image_provider_openai),
+            getString(R.string.ai_image_provider_js),
+            "导入 JS 生图规则"
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.add),
+            labels = labels
+        ) { index ->
             if (index == 2) {
                 showImportActions()
-                return@selector
+                return@showComposeActionListDialog
             }
             val type = if (index == 0) AiImageProviderConfig.TYPE_OPENAI else AiImageProviderConfig.TYPE_JS
             openEdit(AiImageProviderEditActivity.newIntent(this, null, type))
@@ -119,6 +120,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, MENU_IMPORT_RULE, 0, "导入规则").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_EXPORT_RULES, 1, "导出规则").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
@@ -126,6 +128,10 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
         return when (item.itemId) {
             MENU_IMPORT_RULE -> {
                 showImportActions()
+                true
+            }
+            MENU_EXPORT_RULES -> {
+                exportAllRules()
                 true
             }
             else -> super.onCompatOptionsItemSelected(item)
@@ -149,11 +155,12 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             }
             add(getString(R.string.delete))
         }
-        selector(
-            provider.displayName(),
-            actions
-        ) { _, index ->
-            when (actions[index]) {
+        showComposeActionListDialog(
+            title = provider.displayName(),
+            labels = actions,
+            dangerIndices = setOf(actions.lastIndex)
+        ) { index ->
+            when (actions.getOrNull(index)) {
                 "设为当前生图模型" -> {
                     if (!provider.enabled) {
                         toastOnUi("请先启用该生图模型")
@@ -184,10 +191,10 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun showImportActions() {
-        selector(
-            getString(R.string.import_str),
-            listOf(getString(R.string.import_str), getString(R.string.import_on_line))
-        ) { _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.import_str),
+            labels = listOf(getString(R.string.import_str), getString(R.string.import_on_line))
+        ) { index ->
             when (index) {
                 0 -> launchImportFile()
                 1 -> showImportUrlDialog()
@@ -204,17 +211,14 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun showImportUrlDialog() {
-        alert(R.string.import_on_line) {
-            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "https://..."
-            }
-            customView { dialogBinding.root }
-            okButton {
-                val url = dialogBinding.editView.text?.toString().orEmpty().trim()
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "https://...",
+            onPositive = { value ->
+                val url = value.trim()
                 if (url.isNotEmpty()) importRulesFromUrl(url)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importRulesFromUrl(url: String) {
@@ -313,20 +317,55 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
         }
     }
 
+    private fun exportAllRules() {
+        val rules = AppConfig.aiImageProviderList
+            .filter { it.type == AiImageProviderConfig.TYPE_JS && it.script.isNotBlank() }
+            .sortedBy { it.order }
+        if (rules.isEmpty()) {
+            toastOnUi(R.string.wrong_format)
+            return
+        }
+        exportRules(rules)
+    }
+
+    private fun exportRules(providers: List<AiImageProviderConfig>) {
+        exportRuleResult.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "ai-image-rules.json",
+                serializeRules(providers).toByteArray(),
+                "application/json"
+            )
+        }
+    }
+
     private fun serializeRule(provider: AiImageProviderConfig): String {
-        val rule = provider.copy(
+        return GSON.toJson(
+            mapOf(
+                "type" to "ai_image_rule",
+                "version" to 1,
+                "rules" to listOf(sanitizedRule(provider))
+            )
+        )
+    }
+
+    private fun serializeRules(providers: List<AiImageProviderConfig>): String {
+        return GSON.toJson(
+            mapOf(
+                "type" to "ai_image_rule",
+                "version" to 1,
+                "rules" to providers.map(::sanitizedRule)
+            )
+        )
+    }
+
+    private fun sanitizedRule(provider: AiImageProviderConfig): AiImageProviderConfig {
+        return provider.copy(
             type = AiImageProviderConfig.TYPE_JS,
             baseUrl = "",
             apiKey = "",
             headers = "",
             defaultParamsJson = ""
-        )
-        return GSON.toJson(
-            mapOf(
-                "type" to "ai_image_rule",
-                "version" to 1,
-                "rules" to listOf(rule)
-            )
         )
     }
 
@@ -336,82 +375,25 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun confirmDelete(provider: AiImageProviderConfig) {
-        alert(provider.displayName()) {
-            setMessage(R.string.delete)
-            okButton {
+        showComposeConfirmDialog(
+            title = provider.displayName(),
+            message = getString(R.string.delete),
+            dangerPositive = true,
+            onPositive = {
                 AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.filterNot { it.id == provider.id }
                 notifyAiConfigChanged()
                 reload()
                 toastOnUi(R.string.delete)
             }
-            cancelButton()
-        }
+        )
     }
-
-    private fun actionBackground() = UiCorner.actionSelector(
-        ContextCompat.getColor(this, R.color.background_card),
-        ContextCompat.getColor(this, R.color.background_menu),
-        UiCorner.actionRadius(this)
-    )
 
     private fun notifyAiConfigChanged() {
         postEvent(EventBus.AI_CONFIG_CHANGED, true)
     }
 
-    private inner class Adapter :
-        RecyclerAdapter<AiImageProviderConfig, ItemS3ContainerBinding>(this@AiImageProviderManageActivity) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemS3ContainerBinding {
-            return ItemS3ContainerBinding.inflate(inflater, parent, false).apply {
-                root.background = UiCorner.panelRounded(
-                    root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
-                    UiCorner.panelRadius(root.context)
-                )
-                btnMore.background = actionBackground()
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemS3ContainerBinding,
-            item: AiImageProviderConfig,
-            payloads: MutableList<Any>
-        ) = binding.run {
-            val currentId = AppConfig.aiCurrentImageProvider?.id ?: AppConfig.aiCurrentImageProviderId
-            val isCurrent = item.id == currentId
-            tvName.text = item.displayName()
-            tvPath.text = if (item.type == AiImageProviderConfig.TYPE_OPENAI) {
-                item.baseUrl.ifBlank { "OpenAI" }
-            } else {
-                getString(R.string.ai_image_provider_js)
-            }
-            tvCapacity.text = item.model.ifBlank { if (item.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS" }
-            tvState.text = buildString {
-                if (isCurrent) append("当前使用 · ")
-                append(getString(if (item.enabled) R.string.enabled else R.string.disabled))
-            }
-            tvSelected.visibility = if (isCurrent) View.VISIBLE else View.GONE
-            tvSelected.text = "✓"
-            tvSelected.setTextColor(ContextCompat.getColor(this@AiImageProviderManageActivity, R.color.accent))
-            tvName.applyUiSectionTitleStyle(this@AiImageProviderManageActivity)
-            tvPath.applyUiLabelStyle(this@AiImageProviderManageActivity)
-            tvCapacity.applyUiLabelStyle(this@AiImageProviderManageActivity)
-            tvState.applyUiLabelStyle(this@AiImageProviderManageActivity)
-            listOf(tvPath, tvCapacity, tvState).forEach { it.setTextColor(secondaryTextColor) }
-            btnMore.setOnClickListener { showActions(item) }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemS3ContainerBinding) {
-            holder.itemView.setOnClickListener {
-                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let {
-                    openEdit(AiImageProviderEditActivity.newIntent(this@AiImageProviderManageActivity, it.id, it.type))
-                }
-            }
-        }
-    }
-
     companion object {
         private const val MENU_IMPORT_RULE = 1
+        private const val MENU_EXPORT_RULES = 2
     }
 }

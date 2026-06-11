@@ -2,7 +2,6 @@ package io.legado.app.ui.config
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,7 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
@@ -66,37 +64,25 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
     private var currentProviderIdState by mutableStateOf<String?>(null)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initComposeContent()
+        binding.composeRoot.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeRoot.setContent {
+            AiProviderManageScreen(
+                providers = providersState,
+                modelCounts = modelCountsState,
+                currentProviderId = currentProviderIdState,
+                onBack = { finish() },
+                onAdd = { openEdit(null) },
+                onOpenProvider = { openEdit(it) },
+                onShowActions = { showActions(it) }
+            )
+        }
     }
 
     override fun onResume() {
         super.onResume()
         reload()
-    }
-
-    private fun initComposeContent() {
-        val container = binding.recyclerView.parent as? ViewGroup ?: return
-        val index = container.indexOfChild(binding.recyclerView)
-        container.removeView(binding.recyclerView)
-        val cv = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setContent {
-                AiProviderManageScreen(
-                    providers = providersState,
-                    modelCounts = modelCountsState,
-                    currentProviderId = currentProviderIdState,
-                    onBack = { finish() },
-                    onAdd = { openEdit(null) },
-                    onOpenProvider = { openEdit(it) },
-                    onShowActions = { showActions(it) }
-                )
-            }
-        }
-        container.addView(cv, index)
     }
 
     private fun reload() {
