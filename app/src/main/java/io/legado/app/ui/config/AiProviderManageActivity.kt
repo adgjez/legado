@@ -2,7 +2,7 @@ package io.legado.app.ui.config
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
+import android.view.ViewGroup
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -41,50 +41,32 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.viewbinding.ViewBinding
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
+import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.main.ai.AiProviderConfig
-import io.legado.app.ui.widget.compose.ComposeActionListDialog
-import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class AiProviderManageActivity : BaseActivity<ViewBinding>() {
+class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>() {
 
-    private lateinit var composeView: ComposeView
-    override val binding: ViewBinding by lazy {
-        composeView = ComposeView(this)
-        object : ViewBinding {
-            override fun getRoot(): View = composeView
-        }
-    }
-
-    private var providers by mutableStateOf<List<AiProviderConfig>>(emptyList())
-    private var modelCounts by mutableStateOf<Map<String, Int>>(emptyMap())
-    private var currentProviderId by mutableStateOf("")
+    override val binding by viewBinding(ActivityAiProviderManageBinding::inflate)
+    private var providersState by mutableStateOf<List<AiProviderConfig>>(emptyList())
+    private var modelCountsState by mutableStateOf<Map<String, Int>>(emptyMap())
+    private var currentProviderIdState by mutableStateOf<String?>(null)
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-        composeView.setContent {
-            AiProviderManageScreen(
-                providers = providers,
-                modelCounts = modelCounts,
-                currentProviderId = currentProviderId,
-                onBack = ::supportFinishAfterTransition,
-                onAdd = { openEdit(null) },
-                onOpenProvider = ::openEdit,
-                onShowActions = ::showActions
-            )
-        }
+        initComposeContent()
     }
 
     override fun onResume() {
@@ -92,10 +74,37 @@ class AiProviderManageActivity : BaseActivity<ViewBinding>() {
         reload()
     }
 
+    private fun initComposeContent() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                AiProviderManageScreen(
+                    providers = providersState,
+                    modelCounts = modelCountsState,
+                    currentProviderId = currentProviderIdState,
+                    onBack = { finish() },
+                    onAdd = { openEdit(null) },
+                    onOpenProvider = { openEdit(it) },
+                    onShowActions = { showActions(it) }
+                )
+            }
+        }
+        container.addView(cv, index)
+    }
+
     private fun reload() {
-        providers = AppConfig.aiProviderList
-        modelCounts = AppConfig.aiModelConfigList.groupingBy { it.providerId }.eachCount()
-        currentProviderId = AppConfig.aiCurrentProviderId.orEmpty()
+        providersState = AppConfig.aiProviderList
+        currentProviderIdState = AppConfig.aiCurrentProviderId
+        modelCountsState = AppConfig.aiProviderList.associate { provider ->
+            provider.id to AppConfig.aiModelConfigList.count { it.providerId == provider.id }
+        }
     }
 
     private fun openEdit(provider: AiProviderConfig?) {
@@ -106,42 +115,42 @@ class AiProviderManageActivity : BaseActivity<ViewBinding>() {
 
     private fun showActions(provider: AiProviderConfig) {
         val actions = listOf(getString(R.string.edit), getString(R.string.delete))
-        showDialogFragment(
-            ComposeActionListDialog.create(
-                title = provider.name,
-                labels = actions,
-                dangerIndices = setOf(1),
-                negativeText = getString(R.string.cancel),
-                onSelected = { index ->
-                    when (index) {
-                        0 -> openEdit(provider)
-                        1 -> confirmRemoveProvider(provider)
-                    }
-                }
-            )
-        )
+        showComposeActionListDialog(
+            title = providerName(provider),
+            labels = actions,
+            dangerIndices = setOf(1)
+        ) { index ->
+            when (index) {
+                0 -> openEdit(provider)
+                1 -> confirmRemoveProvider(provider)
+            }
+        }
+    }
+
+    private fun providerName(provider: AiProviderConfig): String {
+        return provider.name.ifBlank {
+            provider.baseUrl.ifBlank { getString(R.string.ai_provider) }
+        }
     }
 
     private fun confirmRemoveProvider(provider: AiProviderConfig) {
         val relatedModelCount = AppConfig.aiModelConfigList.count { it.providerId == provider.id }
-        showDialogFragment(
-            ComposeConfirmDialog.create(
-                title = provider.name,
-                message = getString(
-                    if (relatedModelCount > 0) R.string.ai_remove_provider_confirm_with_models
-                    else R.string.ai_remove_provider_confirm,
-                    relatedModelCount
-                ),
-                positiveText = getString(R.string.delete),
-                negativeText = getString(R.string.cancel),
-                dangerPositive = true,
-                onPositive = {
-                    AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
-                    notifyAiConfigChanged()
-                    reload()
-                    toastOnUi(R.string.ai_provider_removed)
-                }
-            )
+        showComposeConfirmDialog(
+            title = providerName(provider),
+            message = getString(
+                if (relatedModelCount > 0) R.string.ai_remove_provider_confirm_with_models
+                else R.string.ai_remove_provider_confirm,
+                relatedModelCount
+            ),
+            positiveText = getString(R.string.delete),
+            negativeText = getString(R.string.cancel),
+            dangerPositive = true,
+            onPositive = {
+                AppConfig.aiProviderList = AppConfig.aiProviderList.filterNot { it.id == provider.id }
+                notifyAiConfigChanged()
+                reload()
+                toastOnUi(R.string.ai_provider_removed)
+            }
         )
     }
 
@@ -154,7 +163,7 @@ class AiProviderManageActivity : BaseActivity<ViewBinding>() {
 private fun AiProviderManageScreen(
     providers: List<AiProviderConfig>,
     modelCounts: Map<String, Int>,
-    currentProviderId: String,
+    currentProviderId: String?,
     onBack: () -> Unit,
     onAdd: () -> Unit,
     onOpenProvider: (AiProviderConfig) -> Unit,
