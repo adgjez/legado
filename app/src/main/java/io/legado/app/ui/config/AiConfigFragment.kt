@@ -1,25 +1,25 @@
 package io.legado.app.ui.config
 
 import android.content.Intent
-import android.text.InputType
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogAiMcpServerEditBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.ai.AiToolRegistry
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.config.compose.ComposeSettingFragment
 import io.legado.app.ui.config.compose.SettingActionSpec
 import io.legado.app.ui.config.compose.SettingPageSpec
 import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
+import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
+import io.legado.app.ui.widget.compose.showComposeTextFormDialogWithChecks
 import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
@@ -378,7 +378,10 @@ class AiConfigFragment : ComposeSettingFragment() {
             "多角色：${modelLabel(AppConfig.aiReadAloudRoleModelConfig)}",
             "图像生成供应商：${imageProviderLabel()}"
         )
-        requireContext().selector("默认模型", items) { _, _, index ->
+        showComposeActionListDialog(
+            title = "默认模型",
+            labels = items
+        ) { index ->
             when (index) {
                 0 -> selectDefaultModel("正文问 AI 模型", AppConfig.aiAskModelId) {
                     AppConfig.aiAskModelId = it
@@ -405,15 +408,15 @@ class AiConfigFragment : ComposeSettingFragment() {
             return
         }
         val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
-        requireContext().selector(
-            title,
-            models.map { model ->
+        showComposeActionListDialog(
+            title = title,
+            labels = models.map { model ->
                 val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
                     ?.let { "${model.modelId} - $it" }
                     ?: model.modelId
                 if (model.id == currentId) "$label ✓" else label
             }
-        ) { _, _, index ->
+        ) { index ->
             onSelect(models[index].id)
             refreshUi()
         }
@@ -426,13 +429,13 @@ class AiConfigFragment : ComposeSettingFragment() {
             return
         }
         val currentId = AppConfig.aiCurrentImageProvider?.id
-        requireContext().selector(
-            "图像生成供应商",
-            providers.map { provider ->
+        showComposeActionListDialog(
+            title = "图像生成供应商",
+            labels = providers.map { provider ->
                 val label = provider.displayName()
                 if (provider.id == currentId) "$label ✓" else label
             }
-        ) { _, _, index ->
+        ) { index ->
             AppConfig.aiCurrentImageProviderId = providers[index].id
             refreshUi()
         }
@@ -451,44 +454,54 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showEditMcpServerDialog(server: AiMcpServerConfig? = null) {
-        val binding = DialogAiMcpServerEditBinding.inflate(layoutInflater).apply {
-            editMcpServerName.setText(server?.name.orEmpty())
-            editMcpServerEndpoint.setText(server?.endpoint.orEmpty())
-            editMcpServerApiKey.setText(server?.apiKey.orEmpty())
-            checkMcpServerEnabled.isChecked = server?.enabled ?: true
-        }
-        alert(
+        showComposeTextFormDialogWithChecks(
             title = getString(
                 if (server == null) R.string.ai_add_mcp_server else R.string.ai_edit_mcp_server
-            )
-        ) {
-            customView { binding.root }
-            okButton {
-                val name = binding.editMcpServerName.text?.toString()?.trim().orEmpty()
-                val endpoint = binding.editMcpServerEndpoint.text?.toString()?.trim().orEmpty()
-                val apiKey = binding.editMcpServerApiKey.text?.toString()?.trim().orEmpty()
+            ),
+            labels = listOf(
+                getString(R.string.ai_mcp_server_name),
+                getString(R.string.ai_mcp_server_endpoint),
+                getString(R.string.ai_api_key)
+            ),
+            initialValues = listOf(
+                server?.name.orEmpty(),
+                server?.endpoint.orEmpty(),
+                server?.apiKey.orEmpty()
+            ),
+            passwordFields = setOf(2),
+            checkboxLabels = listOf(getString(R.string.ai_mcp_server_enabled)),
+            checkedIndices = if (server?.enabled != false) setOf(0) else emptySet(),
+            validateInput = { values ->
+                val name = values.getOrNull(0).orEmpty().trim()
+                val endpoint = values.getOrNull(1).orEmpty().trim()
                 when {
                     name.isEmpty() -> {
                         toastOnUi(R.string.ai_mcp_server_name_required)
-                        return@okButton
+                        false
                     }
-
                     endpoint.isEmpty() -> {
                         toastOnUi(R.string.ai_mcp_server_endpoint_required)
-                        return@okButton
+                        false
                     }
+                    else -> true
                 }
+            },
+            onPositive = { values, checked ->
+                val name = values[0].trim()
+                val endpoint = values[1].trim()
+                val apiKey = values[2].trim()
+                val enabled = checked.getOrElse(0) { true }
                 val servers = AppConfig.aiMcpServerList.toMutableList()
                 val updated = server?.copy(
                     name = name,
                     endpoint = endpoint,
                     apiKey = apiKey,
-                    enabled = binding.checkMcpServerEnabled.isChecked
+                    enabled = enabled
                 ) ?: AiMcpServerConfig(
                     name = name,
                     endpoint = endpoint,
                     apiKey = apiKey,
-                    enabled = binding.checkMcpServerEnabled.isChecked
+                    enabled = enabled
                 )
                 val targetIndex = servers.indexOfFirst { it.id == updated.id }
                 if (targetIndex >= 0) {
@@ -500,8 +513,7 @@ class AiConfigFragment : ComposeSettingFragment() {
                 refreshUi()
                 toastOnUi(R.string.ai_mcp_server_saved)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showManageMcpServersDialog() {
@@ -510,19 +522,19 @@ class AiConfigFragment : ComposeSettingFragment() {
             toastOnUi(R.string.ai_no_mcp_servers)
             return
         }
-        context?.selector(
-            getString(R.string.ai_manage_mcp_servers),
-            servers.map { server ->
+        showComposeActionListDialog(
+            title = getString(R.string.ai_manage_mcp_servers),
+            labels = servers.map { server ->
                 buildString {
                     append(server.name)
                     if (!server.enabled) append(" (off)")
                 }
             }
-        ) { _, _, index ->
+        ) { index ->
             val server = servers[index]
-            context?.selector(
-                server.name,
-                arrayListOf(
+            showComposeActionListDialog(
+                title = server.name,
+                labels = listOf(
                     getString(
                         if (server.enabled) {
                             R.string.ai_disable_mcp_server
@@ -533,7 +545,7 @@ class AiConfigFragment : ComposeSettingFragment() {
                     getString(R.string.ai_edit_mcp_server),
                     getString(R.string.ai_remove_mcp_server)
                 )
-            ) { _, action ->
+            ) { action ->
                 when (action) {
                     0 -> {
                         AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.map {
@@ -550,53 +562,46 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun confirmRemoveMcpServer(server: AiMcpServerConfig) {
-        alert(
+        showComposeConfirmDialog(
             title = server.name,
-            message = getString(R.string.ai_remove_mcp_server_confirm)
-        ) {
-            okButton {
+            message = getString(R.string.ai_remove_mcp_server_confirm),
+            onPositive = {
                 AppConfig.aiMcpServerList = AppConfig.aiMcpServerList.filterNot { it.id == server.id }
                 refreshUi()
                 toastOnUi(R.string.ai_mcp_server_removed)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showSystemPromptDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_system_prompt_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            editView.minLines = 8
-            editView.setText(AppConfig.aiSystemPrompt)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_system_prompt) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiSystemPrompt = binding.editView.text?.toString().orEmpty()
+        showComposeTextInputDialog(
+            title = getString(R.string.ai_system_prompt),
+            hint = getString(R.string.ai_system_prompt_hint),
+            initialValue = AppConfig.aiSystemPrompt,
+            minLines = 8,
+            maxLines = 16,
+            neutralText = getString(R.string.restore_default),
+            onPositive = { text ->
+                AppConfig.aiSystemPrompt = text
                 refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
+            },
+            onNeutral = {
                 AppConfig.aiSystemPrompt = AppConfig.DEFAULT_AI_SYSTEM_PROMPT
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showContextCompressionDialog() {
         val enabledText = if (AppConfig.aiContextCompressionEnabled) "关闭上下文压缩" else "启用上下文压缩"
-        context?.selector(
-            getString(R.string.ai_context_compression),
-            arrayListOf(
+        showComposeActionListDialog(
+            title = getString(R.string.ai_context_compression),
+            labels = listOf(
                 enabledText,
                 "上下文长度: ${AppConfig.aiContextWindowTokens}",
                 "思考上下文: ${AppConfig.aiThinkingContextTokens}"
             )
-        ) { _, index ->
+        ) { index ->
             when (index) {
                 0 -> {
                     AppConfig.aiContextCompressionEnabled = !AppConfig.aiContextCompressionEnabled
@@ -614,10 +619,10 @@ class AiConfigFragment : ComposeSettingFragment() {
         } else {
             listOf(0, 32_000, 64_000, 128_000, 258_000)
         }
-        context?.selector(
-            if (contextWindow) getString(R.string.ai_context_tokens) else getString(R.string.ai_thinking_context_tokens),
-            values.map { it.toString() }
-        ) { _, index ->
+        showComposeActionListDialog(
+            title = if (contextWindow) getString(R.string.ai_context_tokens) else getString(R.string.ai_thinking_context_tokens),
+            labels = values.map { it.toString() }
+        ) { index ->
             if (contextWindow) AppConfig.aiContextWindowTokens = values[index]
             else AppConfig.aiThinkingContextTokens = values[index]
             refreshUi()
@@ -632,34 +637,40 @@ class AiConfigFragment : ComposeSettingFragment() {
                 toastOnUi(R.string.not_available)
                 return@launch
             }
-            val enabled = AiToolRegistry.effectiveEnabledToolNames().toMutableSet()
             val groupedTools = tools.map { AiToolRegistry.metaOfTool(it) }
                 .groupBy { it.group }
                 .toSortedMap(compareBy { groupOrder(it) })
-            val displayItems = mutableListOf<ToolDisplayItem>()
+            val toolNames = mutableListOf<String>()
+            val toolLabels = mutableListOf<String>()
             groupedTools.forEach { (group, groupTools) ->
-                displayItems.add(ToolDisplayItem.Header(group))
+                toolNames.add("__group_$group")
+                toolLabels.add("--- $group ---")
                 groupTools.sortedBy { it.label }.forEach { tool ->
-                    val isEnabled = tool.name in enabled
-                    displayItems.add(ToolDisplayItem.Tool(tool.name, tool.label, isEnabled))
+                    toolNames.add(tool.name)
+                    toolLabels.add(tool.label)
                 }
             }
-            alert(getString(R.string.ai_manage_native_tools)) {
-                customView { createToolListView(displayItems, enabled) }
-                okButton {
-                    AppConfig.aiEnabledToolNames = enabled
+            val enabledToolNames = AiToolRegistry.effectiveEnabledToolNames()
+            val checkedIndices = toolNames.indices
+                .filter { i -> toolNames[i] in enabledToolNames }
+                .toSet()
+            showComposeMultiChoiceDialog(
+                title = getString(R.string.ai_manage_native_tools),
+                labels = toolLabels,
+                checkedIndices = checkedIndices,
+                positiveText = getString(android.R.string.ok),
+                negativeText = getString(R.string.cancel),
+                onPositive = { checked ->
+                    val newEnabled = mutableSetOf<String>()
+                    checked.forEachIndexed { index, isChecked ->
+                        if (isChecked && !toolNames[index].startsWith("__group_")) {
+                            newEnabled.add(toolNames[index])
+                        }
+                    }
+                    AppConfig.aiEnabledToolNames = newEnabled
                     refreshUi()
                 }
-                negativeButton(R.string.select_all) {
-                    AppConfig.aiEnabledToolNames = tools.toSet()
-                    refreshUi()
-                }
-                neutralButton(R.string.restore_default) {
-                    AppConfig.aiEnabledToolNames = emptySet()
-                    refreshUi()
-                }
-                cancelButton()
-            }
+            )
         }
     }
 
@@ -679,41 +690,32 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showTavilyApiKeyDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_tavily_api_key_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AppConfig.aiTavilyApiKey)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_tavily_api_key) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiTavilyApiKey = binding.editView.text?.toString().orEmpty()
+        showComposeTextInputDialog(
+            title = getString(R.string.ai_tavily_api_key),
+            hint = getString(R.string.ai_tavily_api_key_hint),
+            initialValue = AppConfig.aiTavilyApiKey,
+            onPositive = { text ->
+                AppConfig.aiTavilyApiKey = text
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showTavilyBaseUrlDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "https://api.tavily.com/search"
-            editView.inputType = InputType.TYPE_CLASS_TEXT
-            editView.setText(AppConfig.aiTavilyBaseUrl)
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_tavily_base_url) {
-            customView { binding.root }
-            okButton {
-                AppConfig.aiTavilyBaseUrl = binding.editView.text?.toString().orEmpty()
+        showComposeTextInputDialog(
+            title = getString(R.string.ai_tavily_base_url),
+            hint = "https://api.tavily.com/search",
+            initialValue = AppConfig.aiTavilyBaseUrl,
+            neutralText = getString(R.string.restore_default),
+            onPositive = { text ->
+                AppConfig.aiTavilyBaseUrl = text
                 refreshUi()
-            }
-            neutralButton(R.string.restore_default) {
+            },
+            onNeutral = {
                 AppConfig.aiTavilyBaseUrl = "https://api.tavily.com/search"
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showTavilyTopicDialog() {
@@ -749,25 +751,16 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showTavilyMaxResultsDialog() {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = "1-10"
-            editView.inputType = InputType.TYPE_CLASS_NUMBER
-            editView.setText(AppConfig.aiTavilyMaxResults.toString())
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_tavily_max_results) {
-            customView { binding.root }
-            okButton {
-                val value = binding.editView.text?.toString()?.trim()?.toIntOrNull()
-                if (value == null) {
-                    toastOnUi(R.string.ai_tavily_max_results_invalid)
-                    return@okButton
-                }
+        showComposeNumberPickerDialog(
+            title = getString(R.string.ai_tavily_max_results),
+            value = AppConfig.aiTavilyMaxResults,
+            minValue = 1,
+            maxValue = 10,
+            onValue = { value ->
                 AppConfig.aiTavilyMaxResults = value
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importDefaultSkill() {
@@ -820,7 +813,10 @@ class AiConfigFragment : ComposeSettingFragment() {
                 )
             }
         }
-        context?.selector(getString(R.string.ai_manage_skills), actions) { _, _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.ai_manage_skills),
+            labels = actions
+        ) { index ->
             if (index == 0) {
                 showSkillEditDialog()
             } else {
@@ -830,14 +826,14 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showSkillActionDialog(skill: AiSkillConfig) {
-        context?.selector(
-            skill.name,
-            arrayListOf(
+        showComposeActionListDialog(
+            title = skill.name,
+            labels = listOf(
                 getString(if (skill.enabled) R.string.disable else R.string.enable),
                 getString(R.string.edit),
                 getString(R.string.delete)
             )
-        ) { _, action ->
+        ) { action ->
             when (action) {
                 0 -> {
                     AppConfig.aiSkillList = AppConfig.aiSkillList.map {
@@ -853,23 +849,21 @@ class AiConfigFragment : ComposeSettingFragment() {
     }
 
     private fun showSkillEditDialog(skill: AiSkillConfig? = null) {
-        val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-            editView.hint = getString(R.string.ai_skill_prompt_hint)
-            editView.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            editView.minLines = 8
-            editView.setText(skill?.content.orEmpty())
-            editView.setSelection(editView.text?.length ?: 0)
-        }
-        alert(titleResource = R.string.ai_skill_prompt) {
-            customView { binding.root }
-            okButton {
-                val content = binding.editView.text?.toString().orEmpty()
-                if (content.isBlank()) {
+        showComposeTextInputDialog(
+            title = getString(R.string.ai_skill_prompt),
+            hint = getString(R.string.ai_skill_prompt_hint),
+            initialValue = skill?.content.orEmpty(),
+            minLines = 8,
+            maxLines = 16,
+            validateInput = { text ->
+                if (text.isBlank()) {
                     toastOnUi(R.string.ai_skill_import_empty)
-                    return@okButton
+                    false
+                } else {
+                    true
                 }
+            },
+            onPositive = { content ->
                 val updated = parseSkillConfig(content, skill?.sourceUrl.orEmpty(), skill)
                 val skills = AppConfig.aiSkillList.toMutableList()
                 val index = skills.indexOfFirst { it.id == updated.id }
@@ -881,21 +875,18 @@ class AiConfigFragment : ComposeSettingFragment() {
                 AppConfig.aiSkillList = skills
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun confirmRemoveSkill(skill: AiSkillConfig) {
-        alert(
+        showComposeConfirmDialog(
             title = skill.name,
-            message = getString(R.string.ai_remove_skill_confirm)
-        ) {
-            okButton {
+            message = getString(R.string.ai_remove_skill_confirm),
+            onPositive = {
                 AppConfig.aiSkillList = AppConfig.aiSkillList.filterNot { it.id == skill.id }
                 refreshUi()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun parseSkillConfig(
@@ -939,49 +930,4 @@ class AiConfigFragment : ComposeSettingFragment() {
         }
     }
 
-    private sealed class ToolDisplayItem {
-        data class Header(val title: String) : ToolDisplayItem()
-        data class Tool(val name: String, val displayName: String, var isEnabled: Boolean) : ToolDisplayItem()
-    }
-
-    private fun createToolListView(
-        items: List<ToolDisplayItem>,
-        enabled: MutableSet<String>
-    ): android.widget.ScrollView {
-        val scrollView = android.widget.ScrollView(requireContext())
-        val linearLayout = android.widget.LinearLayout(requireContext()).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            val dp8 = (8 * resources.displayMetrics.density).toInt()
-            val dp16 = (16 * resources.displayMetrics.density).toInt()
-            setPadding(dp16, dp8, dp16, dp8)
-        }
-        items.forEach { item ->
-            when (item) {
-                is ToolDisplayItem.Header -> {
-                    val headerView = android.widget.TextView(requireContext()).apply {
-                        text = item.title
-                        textSize = 16f
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        val dp16 = (16 * resources.displayMetrics.density).toInt()
-                        val dp8 = (8 * resources.displayMetrics.density).toInt()
-                        setPadding(0, dp16, 0, dp8)
-                    }
-                    linearLayout.addView(headerView)
-                }
-                is ToolDisplayItem.Tool -> {
-                    val checkBox = android.widget.CheckBox(requireContext()).apply {
-                        text = item.displayName
-                        isChecked = item.isEnabled
-                        setOnCheckedChangeListener { _, isChecked ->
-                            item.isEnabled = isChecked
-                            if (isChecked) enabled.add(item.name) else enabled.remove(item.name)
-                        }
-                    }
-                    linearLayout.addView(checkBox)
-                }
-            }
-        }
-        scrollView.addView(linearLayout)
-        return scrollView
-    }
 }
