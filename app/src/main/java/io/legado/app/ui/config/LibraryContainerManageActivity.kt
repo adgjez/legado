@@ -1,31 +1,17 @@
 package io.legado.app.ui.config
 
-import android.graphics.Color
 import android.os.Bundle
-import android.text.InputType
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
-import androidx.core.view.isVisible
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.SimpleItemAnimator
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
-import io.legado.app.data.entities.BookSource
 import io.legado.app.databinding.ActivityS3ContainerManageBinding
-import io.legado.app.databinding.DialogLibraryContainerEditBinding
-import io.legado.app.databinding.ItemS3ContainerBinding
 import io.legado.app.help.book.library.LibraryCloudBackend
 import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerExportCrypto
@@ -34,28 +20,18 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
-import io.legado.app.lib.dialogs.AndroidAlertBuilder
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
-import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
-import io.legado.app.lib.theme.applyUiTitleTypeface
-import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
-import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.SourceSelectDialog
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
+import io.legado.app.ui.widget.compose.showComposeTextFormDialogWithChecks
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.readText
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers
@@ -69,10 +45,9 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
 
     override val binding by viewBinding(ActivityS3ContainerManageBinding::inflate)
 
-    private val adapter by lazy { Adapter() }
+    private val containersState = mutableStateOf<List<LibraryContainerConfig>>(emptyList())
     private val waitDialog by lazy { WaitDialog(this) }
     private var editingSourceUrls: MutableSet<String> = mutableSetOf()
-    private var editingSourceSummary: TextView? = null
     private var pendingExportDecryptKey: String? = null
     private val importJson = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
@@ -95,21 +70,35 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        binding.titleBar.title = "书库容器"
-        binding.tvSummary.text = "书库容器只用于同步阅读章节缓存，不参与备份、主题、气泡或缓存包同步。阅读时会先读取目录索引，只有命中缓存章节才请求正文。"
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        (binding.recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
-        binding.btnAdd.text = "添加书库容器"
-        binding.btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this, R.color.background_card),
-            ContextCompat.getColor(this, R.color.background_menu),
-            UiCorner.actionRadius(this)
-        )
-        binding.btnAdd.setOnClickListener { showEditDialog(null) }
-        binding.tvSummary.applyUiLabelStyle(this)
-        binding.tvSummary.setTextColor(secondaryTextColor)
+        initComposeContent()
         reload()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        waitDialog.dismiss()
+    }
+
+    private fun initComposeContent() {
+        val container = binding.root as? ViewGroup ?: return
+        container.removeAllViews()
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                LibraryContainerManageScreen(
+                    containers = containersState.value,
+                    onBack = { finish() },
+                    onAdd = { showEditDialog(null) },
+                    onItemClick = { showEditDialog(it) },
+                    onMoreClick = { showActions(it) }
+                )
+            }
+        }
+        container.addView(cv)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -132,44 +121,42 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        waitDialog.dismiss()
-    }
-
     private fun reload() {
-        adapter.setItems(LibraryContainerManager.containers())
+        containersState.value = LibraryContainerManager.containers()
     }
 
     private fun showImportActions() {
-        selector(
-            getString(R.string.import_str),
-            listOf(getString(R.string.import_str), getString(R.string.import_on_line))
-        ) { _, index ->
-            when (index) {
-                0 -> importJson.launch {
-                    mode = HandleFileContract.FILE
-                    title = getString(R.string.import_str)
-                    allowExtensions = arrayOf("json")
+        showComposeActionListDialog(
+            title = getString(R.string.import_str),
+            labels = listOf(
+                getString(R.string.import_str) as CharSequence,
+                getString(R.string.import_on_line) as CharSequence
+            ),
+            negativeText = getString(R.string.cancel),
+            onSelected = { index ->
+                when (index) {
+                    0 -> importJson.launch {
+                        mode = HandleFileContract.FILE
+                        title = getString(R.string.import_str)
+                        allowExtensions = arrayOf("json")
+                    }
+                    1 -> showImportUrlDialog()
                 }
-                1 -> showImportUrlDialog()
             }
-        }
+        )
     }
 
     private fun showImportUrlDialog() {
-        alert(R.string.import_on_line) {
-            val input = EditText(this@LibraryContainerManageActivity).apply {
-                hint = "https://..."
-                setSingleLine(true)
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "https://...",
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { url ->
+                val trimmed = url.trim()
+                if (trimmed.isNotEmpty()) importContainersFromUrl(trimmed)
             }
-            customView { input }
-            okButton {
-                val url = input.text?.toString().orEmpty().trim()
-                if (url.isNotEmpty()) importContainersFromUrl(url)
-            }
-            cancelButton()
-        }
+        )
     }
 
     private fun importContainersFromUrl(url: String) {
@@ -197,25 +184,23 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     private fun showDecryptImportDialog(text: String) {
-        alert("导入加密书库容器") {
-            val input = EditText(this@LibraryContainerManageActivity).apply {
-                hint = "请输入解密密钥"
-                setSingleLine(false)
-                minLines = 2
-            }
-            customView { input }
-            okButton {
-                val key = input.text?.toString().orEmpty().trim()
+        showComposeTextInputDialog(
+            title = "导入加密书库容器",
+            hint = "请输入解密密钥",
+            minLines = 2,
+            positiveText = getString(android.R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { key ->
+                val trimmed = key.trim()
                 runCatching {
-                    val decrypted = LibraryContainerExportCrypto.decrypt(text, key)
+                    val decrypted = LibraryContainerExportCrypto.decrypt(text, trimmed)
                     importContainers(decrypted, lockedImported = true)
                 }.onSuccess(::showImportResult)
                     .onFailure { error ->
                         toastOnUi(error.localizedMessage ?: getString(R.string.wrong_format))
                     }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun showImportResult(count: Int) {
@@ -303,220 +288,114 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     private fun showExportResult(value: String, decryptKey: String?) {
         val isUrl = value.startsWith("http://", true) || value.startsWith("https://", true)
         val keyText = decryptKey.orEmpty()
-        val dialog = AndroidAlertBuilder(this).apply {
-            setTitle(if (isUrl) getString(R.string.upload_url) else getString(R.string.export_success))
-            setMessage(buildString {
-                if (isUrl) {
-                    append(value)
-                    append("\n\n")
-                }
-                append("解密密钥：\n")
-                append(keyText)
-            })
-            positiveButton("复制密钥", null)
+        val message = buildString {
             if (isUrl) {
-                neutralButton("复制URL", null)
+                append(value)
+                append("\n\n")
             }
-            negativeButton(R.string.cancel)
-        }.build()
-        dialog.setOnShowListener {
-            dialog.applyTint()
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+            append("解密密钥：\n")
+            append(keyText)
+        }
+        showComposeConfirmDialog(
+            title = if (isUrl) getString(R.string.upload_url) else getString(R.string.export_success),
+            message = message,
+            positiveText = "复制密钥",
+            negativeText = getString(R.string.cancel),
+            neutralText = if (isUrl) "复制URL" else null,
+            onPositive = {
                 sendToClip(keyText)
                 toastOnUi(R.string.copy_complete)
-            }
-            if (isUrl) {
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+            },
+            onNeutral = if (isUrl) {
+                {
                     sendToClip(value)
                     toastOnUi(R.string.copy_complete)
                 }
-            }
-        }
-        dialog.show()
+            } else null
+        )
     }
 
     private fun showEditDialog(item: LibraryContainerConfig?) {
         val locked = item?.lockedImported == true
         editingSourceUrls = item?.sourceUrls.orEmpty().toMutableSet()
-        val dialogBinding = DialogLibraryContainerEditBinding.inflate(LayoutInflater.from(this))
-        dialogBinding.bind(item)
-        val settingsView = buildLibrarySettings(item)
-        dialogBinding.layoutLibrary.addView(settingsView)
+
+        val title = when {
+            item == null -> "添加书库容器"
+            locked -> "编辑同步书源"
+            else -> "编辑书库容器"
+        }
+
         if (locked) {
-            applyLockedImportedEditMode(dialogBinding)
-        }
-        setupEditDialogStyle(dialogBinding)
-        setupEditGroups(dialogBinding)
-        val dialog = AndroidAlertBuilder(this).apply {
-            setTitle(
-                when {
-                    item == null -> "添加书库容器"
-                    locked -> "编辑同步书源"
-                    else -> "编辑书库容器"
-                }
-            )
-            customView { dialogBinding.root }
-            onDismiss {
-                editingSourceUrls = mutableSetOf()
-                editingSourceSummary = null
+            // Locked imported: only allow editing source URLs via source picker
+            showSourcePicker {
+                val saved = LibraryContainerManager.upsert(
+                    item.copy(sourceUrls = editingSourceUrls.toSet(), lockedImported = true)
+                )
+                reload()
             }
-        }.build()
-        dialog.setOnShowListener {
-            dialog.applyTint()
-            applyEditDialogSize(dialog)
+            return
         }
-        dialogBinding.btnCancel.setOnClickListener {
-            dialog.dismiss()
-        }
-        dialogBinding.btnConfirm.setOnClickListener {
-            saveDialogItem(item, dialogBinding)?.let { saved ->
-                if (item == null) refreshCapacity(saved, showWait = false)
-                dialog.dismiss()
-            }
-        }
-        dialog.show()
-    }
 
-    private fun DialogLibraryContainerEditBinding.bind(item: LibraryContainerConfig?) {
         val container = item?.container
-        editName.setText(container?.name.orEmpty())
-        editEndpoint.setText(container?.endpoint.orEmpty())
-        editBucket.setText(container?.bucket.orEmpty())
-        editPrefix.setText(container?.prefix ?: "Library")
-        editRegion.setText(container?.region ?: "auto")
-        editAccessKey.setText(container?.accessKey.orEmpty())
-        editSecretKey.setText(container?.secretKey.orEmpty())
-        editSessionToken.setText(container?.sessionToken.orEmpty())
-        editCapacity.setText(capacityMbToGbText(container?.capacityMb ?: DEFAULT_CAPACITY_MB))
-        cbPathStyle.isChecked = container?.pathStyle ?: true
-        cbEnabled.isChecked = container?.enabled ?: true
-    }
+        val password = item?.password.orEmpty()
+        val minUploadChars = item?.minUploadChars ?: 1500
+        val dailyUploadLimit = item?.dailyUploadLimit ?: 0
 
-    private fun applyLockedImportedEditMode(binding: DialogLibraryContainerEditBinding) = binding.run {
-        editName.isEnabled = false
-        listOf(
-            editEndpoint,
-            editBucket,
-            editAccessKey,
-            editSecretKey,
-            editCapacity,
-            editPrefix,
-            editRegion,
-            editSessionToken
-        ).forEach { it.isEnabled = false }
-        cbEnabled.isEnabled = false
-        cbPathStyle.isEnabled = false
-        btnConnectionGroup.visibility = View.GONE
-        btnAdvancedGroup.visibility = View.GONE
-    }
-
-    private fun setupEditDialogStyle(binding: DialogLibraryContainerEditBinding) = binding.run {
-        root.applyUiBodyTypefaceDeep(uiTypeface())
-        val actionRadius = UiCorner.actionRadius(this@LibraryContainerManageActivity)
-        listOf(btnCancel, btnConfirm).forEach {
-            it.background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.background_card),
-                actionRadius
-            )
-            it.applyUiTitleTypeface(this@LibraryContainerManageActivity)
-        }
-    }
-
-    private fun setupEditGroups(binding: DialogLibraryContainerEditBinding) = binding.run {
-        val tabs = listOf(
-            btnConnectionGroup to layoutConnection,
-            btnLibraryGroup to layoutLibrary,
-            btnAdvancedGroup to layoutAdvanced
+        val labels = listOf(
+            getString(R.string.s3_container_name) as CharSequence,
+            getString(R.string.s3_endpoint) as CharSequence,
+            getString(R.string.s3_bucket) as CharSequence,
+            getString(R.string.s3_access_key) as CharSequence,
+            getString(R.string.s3_secret_key) as CharSequence,
+            getString(R.string.s3_container_capacity_gb) as CharSequence,
+            getString(R.string.s3_prefix) as CharSequence,
+            getString(R.string.s3_region) as CharSequence,
+            getString(R.string.s3_session_token) as CharSequence,
+            "书库加密密码" as CharSequence,
+            "最少自动上传字数" as CharSequence,
+            "每日自动上传章节上限" as CharSequence
         )
-        tabs.forEach { (button, _) ->
-            button.background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.background_card),
-                UiCorner.actionRadius(this@LibraryContainerManageActivity)
-            )
-            button.applyUiTitleTypeface(this@LibraryContainerManageActivity)
-        }
-        fun select(index: Int) {
-            tabs.forEachIndexed { tabIndex, (button, group) ->
-                val selected = tabIndex == index
-                button.isSelected = selected
-                button.setTextColor(if (selected) accentColor else primaryTextColor)
-                group.visibility = if (selected) View.VISIBLE else View.GONE
+        val initialValues = listOf(
+            container?.name.orEmpty(),
+            container?.endpoint.orEmpty(),
+            container?.bucket.orEmpty(),
+            container?.accessKey.orEmpty(),
+            container?.secretKey.orEmpty(),
+            capacityMbToGbText(container?.capacityMb ?: DEFAULT_CAPACITY_MB),
+            container?.prefix ?: "Library",
+            container?.region ?: "auto",
+            container?.sessionToken.orEmpty(),
+            password,
+            minUploadChars.toString(),
+            dailyUploadLimit.toString()
+        )
+        val checkboxLabels = listOf(
+            getString(R.string.s3_container_enabled) as CharSequence,
+            getString(R.string.s3_path_style) as CharSequence
+        )
+        val checkedIndices = listOfNotNull(
+            if (container?.enabled ?: true) CHECK_ENABLED else null,
+            if (container?.pathStyle ?: true) CHECK_PATH_STYLE else null
+        ).toSet()
+
+        showComposeTextFormDialogWithChecks(
+            title = title,
+            labels = labels,
+            initialValues = initialValues,
+            passwordFields = setOf(FIELD_SECRET_KEY, FIELD_SESSION_TOKEN),
+            checkboxLabels = checkboxLabels,
+            checkedIndices = checkedIndices,
+            positiveText = getString(R.string.dialog_confirm),
+            negativeText = getString(R.string.dialog_cancel),
+            onPositive = { values, checks ->
+                saveDialogItem(item, values, checks)?.let { saved ->
+                    if (item == null) refreshCapacity(saved, showWait = false)
+                }
             }
-        }
-        tabs.forEachIndexed { index, (button, _) ->
-            button.setOnClickListener { select(index) }
-        }
-        select(0)
+        )
     }
 
-    private fun applyEditDialogSize(dialog: androidx.appcompat.app.AlertDialog) {
-        val heightRatio = if (resources.displayMetrics.heightPixels < 1600) 0.82f else 0.74f
-        dialog.setLayout(0.92f, heightRatio)
-    }
-
-    private fun buildLibrarySettings(item: LibraryContainerConfig?): LinearLayout {
-        val context = this
-        val passwordInput = PackageManageUi.nameInput(context, item?.password.orEmpty(), "书库加密密码，可留空").apply {
-            tag = TAG_PASSWORD
-        }
-        val minUploadInput = PackageManageUi.nameInput(
-            context,
-            (item?.minUploadChars ?: 1500).toString(),
-            "最少自动上传字数，默认1500，0为不过滤"
-        ).apply {
-            tag = TAG_MIN_UPLOAD_CHARS
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        val dailyUploadLimitInput = PackageManageUi.nameInput(
-            context,
-            (item?.dailyUploadLimit ?: 0).toString(),
-            "每日自动上传章节上限，0为不限制"
-        ).apply {
-            tag = TAG_DAILY_UPLOAD_LIMIT
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        editingSourceSummary = TextView(context).apply {
-            textSize = 13f
-            setTextColor(secondaryTextColor)
-            applyUiLabelStyle(context)
-            setPadding(0, 6.dp, 0, 0)
-        }
-        updateSourceSummary()
-        return LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(TextView(context).apply {
-                text = if (item?.lockedImported == true) "指定同步书源" else "书库设置"
-                applyUiSectionTitleStyle(context)
-                setPadding(0, 12.dp, 0, 6.dp)
-            })
-            if (item?.lockedImported != true) {
-                addView(passwordInput)
-                addView(minUploadInput)
-                addView(dailyUploadLimitInput)
-            }
-            addView(TextView(context).apply {
-                text = "读取策略"
-                applyUiLabelStyle(context)
-                setPadding(0, 10.dp, 0, 4.dp)
-            })
-            addView(PackageManageUi.optionRow(context, "指定书源", "选择允许同步的书源") {
-                showSourcePicker()
-            })
-            addView(editingSourceSummary)
-        }
-    }
-
-    private fun updateSourceSummary() {
-        editingSourceSummary?.text = if (editingSourceUrls.isEmpty()) {
-            "未指定书源，不会自动上传或回退云端章节"
-        } else {
-            "已指定 ${editingSourceUrls.size} 个书源"
-        }
-    }
-
-    private fun showSourcePicker() {
+    private fun showSourcePicker(onDone: (MutableSet<String>) -> Unit) {
         lifecycleScope.launch {
             val sources = withContext(Dispatchers.IO) { appDb.bookSourceDao.allEnabled }
             SourceSelectDialog.show(
@@ -524,75 +403,65 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 title = "指定书源",
                 items = sources,
                 selectedKey = null,
-                displayName = ::sourceName,
+                displayName = { source ->
+                    val group = source.bookSourceGroup?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+                    val checked = if (editingSourceUrls.contains(source.bookSourceUrl)) "✓ " else ""
+                    "$checked${source.bookSourceName}$group"
+                },
                 searchTexts = { listOf(it.bookSourceName, it.bookSourceUrl, it.bookSourceGroup.orEmpty()) },
                 itemKey = { it.bookSourceUrl }
             ) { source ->
                 if (!editingSourceUrls.add(source.bookSourceUrl)) {
                     editingSourceUrls.remove(source.bookSourceUrl)
                 }
-                updateSourceSummary()
             }
         }
     }
 
-    private fun sourceName(source: BookSource): String {
-        val group = source.bookSourceGroup?.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
-        val checked = if (editingSourceUrls.contains(source.bookSourceUrl)) "✓ " else ""
-        return "$checked${source.bookSourceName}$group"
-    }
-
-    private fun saveDialogItem(oldItem: LibraryContainerConfig?, binding: DialogLibraryContainerEditBinding): LibraryContainerConfig? {
-        if (oldItem?.lockedImported == true) {
-            val saved = LibraryContainerManager.upsert(
-                oldItem.copy(sourceUrls = editingSourceUrls.toSet(), lockedImported = true)
-            )
-            reload()
-            return saved
-        }
+    private fun saveDialogItem(
+        oldItem: LibraryContainerConfig?,
+        fields: List<String>,
+        checks: BooleanArray
+    ): LibraryContainerConfig? {
+        val pathStyle = checks.checkedAt(CHECK_PATH_STYLE, default = true)
         val parsed = S3Config.parseAddress(
-            binding.editEndpoint.text?.toString().orEmpty(),
-            binding.editBucket.text?.toString().orEmpty(),
-            binding.editRegion.text?.toString().orEmpty(),
-            binding.cbPathStyle.isChecked
+            fields.fieldAt(FIELD_ENDPOINT),
+            fields.fieldAt(FIELD_BUCKET),
+            fields.fieldAt(FIELD_REGION),
+            pathStyle
         )
-        val capacityMb = gbTextToCapacityMb(binding.editCapacity.text?.toString().orEmpty())
+        val capacityMb = gbTextToCapacityMb(fields.fieldAt(FIELD_CAPACITY))
         val usedBytes = oldItem?.container?.usedBytes?.coerceAtLeast(0L) ?: 0L
         if (parsed.endpoint.isBlank() || parsed.bucket.isBlank()) {
             toastOnUi(R.string.s3_container_endpoint_bucket_required)
             return null
         }
-        if (binding.editAccessKey.text?.toString().orEmpty().isBlank()
-            || binding.editSecretKey.text?.toString().orEmpty().isBlank()
+        if (fields.fieldAt(FIELD_ACCESS_KEY).isBlank()
+            || fields.fieldAt(FIELD_SECRET_KEY).isBlank()
         ) {
             toastOnUi(R.string.s3_container_key_required)
             return null
         }
         val container = S3Container(
             id = oldItem?.id ?: S3Container.newId(),
-            name = binding.editName.text?.toString()?.trim().orEmpty().ifBlank { parsed.bucket },
+            name = fields.fieldAt(FIELD_NAME).trim().ifBlank { parsed.bucket },
             endpoint = parsed.endpoint,
             bucket = parsed.bucket,
-            prefix = binding.editPrefix.text?.toString()?.trim().orEmpty().ifBlank { "Library" },
+            prefix = fields.fieldAt(FIELD_PREFIX).trim().ifBlank { "Library" },
             region = parsed.region.ifBlank { "auto" },
-            accessKey = binding.editAccessKey.text?.toString()?.trim().orEmpty(),
-            secretKey = binding.editSecretKey.text?.toString()?.trim().orEmpty(),
-            sessionToken = binding.editSessionToken.text?.toString()?.trim().orEmpty().ifBlank { null },
+            accessKey = fields.fieldAt(FIELD_ACCESS_KEY).trim(),
+            secretKey = fields.fieldAt(FIELD_SECRET_KEY).trim(),
+            sessionToken = fields.fieldAt(FIELD_SESSION_TOKEN).trim().ifBlank { null },
             pathStyle = parsed.pathStyle,
             capacityMb = capacityMb,
             usedBytes = if (capacityMb > 0) usedBytes.coerceAtMost(mbToBytes(capacityMb)) else usedBytes,
             lastRefreshTime = oldItem?.container?.lastRefreshTime ?: 0L,
             isFull = capacityMb > 0 && usedBytes >= mbToBytes(capacityMb),
-            enabled = binding.cbEnabled.isChecked
+            enabled = checks.checkedAt(CHECK_ENABLED, default = true)
         )
-        val password = binding.root.findViewWithTag<android.widget.EditText>(TAG_PASSWORD)
-            ?.text?.toString()?.takeIf { it.isNotBlank() }
-        val minUploadChars = binding.root.findViewWithTag<android.widget.EditText>(TAG_MIN_UPLOAD_CHARS)
-            ?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0)
-            ?: 1500
-        val dailyUploadLimit = binding.root.findViewWithTag<android.widget.EditText>(TAG_DAILY_UPLOAD_LIMIT)
-            ?.text?.toString()?.toIntOrNull()?.coerceAtLeast(0)
-            ?: 0
+        val password = fields.fieldAt(FIELD_PASSWORD).takeIf { it.isNotBlank() }
+        val minUploadChars = fields.fieldAt(FIELD_MIN_UPLOAD_CHARS).toIntOrNull()?.coerceAtLeast(0) ?: 1500
+        val dailyUploadLimit = fields.fieldAt(FIELD_DAILY_UPLOAD_LIMIT).toIntOrNull()?.coerceAtLeast(0) ?: 0
         val saved = LibraryContainerManager.upsert(
             LibraryContainerConfig(
                 container = container,
@@ -603,6 +472,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 lockedImported = oldItem?.lockedImported == true
             )
         )
+        editingSourceUrls = mutableSetOf()
         reload()
         return saved
     }
@@ -621,29 +491,36 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 Action.DELETE
             )
         }
-        selector(LibraryContainerManager.displayLabel(item), actions.map { it.title }) { _, index ->
-            when (actions[index]) {
-                Action.EDIT -> showEditDialog(item)
-                Action.EXPORT -> exportContainers(
-                    listOf(item),
-                    "library-container-${safeExportName(LibraryContainerManager.displayLabel(item))}.json"
-                )
-                Action.TEST -> testConnection(item)
-                Action.REFRESH -> refreshCapacity(item)
-                Action.SET_DEFAULT -> {
-                    if (!item.container.enabled) {
-                        toastOnUi(R.string.s3_container_disabled)
-                        return@selector
+        showComposeActionListDialog(
+            title = LibraryContainerManager.displayLabel(item),
+            labels = actions.map { it.title as CharSequence },
+            dangerIndices = setOf(actions.indexOf(Action.DELETE)).filter { it >= 0 }.toSet(),
+            negativeText = getString(R.string.cancel),
+            onSelected = { index ->
+                when (actions.getOrNull(index)) {
+                    Action.EDIT -> showEditDialog(item)
+                    Action.EXPORT -> exportContainers(
+                        listOf(item),
+                        "library-container-${safeExportName(LibraryContainerManager.displayLabel(item))}.json"
+                    )
+                    Action.TEST -> testConnection(item)
+                    Action.REFRESH -> refreshCapacity(item)
+                    Action.SET_DEFAULT -> {
+                        if (!item.container.enabled) {
+                            toastOnUi(R.string.s3_container_disabled)
+                            return@showComposeActionListDialog
+                        }
+                        LibraryContainerManager.select(item.id)
+                        toastOnUi(R.string.s3_container_set_default_success)
+                        reload()
                     }
-                    LibraryContainerManager.select(item.id)
-                    toastOnUi(R.string.s3_container_set_default_success)
-                    reload()
+                    Action.ENABLE -> updateItem(item.copy(container = item.container.copy(enabled = true, isFull = false)))
+                    Action.DISABLE -> updateItem(item.copy(container = item.container.copy(enabled = false)))
+                    Action.DELETE -> confirmDelete(item)
+                    null -> Unit
                 }
-                Action.ENABLE -> updateItem(item.copy(container = item.container.copy(enabled = true, isFull = false)))
-                Action.DISABLE -> updateItem(item.copy(container = item.container.copy(enabled = false)))
-                Action.DELETE -> confirmDelete(item)
             }
-        }
+        )
     }
 
     private fun updateItem(item: LibraryContainerConfig) {
@@ -652,14 +529,17 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
     }
 
     private fun confirmDelete(item: LibraryContainerConfig) {
-        alert("删除书库容器") {
-            setMessage("确认删除 ${LibraryContainerManager.displayLabel(item)}？")
-            okButton {
+        showComposeConfirmDialog(
+            title = "删除书库容器",
+            message = "确认删除 ${LibraryContainerManager.displayLabel(item)}？",
+            positiveText = getString(R.string.delete),
+            negativeText = getString(R.string.cancel),
+            dangerPositive = true,
+            onPositive = {
                 LibraryContainerManager.delete(item.id)
                 reload()
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun testConnection(item: LibraryContainerConfig) {
@@ -696,71 +576,6 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         }
     }
 
-    private inner class Adapter :
-        RecyclerAdapter<LibraryContainerConfig, ItemS3ContainerBinding>(this@LibraryContainerManageActivity) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemS3ContainerBinding {
-            return ItemS3ContainerBinding.inflate(inflater, parent, false).apply {
-                root.background = UiCorner.panelRounded(
-                    root.context,
-                    ContextCompat.getColor(root.context, R.color.background_card),
-                    UiCorner.panelRadius(root.context)
-                )
-                btnMore.background = UiCorner.actionSelector(
-                    ContextCompat.getColor(root.context, R.color.background_card),
-                    ContextCompat.getColor(root.context, R.color.background_menu),
-                    UiCorner.actionRadius(root.context)
-                )
-            }
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemS3ContainerBinding,
-            item: LibraryContainerConfig,
-            payloads: MutableList<Any>
-        ) = binding.run {
-            val container = item.container
-            val isDefault = LibraryContainerManager.selectedId() == item.id
-            tvName.text = LibraryContainerManager.displayLabel(item)
-            tvSelected.isVisible = isDefault
-            tvSelected.setTextColor(ContextCompat.getColor(this@LibraryContainerManageActivity, R.color.accent))
-            tvPath.text = "${container.bucket}/${container.prefix.trim('/')}"
-            val capacityMb = container.capacityMb.coerceAtLeast(0)
-            val usedBytes = container.usedBytes.coerceAtLeast(0)
-            tvCapacity.text = if (capacityMb > 0) {
-                val capacityBytes = mbToBytes(capacityMb)
-                getString(
-                    R.string.s3_container_capacity_line,
-                    formatBytes(capacityBytes),
-                    formatBytes(usedBytes),
-                    formatBytes((capacityBytes - usedBytes).coerceAtLeast(0)),
-                    if (container.isFull) getString(R.string.yes) else getString(R.string.no)
-                )
-            } else {
-                getString(R.string.s3_container_capacity_unlimited_line, formatBytes(usedBytes))
-            }
-            val minUpload = if (item.minUploadChars > 0) "最少${item.minUploadChars}字" else "不过滤短章"
-            val dailyLimit = if (item.dailyUploadLimit > 0) "每日${item.dailyUploadLimit}章" else "每日不限"
-            val lockState = if (item.lockedImported) " · 加密导入" else ""
-            tvState.text = "状态：${if (container.enabled) "启用" else "禁用"}$lockState · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload · $dailyLimit"
-            tvName.applyUiSectionTitleStyle(this@LibraryContainerManageActivity)
-            tvPath.applyUiLabelStyle(this@LibraryContainerManageActivity)
-            tvCapacity.applyUiLabelStyle(this@LibraryContainerManageActivity)
-            tvState.applyUiLabelStyle(this@LibraryContainerManageActivity)
-            listOf(tvPath, tvCapacity, tvState).forEach { it.setTextColor(secondaryTextColor) }
-            btnMore.setOnClickListener { showActions(item) }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemS3ContainerBinding) {
-            holder.itemView.setOnClickListener {
-                getItem(holder.bindingAdapterPosition - getHeaderCount())?.let {
-                    showEditDialog(it)
-                }
-            }
-        }
-    }
-
     private enum class Action(val title: String) {
         EDIT("编辑"),
         EXPORT("导出"),
@@ -772,25 +587,40 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         DELETE("删除")
     }
 
-    private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
-
-    private companion object {
+    internal companion object {
         const val DEFAULT_CAPACITY_MB = 5L * 1024L
-        const val TAG_PASSWORD = "library_password"
-        const val TAG_MIN_UPLOAD_CHARS = "library_min_upload_chars"
-        const val TAG_DAILY_UPLOAD_LIMIT = "library_daily_upload_limit"
-        const val MENU_IMPORT = 1
-        const val MENU_EXPORT_ALL = 2
+        private const val FIELD_NAME = 0
+        private const val FIELD_ENDPOINT = 1
+        private const val FIELD_BUCKET = 2
+        private const val FIELD_ACCESS_KEY = 3
+        private const val FIELD_SECRET_KEY = 4
+        private const val FIELD_CAPACITY = 5
+        private const val FIELD_PREFIX = 6
+        private const val FIELD_REGION = 7
+        private const val FIELD_SESSION_TOKEN = 8
+        private const val FIELD_PASSWORD = 9
+        private const val FIELD_MIN_UPLOAD_CHARS = 10
+        private const val FIELD_DAILY_UPLOAD_LIMIT = 11
+        private const val CHECK_ENABLED = 0
+        private const val CHECK_PATH_STYLE = 1
+        private const val MENU_IMPORT = 1
+        private const val MENU_EXPORT_ALL = 2
 
-        fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
+        private fun List<String>.fieldAt(index: Int): String = getOrNull(index).orEmpty()
 
-        fun gbTextToCapacityMb(value: String): Long {
+        private fun BooleanArray.checkedAt(index: Int, default: Boolean): Boolean {
+            return if (index in indices) this[index] else default
+        }
+
+        internal fun mbToBytes(value: Long): Long = value.coerceAtLeast(0L) * 1024L * 1024L
+
+        internal fun gbTextToCapacityMb(value: String): Long {
             val gb = value.trim().toDoubleOrNull() ?: return 0L
             if (gb <= 0.0) return 0L
             return max(ceil(gb * 1024.0).toLong(), 1L)
         }
 
-        fun capacityMbToGbText(value: Long): String {
+        internal fun capacityMbToGbText(value: Long): String {
             if (value <= 0L) return ""
             val gb = value / 1024.0
             return if (value % 1024L == 0L) {
@@ -800,7 +630,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             }
         }
 
-        fun formatBytes(value: Long): String {
+        internal fun formatBytes(value: Long): String {
             val bytes = value.coerceAtLeast(0L).toDouble()
             val gb = bytes / 1024.0 / 1024.0 / 1024.0
             return if (gb >= 1.0) {
@@ -811,11 +641,11 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
             }
         }
 
-        fun formatDecimal(value: Double): String {
+        internal fun formatDecimal(value: Double): String {
             return String.format(Locale.US, "%.2f", value).trimEnd('0').trimEnd('.')
         }
 
-        fun safeExportName(value: String): String {
+        internal fun safeExportName(value: String): String {
             return value.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "-").trim('-').ifBlank { "default" }
         }
     }
