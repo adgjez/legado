@@ -4,20 +4,22 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import androidx.core.view.isVisible
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.databinding.ActivityAiImageProviderEditBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.main.ai.AiImageProviderConfig
-import io.legado.app.ui.widget.compose.ComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -25,11 +27,20 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
 
     override val binding by viewBinding(ActivityAiImageProviderEditBinding::inflate)
     private var providerId: String? = null
-    private var providerType: String = AiImageProviderConfig.TYPE_OPENAI
-    private var paramsText: String = ""
-    private var stylePromptText: String = ""
-    private var scriptText: String = ""
-    private var jsLibText: String = ""
+
+    // Compose state
+    private var nameText by mutableStateOf("")
+    private var baseUrlText by mutableStateOf("")
+    private var apiKeyText by mutableStateOf("")
+    private var modelText by mutableStateOf("")
+    private var headersText by mutableStateOf("")
+    private var timeoutText by mutableStateOf("300000")
+    private var enabledState by mutableStateOf(true)
+    private var providerType by mutableStateOf(AiImageProviderConfig.TYPE_OPENAI)
+    private var paramsText by mutableStateOf("")
+    private var stylePromptText by mutableStateOf("")
+    private var scriptText by mutableStateOf("")
+    private var jsLibText by mutableStateOf("")
     private var editingField: Field = Field.PARAMS
 
     private val codeEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -41,7 +52,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
             Field.SCRIPT -> scriptText = text
             Field.JS_LIB -> jsLibText = text
         }
-        refreshCodeButtons()
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -50,38 +60,86 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
         val provider = currentProvider()
         if (provider != null) providerType = provider.type
         bind(provider)
-        initView()
+        initComposeContent()
     }
 
-    private fun initView() = binding.run {
-        listOf(tvType, btnStylePrompt, btnParams, btnScript, btnJsLib, btnSave).forEach {
-            it.background = actionBackground()
+    private fun initComposeContent() {
+        val container = binding.root as? ViewGroup ?: return
+        val titleBar = binding.titleBar
+        val index = container.indexOfChild(titleBar)
+        // Remove all children after the title bar (the ScrollView and save button)
+        while (container.childCount > index + 1) {
+            container.removeViewAt(index + 1)
         }
-        tvType.setOnClickListener { selectType() }
-        btnStylePrompt.setOnClickListener {
-            openCodeEditor(
-                Field.STYLE_PROMPT,
-                getString(R.string.ai_image_style_prompt),
-                stylePromptText,
-                "text.html.markdown"
+        // Also remove the title bar itself since Compose handles the top bar
+        container.removeView(titleBar)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
+            setContent {
+                val isOpenAi = providerType == AiImageProviderConfig.TYPE_OPENAI
+                AiImageProviderEditScreen(
+                    name = nameText,
+                    onNameChange = { nameText = it },
+                    baseUrl = baseUrlText,
+                    onBaseUrlChange = { baseUrlText = it },
+                    apiKey = apiKeyText,
+                    onApiKeyChange = { apiKeyText = it },
+                    model = modelText,
+                    onModelChange = { modelText = it },
+                    headers = headersText,
+                    onHeadersChange = { headersText = it },
+                    timeout = timeoutText,
+                    onTimeoutChange = { timeoutText = it },
+                    enabled = enabledState,
+                    onEnabledChange = { enabledState = it },
+                    providerType = providerType,
+                    isOpenAi = isOpenAi,
+                    onTypeClick = { selectType() },
+                    stylePromptSummary = "${getString(R.string.ai_image_style_prompt)}: ${summary(stylePromptText)}",
+                    onStylePromptClick = {
+                        openCodeEditor(
+                            Field.STYLE_PROMPT,
+                            getString(R.string.ai_image_style_prompt),
+                            stylePromptText,
+                            "text.html.markdown"
+                        )
+                    },
+                    paramsSummary = "${getString(R.string.ai_image_params)}: ${summary(paramsText.ifBlank { defaultParams() })}",
+                    onParamsClick = {
+                        openCodeEditor(
+                            Field.PARAMS,
+                            getString(R.string.ai_image_params),
+                            paramsText.ifBlank { defaultParams() }
+                        )
+                    },
+                    scriptSummary = "${getString(R.string.ai_image_script)}: ${summary(scriptText)}",
+                    onScriptClick = {
+                        openCodeEditor(Field.SCRIPT, getString(R.string.ai_image_script), scriptText)
+                    },
+                    jsLibSummary = "jsLib: ${summary(jsLibText)}",
+                    onJsLibClick = {
+                        openCodeEditor(Field.JS_LIB, "jsLib", jsLibText)
+                    },
+                    onSave = { save() },
+                    onBack = { finish() }
+                )
+            }
         }
-        btnParams.setOnClickListener { openCodeEditor(Field.PARAMS, getString(R.string.ai_image_params), paramsText.ifBlank { defaultParams() }) }
-        btnScript.setOnClickListener { openCodeEditor(Field.SCRIPT, getString(R.string.ai_image_script), scriptText) }
-        btnJsLib.setOnClickListener { openCodeEditor(Field.JS_LIB, "jsLib", jsLibText) }
-        btnSave.setOnClickListener { save() }
-        refreshTypeUi()
-        refreshCodeButtons()
+        container.addView(cv)
     }
 
-    private fun bind(provider: AiImageProviderConfig?) = binding.run {
-        etName.setText(provider?.name.orEmpty())
-        etBaseUrl.setText(provider?.baseUrl.orEmpty())
-        etApiKey.setText(provider?.apiKey.orEmpty())
-        etModel.setText(provider?.model.orEmpty())
-        etHeaders.setText(provider?.headers.orEmpty())
-        etTimeout.setText((provider?.validTimeout() ?: 300_000L).toString())
-        cbEnabled.isChecked = provider?.enabled ?: true
+    private fun bind(provider: AiImageProviderConfig?) {
+        nameText = provider?.name.orEmpty()
+        baseUrlText = provider?.baseUrl.orEmpty()
+        apiKeyText = provider?.apiKey.orEmpty()
+        modelText = provider?.model.orEmpty()
+        headersText = provider?.headers.orEmpty()
+        timeoutText = (provider?.validTimeout() ?: 300_000L).toString()
+        enabledState = provider?.enabled ?: true
         paramsText = provider?.defaultParamsJson.orEmpty()
         stylePromptText = provider?.stylePrompt.orEmpty()
         scriptText = provider?.script.orEmpty()
@@ -89,41 +147,19 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun selectType() {
-        showDialogFragment(
-            ComposeActionListDialog.create(
-                title = getString(R.string.ai_image_provider_type),
-                labels = listOf(
-                    getString(R.string.ai_image_provider_openai),
-                    getString(R.string.ai_image_provider_js)
-                ),
-                negativeText = getString(R.string.cancel),
-                onSelected = { index ->
-                    providerType = if (index == 0) {
-                        AiImageProviderConfig.TYPE_OPENAI
-                    } else {
-                        AiImageProviderConfig.TYPE_JS
-                    }
-                    refreshTypeUi()
-                }
+        showComposeActionListDialog(
+            title = getString(R.string.ai_image_provider_type),
+            labels = listOf(
+                getString(R.string.ai_image_provider_openai),
+                getString(R.string.ai_image_provider_js)
             )
-        )
-    }
-
-    private fun refreshTypeUi() = binding.run {
-        val isOpenAi = providerType == AiImageProviderConfig.TYPE_OPENAI
-        tvType.text = "${getString(R.string.ai_image_provider_type)}: " +
-            getString(if (isOpenAi) R.string.ai_image_provider_openai else R.string.ai_image_provider_js)
-        openaiGroup.isVisible = isOpenAi
-        btnParams.isVisible = isOpenAi
-        btnScript.isVisible = !isOpenAi
-        btnJsLib.isVisible = !isOpenAi
-    }
-
-    private fun refreshCodeButtons() = binding.run {
-        btnStylePrompt.text = "${getString(R.string.ai_image_style_prompt)}: ${summary(stylePromptText)}"
-        btnParams.text = "${getString(R.string.ai_image_params)}: ${summary(paramsText.ifBlank { defaultParams() })}"
-        btnScript.text = "${getString(R.string.ai_image_script)}: ${summary(scriptText)}"
-        btnJsLib.text = "jsLib: ${summary(jsLibText)}"
+        ) { index ->
+            providerType = if (index == 0) {
+                AiImageProviderConfig.TYPE_OPENAI
+            } else {
+                AiImageProviderConfig.TYPE_JS
+            }
+        }
     }
 
     private fun openCodeEditor(
@@ -141,30 +177,29 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     }
 
     private fun save() {
-        val name = binding.etName.text?.toString()?.trim().orEmpty()
-        if (name.isBlank()) {
+        if (nameText.isBlank()) {
             toastOnUi(R.string.ai_provider_name_required)
             return
         }
-        if (providerType == AiImageProviderConfig.TYPE_OPENAI && binding.etBaseUrl.text?.toString()?.trim().isNullOrBlank()) {
+        if (providerType == AiImageProviderConfig.TYPE_OPENAI && baseUrlText.isBlank()) {
             toastOnUi(R.string.ai_provider_url_required)
             return
         }
         val old = currentProvider()
         val needDefaultProvider = old == null && AppConfig.aiCurrentImageProvider == null
-        val updated = (old ?: AiImageProviderConfig(name = name, type = providerType)).copy(
-            name = name,
+        val updated = (old ?: AiImageProviderConfig(name = nameText, type = providerType)).copy(
+            name = nameText,
             type = providerType,
-            baseUrl = binding.etBaseUrl.text?.toString()?.trim().orEmpty(),
-            apiKey = binding.etApiKey.text?.toString()?.trim().orEmpty(),
-            headers = binding.etHeaders.text?.toString()?.trim().orEmpty(),
-            model = binding.etModel.text?.toString()?.trim().orEmpty(),
+            baseUrl = baseUrlText,
+            apiKey = apiKeyText,
+            headers = headersText,
+            model = modelText,
             defaultParamsJson = paramsText.ifBlank { defaultParams() },
             stylePrompt = stylePromptText.trim(),
             jsLib = jsLibText,
             script = scriptText,
-            timeoutMillisecond = binding.etTimeout.text?.toString()?.toLongOrNull() ?: 300_000L,
-            enabled = if (needDefaultProvider) true else binding.cbEnabled.isChecked
+            timeoutMillisecond = timeoutText.toLongOrNull() ?: 300_000L,
+            enabled = if (needDefaultProvider) true else enabledState
         )
         AppConfig.aiImageProviderList = AppConfig.aiImageProviderList
             .filterNot { it.id == updated.id } + updated
@@ -191,12 +226,6 @@ class AiImageProviderEditActivity : BaseActivity<ActivityAiImageProviderEditBind
     private fun summary(value: String): String {
         return value.trim().lineSequence().firstOrNull()?.take(36)?.ifBlank { null } ?: "未设置"
     }
-
-    private fun actionBackground() = UiCorner.actionSelector(
-        ContextCompat.getColor(this, R.color.background_card),
-        ContextCompat.getColor(this, R.color.background_menu),
-        UiCorner.actionRadius(this)
-    )
 
     private enum class Field {
         PARAMS,
