@@ -5,40 +5,37 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.ActivityReplaceRuleBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
@@ -57,16 +54,15 @@ import kotlinx.coroutines.launch
  */
 class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRuleViewModel>(),
     SearchView.OnQueryTextListener,
-    MenuItem.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    ReplaceRuleAdapter.CallBack {
+    SelectActionBar.CallBack {
     override val binding by viewBinding(ActivityReplaceRuleBinding::inflate)
     override val viewModel by viewModels<ReplaceRuleViewModel>()
     private val importRecordKey = "replaceRuleRecordKey"
-    private val adapter by lazy { ReplaceRuleAdapter(this, this) }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
+    private val rulesState = mutableStateOf<List<ReplaceRule>>(emptyList())
+    private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
     private var replaceRuleFlowJob: Job? = null
@@ -88,56 +84,52 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     }
     private val exportResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton {
-                    sendToClip(uri.toString())
-                }
-            }
+            showComposeConfirmDialog(
+                title = getString(R.string.export_success),
+                message = buildString {
+                    if (uri.toString().isAbsUrl()) {
+                        append(DirectLinkUpload.getSummary())
+                        append("\n")
+                    }
+                    append(uri.toString())
+                },
+                positiveText = getString(R.string.copy),
+                negativeText = getString(R.string.cancel),
+                onPositive = { sendToClip(uri.toString()) }
+            )
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initRecyclerView()
+        initComposeContent()
         initSearchView()
         initSelectActionView()
         observeReplaceRuleData()
         observeGroupData()
     }
 
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.replace_rule, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        groupMenu = menu.findItem(R.id.menu_group)?.subMenu
-        upGroupMenu()
-        return super.onPrepareOptionsMenu(menu)
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        val dragSelectTouchHelper: DragSelectTouchHelper =
-            DragSelectTouchHelper(adapter.dragSelectCallback).setSlideArea(16, 50)
-        dragSelectTouchHelper.attachToRecyclerView(binding.recyclerView)
-        // When this page is opened, it is in selection mode
-        dragSelectTouchHelper.activeSlideSelect()
-
-        // Note: need judge selection first, so add ItemTouchHelper after it.
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
+    private fun initComposeContent() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                ReplaceRuleScreen(
+                    rules = rulesState.value,
+                    selected = selectedIds.value,
+                    onSelectToggle = ::onSelectToggle,
+                    onToggleEnabled = ::onToggleEnabled,
+                    onEdit = ::edit,
+                    onShowMenu = ::showItemMenu
+                )
+            }
+        }
+        container.addView(cv, index)
     }
 
     private fun initSearchView() {
@@ -148,27 +140,40 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            adapter.selectAll()
+            selectedIds.value = rulesState.value.map { it.id }.toSet()
         } else {
-            adapter.revertSelection()
+            revertSelection()
         }
+        upCountView()
     }
 
     override fun revertSelection() {
-        adapter.revertSelection()
+        val currentRules = rulesState.value
+        val currentSelected = selectedIds.value
+        selectedIds.value = currentRules
+            .filter { it.id !in currentSelected }
+            .map { it.id }
+            .toSet()
+        upCountView()
     }
 
     override fun onClickSelectBarMainAction() {
-        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            yesButton { viewModel.delSelection(adapter.selection) }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del),
+            positiveText = getString(R.string.ok),
+            negativeText = getString(R.string.cancel),
+            dangerPositive = true,
+            onPositive = { viewModel.delSelection(getSelectedRules()) }
+        )
     }
 
     private fun initSelectActionView() {
         binding.selectActionBar.setMainActionText(R.string.delete)
         binding.selectActionBar.inflateMenu(R.menu.replace_rule_sel)
-        binding.selectActionBar.setOnMenuItemClickListener(this)
+        binding.selectActionBar.setOnMenuItemClickListener { item ->
+            onMenuItemClick(item)
+        }
         binding.selectActionBar.setCallBack(this)
     }
 
@@ -207,21 +212,15 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 if (dataInit) {
                     setResult(RESULT_OK)
                 }
-                adapter.setItems(it, adapter.diffItemCallBack)
+                rulesState.value = it
+                // Remove stale selected IDs
+                val currentIds = it.map { rule -> rule.id }.toSet()
+                selectedIds.value = selectedIds.value.filter { id -> id in currentIds }.toSet()
                 dataInit = true
+                upCountView()
                 delay(100)
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        adapter.upResumed(true)
-    }
-
-    override fun onPause() {
-        adapter.upResumed(false)
-        super.onPause()
     }
 
     private fun observeGroupData() {
@@ -232,6 +231,17 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 upGroupMenu()
             }
         }
+    }
+
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.replace_rule, menu)
+        return super.onCompatCreateOptionsMenu(menu)
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        groupMenu = menu.findItem(R.id.menu_group)?.subMenu
+        upGroupMenu()
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
@@ -247,7 +257,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             R.id.menu_disabled_group -> {
                 searchView.setQuery(getString(R.string.disabled), true)
             }
-            R.id.menu_del_selection -> viewModel.delSelection(adapter.selection)
+            R.id.menu_del_selection -> viewModel.delSelection(getSelectedRules())
             R.id.menu_import_onLine -> showImportDialog()
             R.id.menu_import_local -> importDoc.launch {
                 mode = HandleFileContract.FILE
@@ -267,17 +277,17 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         return super.onCompatOptionsItemSelected(item)
     }
 
-    override fun onMenuItemClick(item: MenuItem): Boolean {
+    private fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_enable_selection -> viewModel.enableSelection(adapter.selection)
-            R.id.menu_disable_selection -> viewModel.disableSelection(adapter.selection)
-            R.id.menu_top_sel -> viewModel.topSelect(adapter.selection)
-            R.id.menu_bottom_sel -> viewModel.bottomSelect(adapter.selection)
+            R.id.menu_enable_selection -> viewModel.enableSelection(getSelectedRules())
+            R.id.menu_disable_selection -> viewModel.disableSelection(getSelectedRules())
+            R.id.menu_top_sel -> viewModel.topSelect(getSelectedRules())
+            R.id.menu_bottom_sel -> viewModel.bottomSelect(getSelectedRules())
             R.id.menu_export_selection -> exportResult.launch {
                 mode = HandleFileContract.EXPORT
                 fileData = HandleFileContract.FileData(
                     "exportReplaceRule.json",
-                    GSON.toJson(adapter.selection).toByteArray(),
+                    GSON.toJson(getSelectedRules()).toByteArray(),
                     "application/json"
                 )
             }
@@ -299,30 +309,85 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             .getAsString(importRecordKey)
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
-        alert(titleResource = R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
-                    cacheUrls.remove(it)
-                    aCache.put(importRecordKey, cacheUrls.joinToString(","))
-                }
-            }
-            customView { alertBinding.root }
-            okButton {
-                val text = alertBinding.editView.text?.toString()
-                text?.let {
-                    if (it.isAbsUrl() && !cacheUrls.contains(it)) {
-                        cacheUrls.add(0, it)
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "url",
+            initialValue = "",
+            positiveText = getString(R.string.ok),
+            negativeText = getString(R.string.cancel),
+            onPositive = { text ->
+                if (text.isNotBlank()) {
+                    if (text.isAbsUrl() && !cacheUrls.contains(text)) {
+                        cacheUrls.add(0, text)
                         aCache.put(importRecordKey, cacheUrls.joinToString(","))
                     }
-                    showDialogFragment(
-                        ImportReplaceRuleDialog(it)
+                    showDialogFragment(ImportReplaceRuleDialog(text))
+                }
+            }
+        )
+    }
+
+    private fun onSelectToggle(rule: ReplaceRule) {
+        val current = selectedIds.value.toMutableSet()
+        if (rule.id in current) {
+            current.remove(rule.id)
+        } else {
+            current.add(rule.id)
+        }
+        selectedIds.value = current
+        upCountView()
+    }
+
+    private fun onToggleEnabled(rule: ReplaceRule, isEnabled: Boolean) {
+        setResult(RESULT_OK)
+        val updated = rule.copy(isEnabled = isEnabled)
+        viewModel.update(updated)
+    }
+
+    private fun edit(rule: ReplaceRule) {
+        setResult(RESULT_OK)
+        editActivity.launch(ReplaceEditActivity.startIntent(this, rule.id))
+    }
+
+    private fun showItemMenu(rule: ReplaceRule) {
+        showComposeActionListDialog(
+            title = rule.name,
+            labels = listOf(
+                getString(R.string.to_top),
+                getString(R.string.to_bottom),
+                getString(R.string.delete)
+            ),
+            dangerIndices = setOf(2)
+        ) { index ->
+            when (index) {
+                0 -> {
+                    setResult(RESULT_OK)
+                    viewModel.toTop(rule)
+                }
+                1 -> {
+                    setResult(RESULT_OK)
+                    viewModel.toBottom(rule)
+                }
+                2 -> {
+                    showComposeConfirmDialog(
+                        title = getString(R.string.draw),
+                        message = getString(R.string.sure_del) + "\n" + rule.name,
+                        positiveText = getString(R.string.ok),
+                        negativeText = getString(R.string.cancel),
+                        dangerPositive = true,
+                        onPositive = {
+                            setResult(RESULT_OK)
+                            viewModel.delete(rule)
+                        }
                     )
                 }
             }
-            cancelButton()
         }
+    }
+
+    private fun getSelectedRules(): List<ReplaceRule> {
+        val ids = selectedIds.value
+        return rulesState.value.filter { it.id in ids }
     }
 
     override fun onQueryTextChange(newText: String?): Boolean {
@@ -341,44 +406,8 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     override fun upCountView() {
         binding.selectActionBar.upCountView(
-            adapter.selection.size,
-            adapter.itemCount
+            selectedIds.value.size,
+            rulesState.value.size
         )
-    }
-
-    override fun update(vararg rule: ReplaceRule) {
-        setResult(RESULT_OK)
-        viewModel.update(*rule)
-    }
-
-    override fun delete(rule: ReplaceRule) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + rule.name)
-            noButton()
-            yesButton {
-                setResult(RESULT_OK)
-                viewModel.delete(rule)
-            }
-        }
-    }
-
-    override fun edit(rule: ReplaceRule) {
-        setResult(RESULT_OK)
-        editActivity.launch(ReplaceEditActivity.startIntent(this, rule.id))
-    }
-
-    override fun toTop(rule: ReplaceRule) {
-        setResult(RESULT_OK)
-        viewModel.toTop(rule)
-    }
-
-    override fun toBottom(rule: ReplaceRule) {
-        setResult(RESULT_OK)
-        viewModel.toBottom(rule)
-    }
-
-    override fun upOrder() {
-        setResult(RESULT_OK)
-        viewModel.upOrder()
     }
 }
