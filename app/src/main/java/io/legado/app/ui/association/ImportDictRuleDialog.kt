@@ -1,32 +1,60 @@
 package io.legado.app.ui.association
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.lifecycle.Observer
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.DictRule
-import io.legado.app.databinding.DialogRecyclerViewBinding
-import io.legado.app.databinding.ItemSourceImportBinding
-import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.compose.AppDialogFrame
+import io.legado.app.ui.widget.compose.ComposeDialogFragment
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
-import splitties.views.onClick
 
-class ImportDictRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
+/**
+ * 导入词典规则弹出窗口
+ */
+class ImportDictRuleDialog() : ComposeDialogFragment(),
     CodeDialog.Callback {
 
     constructor(source: String, finishOnDismiss: Boolean = false) : this() {
@@ -36,14 +64,10 @@ class ImportDictRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_view)
         }
     }
 
-    private val binding by viewBinding(DialogRecyclerViewBinding::bind)
-    private val viewModel by viewModels<ImportDictRuleViewModel>()
-    private val adapter by lazy { SourcesAdapter(requireContext()) }
+    override val widthFraction: Float = 0.96f
+    override val maxWidthDp: Int = 700
 
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
+    private val viewModel by viewModels<ImportDictRuleViewModel>()
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
@@ -53,134 +77,181 @@ class ImportDictRuleDialog() : BaseDialogFragment(R.layout.dialog_recycler_view)
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        binding.toolBar.setTitle(R.string.import_dict_rule)
-        binding.rotateLoading.visible()
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = adapter
-        binding.tvCancel.visible()
-        binding.tvCancel.setOnClickListener {
-            dismissAllowingStateLoss()
-        }
-        binding.tvOk.visible()
-        binding.tvOk.setOnClickListener {
-            val waitDialog = WaitDialog(requireContext())
-            waitDialog.show()
-            viewModel.importSelect {
-                waitDialog.dismiss()
-                dismissAllowingStateLoss()
-            }
-        }
-        binding.tvFooterLeft.visible()
-        binding.tvFooterLeft.setOnClickListener {
-            val selectAll = viewModel.isSelectAll
-            viewModel.selectStatus.forEachIndexed { index, b ->
-                if (b != !selectAll) {
-                    viewModel.selectStatus[index] = !selectAll
-                }
-            }
-            adapter.notifyDataSetChanged()
-            upSelectText()
-        }
-        viewModel.errorLiveData.observe(this) {
-            binding.rotateLoading.gone()
-            binding.tvMsg.apply {
-                text = it
-                visible()
-            }
-        }
-        viewModel.successLiveData.observe(this) {
-            binding.rotateLoading.gone()
-            if (it > 0) {
-                adapter.setItems(viewModel.allSources)
-                upSelectText()
-            } else {
-                binding.tvMsg.apply {
-                    setText(R.string.wrong_format)
-                    visible()
-                }
-            }
-        }
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         val source = arguments?.getString("source")
         if (source.isNullOrEmpty()) {
-            dismiss()
-            return
-        }
-        viewModel.importSource(source)
-    }
-
-    private fun upSelectText() {
-        if (viewModel.isSelectAll) {
-            binding.tvFooterLeft.text = getString(
-                R.string.select_cancel_count,
-                viewModel.selectCount,
-                viewModel.allSources.size
-            )
+            dismissAllowingStateLoss()
         } else {
-            binding.tvFooterLeft.text = getString(
-                R.string.select_all_count,
-                viewModel.selectCount,
-                viewModel.allSources.size
-            )
+            viewModel.importSource(source)
+        }
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ImportDictRuleContent()
+            }
         }
     }
 
-    inner class SourcesAdapter(context: Context) :
-        RecyclerAdapter<DictRule, ItemSourceImportBinding>(context) {
+    @Composable
+    private fun ImportDictRuleContent() {
+        val style = rememberAppDialogStyle()
+        val palette = style.toMiuixPalette()
+        var loadState by remember { mutableStateOf(ImportLoadState.LOADING) }
+        var errorMsg by remember { mutableStateOf("") }
+        var refreshTrigger by remember { mutableIntStateOf(0) }
 
-        override fun getViewBinding(parent: ViewGroup): ItemSourceImportBinding {
-            return ItemSourceImportBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemSourceImportBinding,
-            item: DictRule,
-            payloads: MutableList<Any>
-        ) {
-            binding.apply {
-                cbSourceName.isChecked = viewModel.selectStatus[holder.layoutPosition]
-                cbSourceName.text = item.name
-                val localSource = viewModel.checkSources[holder.layoutPosition]
-                tvSourceState.text = when (localSource) {
-                    null -> "新增"
-                    else -> "已有"
+        DisposableEffect(Unit) {
+            val errorObserver = Observer<String> {
+                loadState = ImportLoadState.ERROR
+                errorMsg = it ?: ""
+            }
+            val successObserver = Observer<Int> { count ->
+                if (count != null && count > 0) {
+                    loadState = ImportLoadState.SUCCESS
+                    refreshTrigger++
+                } else {
+                    loadState = ImportLoadState.ERROR
+                    errorMsg = getString(R.string.wrong_format)
                 }
+            }
+            viewModel.errorLiveData.observe(viewLifecycleOwner, errorObserver)
+            viewModel.successLiveData.observe(viewLifecycleOwner, successObserver)
+            onDispose {
+                viewModel.errorLiveData.removeObserver(errorObserver)
+                viewModel.successLiveData.removeObserver(successObserver)
             }
         }
 
-        override fun registerListener(holder: ItemViewHolder, binding: ItemSourceImportBinding) {
-            binding.apply {
-                cbSourceName.setOnUserCheckedChangeListener { isChecked ->
-                    viewModel.selectStatus[holder.layoutPosition] = isChecked
-                    upSelectText()
-                }
-                root.onClick {
-                    cbSourceName.isChecked = !cbSourceName.isChecked
-                    viewModel.selectStatus[holder.layoutPosition] = cbSourceName.isChecked
-                    upSelectText()
-                }
-                tvOpen.setOnClickListener {
-                    val source = viewModel.allSources[holder.layoutPosition]
-                    showDialogFragment(
-                        CodeDialog(
-                            GSON.toJson(source),
-                            disableEdit = false,
-                            requestId = holder.layoutPosition.toString()
+        AppDialogFrame(
+            title = stringResource(R.string.import_dict_rule),
+            scrollContent = false,
+            content = {
+                when (loadState) {
+                    ImportLoadState.LOADING -> {
+                        Text(
+                            text = getString(R.string.loading),
+                            color = style.secondaryText,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp)
                         )
+                    }
+                    ImportLoadState.ERROR -> {
+                        Text(
+                            text = errorMsg,
+                            color = style.primaryText,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp)
+                        )
+                    }
+                    ImportLoadState.SUCCESS -> {
+                        refreshTrigger
+                        val allSources = viewModel.allSources
+                        val selectStatus = viewModel.selectStatus
+                        val checkSources = viewModel.checkSources
+
+                        val selectAllText = if (viewModel.isSelectAll) {
+                            getString(R.string.select_cancel_count, viewModel.selectCount, allSources.size)
+                        } else {
+                            getString(R.string.select_all_count, viewModel.selectCount, allSources.size)
+                        }
+                        Text(
+                            text = selectAllText,
+                            color = style.accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val selectAll = viewModel.isSelectAll
+                                    viewModel.selectStatus.forEachIndexed { index, b ->
+                                        if (b != !selectAll) {
+                                            viewModel.selectStatus[index] = !selectAll
+                                        }
+                                    }
+                                    refreshTrigger++
+                                }
+                                .padding(vertical = 6.dp)
+                        )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            itemsIndexed(allSources) { index, item ->
+                                val isChecked = selectStatus.getOrNull(index) ?: false
+                                val localSource = checkSources.getOrNull(index)
+                                val stateText = when (localSource) {
+                                    null -> "新增"
+                                    else -> "已有"
+                                }
+                                ImportSourceItemRow(
+                                    name = item.name ?: "",
+                                    isChecked = isChecked,
+                                    stateText = stateText,
+                                    style = style,
+                                    onCodeView = {
+                                        showDialogFragment(
+                                            CodeDialog(
+                                                GSON.toJson(item),
+                                                disableEdit = false,
+                                                requestId = index.toString()
+                                            )
+                                        )
+                                    },
+                                    onCheckedChange = { checked ->
+                                        if (index in selectStatus.indices) {
+                                            viewModel.selectStatus[index] = checked
+                                            refreshTrigger++
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            actions = {
+                LegadoMiuixActionButton(
+                    text = stringResource(R.string.cancel),
+                    palette = palette,
+                    onClick = { dismissAllowingStateLoss() },
+                    cornerRadius = style.actionRadius
+                )
+                if (loadState == ImportLoadState.SUCCESS) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    LegadoMiuixActionButton(
+                        text = stringResource(R.string.ok),
+                        palette = palette,
+                        onClick = {
+                            val waitDialog = WaitDialog(requireContext())
+                            waitDialog.show()
+                            viewModel.importSelect {
+                                waitDialog.dismiss()
+                                dismissAllowingStateLoss()
+                            }
+                        },
+                        primary = true,
+                        cornerRadius = style.actionRadius
                     )
                 }
             }
-        }
-
+        )
     }
 
     override fun onCodeSave(code: String, requestId: String?) {
         requestId?.toInt()?.let {
             GSON.fromJsonObject<DictRule>(code).getOrNull()?.let { source ->
                 viewModel.allSources[it] = source
-                adapter.setItem(it, source)
             }
         }
     }
