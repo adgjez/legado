@@ -2,105 +2,360 @@ package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
 import android.os.Bundle
-import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
-import androidx.core.view.get
+import android.widget.ImageView
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.github.liuyueyi.quick.transfer.constants.TransType
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
-import io.legado.app.base.adapter.ItemViewHolder
-import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PageAnim
-import io.legado.app.databinding.DialogReadBookStyleBinding
-import io.legado.app.databinding.ItemReadStyleBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.utils.ChineseUtils
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.viewbindingdelegate.viewBinding
-import splitties.views.onLongClick
 
-class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
+class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
     FontSelectDialog.CallBack {
 
-    private val binding by viewBinding(DialogReadBookStyleBinding::bind)
+    override val maxSheetHeightFraction: Float = 0.70f
+
     private val callBack get() = activity as? ReadBookActivity
-    private lateinit var styleAdapter: StyleAdapter
-
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(android.R.color.transparent)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attributes = attr
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        (activity as ReadBookActivity).bottomDialog++
-        initView()
-        initData()
-        initViewEvent()
-    }
 
     override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
         ReadBookConfig.save()
-        (activity as ReadBookActivity).bottomDialog--
+        super.onDismiss(dialog)
     }
 
-    private fun initView() = binding.run {
-        val bg = requireContext().bottomBackground
-        val isLight = ColorUtils.isColorLight(bg)
-        val textColor = requireContext().getPrimaryTextColor(isLight)
-        val palette = ReaderSheetStyle.resolve(requireContext())
-        rootView.background = ReaderSheetStyle.topSheetDrawable(palette)
-        rootView.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
-        panelTextTools.background = null
-        panelPageAnim.background = null
-        panelStyleLibrary.background = null
-        tvPageAnim.setTextColor(palette.secondaryTextColor)
-        tvBgTs.setTextColor(palette.secondaryTextColor)
-        tvShareLayout.setTextColor(textColor)
-        dsbTextSize.valueFormat = {
-            (it + 5).toString()
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                ReadStyleContent()
+            }
         }
-        dsbTextLetterSpacing.valueFormat = {
-            ((it - 50) / 100f).toString()
+    }
+
+    @Composable
+    private fun ReadStyleContent() {
+        ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style, palette ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ReaderSheetHeader(
+                    title = stringResource(R.string.interface_setting),
+                    subtitle = stringResource(R.string.padding),
+                    palette = palette
+                )
+                TextToolsSection(style = style, palette = palette)
+                TextMetricSection(style = style, palette = palette)
+                PageAnimSection(style = style, palette = palette)
+                StyleLibrarySection(style = style, palette = palette)
+            }
         }
-        dsbLineSize.valueFormat = { ((it - 10) / 10f).toString() }
-        dsbParagraphSpacing.valueFormat = { (it / 10f).toString() }
-        styleAdapter = StyleAdapter()
-        rvStyle.adapter = styleAdapter
-        styleAdapter.addFooterView {
-            ItemReadStyleBinding.inflate(layoutInflater, it, false).apply {
-                root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
-                ivStyle.setPadding(6.dpToPx(), 6.dpToPx(), 6.dpToPx(), 6.dpToPx())
-                ivStyle.setText(null)
-                ivStyle.setColorFilter(textColor)
-                ivStyle.borderColor = textColor
-                ivStyle.setImageResource(R.drawable.ic_add)
-                root.setOnClickListener {
+    }
+
+    @Composable
+    private fun TextToolsSection(
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        palette: ReaderComposePalette
+    ) {
+        val context = LocalContext.current
+        var textBold by rememberSaveable { mutableIntStateOf(ReadBookConfig.textBold) }
+        var chineseMode by rememberSaveable { mutableIntStateOf(AppConfig.chineseConverterType) }
+        val fontWeightOptions = stringArrayResource(R.array.text_font_weight).mapIndexed { index, label ->
+            ReaderOption(index.toString(), label)
+        }
+        val chineseOptions = stringArrayResource(R.array.chinese_mode).mapIndexed { index, label ->
+            ReaderOption(index.toString(), label)
+        }
+        ReaderSectionCard(
+            palette = palette,
+            style = style,
+            title = stringResource(R.string.text_font_weight_converter)
+        ) {
+            ReaderSegmentedOptions(
+                options = fontWeightOptions,
+                selectedValue = textBold.toString(),
+                palette = palette,
+                style = style
+            ) {
+                val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
+                if (ReadBookConfig.textBold != value) {
+                    ReadBookConfig.textBold = value
+                    textBold = value
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 9, 6))
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ReaderTextAction(
+                    text = stringResource(R.string.text_font),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        showDialogFragment<FontSelectDialog>()
+                    }
+                )
+                ReaderTextAction(
+                    text = stringResource(R.string.text_indent),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        showTextIndentDialog()
+                    }
+                )
+                ReaderTextAction(
+                    text = stringResource(R.string.padding),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        dismissAllowingStateLoss()
+                        callBack?.showPaddingConfig()
+                    }
+                )
+                ReaderTextAction(
+                    text = stringResource(R.string.information),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
+                    }
+                )
+            }
+            ReaderSegmentedOptions(
+                options = chineseOptions,
+                selectedValue = chineseMode.toString(),
+                palette = palette,
+                style = style
+            ) {
+                val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
+                if (AppConfig.chineseConverterType != value) {
+                    AppConfig.chineseConverterType = value
+                    chineseMode = value
+                    ChineseUtils.unLoad(*TransType.entries.toTypedArray())
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TextMetricSection(
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        palette: ReaderComposePalette
+    ) {
+        var textSize by rememberSaveable { mutableIntStateOf(ReadBookConfig.textSize - 5) }
+        var letterSpacing by rememberSaveable {
+            mutableIntStateOf((ReadBookConfig.letterSpacing * 100).toInt() + 50)
+        }
+        var lineSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.lineSpacingExtra) }
+        var paragraphSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.paragraphSpacing) }
+        ReaderSectionCard(
+            palette = palette,
+            style = style,
+            title = stringResource(R.string.text_size)
+        ) {
+            ReaderSliderRow(
+                title = stringResource(R.string.text_size),
+                value = textSize,
+                valueText = (textSize + 5).toString(),
+                range = 0..45,
+                palette = palette,
+                style = style,
+                onValueChange = {
+                    textSize = it
+                    ReadBookConfig.textSize = it + 5
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                }
+            )
+            ReaderSliderRow(
+                title = stringResource(R.string.text_letter_spacing),
+                value = letterSpacing,
+                valueText = ((letterSpacing - 50) / 100f).toString(),
+                range = 0..100,
+                palette = palette,
+                style = style,
+                onValueChange = {
+                    letterSpacing = it
+                    ReadBookConfig.letterSpacing = (it - 50) / 100f
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                }
+            )
+            ReaderSliderRow(
+                title = stringResource(R.string.line_size),
+                value = lineSpacing,
+                valueText = ((lineSpacing - 10) / 10f).toString(),
+                range = 0..20,
+                palette = palette,
+                style = style,
+                onValueChange = {
+                    lineSpacing = it
+                    ReadBookConfig.lineSpacingExtra = it
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                }
+            )
+            ReaderSliderRow(
+                title = stringResource(R.string.paragraph_size),
+                value = paragraphSpacing,
+                valueText = (paragraphSpacing / 10f).toString(),
+                range = 0..20,
+                palette = palette,
+                style = style,
+                onValueChange = {
+                    paragraphSpacing = it
+                    ReadBookConfig.paragraphSpacing = it
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                }
+            )
+        }
+    }
+
+    @Composable
+    private fun PageAnimSection(
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        palette: ReaderComposePalette
+    ) {
+        var selectedAnim by rememberSaveable { mutableIntStateOf(ReadBook.pageAnim()) }
+        var shareLayout by rememberSaveable { mutableIntStateOf(if (ReadBookConfig.shareLayout) 1 else 0) }
+        ReaderSectionCard(
+            palette = palette,
+            style = style,
+            title = stringResource(R.string.page_anim)
+        ) {
+            ReaderSegmentedOptions(
+                options = pageAnimOptions(),
+                selectedValue = selectedAnim.toString(),
+                palette = palette,
+                style = style
+            ) { value ->
+                val anim = value.toIntOrNull() ?: return@ReaderSegmentedOptions
+                if (selectedAnim != anim) {
+                    ReadBook.book?.setPageAnim(-1)
+                    ReadBookConfig.pageAnim = anim
+                    selectedAnim = anim
+                    callBack?.upPageAnim()
+                    ReadBook.loadContent(false)
+                }
+            }
+            ReaderSwitchRow(
+                title = stringResource(R.string.share_layout),
+                checked = shareLayout == 1,
+                palette = palette,
+                style = style
+            ) { checked ->
+                shareLayout = if (checked) 1 else 0
+                ReadBookConfig.shareLayout = checked
+                postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
+            }
+        }
+    }
+
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    private fun StyleLibrarySection(
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        palette: ReaderComposePalette
+    ) {
+        var selectedIndex by rememberSaveable { mutableIntStateOf(ReadBookConfig.styleSelect) }
+        var version by rememberSaveable { mutableIntStateOf(0) }
+        val configs = remember(version) { ReadBookConfig.configList.toList() }
+        ReaderSectionCard(
+            palette = palette,
+            style = style,
+            title = stringResource(R.string.background)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                configs.forEachIndexed { index, config ->
+                    StylePreviewItem(
+                        config = config,
+                        selected = selectedIndex == index,
+                        palette = palette,
+                        style = style,
+                        onClick = {
+                            changeBgTextConfig(index)
+                            selectedIndex = ReadBookConfig.styleSelect
+                            version++
+                        },
+                        onLongClick = {
+                            showBgTextConfig(index)
+                        }
+                    )
+                }
+                AddStyleItem(
+                    palette = palette,
+                    style = style
+                ) {
                     ReadBookConfig.configList.add(ReadBookConfig.Config())
                     showBgTextConfig(ReadBookConfig.configList.lastIndex)
                 }
@@ -108,64 +363,104 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         }
     }
 
-    private fun initData() {
-        binding.cbShareLayout.isChecked = ReadBookConfig.shareLayout
-        upView()
-        styleAdapter.setItems(ReadBookConfig.configList)
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    private fun StylePreviewItem(
+        config: ReadBookConfig.Config,
+        selected: Boolean,
+        palette: ReaderComposePalette,
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        onClick: () -> Unit,
+        onLongClick: () -> Unit
+    ) {
+        val context = LocalContext.current
+        Column(
+            modifier = Modifier
+                .width(62.dp)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AndroidView(
+                factory = { viewContext ->
+                    CircleImageView(viewContext).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        val padding = 6.dpToPx()
+                        setPadding(padding, padding, padding, padding)
+                    }
+                },
+                update = { imageView ->
+                    imageView.setText(config.name.ifBlank { context.getString(R.string.text) })
+                    imageView.setTypeface(context.uiTypeface())
+                    imageView.setTextColor(config.curTextColor())
+                    imageView.setImageDrawable(config.curBgDrawable(100, 150))
+                    imageView.borderColor = if (selected) context.accentColor else config.curTextColor()
+                    imageView.setTextBold(selected)
+                },
+                modifier = Modifier.size(48.dp)
+            )
+            Text(
+                text = config.name.ifBlank { stringResource(R.string.text) },
+                color = if (selected) palette.accent else palette.secondaryText,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 5.dp)
+            )
+        }
     }
 
-    private fun initViewEvent() = binding.run {
-        chineseConverter.onChanged {
-            ChineseUtils.unLoad(*TransType.entries.toTypedArray())
-            postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-        }
-        textFontWeightConverter.onChanged {
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 9, 6))
-        }
-        tvTextFont.setOnClickListener {
-            showDialogFragment<FontSelectDialog>()
-        }
-        tvTextIndent.setOnClickListener {
-            showComposeChoiceListDialog(
-                title = getString(R.string.text_indent),
-                labels = resources.getStringArray(R.array.indent).toList()
-            ) { index ->
-                ReadBookConfig.paragraphIndent = "　".repeat(index)
-                postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+    @Composable
+    private fun AddStyleItem(
+        palette: ReaderComposePalette,
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        onClick: () -> Unit
+    ) {
+        Column(
+            modifier = Modifier
+                .width(62.dp)
+                .heightIn(min = 68.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onClick),
+                shape = RoundedCornerShape(style.actionRadius),
+                color = palette.panelStrong,
+                contentColor = palette.text,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = stringResource(R.string.add),
+                        tint = palette.text,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
+            Text(
+                text = stringResource(R.string.add),
+                color = palette.secondaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 5.dp)
+            )
         }
-        tvPadding.setOnClickListener {
-            dismissAllowingStateLoss()
-            callBack?.showPaddingConfig()
-        }
-        tvTip.setOnClickListener {
-            TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
-        }
-        rgPageAnim.setOnCheckedChangeListener { _, checkedId ->
-            ReadBook.book?.setPageAnim(-1)
-            ReadBookConfig.pageAnim = pageAnimById(checkedId)
-            callBack?.upPageAnim()
-            ReadBook.loadContent(false)
-        }
-        cbShareLayout.onCheckedChangeListener = { _, isChecked ->
-            ReadBookConfig.shareLayout = isChecked
-            upView()
-            postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
-        }
-        dsbTextSize.onChanged = {
-            ReadBookConfig.textSize = it + 5
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
-        dsbTextLetterSpacing.onChanged = {
-            ReadBookConfig.letterSpacing = (it - 50) / 100f
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
-        dsbLineSize.onChanged = {
-            ReadBookConfig.lineSpacingExtra = it
-            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-        }
-        dsbParagraphSpacing.onChanged = {
-            ReadBookConfig.paragraphSpacing = it
+    }
+
+    private fun showTextIndentDialog() {
+        showComposeChoiceListDialog(
+            title = getString(R.string.text_indent),
+            labels = resources.getStringArray(R.array.indent).toList()
+        ) { index ->
+            ReadBookConfig.paragraphIndent = "　".repeat(index)
             postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
         }
     }
@@ -174,9 +469,6 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         val oldIndex = ReadBookConfig.styleSelect
         if (index != oldIndex) {
             ReadBookConfig.styleSelect = index
-            upView()
-            styleAdapter.notifyItemChanged(oldIndex)
-            styleAdapter.notifyItemChanged(index)
             postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             if (AppConfig.readBarStyleFollowPage) {
                 postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
@@ -191,17 +483,16 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
         return true
     }
 
-    private fun upView() = binding.run {
-        textFontWeightConverter.upUi(ReadBookConfig.textBold)
-        ReadBook.pageAnim().let {
-            rgPageAnim.check(pageAnimIdByValue(it))
-        }
-        ReadBookConfig.let {
-            dsbTextSize.progress = it.textSize - 5
-            dsbTextLetterSpacing.progress = (it.letterSpacing * 100).toInt() + 50
-            dsbLineSize.progress = it.lineSpacingExtra
-            dsbParagraphSpacing.progress = it.paragraphSpacing
-        }
+    @Composable
+    private fun pageAnimOptions(): List<ReaderOption> {
+        return listOf(
+            ReaderOption(PageAnim.coverPageAnim.toString(), stringResource(R.string.page_anim_cover)),
+            ReaderOption(PageAnim.linkedCoverPageAnim.toString(), stringResource(R.string.page_anim_linked_cover)),
+            ReaderOption(PageAnim.slidePageAnim.toString(), stringResource(R.string.page_anim_slide)),
+            ReaderOption(PageAnim.simulationPageAnim.toString(), stringResource(R.string.page_anim_simulation)),
+            ReaderOption(PageAnim.scrollPageAnim.toString(), stringResource(R.string.page_anim_scroll)),
+            ReaderOption(PageAnim.noAnim.toString(), stringResource(R.string.page_anim_none))
+        )
     }
 
     override val curFontPath: String
@@ -212,74 +503,5 @@ class ReadStyleDialog : BaseDialogFragment(R.layout.dialog_read_book_style),
             ReadBookConfig.textFont = path
             postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
         }
-    }
-
-    private fun pageAnimById(checkedId: Int): Int {
-        return when (checkedId) {
-            R.id.rb_anim0 -> PageAnim.coverPageAnim
-            R.id.rb_anim_linked_cover -> PageAnim.linkedCoverPageAnim
-            R.id.rb_anim1 -> PageAnim.slidePageAnim
-            R.id.rb_simulation_anim -> PageAnim.simulationPageAnim
-            R.id.rb_scroll_anim -> PageAnim.scrollPageAnim
-            R.id.rb_no_anim -> PageAnim.noAnim
-            else -> PageAnim.coverPageAnim
-        }
-    }
-
-    private fun pageAnimIdByValue(pageAnim: Int): Int {
-        return when (pageAnim) {
-            PageAnim.coverPageAnim -> R.id.rb_anim0
-            PageAnim.linkedCoverPageAnim -> R.id.rb_anim_linked_cover
-            PageAnim.slidePageAnim -> R.id.rb_anim1
-            PageAnim.simulationPageAnim -> R.id.rb_simulation_anim
-            PageAnim.scrollPageAnim -> R.id.rb_scroll_anim
-            PageAnim.noAnim -> R.id.rb_no_anim
-            else -> R.id.rb_anim0
-        }
-    }
-
-    inner class StyleAdapter :
-        RecyclerAdapter<ReadBookConfig.Config, ItemReadStyleBinding>(requireContext()) {
-
-        override fun getViewBinding(parent: ViewGroup): ItemReadStyleBinding {
-            return ItemReadStyleBinding.inflate(inflater, parent, false)
-        }
-
-        override fun convert(
-            holder: ItemViewHolder,
-            binding: ItemReadStyleBinding,
-            item: ReadBookConfig.Config,
-            payloads: MutableList<Any>
-        ) {
-            binding.apply {
-                ivStyle.setText(item.name.ifBlank { "文字" })
-                ivStyle.setTypeface(requireContext().uiTypeface())
-                ivStyle.setTextColor(item.curTextColor())
-                ivStyle.setImageDrawable(item.curBgDrawable(100, 150))
-                if (ReadBookConfig.styleSelect == holder.layoutPosition) {
-                    ivStyle.borderColor = accentColor
-                    ivStyle.setTextBold(true)
-                } else {
-                    ivStyle.borderColor = item.curTextColor()
-                    ivStyle.setTextBold(false)
-                }
-            }
-        }
-
-        override fun registerListener(holder: ItemViewHolder, binding: ItemReadStyleBinding) {
-            binding.apply {
-                ivStyle.setOnClickListener {
-                    if (ivStyle.isInView) {
-                        changeBgTextConfig(holder.layoutPosition)
-                    }
-                }
-                ivStyle.onLongClick(ivStyle.isInView) {
-                    if (ivStyle.isInView) {
-                        showBgTextConfig(holder.layoutPosition)
-                    }
-                }
-            }
-        }
-
     }
 }

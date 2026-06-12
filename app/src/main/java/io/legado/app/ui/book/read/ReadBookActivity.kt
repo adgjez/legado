@@ -137,6 +137,7 @@ import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_ACCEN
 import io.legado.app.ui.book.read.config.BgTextConfigDialog.Companion.TEXT_COLOR
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ParagraphRuleManageActivity
+import io.legado.app.ui.book.read.config.ParagraphRuleQuickDialog
 import io.legado.app.ui.book.read.config.ReadMenuCustomButtonEditActivity
 import io.legado.app.ui.book.read.config.ReadMenuButtonManageActivity
 import io.legado.app.ui.book.read.config.ReadAloudDialog
@@ -3057,92 +3058,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 toastOnUi(R.string.paragraph_rule_empty)
                 return@launch
             }
-            val listView = LinearLayout(this@ReadBookActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(12.dpToPx(), 6.dpToPx(), 12.dpToPx(), 6.dpToPx())
-            }
-            rules.forEachIndexed { index, rule ->
-                val row = LinearLayout(this@ReadBookActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    minimumHeight = 44.dpToPx()
-                }
-                val checkBox = CheckBox(this@ReadBookActivity).apply {
-                    text = rule.displayName()
-                    setTextColor(primaryTextColor)
-                    textSize = 15f
-                    isChecked = enabledIds.contains(rule.id)
-                    setOnCheckedChangeListener { _, checked ->
-                        lifecycleScope.launch {
-                            withContext(IO) {
-                                if (checked) {
-                                    appDb.paragraphRuleDao.insertBookRule(
-                                        BookParagraphRule(book.bookUrl, rule.id, true, index)
-                                    )
-                                } else {
-                                    appDb.paragraphRuleDao.deleteBookRule(book.bookUrl, rule.id)
-                                }
-                            }
-                            refreshParagraphRuleLayout()
-                        }
-                    }
-                }
-                row.addView(
-                    checkBox,
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                )
-                val hasLogin = rule.loginUrl.isNotBlank() || rule.loginUi.isNotBlank()
-                val loginButton = TextView(this@ReadBookActivity).apply {
-                    text = getString(R.string.login)
-                    setTextColor(if (hasLogin) accentColor else secondaryTextColor)
-                    textSize = 14f
-                    gravity = Gravity.CENTER
-                    includeFontPadding = false
-                    minWidth = 56.dpToPx()
-                    minimumHeight = 36.dpToPx()
-                    alpha = if (hasLogin) 1f else 0.55f
-                    setPadding(10.dpToPx(), 0, 10.dpToPx(), 0)
-                    setOnClickListener {
-                        if (!hasLogin) {
-                            toastOnUi(R.string.source_no_login)
-                            return@setOnClickListener
-                        }
-                        startActivity<SourceLoginActivity> {
-                            putExtra("bookType", -1)
-                            putExtra("type", "paragraphRule")
-                            putExtra("key", rule.id.toString())
-                            putExtra("bookUrl", book.bookUrl)
-                            putExtra("chapterIndex", ReadBook.durChapterIndex)
-                        }
-                    }
-                }
-                row.addView(
-                    loginButton,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-                listView.addView(
-                    row,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-            val scrollView = ScrollView(this@ReadBookActivity).apply {
-                addView(listView)
-            }
-            alert(R.string.paragraph_rule) {
-                customView { scrollView }
-                positiveButton(R.string.paragraph_rule_manage) {
-                    startActivity<ParagraphRuleManageActivity> {
-                        putExtra("bookUrl", book.bookUrl)
-                    }
-                }
-                cancelButton()
-            }
+            ParagraphRuleQuickDialog.create(
+                bookUrl = book.bookUrl,
+                rules = rules,
+                enabledIds = enabledIds.toSet()
+            ).show(supportFragmentManager, "paragraphRuleQuick")
         }
     }
 
@@ -3207,7 +3127,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private fun refreshParagraphRuleLayout() {
+    internal fun refreshParagraphRuleLayout() {
         if (ReadBook.book == null) return
         ReadBook.invalidateParagraphRuleLayout()
         ReadBook.callBack?.upContent(resetPageOffset = false)
