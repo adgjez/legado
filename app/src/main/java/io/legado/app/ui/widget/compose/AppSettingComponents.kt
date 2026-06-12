@@ -174,7 +174,6 @@ fun AppManagementLazyColumn(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(palette.settings.page)
             .windowInsetsPadding(WindowInsets.navigationBars),
         contentPadding = contentPadding,
         content = content
