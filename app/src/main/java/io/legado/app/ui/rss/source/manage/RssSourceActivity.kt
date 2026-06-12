@@ -4,9 +4,9 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
@@ -19,18 +19,19 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.ActivityRssSourceBinding
 import io.legado.app.help.DirectLinkUpload
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportRssSourceDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeSuggestionTextInputDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
@@ -59,15 +60,13 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
     override val binding by viewBinding(ActivityRssSourceBinding::inflate)
     override val viewModel by viewModels<RssSourceViewModel>()
     private val importRecordKey = "rssSourceRecordKey"
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
     private var sourceFlowJob: Job? = null
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
     private val sourcesState = mutableStateListOf<RssSource>()
     private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
     private val isSelectMode = mutableStateOf(false)
+    private val searchQueryState = mutableStateOf("")
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
         showDialogFragment(ImportRssSourceDialog(it))
@@ -95,13 +94,13 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
-        initSearchView()
         initGroupFlow()
         upSourceFlow()
-        initSelectActionBar()
     }
 
     private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        binding.selectActionBar.visibility = View.GONE
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
         container.removeView(binding.recyclerView)
@@ -112,15 +111,87 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                RssSourceScreen(
-                    sources = sourcesState,
-                    selectedUrls = selectedUrls.value,
-                    isSelectMode = isSelectMode.value,
-                    onToggleSelect = ::toggleSourceSelection,
-                    onToggleEnabled = ::toggleSourceEnabled,
-                    onEdit = ::editSource,
-                    onShowMenu = ::showSourceMenu
-                )
+                AppManagementScaffold(
+                    title = getString(R.string.rss_source_manage),
+                    selectedCount = selectedUrls.value.size,
+                    totalCount = sourcesState.size,
+                    searchQuery = searchQueryState.value,
+                    searchHint = getString(R.string.search_rss_source),
+                    onSearchChange = ::updateSearchQuery,
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.menu_action_group),
+                            iconRes = R.drawable.ic_groups,
+                            onClick = ::showFilterMenu
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.add),
+                            iconRes = R.drawable.ic_add,
+                            onClick = { startActivity<RssSourceEditActivity>() }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.more_menu),
+                            iconRes = R.drawable.ic_more_vert,
+                            onClick = ::showPageMenu
+                        )
+                    ),
+                    bottomActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.enable_selection),
+                            onClick = ::enableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_selection),
+                            onClick = ::disableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.add_group),
+                            onClick = ::selectionAddToGroups
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.remove_group),
+                            onClick = ::selectionRemoveFromGroups
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_top),
+                            onClick = ::topSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_bottom),
+                            onClick = ::bottomSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.export_selection),
+                            onClick = ::exportSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.share_selected_source),
+                            onClick = ::shareSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.check_selected_interval),
+                            onClick = ::checkSelectedInterval
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.delete),
+                            danger = true,
+                            onClick = ::delSourceDialog
+                        )
+                    ),
+                    onBack = { finish() },
+                    onSelectAll = { selectAll(true) },
+                    onInvertSelection = { revertSelection() }
+                ) {
+                    RssSourceScreen(
+                        sources = sourcesState,
+                        selectedUrls = selectedUrls.value,
+                        isSelectMode = isSelectMode.value,
+                        onToggleSelect = ::toggleSourceSelection,
+                        onToggleEnabled = ::toggleSourceEnabled,
+                        onEdit = ::editSource,
+                        onShowMenu = ::showSourceMenu
+                    )
+                }
             }
         }
         container.addView(cv, index)
@@ -150,45 +221,75 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
             R.id.menu_import_default -> viewModel.importDefault()
             R.id.menu_enabled_group -> {
-                searchView.setQuery(getString(R.string.enabled), true)
+                updateSearchQuery(getString(R.string.enabled))
             }
 
             R.id.menu_disabled_group -> {
-                searchView.setQuery(getString(R.string.disabled), true)
+                updateSearchQuery(getString(R.string.disabled))
             }
 
             R.id.menu_group_login -> {
-                searchView.setQuery(getString(R.string.need_login), true)
+                updateSearchQuery(getString(R.string.need_login))
             }
 
             R.id.menu_group_null -> {
-                searchView.setQuery(getString(R.string.no_group), true)
+                updateSearchQuery(getString(R.string.no_group))
             }
 
             R.id.menu_help -> showHelp("SourceMRssHelp")
             else -> if (item.groupId == R.id.source_group) {
-                searchView.setQuery("group:${item.title}", true)
+                updateSearchQuery("group:${item.title}")
             }
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun initSearchView() {
-        binding.titleBar.findViewById<SearchView>(R.id.search_view).let {
-            it.applyTint(primaryTextColor)
-            it.onActionViewExpanded()
-            it.queryHint = getString(R.string.search_rss_source)
-            it.clearFocus()
-            it.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    return false
-                }
+    private fun showFilterMenu() {
+        val fixedLabels = listOf(
+            getString(R.string.group_manage),
+            getString(R.string.enabled),
+            getString(R.string.disabled),
+            getString(R.string.need_login),
+            getString(R.string.no_group)
+        )
+        val labels = fixedLabels + groups
+        showComposeActionListDialog(
+            title = getString(R.string.menu_action_group),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> showDialogFragment<GroupManageDialog>()
+                1 -> updateSearchQuery(getString(R.string.enabled))
+                2 -> updateSearchQuery(getString(R.string.disabled))
+                3 -> updateSearchQuery(getString(R.string.need_login))
+                4 -> updateSearchQuery(getString(R.string.no_group))
+                else -> updateSearchQuery("group:${labels[index]}")
+            }
+        }
+    }
 
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    upSourceFlow(newText)
-                    return false
+    private fun showPageMenu() {
+        val labels = listOf(
+            getString(R.string.import_local),
+            getString(R.string.import_on_line),
+            getString(R.string.import_by_qr_code),
+            getString(R.string.import_default_rule),
+            getString(R.string.help)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.rss_source_manage),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> importDoc.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
                 }
-            })
+                1 -> showImportDialog()
+                2 -> qrCodeResult.launch()
+                3 -> viewModel.importDefault()
+                4 -> showHelp("SourceMRssHelp")
+            }
         }
     }
 
@@ -211,52 +312,65 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_enable_selection -> {
-                val selection = getSelectedSources()
-                updateSelectedEnabled(enabled = true)
-                viewModel.enableSelection(selection)
-            }
-            R.id.menu_disable_selection -> {
-                val selection = getSelectedSources()
-                updateSelectedEnabled(enabled = false)
-                viewModel.disableSelection(selection)
-            }
+            R.id.menu_enable_selection -> enableSelected()
+            R.id.menu_disable_selection -> disableSelected()
             R.id.menu_add_group -> selectionAddToGroups()
             R.id.menu_remove_group -> selectionRemoveFromGroups()
-            R.id.menu_top_sel -> {
-                val selection = getSelectedSources()
-                viewModel.topSource(*selection.toTypedArray())
-            }
-            R.id.menu_bottom_sel -> {
-                val selection = getSelectedSources()
-                viewModel.bottomSource(*selection.toTypedArray())
-            }
-            R.id.menu_export_selection -> {
-                val selection = getSelectedSources()
-                viewModel.saveToFile(selection) { file, name ->
-                    exportResult.launch {
-                        mode = HandleFileContract.EXPORT
-                        fileData = HandleFileContract.FileData(
-                            name, file, "application/json"
-                        )
-                    }
-                }
-            }
-            R.id.menu_share_source -> {
-                val selection = getSelectedSources()
-                viewModel.saveToFile(selection) { file, _ ->
-                    share(file)
-                }
-            }
+            R.id.menu_top_sel -> topSelected()
+            R.id.menu_bottom_sel -> bottomSelected()
+            R.id.menu_export_selection -> exportSelected()
+            R.id.menu_share_source -> shareSelected()
             R.id.menu_check_selected_interval -> checkSelectedInterval()
         }
         return true
     }
 
+    private fun enableSelected() {
+        val selection = getSelectedSources()
+        updateSelectedEnabled(enabled = true)
+        viewModel.enableSelection(selection)
+    }
+
+    private fun disableSelected() {
+        val selection = getSelectedSources()
+        updateSelectedEnabled(enabled = false)
+        viewModel.disableSelection(selection)
+    }
+
+    private fun topSelected() {
+        val selection = getSelectedSources()
+        viewModel.topSource(*selection.toTypedArray())
+    }
+
+    private fun bottomSelected() {
+        val selection = getSelectedSources()
+        viewModel.bottomSource(*selection.toTypedArray())
+    }
+
+    private fun exportSelected() {
+        val selection = getSelectedSources()
+        viewModel.saveToFile(selection) { file, name ->
+            exportResult.launch {
+                mode = HandleFileContract.EXPORT
+                fileData = HandleFileContract.FileData(
+                    name, file, "application/json"
+                )
+            }
+        }
+    }
+
+    private fun shareSelected() {
+        val selection = getSelectedSources()
+        viewModel.saveToFile(selection) { file, _ ->
+            share(file)
+        }
+    }
+
     private fun selectionAddToGroups() {
-        showComposeTextInputDialog(
+        showComposeSuggestionTextInputDialog(
             title = getString(R.string.add_group),
             hint = getString(R.string.group_name),
+            suggestions = groups.toList(),
             positiveText = getString(android.R.string.ok),
             negativeText = getString(R.string.cancel),
             onPositive = { text ->
@@ -269,9 +383,10 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
     }
 
     private fun selectionRemoveFromGroups() {
-        showComposeTextInputDialog(
+        showComposeSuggestionTextInputDialog(
             title = getString(R.string.remove_group),
             hint = getString(R.string.group_name),
+            suggestions = groups.toList(),
             positiveText = getString(android.R.string.ok),
             negativeText = getString(R.string.cancel),
             onPositive = { text ->
@@ -425,6 +540,14 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                 sourcesState[index] = source.copy(enabled = enabled)
             }
         }
+    }
+
+    private fun updateSearchQuery(query: String) {
+        if (searchQueryState.value == query) {
+            return
+        }
+        searchQueryState.value = query
+        upSourceFlow(query)
     }
 
     private fun editSource(source: RssSource) {

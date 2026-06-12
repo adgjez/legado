@@ -4,10 +4,10 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +29,6 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ActivityBookSourceBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
 import io.legado.app.ui.association.ImportBookSourceDialog
@@ -42,6 +41,8 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
@@ -51,7 +52,6 @@ import io.legado.app.ui.widget.compose.showComposeSuggestionTextInputDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
@@ -83,14 +83,10 @@ import kotlinx.coroutines.launch
  */
 class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceViewModel>(),
     MenuItem.OnMenuItemClickListener,
-    SelectActionBar.CallBack,
-    SearchView.OnQueryTextListener {
+    SelectActionBar.CallBack {
     override val binding by viewBinding(ActivityBookSourceBinding::inflate)
     override val viewModel by viewModels<BookSourceViewModel>()
     private val importRecordKey = "bookSourceRecordKey"
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
     private var sourceFlowJob: Job? = null
     private var checkMessageRefreshJob: Job? = null
     private val groups = linkedSetOf<String>()
@@ -106,6 +102,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private val sourcesState = mutableStateListOf<BookSourcePart>()
     private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
     private val isSelectMode = mutableStateOf(false)
+    private val searchQueryState = mutableStateOf("")
     private val showSourceHostState = mutableStateOf(false)
     private val sourceHostHeaders = mutableStateMapOf<String, String?>()
     private val debugMessagesState = mutableStateMapOf<String, String>()
@@ -153,10 +150,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
-        initSearchView()
         upBookSource()
         initLiveDataGroup()
-        initSelectActionBar()
         resumeCheckSource()
         if (!LocalConfig.bookSourcesHelpVersionIsLast) {
             showHelp("SourceMBookHelp")
@@ -164,6 +159,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        binding.selectActionBar.visibility = View.GONE
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
         container.removeView(binding.recyclerView)
@@ -174,19 +171,108 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                BookSourceScreen(
-                    sources = sourcesState,
-                    selectedUrls = selectedUrls.value,
-                    isSelectMode = isSelectMode.value,
-                    showSourceHost = showSourceHostState.value,
-                    sourceHostHeaders = sourceHostHeaders,
-                    debugMessages = debugMessagesState,
-                    isChecking = isCheckingState.value,
-                    onToggleSelect = ::toggleSourceSelection,
-                    onToggleEnabled = ::toggleSourceEnabled,
-                    onEdit = ::edit,
-                    onShowMenu = ::showSourceMenu
-                )
+                AppManagementScaffold(
+                    title = getString(R.string.book_source_manage),
+                    selectedCount = selectedUrls.value.size,
+                    totalCount = sourcesState.size,
+                    searchQuery = searchQueryState.value,
+                    searchHint = getString(R.string.search_book_source),
+                    onSearchChange = ::updateSearchQuery,
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.sort),
+                            iconRes = R.drawable.ic_sort,
+                            onClick = ::showSortMenu
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.menu_action_group),
+                            iconRes = R.drawable.ic_groups,
+                            onClick = ::showFilterMenu
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.add_book_source),
+                            iconRes = R.drawable.ic_add,
+                            onClick = { startActivity<BookSourceEditActivity>() }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.more_menu),
+                            iconRes = R.drawable.ic_more_vert,
+                            onClick = ::showPageMenu
+                        )
+                    ),
+                    bottomActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.enable_selection),
+                            onClick = ::enableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_selection),
+                            onClick = ::disableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.enable_explore),
+                            onClick = ::enableExploreSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_explore),
+                            onClick = ::disableExploreSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.add_group),
+                            onClick = ::selectionAddToGroups
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.remove_group),
+                            onClick = ::selectionRemoveFromGroups
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_top),
+                            onClick = ::topSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_bottom),
+                            onClick = ::bottomSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.check_select_source),
+                            onClick = ::checkSource
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.export_selection),
+                            onClick = ::exportSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.share_selected_source),
+                            onClick = ::shareSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.check_selected_interval),
+                            onClick = ::checkSelectedInterval
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.delete),
+                            danger = true,
+                            onClick = ::onClickSelectBarMainAction
+                        )
+                    ),
+                    onBack = { finish() },
+                    onSelectAll = { selectAll(true) },
+                    onInvertSelection = { revertSelection() }
+                ) {
+                    BookSourceScreen(
+                        sources = sourcesState,
+                        selectedUrls = selectedUrls.value,
+                        isSelectMode = isSelectMode.value,
+                        showSourceHost = showSourceHostState.value,
+                        sourceHostHeaders = sourceHostHeaders,
+                        debugMessages = debugMessagesState,
+                        isChecking = isCheckingState.value,
+                        onToggleSelect = ::toggleSourceSelection,
+                        onToggleEnabled = ::toggleSourceEnabled,
+                        onEdit = ::edit,
+                        onShowMenu = ::showSourceMenu
+                    )
+                }
             }
         }
         container.addView(cv, index)
@@ -221,97 +307,187 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_sort_desc -> {
                 sortAscending = !sortAscending
                 item.isChecked = !sortAscending
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_manual -> {
                 item.isChecked = true
                 sort = BookSourceSort.Default
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_auto -> {
                 item.isChecked = true
                 sort = BookSourceSort.Weight
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_name -> {
                 item.isChecked = true
                 sort = BookSourceSort.Name
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_url -> {
                 item.isChecked = true
                 sort = BookSourceSort.Url
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_time -> {
                 item.isChecked = true
                 sort = BookSourceSort.Update
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_respondTime -> {
                 item.isChecked = true
                 sort = BookSourceSort.Respond
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_sort_enable -> {
                 item.isChecked = true
                 sort = BookSourceSort.Enable
-                upBookSource(searchView.query?.toString())
+                refreshBookSources()
             }
 
             R.id.menu_enabled_group -> {
-                searchView.setQuery(getString(R.string.enabled), true)
+                updateSearchQuery(getString(R.string.enabled))
             }
 
             R.id.menu_disabled_group -> {
-                searchView.setQuery(getString(R.string.disabled), true)
+                updateSearchQuery(getString(R.string.disabled))
             }
 
             R.id.menu_group_login -> {
-                searchView.setQuery(getString(R.string.need_login), true)
+                updateSearchQuery(getString(R.string.need_login))
             }
 
             R.id.menu_group_null -> {
-                searchView.setQuery(getString(R.string.no_group), true)
+                updateSearchQuery(getString(R.string.no_group))
             }
 
             R.id.menu_enabled_explore_group -> {
-                searchView.setQuery(getString(R.string.enabled_explore), true)
+                updateSearchQuery(getString(R.string.enabled_explore))
             }
 
             R.id.menu_disabled_explore_group -> {
-                searchView.setQuery(getString(R.string.disabled_explore), true)
+                updateSearchQuery(getString(R.string.disabled_explore))
             }
 
             R.id.menu_group_sources_by_domain -> {
                 item.isChecked = !item.isChecked
-                groupSourcesByDomain = item.isChecked
-                showSourceHostState.value = item.isChecked
-                updateSourceHostHeaders(sourcesState)
-                upBookSource(searchView.query?.toString())
+                setGroupSourcesByDomain(item.isChecked)
             }
 
             R.id.menu_help -> showHelp("SourceMBookHelp")
         }
         if (item.groupId == R.id.source_group) {
-            searchView.setQuery("group:${item.title}", true)
+            updateSearchQuery("group:${item.title}")
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.queryHint = getString(R.string.search_book_source)
-        searchView.setOnQueryTextListener(this)
+    private fun showSortMenu() {
+        val labels = listOf(
+            getString(R.string.sort_desc),
+            getString(R.string.sort_manual),
+            getString(R.string.sort_auto),
+            getString(R.string.sort_by_name),
+            getString(R.string.sort_by_url),
+            getString(R.string.sort_by_lastUpdateTime),
+            getString(R.string.sort_by_respondTime),
+            getString(R.string.is_enabled)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.sort),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> {
+                    sortAscending = !sortAscending
+                    refreshBookSources()
+                }
+                1 -> setSort(BookSourceSort.Default)
+                2 -> setSort(BookSourceSort.Weight)
+                3 -> setSort(BookSourceSort.Name)
+                4 -> setSort(BookSourceSort.Url)
+                5 -> setSort(BookSourceSort.Update)
+                6 -> setSort(BookSourceSort.Respond)
+                7 -> setSort(BookSourceSort.Enable)
+            }
+        }
     }
 
+    private fun showFilterMenu() {
+        val fixedLabels = listOf(
+            getString(R.string.group_manage),
+            getString(R.string.enabled),
+            getString(R.string.disabled),
+            getString(R.string.need_login),
+            getString(R.string.no_group),
+            getString(R.string.enabled_explore),
+            getString(R.string.disabled_explore)
+        )
+        val labels = fixedLabels + groups
+        showComposeActionListDialog(
+            title = getString(R.string.menu_action_group),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> showDialogFragment<GroupManageDialog>()
+                1 -> updateSearchQuery(getString(R.string.enabled))
+                2 -> updateSearchQuery(getString(R.string.disabled))
+                3 -> updateSearchQuery(getString(R.string.need_login))
+                4 -> updateSearchQuery(getString(R.string.no_group))
+                5 -> updateSearchQuery(getString(R.string.enabled_explore))
+                6 -> updateSearchQuery(getString(R.string.disabled_explore))
+                else -> updateSearchQuery("group:${labels[index]}")
+            }
+        }
+    }
+
+    private fun showPageMenu() {
+        val labels = listOf(
+            getString(R.string.import_local),
+            getString(R.string.import_on_line),
+            getString(R.string.import_by_qr_code),
+            getString(R.string.group_sources_by_domain),
+            getString(R.string.help)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.book_source_manage),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> importDoc.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
+                }
+                1 -> showImportDialog()
+                2 -> qrResult.launch()
+                3 -> setGroupSourcesByDomain(!groupSourcesByDomain)
+                4 -> showHelp("SourceMBookHelp")
+            }
+        }
+    }
+
+    private fun setSort(next: BookSourceSort) {
+        sort = next
+        refreshBookSources()
+    }
+
+    private fun setGroupSourcesByDomain(enabled: Boolean) {
+        groupSourcesByDomain = enabled
+        showSourceHostState.value = enabled
+        updateSourceHostHeaders(sourcesState)
+        refreshBookSources()
+    }
+
+    private fun refreshBookSources() {
+        upBookSource(searchQueryState.value)
+    }
 
     private fun upBookSource(searchKey: String? = null) {
         sourceFlowJob?.cancel()
@@ -506,61 +682,84 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_enable_selection -> {
-                val selection = getSelectedSources()
-                updateSelectedEnabled(true)
-                viewModel.enableSelection(selection)
-            }
-            R.id.menu_disable_selection -> {
-                val selection = getSelectedSources()
-                updateSelectedEnabled(false)
-                viewModel.disableSelection(selection)
-            }
-            R.id.menu_enable_explore -> {
-                val selection = getSelectedSources()
-                updateSelectedExplore(true)
-                viewModel.enableSelectExplore(selection)
-            }
-            R.id.menu_disable_explore -> {
-                val selection = getSelectedSources()
-                updateSelectedExplore(false)
-                viewModel.disableSelectExplore(selection)
-            }
+            R.id.menu_enable_selection -> enableSelected()
+            R.id.menu_disable_selection -> disableSelected()
+            R.id.menu_enable_explore -> enableExploreSelected()
+            R.id.menu_disable_explore -> disableExploreSelected()
             R.id.menu_check_source -> checkSource()
-            R.id.menu_top_sel -> viewModel.topSource(*getSelectedSources().toTypedArray())
-            R.id.menu_bottom_sel -> viewModel.bottomSource(*getSelectedSources().toTypedArray())
+            R.id.menu_top_sel -> topSelected()
+            R.id.menu_bottom_sel -> bottomSelected()
             R.id.menu_add_group -> selectionAddToGroups()
             R.id.menu_remove_group -> selectionRemoveFromGroups()
-            R.id.menu_export_selection -> viewModel.saveToFile(
-                getSelectedSources(),
-                sourcesState.size,
-                searchView.query?.toString(),
-                sortAscending,
-                sort
-            ) { file, name ->
-                exportDir.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData = HandleFileContract.FileData(
-                        name,
-                        file,
-                        "application/json"
-                    )
-                }
-            }
-
-            R.id.menu_share_source -> viewModel.saveToFile(
-                getSelectedSources(),
-                sourcesState.size,
-                searchView.query?.toString(),
-                sortAscending,
-                sort
-            ) { file, name ->
-                share(file)
-            }
+            R.id.menu_export_selection -> exportSelected()
+            R.id.menu_share_source -> shareSelected()
 
             R.id.menu_check_selected_interval -> checkSelectedInterval()
         }
         return true
+    }
+
+    private fun enableSelected() {
+        val selection = getSelectedSources()
+        updateSelectedEnabled(true)
+        viewModel.enableSelection(selection)
+    }
+
+    private fun disableSelected() {
+        val selection = getSelectedSources()
+        updateSelectedEnabled(false)
+        viewModel.disableSelection(selection)
+    }
+
+    private fun enableExploreSelected() {
+        val selection = getSelectedSources()
+        updateSelectedExplore(true)
+        viewModel.enableSelectExplore(selection)
+    }
+
+    private fun disableExploreSelected() {
+        val selection = getSelectedSources()
+        updateSelectedExplore(false)
+        viewModel.disableSelectExplore(selection)
+    }
+
+    private fun topSelected() {
+        viewModel.topSource(*getSelectedSources().toTypedArray())
+    }
+
+    private fun bottomSelected() {
+        viewModel.bottomSource(*getSelectedSources().toTypedArray())
+    }
+
+    private fun exportSelected() {
+        viewModel.saveToFile(
+            getSelectedSources(),
+            sourcesState.size,
+            searchQueryState.value,
+            sortAscending,
+            sort
+        ) { file, name ->
+            exportDir.launch {
+                mode = HandleFileContract.EXPORT
+                fileData = HandleFileContract.FileData(
+                    name,
+                    file,
+                    "application/json"
+                )
+            }
+        }
+    }
+
+    private fun shareSelected() {
+        viewModel.saveToFile(
+            getSelectedSources(),
+            sourcesState.size,
+            searchQueryState.value,
+            sortAscending,
+            sort
+        ) { file, _ ->
+            share(file)
+        }
     }
 
     private fun checkSource() {
@@ -680,8 +879,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             updateCheckingState(false)
             refreshDebugMessages(force = true)
             groups.forEach { group ->
-                if (group.contains("失效") && searchView.query.isEmpty()) {
-                    searchView.setQuery("失效", true)
+                if (group.contains("失效") && searchQueryState.value.isEmpty()) {
+                    updateSearchQuery("失效")
                     toastOnUi("发现有失效书源，已为您自动筛选！")
                 }
             }
@@ -763,6 +962,14 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
+    private fun updateSearchQuery(query: String) {
+        if (searchQueryState.value == query) {
+            return
+        }
+        searchQueryState.value = query
+        upBookSource(query)
+    }
+
     private fun checkSelectedInterval() {
         val urls = selectedUrls.value
         val positions = sourcesState.mapIndexedNotNull { index, source ->
@@ -841,17 +1048,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         return hostMap.getOrPut(origin) {
             NetworkUtils.getSubDomainOrNull(origin) ?: "#"
         }
-    }
-
-    override fun onQueryTextChange(newText: String?): Boolean {
-        newText?.let {
-            upBookSource(it)
-        }
-        return false
-    }
-
-    override fun onQueryTextSubmit(query: String?): Boolean {
-        return false
     }
 
     private fun showSourceMenu(bookSource: BookSourcePart) {
@@ -958,10 +1154,10 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     override fun finish() {
-        if (searchView.query.isNullOrEmpty()) {
+        if (searchQueryState.value.isEmpty()) {
             super.finish()
         } else {
-            searchView.setQuery("", true)
+            updateSearchQuery("")
         }
     }
 
