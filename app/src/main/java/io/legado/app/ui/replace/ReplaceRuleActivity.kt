@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -22,6 +23,7 @@ import io.legado.app.databinding.ActivityReplaceRuleBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
@@ -61,7 +63,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
-    private val rulesState = mutableStateOf<List<ReplaceRule>>(emptyList())
+    private val rulesState = mutableStateOf<List<ReplaceRule>>(emptyList(), neverEqualPolicy())
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
@@ -93,7 +95,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                     }
                     append(uri.toString())
                 },
-                positiveText = getString(R.string.copy),
+                positiveText = getString(R.string.copy_text),
                 negativeText = getString(R.string.cancel),
                 onPositive = { sendToClip(uri.toString()) }
             )
@@ -279,8 +281,16 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     private fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_enable_selection -> viewModel.enableSelection(getSelectedRules())
-            R.id.menu_disable_selection -> viewModel.disableSelection(getSelectedRules())
+            R.id.menu_enable_selection -> {
+                val selected = getSelectedRules()
+                updateSelectedEnabled(enabled = true)
+                viewModel.enableSelection(selected)
+            }
+            R.id.menu_disable_selection -> {
+                val selected = getSelectedRules()
+                updateSelectedEnabled(enabled = false)
+                viewModel.disableSelection(selected)
+            }
             R.id.menu_top_sel -> viewModel.topSelect(getSelectedRules())
             R.id.menu_bottom_sel -> viewModel.bottomSelect(getSelectedRules())
             R.id.menu_export_selection -> exportResult.launch {
@@ -292,7 +302,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 )
             }
         }
-        return false
+        return true
     }
 
     private fun upGroupMenu() = groupMenu?.transaction { menu ->
@@ -341,6 +351,9 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     private fun onToggleEnabled(rule: ReplaceRule, isEnabled: Boolean) {
         setResult(RESULT_OK)
         val updated = rule.copy(isEnabled = isEnabled)
+        rulesState.value = rulesState.value.map {
+            if (it.id == rule.id) updated else it
+        }
         viewModel.update(updated)
     }
 
@@ -390,6 +403,14 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         return rulesState.value.filter { it.id in ids }
     }
 
+    private fun updateSelectedEnabled(enabled: Boolean) {
+        val ids = selectedIds.value
+        if (ids.isEmpty()) return
+        rulesState.value = rulesState.value.map { rule ->
+            if (rule.id in ids) rule.copy(isEnabled = enabled) else rule
+        }
+    }
+
     override fun onQueryTextChange(newText: String?): Boolean {
         observeReplaceRuleData(newText)
         return false
@@ -404,7 +425,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         Coroutine.async { ContentProcessor.upReplaceRules() }
     }
 
-    override fun upCountView() {
+    private fun upCountView() {
         binding.selectActionBar.upCountView(
             selectedIds.value.size,
             rulesState.value.size

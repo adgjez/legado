@@ -30,17 +30,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.BubblePackageManager
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -60,19 +61,18 @@ internal fun BubbleManageScreen(
     onMoreActions: (BubblePackageManager.Entry) -> Unit,
     onAddClick: () -> Unit
 ) {
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.page)
+            .background(palette.settings.page)
     ) {
         // Summary
         if (summary.isNotBlank()) {
             Text(
                 text = summary,
-                color = palette.secondaryText,
+                color = palette.settings.secondaryText,
                 fontSize = 13.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -85,8 +85,8 @@ internal fun BubbleManageScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             itemsIndexed(
                 items = entries,
@@ -107,7 +107,7 @@ internal fun BubbleManageScreen(
         // Add button
         LegadoMiuixActionButton(
             text = "添加",
-            palette = palette,
+            palette = palette.miuix,
             onClick = onAddClick,
             modifier = Modifier
                 .fillMaxWidth()
@@ -123,19 +123,17 @@ internal fun BubbleManageScreen(
 private fun BubbleItemRow(
     entry: BubblePackageManager.Entry,
     active: Boolean,
-    palette: LegadoMiuixPalette,
+    palette: AppManagementPalette,
     previewBitmapProvider: (BubblePackageManager.Config) -> Bitmap?,
     onApply: () -> Unit,
     onEdit: () -> Unit,
     onMoreActions: () -> Unit
 ) {
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onMoreActions),
-        color = palette.surfaceVariant,
-        contentColor = palette.primaryText,
-        cornerRadius = palette.panelRadius,
+            .fillMaxWidth(),
+        onClick = onMoreActions,
         insidePadding = PaddingValues(10.dp)
     ) {
         Row(
@@ -174,7 +172,7 @@ private fun BubbleItemRow(
             ) {
                 Text(
                     text = entry.config.name,
-                    color = palette.primaryText,
+                    color = palette.settings.primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -183,7 +181,7 @@ private fun BubbleItemRow(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = buildItemInfo(entry, active),
-                    color = palette.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -195,7 +193,7 @@ private fun BubbleItemRow(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionTextButton(
                         text = if (active) "已应用" else "应用",
-                        palette = palette,
+                        palette = palette.miuix,
                         accent = true,
                         onClick = onApply
                     )
@@ -204,13 +202,13 @@ private fun BubbleItemRow(
                     if (canEdit) {
                         ActionTextButton(
                             text = "编辑",
-                            palette = palette,
+                            palette = palette.miuix,
                             onClick = onEdit
                         )
                     }
                     ActionTextButton(
                         text = "更多",
-                        palette = palette,
+                        palette = palette.miuix,
                         onClick = onMoreActions
                     )
                 }
@@ -226,12 +224,13 @@ private fun ActionTextButton(
     accent: Boolean = false,
     onClick: () -> Unit
 ) {
+    val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
     Surface(
         modifier = Modifier
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
-        color = palette.surface,
+        shape = RoundedCornerShape(actionRadius),
+        color = if (accent) palette.accent.copy(alpha = 0.14f) else palette.surfaceVariant,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
@@ -266,8 +265,3 @@ private fun sourceLabel(source: BubblePackageManager.Source): String {
         BubblePackageManager.Source.BOTH -> "本地 + 云端"
     }
 }
-
-/**
- * Expose panelRadius for use by calling code.
- */
-private val LegadoMiuixPalette.panelRadius: Dp get() = 16.dp

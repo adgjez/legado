@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.read.config
 
-import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -8,8 +7,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -25,12 +22,9 @@ import io.legado.app.data.entities.BookParagraphRule
 import io.legado.app.data.entities.ParagraphRule
 import io.legado.app.data.entities.ParagraphRuleVar
 import io.legado.app.databinding.ActivityThemeManageBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -42,6 +36,9 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.recycler.ItemTouchCallback
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
@@ -90,14 +87,16 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         result.uri?.let { uri ->
             val url = uri.toString()
             if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                alert(R.string.upload_url) {
-                    setMessage(url)
-                    positiveButton(R.string.copy_text) {
+                showComposeConfirmDialog(
+                    title = getString(R.string.upload_url),
+                    message = url,
+                    positiveText = getString(R.string.copy_text),
+                    negativeText = getString(R.string.cancel),
+                    onPositive = {
                         sendToClip(url)
                         toastOnUi(R.string.copy_complete)
                     }
-                    negativeButton(R.string.cancel)
-                }
+                )
             } else {
                 toastOnUi(R.string.export_success)
             }
@@ -156,10 +155,10 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun showAddActions() {
-        selector(
-            getString(R.string.paragraph_rule_manage),
-            listOf(getString(R.string.add), getString(R.string.import_str), getString(R.string.import_on_line))
-        ) { _, index ->
+        showComposeChoiceListDialog(
+            title = getString(R.string.paragraph_rule_manage),
+            labels = listOf(getString(R.string.add), getString(R.string.import_str), getString(R.string.import_on_line))
+        ) { index ->
             when (index) {
                 0 -> openEditRule()
                 1 -> launchImportFile()
@@ -169,10 +168,10 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun showImportActions() {
-        selector(
-            getString(R.string.import_str),
-            listOf(getString(R.string.import_str), getString(R.string.import_on_line))
-        ) { _, index ->
+        showComposeChoiceListDialog(
+            title = getString(R.string.import_str),
+            labels = listOf(getString(R.string.import_str), getString(R.string.import_on_line))
+        ) { index ->
             when (index) {
                 0 -> launchImportFile()
                 1 -> showImportUrlDialog()
@@ -189,17 +188,14 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun showImportUrlDialog() {
-        alert(R.string.import_on_line) {
-            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "https://..."
-            }
-            customView { dialogBinding.root }
-            okButton {
-                val url = dialogBinding.editView.text?.toString().orEmpty().trim()
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "https://...",
+            onPositive = { value ->
+                val url = value.trim()
                 if (url.isNotEmpty()) importRulesFromUrl(url)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importRulesFromUrl(url: String) {
@@ -285,13 +281,14 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             Action.VARS,
             Action.DELETE
         )
-        selector(rule.displayName(), actions.map { getString(it.titleRes) }) { _, index ->
-            when (actions[index]) {
+        showComposeChoiceListDialog(rule.displayName(), actions.map { getString(it.titleRes) }) { index ->
+            when (actions.getOrNull(index)) {
                 Action.EDIT -> openEditRule(rule.id)
                 Action.EXPORT -> exportRule(rule)
                 Action.COPY -> sendToClip(serializeRule(rule))
                 Action.VARS -> editVars(rule)
                 Action.DELETE -> deleteRule(rule)
+                null -> Unit
             }
         }
     }
@@ -301,18 +298,12 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
             val raw = withContext(Dispatchers.IO) {
                 GSON.toJson(appDb.paragraphRuleDao.vars(rule.id).associate { it.name to it.value })
             }
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = getString(R.string.paragraph_rule_vars_json)
-                editView.setText(raw)
-            }
-            alert(titleResource = R.string.paragraph_rule_vars) {
-                customView { alertBinding.root }
-                okButton {
-                    val text = alertBinding.editView.text?.toString().orEmpty()
-                    saveVars(rule.id, text)
-                }
-                cancelButton()
-            }
+            showComposeTextInputDialog(
+                title = getString(R.string.paragraph_rule_vars),
+                hint = getString(R.string.paragraph_rule_vars_json),
+                initialValue = raw,
+                onPositive = { text -> saveVars(rule.id, text) }
+            )
         }
     }
 
@@ -366,17 +357,19 @@ class ParagraphRuleManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private fun serializeRule(rule: ParagraphRule): String = GSON.toJson(rule)
 
     private fun deleteRule(rule: ParagraphRule) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + rule.displayName())
-            yesButton {
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del) + "\n" + rule.displayName(),
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            onPositive = {
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) { appDb.paragraphRuleDao.deleteWithRelations(rule) }
                     refreshReadBookIfNeeded()
                     load()
                 }
             }
-            noButton()
-        }
+        )
     }
 
     override fun swap(srcPosition: Int, targetPosition: Int): Boolean {

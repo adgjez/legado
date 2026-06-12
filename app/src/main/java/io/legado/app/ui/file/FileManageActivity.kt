@@ -29,11 +29,7 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
         onBackPressedDispatcher.addCallback(this) {
-            if (viewModel.lastDir != viewModel.rootDoc) {
-                gotoLastDir()
-                return@addCallback
-            }
-            finish()
+            handleBack()
         }
         viewModel.upFiles(viewModel.rootDoc)
     }
@@ -56,11 +52,20 @@ class FileManageActivity : io.legado.app.base.VMBaseActivity<ActivityFileManageB
                     onFileClick = ::onFileClick,
                     onFileLongClick = ::onFileLongClick,
                     onBreadcrumbClick = ::onBreadcrumbClick,
-                    onRootBreadcrumbClick = ::onRootBreadcrumbClick
+                    onRootBreadcrumbClick = ::onRootBreadcrumbClick,
+                    onBackClick = ::handleBack
                 )
             }
         }
         container.addView(cv)
+    }
+
+    private fun handleBack() {
+        if (viewModel.lastDir != viewModel.rootDoc) {
+            gotoLastDir()
+        } else {
+            finish()
+        }
     }
 
     private fun onFileClick(file: File) {

@@ -1,21 +1,27 @@
 package io.legado.app.ui.widget.compose
 
 import android.os.Build
+import android.widget.ImageView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,12 +42,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,11 +66,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Text
 import io.legado.app.R
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 import top.yukonga.miuix.kmp.basic.Button as MiuixButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults as MiuixButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
@@ -80,7 +96,9 @@ data class LegadoMiuixPalette(
     val primaryText: Color,
     val secondaryText: Color,
     val danger: Color,
-    val onAccent: Color = Color.White
+    val onAccent: Color = Color.White,
+    val panelRadius: Dp? = null,
+    val actionRadius: Dp? = null
 )
 
 fun AppDialogStyle.toMiuixPalette(): LegadoMiuixPalette {
@@ -90,7 +108,34 @@ fun AppDialogStyle.toMiuixPalette(): LegadoMiuixPalette {
         surfaceVariant = fieldSurface,
         primaryText = primaryText,
         secondaryText = secondaryText,
-        danger = danger
+        danger = danger,
+        panelRadius = panelRadius,
+        actionRadius = actionRadius
+    )
+}
+
+@Composable
+fun LegadoResourceIcon(
+    iconName: String,
+    modifier: Modifier = Modifier,
+    resType: String = "mipmap"
+) {
+    val context = LocalContext.current
+    val resId = remember(iconName, resType) {
+        context.resources.getIdentifier(iconName, resType, context.packageName)
+    }
+    if (resId == 0) return
+    AndroidView(
+        factory = { viewContext ->
+            ImageView(viewContext).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                adjustViewBounds = true
+            }
+        },
+        update = { imageView ->
+            imageView.setImageResource(resId)
+        },
+        modifier = modifier
     )
 }
 
@@ -140,11 +185,12 @@ fun LegadoMiuixActionButton(
     modifier: Modifier = Modifier,
     primary: Boolean = false,
     danger: Boolean = false,
-    cornerRadius: Dp = 16.dp,
+    cornerRadius: Dp? = null,
     minWidth: Dp = 76.dp,
     minHeight: Dp = 40.dp,
     insidePadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
 ) {
+    val resolvedCornerRadius = cornerRadius ?: palette.actionRadius ?: LocalContext.current.composeActionRadius()
     val background = when {
         primary -> palette.accent
         danger -> palette.danger.copy(alpha = 0.13f)
@@ -159,7 +205,7 @@ fun LegadoMiuixActionButton(
         MiuixButton(
             onClick = onClick,
             modifier = modifier,
-            cornerRadius = cornerRadius,
+            cornerRadius = resolvedCornerRadius,
             minWidth = minWidth,
             minHeight = minHeight,
             insideMargin = insidePadding,
@@ -185,7 +231,7 @@ fun LegadoMiuixActionButton(
         modifier = modifier
             .defaultMinSize(minWidth = minWidth, minHeight = minHeight)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(cornerRadius),
+        shape = RoundedCornerShape(resolvedCornerRadius),
         color = background,
         contentColor = content,
         tonalElevation = 0.dp,
@@ -310,15 +356,210 @@ fun LegadoMiuixSlider(
 }
 
 @Composable
+fun AppThemedStepperSlider(
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+    palette: LegadoMiuixPalette,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    step: Int = 1,
+    trackHeight: Dp = 34.dp,
+    thumbSize: Dp = 26.dp,
+    endpointWidth: Dp = 30.dp,
+    onValueChangeFinished: (() -> Unit)? = null
+) {
+    val density = LocalDensity.current
+    val safeStep = step.coerceAtLeast(1)
+    val clampedValue = value.coerceIn(range)
+    val rangeSize = (range.last - range.first).coerceAtLeast(1)
+    val fraction = ((clampedValue - range.first).toFloat() / rangeSize).coerceIn(0f, 1f)
+    val latestValue by rememberUpdatedState(clampedValue)
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+    val endpointWidthPx = with(density) { endpointWidth.toPx() }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(trackHeight)
+    ) {
+        val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
+        val thumbSizePx = with(density) { thumbSize.toPx() }
+        val centerStartPx = (heightPx / 2f).coerceAtMost(widthPx / 2f)
+        val centerEndPx = (widthPx - heightPx / 2f).coerceAtLeast(centerStartPx)
+        val usablePx = (centerEndPx - centerStartPx).coerceAtLeast(1f)
+        val thumbOffsetPx = (
+            centerStartPx + usablePx * fraction - thumbSizePx / 2f
+            ).roundToInt()
+
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(range, safeStep, enabled) {
+                    if (!enabled) {
+                        return@pointerInput
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val width = size.width.toFloat()
+                        val centerStart = (size.height / 2f).coerceAtMost(width / 2f)
+                        val centerEnd = (width - size.height / 2f).coerceAtLeast(centerStart)
+                        val usable = (centerEnd - centerStart).coerceAtLeast(1f)
+                        val touchSlop = viewConfiguration.touchSlop
+                        var currentValue = latestValue
+                        var didChange = false
+                        var totalX = 0f
+                        var totalY = 0f
+                        var dragging = false
+
+                        fun steppedValue(rawValue: Float, atStart: Boolean, atEnd: Boolean): Int {
+                            if (atStart) return range.first
+                            if (atEnd) return range.last
+                            val stepped = range.first + (
+                                (rawValue - range.first) / safeStep
+                                ).roundToInt() * safeStep
+                            return stepped.coerceIn(range)
+                        }
+
+                        fun valueForPosition(x: Float): Int {
+                            val clamped = x.coerceIn(centerStart, centerEnd)
+                            val atStart = clamped <= centerStart
+                            val atEnd = clamped >= centerEnd
+                            val rawValue = range.first + ((clamped - centerStart) / usable) *
+                                (range.last - range.first)
+                            return steppedValue(rawValue, atStart = atStart, atEnd = atEnd)
+                        }
+
+                        fun applyValue(value: Int) {
+                            val next = value.coerceIn(range)
+                            if (next != currentValue) {
+                                currentValue = next
+                                didChange = true
+                                latestOnValueChange(next)
+                            }
+                        }
+
+                        fun applyPosition(x: Float) {
+                            applyValue(valueForPosition(x))
+                        }
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            val delta = change.positionChange()
+                            totalX += delta.x
+                            totalY += delta.y
+                            if (!dragging && abs(totalX) > touchSlop && abs(totalX) > abs(totalY)) {
+                                dragging = true
+                            }
+                            if (dragging) {
+                                applyPosition(change.position.x)
+                                change.consume()
+                            }
+                        }
+
+                        if (!dragging) {
+                            when {
+                                down.position.x <= endpointWidthPx -> {
+                                    applyValue((currentValue - safeStep).coerceIn(range))
+                                }
+
+                                down.position.x >= size.width - endpointWidthPx -> {
+                                    applyValue((currentValue + safeStep).coerceIn(range))
+                                }
+
+                                else -> applyPosition(down.position.x)
+                            }
+                        }
+
+                        if (didChange) {
+                            latestOnValueChangeFinished?.invoke()
+                        }
+                    }
+                },
+            shape = CircleShape,
+            color = if (enabled) {
+                palette.surfaceVariant
+            } else {
+                palette.surfaceVariant.copy(alpha = 0.46f)
+            },
+            contentColor = palette.primaryText,
+            tonalElevation = 0.dp,
+            shadowElevation = if (enabled) 1.dp else 0.dp
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StepperEndpointText(
+                        text = "-",
+                        enabled = enabled && clampedValue > range.first,
+                        palette = palette,
+                        modifier = Modifier.width(endpointWidth)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    StepperEndpointText(
+                        text = "+",
+                        enabled = enabled && clampedValue < range.last,
+                        palette = palette,
+                        modifier = Modifier.width(endpointWidth)
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset { IntOffset(thumbOffsetPx, 0) }
+                        .size(thumbSize),
+                    shape = CircleShape,
+                    color = if (enabled) palette.surface else palette.surface.copy(alpha = 0.62f),
+                    contentColor = palette.primaryText,
+                    tonalElevation = 0.dp,
+                    shadowElevation = if (enabled) 3.dp else 0.dp
+                ) {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepperEndpointText(
+    text: String,
+    enabled: Boolean,
+    palette: LegadoMiuixPalette,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.36f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
 fun LegadoMiuixFloatingPanel(
     visible: Boolean,
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,
     width: Dp = 304.dp,
-    cornerRadius: Dp = 22.dp,
+    cornerRadius: Dp? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val resolvedCornerRadius = cornerRadius ?: palette.panelRadius ?: LocalContext.current.composePanelRadius()
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = tween(durationMillis = MIUIX_PANEL_ANIMATION_MS),
@@ -333,7 +574,7 @@ fun LegadoMiuixFloatingPanel(
                 scaleY = 0.96f + 0.04f * progress
                 translationY = (1f - progress) * 12f
             },
-        shape = RoundedCornerShape(cornerRadius),
+        shape = RoundedCornerShape(resolvedCornerRadius),
         color = palette.surface,
         contentColor = palette.primaryText,
         tonalElevation = 0.dp,
@@ -354,8 +595,10 @@ fun LegadoMiuixChoiceRow(
     minHeight: Dp = 40.dp,
     compact: Boolean = false,
     showSelectedMark: Boolean = true,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    leadingIconName: String? = null
 ) {
+    val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
     val contentAlpha = if (enabled) 1f else 0.42f
     val selectedColor = palette.accent.copy(alpha = contentAlpha)
     val primaryColor = palette.primaryText.copy(alpha = contentAlpha)
@@ -364,7 +607,7 @@ fun LegadoMiuixChoiceRow(
             .fillMaxWidth()
             .defaultMinSize(minHeight = minHeight)
             .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(if (compact) 13.dp else 16.dp),
+        shape = RoundedCornerShape(actionRadius),
         color = if (selected) palette.accent.copy(alpha = 0.14f) else palette.surfaceVariant,
         contentColor = if (selected) selectedColor else primaryColor,
         tonalElevation = 0.dp,
@@ -377,6 +620,13 @@ fun LegadoMiuixChoiceRow(
             ),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            leadingIconName?.let { iconName ->
+                LegadoResourceIcon(
+                    iconName = iconName,
+                    modifier = Modifier.size(if (compact) 28.dp else 34.dp)
+                )
+                Spacer(modifier = Modifier.width(if (compact) 9.dp else 12.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = text,
@@ -442,12 +692,13 @@ fun <T> LegadoMiuixSelectField(
     onSelected: (T) -> Unit,
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 16.dp,
+    cornerRadius: Dp? = null,
     compact: Boolean = false,
     showSelectedMark: Boolean = true,
     popupTitle: String? = label,
     popupWidth: Dp = 304.dp
 ) {
+    val resolvedCornerRadius = cornerRadius ?: palette.actionRadius ?: LocalContext.current.composeActionRadius()
     var expanded by remember { mutableStateOf(false) }
     var panelVisible by remember { mutableStateOf(false) }
     var transitionVersion by remember { mutableStateOf(0) }
@@ -490,10 +741,10 @@ fun <T> LegadoMiuixSelectField(
                         transitionVersion++
                         expanded = true
                     }
-                },
+            },
             color = palette.surface,
             contentColor = palette.primaryText,
-            cornerRadius = cornerRadius,
+            cornerRadius = resolvedCornerRadius,
             insidePadding = PaddingValues(
                 horizontal = fieldHorizontalPadding,
                 vertical = fieldVerticalPadding
@@ -552,7 +803,6 @@ fun <T> LegadoMiuixSelectField(
                 visible = panelVisible,
                 palette = palette,
                 width = popupWidth,
-                cornerRadius = 22.dp,
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 popupTitle?.takeIf { it.isNotBlank() }?.let {
@@ -631,15 +881,16 @@ fun LegadoMiuixActionRow(
     modifier: Modifier = Modifier,
     description: String? = null,
     danger: Boolean = false,
-    cornerRadius: Dp = 16.dp
+    cornerRadius: Dp? = null
 ) {
+    val resolvedCornerRadius = cornerRadius ?: palette.actionRadius ?: LocalContext.current.composeActionRadius()
     LegadoMiuixCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         color = if (danger) palette.danger.copy(alpha = 0.12f) else palette.surfaceVariant,
         contentColor = if (danger) palette.danger else palette.primaryText,
-        cornerRadius = cornerRadius,
+        cornerRadius = resolvedCornerRadius,
         insidePadding = PaddingValues(horizontal = 16.dp, vertical = 13.dp)
     ) {
         Column {

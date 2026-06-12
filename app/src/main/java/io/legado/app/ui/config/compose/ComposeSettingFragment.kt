@@ -193,6 +193,7 @@ abstract class ComposeSettingFragment : Fragment(),
             labels = item.options.map { it.label },
             selectedIndex = item.options.indexOfFirst { it.value == item.selectedValue },
             descriptions = item.options.map { it.description?.toString().orEmpty() },
+            iconNames = item.options.map { it.iconName.orEmpty() },
             negativeText = getString(R.string.cancel),
             onSelected = { index ->
                 item.options.getOrNull(index)?.value?.let(item.onSelected)

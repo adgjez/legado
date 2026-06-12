@@ -8,13 +8,12 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityAiWorldBookManageBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.ai.compose.AiWorldBookImportPayload
 import io.legado.app.ui.main.ai.compose.AiWorldBookManageRoute
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.readText
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -69,17 +68,14 @@ class AiWorldBookManageActivity : BaseActivity<ActivityAiWorldBookManageBinding>
     }
 
     private fun showImportUrlDialog() {
-        alert("网络导入世界书") {
-            val dialogBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "https://..."
-            }
-            customView { dialogBinding.root }
-            okButton {
-                val url = dialogBinding.editView.text?.toString().orEmpty().trim()
+        showComposeTextInputDialog(
+            title = "网络导入世界书",
+            hint = "https://...",
+            onPositive = { value ->
+                val url = value.trim()
                 if (url.isNotEmpty()) importWorldBookFromUrl(url)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importWorldBookFromUrl(url: String) {

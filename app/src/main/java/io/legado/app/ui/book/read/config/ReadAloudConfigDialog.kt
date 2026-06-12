@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read.config
 
 import android.graphics.Color
 import android.os.Bundle
-import android.text.InputType
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -16,7 +15,6 @@ import io.legado.app.base.BasePrefDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
@@ -26,8 +24,6 @@ import io.legado.app.help.readaloud.role.ReadAloudQuotePair
 import io.legado.app.help.readaloud.role.ReadAloudRolePreprocessor
 import io.legado.app.help.readaloud.role.ReadAloudSoundEffectPreprocessor
 import io.legado.app.help.readaloud.speech.SpeechRoute
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.dialogSurfaceBackground
 import io.legado.app.lib.theme.primaryColor
@@ -42,7 +38,10 @@ import io.legado.app.ui.config.compose.SettingPageSpec
 import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSliderSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLayout
@@ -798,7 +797,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "智能音频模型：${optionalModelLabel(AppConfig.aiReadAloudAudioModelId, "跟随多角色")}",
                 "智能音频备用：${optionalModelLabel(AppConfig.aiReadAloudAudioBackupModelId, "跟随多角色备用")}"
             )
-            requireContext().selector("AI 模型与超时", options) { _, _, index ->
+            showComposeChoiceListDialog("AI 模型与超时", options) { index ->
                 when (index) {
                     0 -> showAiModelPicker(
                         title = "多角色主模型",
@@ -869,7 +868,15 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     add(if (model.id == currentModelId) "$label ✓" else label)
                 }
             }
-            requireContext().selector(title, labels) { _, _, index ->
+            val selectedIndex = if (currentModelId.isNullOrBlank() && noneLabel != null) {
+                0
+            } else {
+                models.indexOfFirst { it.id == currentModelId }
+                    .takeIf { it >= 0 }
+                    ?.plus(offset)
+                    ?: -1
+            }
+            showComposeChoiceListDialog(title, labels, selectedIndex = selectedIndex) { index ->
                 if (index < offset) {
                     onSelected(null)
                 } else {
@@ -898,18 +905,22 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 return
             }
             val providerNameMap = AppConfig.aiProviderList.associateBy({ it.id }, { it.name })
-            requireContext().selector(
-                "多角色模型",
-                models.map { model ->
-                    val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
-                        ?.let { "${model.modelId} - $it" }
-                        ?: model.modelId
-                    if (model.id == AppConfig.aiReadAloudRoleModelId) "$label ✓" else label
+            val labels = models.map { model ->
+                val label = providerNameMap[model.providerId]?.takeIf { it.isNotBlank() }
+                    ?.let { "${model.modelId} - $it" }
+                    ?: model.modelId
+                if (model.id == AppConfig.aiReadAloudRoleModelId) "$label ✓" else label
+            }
+            showComposeChoiceListDialog(
+                title = "多角色模型",
+                labels = labels,
+                selectedIndex = models.indexOfFirst { it.id == AppConfig.aiReadAloudRoleModelId }
+            ) { index ->
+                models.getOrNull(index)?.let { model ->
+                    AppConfig.aiReadAloudRoleModelId = model.id
+                    updateAiRolePreferences()
+                    selectGroup(selectedGroup)
                 }
-            ) { _, _, index ->
-                AppConfig.aiReadAloudRoleModelId = models[index].id
-                updateAiRolePreferences()
-                selectGroup(selectedGroup)
             }
         }
 
@@ -937,120 +948,127 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 40 -> "每批段落数"
                 else -> title
             }
-            NumberPickerDialog(requireContext())
-                .setTitle(displayTitle)
-                .setMinValue(min)
-                .setMaxValue(max)
-                .setValue(value)
-                .show(onValue)
+            showComposeNumberPickerDialog(
+                title = displayTitle,
+                value = value,
+                minValue = min,
+                maxValue = max,
+                onValue = onValue
+            )
+        }
+
+        private fun showLongTextInputDialog(
+            title: String,
+            hint: String,
+            initialValue: String,
+            maxLength: Int? = null,
+            maxLengthMessage: String = "",
+            minLines: Int,
+            onValue: (String) -> Unit,
+            neutralText: String? = null,
+            onNeutral: (() -> Unit)? = null,
+            validateContent: ((String) -> Boolean)? = null
+        ) {
+            showComposeTextInputDialog(
+                title = title,
+                hint = hint,
+                initialValue = initialValue,
+                neutralText = neutralText,
+                minLines = minLines,
+                maxLines = maxOf(minLines, 10),
+                validateInput = { value ->
+                    when {
+                        maxLength != null && value.length > maxLength -> {
+                            toastOnUi(maxLengthMessage)
+                            false
+                        }
+                        validateContent?.invoke(value) == false -> false
+                        else -> true
+                    }
+                },
+                onPositive = onValue,
+                onNeutral = onNeutral
+            )
         }
 
         private fun showMultiRolePromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "内置默认会自动生效。这里可补充角色判断规则、旁白/台词标注偏好等。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudRolePrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("预注入分角色提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最多 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudRolePrompt = value
+            showLongTextInputDialog(
+                title = "预注入分角色提示词",
+                hint = "内置默认会自动生效。这里可补充角色判断规则、旁白/台词标注偏好等。",
+                initialValue = AppConfig.aiReadAloudRolePrompt,
+                maxLength = 4000,
+                maxLengthMessage = "提示词最多 4000 字",
+                minLines = 6,
+                onValue = {
+                    AppConfig.aiReadAloudRolePrompt = it
                     updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
+                },
+                neutralText = "恢复默认",
+                onNeutral = {
                     AppConfig.aiReadAloudRolePrompt = ""
                     updateAiRolePreferences()
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showAutoCreateCharacterPromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "内置默认会自动生效。这里用于约束什么时候新增角色，以及如何判断性别、年龄、角色等级。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudAutoCreateCharacterPrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("自动建卡提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最多 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudAutoCreateCharacterPrompt = value
+            showLongTextInputDialog(
+                title = "自动建卡提示词",
+                hint = "内置默认会自动生效。这里用于约束什么时候新增角色，以及如何判断性别、年龄、角色等级。",
+                initialValue = AppConfig.aiReadAloudAutoCreateCharacterPrompt,
+                maxLength = 4000,
+                maxLengthMessage = "提示词最多 4000 字",
+                minLines = 6,
+                onValue = {
+                    AppConfig.aiReadAloudAutoCreateCharacterPrompt = it
                     updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
+                },
+                neutralText = "恢复默认",
+                onNeutral = {
                     AppConfig.aiReadAloudAutoCreateCharacterPrompt = ""
                     updateAiRolePreferences()
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showBgmPromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "只填写配乐策略，不要写工具 JSON。留空会恢复内置默认。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudBgmPrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("配乐提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最大 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudBgmPrompt = value
+            showLongTextInputDialog(
+                title = "配乐提示词",
+                hint = "只填写配乐策略，不要写工具 JSON。留空会恢复内置默认。",
+                initialValue = AppConfig.aiReadAloudBgmPrompt,
+                maxLength = 4000,
+                maxLengthMessage = "提示词最大 4000 字",
+                minLines = 6,
+                onValue = {
+                    AppConfig.aiReadAloudBgmPrompt = it
                     updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
+                },
+                neutralText = "恢复默认",
+                onNeutral = {
                     AppConfig.aiReadAloudBgmPrompt = ""
                     updateAiRolePreferences()
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showSoundEffectPromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "只填写音效选择策略。音效只能从候选事件中选择，留空会恢复内置默认。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudSoundEffectPrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("音效提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最大 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudSoundEffectPrompt = value
+            showLongTextInputDialog(
+                title = "音效提示词",
+                hint = "只填写音效选择策略。音效只能从候选事件中选择，留空会恢复内置默认。",
+                initialValue = AppConfig.aiReadAloudSoundEffectPrompt,
+                maxLength = 4000,
+                maxLengthMessage = "提示词最大 4000 字",
+                minLines = 6,
+                onValue = {
+                    AppConfig.aiReadAloudSoundEffectPrompt = it
                     updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
+                },
+                neutralText = "恢复默认",
+                onNeutral = {
                     AppConfig.aiReadAloudSoundEffectPrompt = ""
                     updateAiRolePreferences()
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showMultiRolePreprocessRulesDialog() {
@@ -1063,7 +1081,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "试运行预处理",
                 "恢复默认"
             )
-            requireContext().selector("预处理规则", items) { _, _, index ->
+            showComposeChoiceListDialog("预处理规则", items) { index ->
                 when (index) {
                     0 -> showPreprocessQuoteDialog(config)
                     1 -> showRuleListEditor(
@@ -1085,49 +1103,46 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         }
 
         private fun showPreprocessQuoteDialog(config: ReadAloudPreprocessRuleConfig) {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "每行一组引号，格式：开引号 空格 闭引号，例如：\n“ ”\n「 」"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(config.quotePairs.joinToString("\n") { "${it.open} ${it.close}" })
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("引号与句末规则") {
-                customView { binding.root }
-                okButton {
-                    val pairs = parseQuotePairs(binding.editView.text?.toString().orEmpty())
-                    if (pairs.isEmpty()) {
+            showLongTextInputDialog(
+                title = "引号与句末规则",
+                hint = "每行一组引号，格式：开引号 空格 闭引号，例如：\n“ ”\n「 」",
+                initialValue = config.quotePairs.joinToString("\n") { "${it.open} ${it.close}" },
+                minLines = 6,
+                onValue = { value ->
+                    savePreprocessConfig(config.copy(quotePairs = parseQuotePairs(value)))
+                },
+                neutralText = "句末符号",
+                onNeutral = { showSentencePunctuationDialog(config) },
+                validateContent = { value ->
+                    if (parseQuotePairs(value).isEmpty()) {
                         toastOnUi("至少保留一组引号")
-                        return@okButton
+                        false
+                    } else {
+                        true
                     }
-                    savePreprocessConfig(config.copy(quotePairs = pairs))
                 }
-                neutralButton("句末符号") {
-                    showSentencePunctuationDialog(config)
-                }
-                cancelButton()
-            }
+            )
         }
 
         private fun showSentencePunctuationDialog(config: ReadAloudPreprocessRuleConfig) {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "直接填写句末符号，例如：。！？…!?"
-                editView.inputType = InputType.TYPE_CLASS_TEXT
-                editView.setText(config.sentencePunctuation)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("句末符号") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty().trim()
-                    if (value.isBlank()) {
+            showComposeTextInputDialog(
+                title = "句末符号",
+                hint = "直接填写句末符号，例如：。！？…!?",
+                initialValue = config.sentencePunctuation,
+                minLines = 1,
+                maxLines = 1,
+                validateInput = { value ->
+                    if (value.trim().isBlank()) {
                         toastOnUi("句末符号不能为空")
-                        return@okButton
+                        false
+                    } else {
+                        true
                     }
-                    savePreprocessConfig(config.copy(sentencePunctuation = value))
+                },
+                onPositive = { value ->
+                    savePreprocessConfig(config.copy(sentencePunctuation = value.trim()))
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showPreprocessThresholdDialog(config: ReadAloudPreprocessRuleConfig) {
@@ -1138,7 +1153,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "跨段引号合并 · ${if (config.mergeCrossParagraphQuote) "开启" else "关闭"}",
                 "音效上下文字符数 · ${config.soundEffectContextChars}"
             )
-            requireContext().selector("判断阈值", items) { _, _, index ->
+            showComposeChoiceListDialog("判断阈值", items) { index ->
                 when (index) {
                     0 -> showPreprocessNumberDialog("台词最短长度", config.dialogueMinLength, 1, 80) {
                         savePreprocessConfig(config.copy(dialogueMinLength = it))
@@ -1163,7 +1178,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 "音效排除词 · ${config.soundEffectExcludePatterns.size} 条",
                 "上下文字符数 · ${config.soundEffectContextChars}"
             )
-            requireContext().selector("音效预筛规则", items) { _, _, index ->
+            showComposeChoiceListDialog("音效预筛规则", items) { index ->
                 when (index) {
                     0 -> showRuleListEditor(
                         title = "音效预筛触发词",
@@ -1190,25 +1205,21 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             hint: String,
             onSave: (List<String>) -> Unit
         ) {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = hint
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 8
-                editView.setText(values.joinToString("\n"))
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert(title) {
-                customView { binding.root }
-                okButton {
-                    val items = parseRuleItems(binding.editView.text?.toString().orEmpty())
-                    if (items.isEmpty()) {
+            showLongTextInputDialog(
+                title = title,
+                hint = hint,
+                initialValue = values.joinToString("\n"),
+                minLines = 8,
+                onValue = { value -> onSave(parseRuleItems(value)) },
+                validateContent = { value ->
+                    if (parseRuleItems(value).isEmpty()) {
                         toastOnUi("至少保留一条规则")
-                        return@okButton
+                        false
+                    } else {
+                        true
                     }
-                    onSave(items)
                 }
-                cancelButton()
-            }
+            )
         }
 
         private fun showPreprocessNumberDialog(
@@ -1218,12 +1229,13 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
             max: Int,
             onValue: (Int) -> Unit
         ) {
-            NumberPickerDialog(requireContext())
-                .setTitle(title)
-                .setMinValue(min)
-                .setMaxValue(max)
-                .setValue(value)
-                .show(onValue)
+            showComposeNumberPickerDialog(
+                title = title,
+                value = value,
+                minValue = min,
+                maxValue = max,
+                onValue = onValue
+            )
         }
 
         private fun showPreprocessTrialDialog() {
@@ -1233,25 +1245,22 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                 门轴忽然吱呀一声响了起来。
                 他心道：“事情不太对。”
             """.trimIndent()
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "粘贴几段正文，试运行当前预处理规则。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 10
-                editView.setText(sample)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("预处理试运行") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
+            showComposeTextInputDialog(
+                title = "预处理试运行",
+                hint = "粘贴几段正文，试运行当前预处理规则。",
+                initialValue = sample,
+                minLines = 10,
+                maxLines = 14,
+                validateInput = { value ->
                     if (value.isBlank()) {
                         toastOnUi("请先输入正文")
-                        return@okButton
+                        false
+                    } else {
+                        true
                     }
-                    showPreprocessTrialResult(value)
-                }
-                cancelButton()
-            }
+                },
+                onPositive = { showPreprocessTrialResult(it) }
+            )
         }
 
         private fun showPreprocessTrialResult(text: String) {
@@ -1284,10 +1293,13 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
                     appendLine(item.context.take(80))
                 }
             }.take(6000)
-            alert("试运行结果") {
-                setMessage(message)
-                okButton()
-            }
+            showComposeConfirmDialog(
+                title = "试运行结果",
+                message = message,
+                showNegative = false,
+                messageInContent = true,
+                onPositive = {}
+            )
         }
 
         private fun savePreprocessConfig(config: ReadAloudPreprocessRuleConfig) {
@@ -1327,30 +1339,7 @@ class ReadAloudConfigDialog : BasePrefDialogFragment() {
         }
 
         private fun showAiRolePromptDialog() {
-            val binding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "内置默认会自动生效。这里可补充角色判断规则、旁白/台词标注偏好等。"
-                editView.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                editView.minLines = 6
-                editView.setText(AppConfig.aiReadAloudRolePrompt)
-                editView.setSelection(editView.text?.length ?: 0)
-            }
-            alert("预注入分角色提示词") {
-                customView { binding.root }
-                okButton {
-                    val value = binding.editView.text?.toString().orEmpty()
-                    if (value.length > 4000) {
-                        toastOnUi("提示词最多 4000 字")
-                        return@okButton
-                    }
-                    AppConfig.aiReadAloudRolePrompt = value
-                    updateAiRolePreferences()
-                }
-                neutralButton("恢复默认") {
-                    AppConfig.aiReadAloudRolePrompt = ""
-                    updateAiRolePreferences()
-                }
-                cancelButton()
-            }
+            showMultiRolePromptDialog()
         }
 
     }

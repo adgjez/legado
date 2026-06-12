@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -26,6 +27,7 @@ import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
@@ -42,7 +44,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     override val viewModel by viewModels<DictRuleViewModel>()
     override val binding by viewBinding(ActivityDictRuleBinding::inflate)
     private val importRecordKey = "dictRuleUrls"
-    private val rulesState = mutableStateOf<List<DictRule>>(emptyList())
+    private val rulesState = mutableStateOf<List<DictRule>>(emptyList(), neverEqualPolicy())
     private val selectedNames = mutableStateOf<Set<String>>(emptySet())
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
@@ -106,10 +108,12 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             when (item.itemId) {
                 R.id.menu_enable_selection -> {
                     val selected = rulesState.value.filter { it.name in selectedNames.value }
+                    updateSelectedEnabled(enabled = true)
                     viewModel.enableSelection(*selected.toTypedArray())
                 }
                 R.id.menu_disable_selection -> {
                     val selected = rulesState.value.filter { it.name in selectedNames.value }
+                    updateSelectedEnabled(enabled = false)
                     viewModel.disableSelection(*selected.toTypedArray())
                 }
                 R.id.menu_export_selection -> {
@@ -191,8 +195,19 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     }
 
     private fun toggleEnabled(rule: DictRule, enabled: Boolean) {
-        rule.enabled = enabled
-        viewModel.update(rule)
+        val updated = rule.copy(enabled = enabled)
+        rulesState.value = rulesState.value.map {
+            if (it.name == rule.name) updated else it
+        }
+        viewModel.update(updated)
+    }
+
+    private fun updateSelectedEnabled(enabled: Boolean) {
+        val names = selectedNames.value
+        if (names.isEmpty()) return
+        rulesState.value = rulesState.value.map { rule ->
+            if (rule.name in names) rule.copy(enabled = enabled) else rule
+        }
     }
 
     private fun editRule(rule: DictRule) {

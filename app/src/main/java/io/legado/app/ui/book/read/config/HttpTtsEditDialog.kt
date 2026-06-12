@@ -44,12 +44,13 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.dpToPx
@@ -179,10 +180,13 @@ class HttpTtsEditDialog() : BaseDialogFragment(0) {
     }
 
     private fun showLoginHeader() {
-        alert {
-            setTitle(R.string.login_header)
-            draft.toHttpTts(viewModel.id).getLoginHeader()?.let { setMessage(it) }
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.login_header),
+            message = draft.toHttpTts(viewModel.id).getLoginHeader(),
+            showNegative = false,
+            messageInContent = true,
+            onPositive = {}
+        )
     }
 
     private fun isSame(): Boolean {
@@ -192,14 +196,21 @@ class HttpTtsEditDialog() : BaseDialogFragment(0) {
 
     override fun dismiss() {
         if (!isSame()) {
-            alert(R.string.exit) {
-                setMessage(R.string.exit_no_save)
-                positiveButton(R.string.yes)
-                negativeButton(R.string.no) { super.dismiss() }
-            }
+            showComposeConfirmDialog(
+                title = getString(R.string.exit),
+                message = getString(R.string.exit_no_save),
+                positiveText = getString(R.string.yes),
+                negativeText = getString(R.string.no),
+                onPositive = {},
+                onNegative = { dismissWithoutConfirm() }
+            )
         } else {
             super.dismiss()
         }
+    }
+
+    private fun dismissWithoutConfirm() {
+        super.dismiss()
     }
 }
 
@@ -319,7 +330,7 @@ private fun HttpTtsEditScreen(
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = colors.page,
-        shape = RoundedCornerShape(context.composeActionRadius().coerceAtLeast(18.dp))
+        shape = RoundedCornerShape(context.composePanelRadius())
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp).imePadding()) {
             Row {
@@ -384,7 +395,7 @@ private fun HeaderAction(text: String, colors: HttpTtsEditColors, onClick: () ->
     Surface(
         onClick = onClick,
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Text(text, color = colors.text, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
@@ -412,7 +423,7 @@ private fun EditField(
             .onFocusChanged {
                 if (it.isFocused) onFocus(field)
             },
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         supportingText = when (field) {
             HttpTtsField.Speakers -> ({ Text("可为空；为空时该 HTTP TTS 会作为普通发言人使用。", color = colors.subText) })
             HttpTtsField.Emotions -> ({ Text("可为空；填写后角色和快捷选择可选默认情绪。", color = colors.subText) })

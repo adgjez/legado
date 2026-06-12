@@ -104,7 +104,7 @@ object UpdateAcceleratorDialog {
     }
 }
 
-private class UpdateAcceleratorComposeDialog : ComposeDialogFragment() {
+class UpdateAcceleratorComposeDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.96f
     override val maxWidthDp: Int = 620

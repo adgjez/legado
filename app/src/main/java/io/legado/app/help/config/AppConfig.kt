@@ -2031,6 +2031,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.uiLayoutAlpha, value.coerceIn(0, 100))
         }
 
+    var dialogAlpha: Int
+        get() = appCtx.getPrefInt(PreferKey.dialogAlpha, 100).coerceIn(0, 100)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.dialogAlpha, value.coerceIn(0, 100))
+        }
+
     @Deprecated("Use uiLayoutAlpha")
     var uiCornerEffectMode: String
         get() = "solid"

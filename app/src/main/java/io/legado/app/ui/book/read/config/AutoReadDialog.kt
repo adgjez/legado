@@ -26,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,14 +50,12 @@ import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.BaseReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
-import io.legado.app.ui.widget.compose.LegadoMiuixSlider
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.utils.ColorUtils
-import java.util.Locale
-import kotlin.math.roundToInt
 
 class AutoReadDialog : ComposeDialogFragment() {
 
@@ -177,10 +174,9 @@ private fun AutoReadContent(
         danger = dialogStyle.danger
     )
     var mode by remember { mutableIntStateOf(ReadBookConfig.autoReadMode) }
-    var speedValue by remember {
-        mutableFloatStateOf(ReadBookConfig.autoReadSpeed.coerceAtLeast(1).toFloat())
+    var speed by remember {
+        mutableIntStateOf(ReadBookConfig.autoReadSpeed.coerceIn(1, 120))
     }
-    val speed = speedValue.roundToInt().coerceIn(1, 120)
     val speedTitle = if (mode == ReadBookConfig.AUTO_READ_MODE_TIMED) {
         stringResource(R.string.auto_page_interval)
     } else {
@@ -191,7 +187,10 @@ private fun AutoReadContent(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
+            shape = RoundedCornerShape(
+                topStart = dialogStyle.panelRadius,
+                topEnd = dialogStyle.panelRadius
+            ),
             color = surface,
             contentColor = textColor
         ) {
@@ -206,7 +205,7 @@ private fun AutoReadContent(
                     modifier = Modifier.fillMaxWidth(),
                     color = panel,
                     contentColor = textColor,
-                    cornerRadius = 18.dp,
+                    cornerRadius = dialogStyle.panelRadius,
                     insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
                 ) {
                     Row(
@@ -217,6 +216,7 @@ private fun AutoReadContent(
                             text = stringResource(R.string.auto_read_mode_scroll),
                             selected = mode != ReadBookConfig.AUTO_READ_MODE_TIMED,
                             palette = sliderPalette,
+                            actionRadius = dialogStyle.actionRadius,
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 mode = ReadBookConfig.AUTO_READ_MODE_SCROLL
@@ -227,6 +227,7 @@ private fun AutoReadContent(
                             text = stringResource(R.string.auto_read_mode_timed),
                             selected = mode == ReadBookConfig.AUTO_READ_MODE_TIMED,
                             palette = sliderPalette,
+                            actionRadius = dialogStyle.actionRadius,
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 mode = ReadBookConfig.AUTO_READ_MODE_TIMED
@@ -249,27 +250,27 @@ private fun AutoReadContent(
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = String.format(Locale.ROOT, "%ds", speed),
+                            text = "${speed}s",
                             color = secondaryTextColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
-                    LegadoMiuixSlider(
-                        value = speedValue.coerceIn(1f, 120f),
+                    AppThemedStepperSlider(
+                        value = speed,
+                        range = 1..120,
                         onValueChange = { value ->
-                            speedValue = value.roundToInt().coerceIn(1, 120).toFloat()
+                            speed = value.coerceIn(1, 120)
                         },
+                        palette = sliderPalette,
+                        step = 1,
                         onValueChangeFinished = {
-                            val nextSpeed = speedValue.roundToInt().coerceIn(1, 120)
+                            val nextSpeed = speed.coerceIn(1, 120)
                             if (ReadBookConfig.autoReadSpeed != nextSpeed) {
                                 ReadBookConfig.autoReadSpeed = nextSpeed
                                 onSpeedCommitted()
                             }
-                        },
-                        palette = sliderPalette,
-                        valueRange = 1f..120f,
-                        steps = 118
+                        }
                     )
                 }
                 Row(
@@ -281,6 +282,7 @@ private fun AutoReadContent(
                         text = stringResource(R.string.chapter_list),
                         textColor = textColor,
                         panelColor = if (isLight) panel else panelStrong,
+                        actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenChapterList
                     )
@@ -289,6 +291,7 @@ private fun AutoReadContent(
                         text = stringResource(R.string.main_menu),
                         textColor = textColor,
                         panelColor = if (isLight) panel else panelStrong,
+                        actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onShowMenu
                     )
@@ -297,6 +300,7 @@ private fun AutoReadContent(
                         text = stringResource(R.string.stop),
                         textColor = textColor,
                         panelColor = if (isLight) panelStrong else panel,
+                        actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onStopAutoPage
                     )
@@ -305,6 +309,7 @@ private fun AutoReadContent(
                         text = stringResource(R.string.setting),
                         textColor = textColor,
                         panelColor = if (isLight) panel else panelStrong,
+                        actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenSetting
                     )
@@ -319,6 +324,7 @@ private fun AutoReadModeButton(
     text: String,
     selected: Boolean,
     palette: LegadoMiuixPalette,
+    actionRadius: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -328,7 +334,7 @@ private fun AutoReadModeButton(
             .clickable(onClick = onClick),
         color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.surfaceVariant,
         contentColor = if (selected) palette.accent else palette.primaryText,
-        cornerRadius = 14.dp,
+        cornerRadius = actionRadius,
         insidePadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(
@@ -350,13 +356,14 @@ private fun AutoReadAction(
     text: String,
     textColor: Color,
     panelColor: Color,
+    actionRadius: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Column(
         modifier = modifier
             .height(58.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(actionRadius))
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -364,7 +371,7 @@ private fun AutoReadAction(
     ) {
         Surface(
             color = panelColor,
-            shape = RoundedCornerShape(13.dp)
+            shape = RoundedCornerShape(actionRadius)
         ) {
             Icon(
                 painter = painterResource(id = iconRes),

@@ -151,7 +151,8 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
         return values.mapIndexed { index, value ->
             SettingChoiceOption(
                 value = value,
-                label = entries.getOrElse(index) { value }
+                label = entries.getOrElse(index) { value },
+                iconName = value
             )
         }
     }

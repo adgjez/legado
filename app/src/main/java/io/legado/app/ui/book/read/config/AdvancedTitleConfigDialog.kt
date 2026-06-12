@@ -29,7 +29,6 @@ import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.applyUiInputStyle
 import io.legado.app.lib.theme.applyUiLabelStyle
 import io.legado.app.lib.theme.applyUiSectionTitleStyle
@@ -40,6 +39,8 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readText
@@ -90,14 +91,16 @@ class AdvancedTitleConfigDialog : DialogFragment() {
         if (uri != null) {
             val url = uri.toString()
             if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                context?.alert(R.string.advanced_title_upload_success) {
-                    setMessage(url)
-                    positiveButton(R.string.copy_text) {
+                showComposeConfirmDialog(
+                    title = getString(R.string.advanced_title_upload_success),
+                    message = url,
+                    positiveText = getString(R.string.copy_text),
+                    negativeText = getString(R.string.cancel),
+                    onPositive = {
                         requireContext().sendToClip(url)
                         context?.toastOnUi(getString(R.string.copy_complete))
                     }
-                    negativeButton(R.string.cancel)
-                }
+                )
             } else {
                 context?.toastOnUi(getString(R.string.advanced_title_exported))
             }
@@ -383,15 +386,14 @@ class AdvancedTitleConfigDialog : DialogFragment() {
     }
 
     private fun importNetJsonAlert() {
-        context?.alert(R.string.advanced_title_input_url) {
-            val input = EditText(requireContext()).apply { hint = "https://..." }
-            customView { input }
-            okButton {
-                val url = input.text?.toString().orEmpty().trim()
+        showComposeTextInputDialog(
+            title = getString(R.string.advanced_title_input_url),
+            hint = "https://...",
+            onPositive = { value ->
+                val url = value.trim()
                 if (url.isNotEmpty()) importNetJson(url)
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importNetJson(url: String) {

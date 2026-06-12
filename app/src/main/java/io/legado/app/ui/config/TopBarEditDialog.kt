@@ -23,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,6 +77,20 @@ class TopBarEditDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                val callbacksReady = onSave != null &&
+                    onShowStyleSelector != null &&
+                    onShowCornerScalePicker != null &&
+                    onShowColorPicker != null &&
+                    onShowWallpaperSelector != null &&
+                    onShowWallpaperAlphaPicker != null &&
+                    onShowFilterDefaultSelector != null &&
+                    onShowTagBarAlphaPicker != null &&
+                    onShowTagSelectedAlphaPicker != null
+                LaunchedEffect(callbacksReady) {
+                    if (!callbacksReady) {
+                        dismissAllowingStateLoss()
+                    }
+                }
                 val style = rememberAppDialogStyle()
                 CompositionLocalProvider(
                     LocalTextStyle provides LocalTextStyle.current.copy(
@@ -85,23 +100,38 @@ class TopBarEditDialog : ComposeDialogFragment() {
                     TopBarEditDialogContent(
                         args = args,
                         style = style,
-                        onShowStyleSelector = { onShowStyleSelector?.invoke() },
-                        onShowCornerScalePicker = { onShowCornerScalePicker?.invoke(it) },
+                        onShowStyleSelector = {
+                            onShowStyleSelector?.invoke() ?: dismissAllowingStateLoss()
+                        },
+                        onShowCornerScalePicker = {
+                            onShowCornerScalePicker?.invoke(it) ?: dismissAllowingStateLoss()
+                        },
                         onShowColorPicker = { target, color ->
-                            onShowColorPicker?.invoke(target, color)
+                            onShowColorPicker?.invoke(target, color) ?: dismissAllowingStateLoss()
                         },
-                        onShowWallpaperSelector = { onShowWallpaperSelector?.invoke() },
-                        onShowWallpaperAlphaPicker = { onShowWallpaperAlphaPicker?.invoke(it) },
+                        onShowWallpaperSelector = {
+                            onShowWallpaperSelector?.invoke() ?: dismissAllowingStateLoss()
+                        },
+                        onShowWallpaperAlphaPicker = {
+                            onShowWallpaperAlphaPicker?.invoke(it) ?: dismissAllowingStateLoss()
+                        },
                         onShowFilterDefaultSelector = {
-                            onShowFilterDefaultSelector?.invoke(it)
+                            onShowFilterDefaultSelector?.invoke(it) ?: dismissAllowingStateLoss()
                         },
-                        onShowTagBarAlphaPicker = { onShowTagBarAlphaPicker?.invoke(it) },
+                        onShowTagBarAlphaPicker = {
+                            onShowTagBarAlphaPicker?.invoke(it) ?: dismissAllowingStateLoss()
+                        },
                         onShowTagSelectedAlphaPicker = {
-                            onShowTagSelectedAlphaPicker?.invoke(it)
+                            onShowTagSelectedAlphaPicker?.invoke(it) ?: dismissAllowingStateLoss()
                         },
                         onSave = { name ->
-                            dismissAllowingStateLoss()
-                            onSave?.invoke(name)
+                            val saveCallback = onSave
+                            if (saveCallback != null) {
+                                dismissAllowingStateLoss()
+                                saveCallback(name)
+                            } else {
+                                dismissAllowingStateLoss()
+                            }
                         },
                         onCancel = {
                             dismissAllowingStateLoss()
@@ -162,21 +192,21 @@ class TopBarEditDialog : ComposeDialogFragment() {
             }
         }
 
-        private const val ARG_NAME = "name"
-        private const val ARG_STYLE = "style"
-        private const val ARG_IS_NIGHT = "isNight"
-        private const val ARG_CORNER_SCALE = "cornerScale"
-        private const val ARG_BG_COLOR = "bgColor"
-        private const val ARG_HAS_BG_COLOR = "hasBgColor"
-        private const val ARG_WALLPAPER_PATH = "wallpaperPath"
-        private const val ARG_WALLPAPER_ALPHA = "wallpaperAlpha"
-        private const val ARG_FILTER_EXPANDED = "filterExpanded"
-        private const val ARG_TAG_BAR_COLOR = "tagBarColor"
-        private const val ARG_HAS_TAG_BAR_COLOR = "hasTagBarColor"
-        private const val ARG_TAG_BAR_ALPHA = "tagBarAlpha"
-        private const val ARG_TAG_SELECTED_COLOR = "tagSelectedColor"
-        private const val ARG_HAS_TAG_SELECTED_COLOR = "hasTagSelectedColor"
-        private const val ARG_TAG_SELECTED_ALPHA = "tagSelectedAlpha"
+        const val ARG_NAME = "name"
+        const val ARG_STYLE = "style"
+        const val ARG_IS_NIGHT = "isNight"
+        const val ARG_CORNER_SCALE = "cornerScale"
+        const val ARG_BG_COLOR = "bgColor"
+        const val ARG_HAS_BG_COLOR = "hasBgColor"
+        const val ARG_WALLPAPER_PATH = "wallpaperPath"
+        const val ARG_WALLPAPER_ALPHA = "wallpaperAlpha"
+        const val ARG_FILTER_EXPANDED = "filterExpanded"
+        const val ARG_TAG_BAR_COLOR = "tagBarColor"
+        const val ARG_HAS_TAG_BAR_COLOR = "hasTagBarColor"
+        const val ARG_TAG_BAR_ALPHA = "tagBarAlpha"
+        const val ARG_TAG_SELECTED_COLOR = "tagSelectedColor"
+        const val ARG_HAS_TAG_SELECTED_COLOR = "hasTagSelectedColor"
+        const val ARG_TAG_SELECTED_ALPHA = "tagSelectedAlpha"
     }
 }
 

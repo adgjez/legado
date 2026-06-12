@@ -5,13 +5,47 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -19,6 +53,8 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,6 +65,8 @@ import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.lib.theme.composePanelRadius
 
 @Immutable
 data class AppSettingPalette(
@@ -46,6 +84,12 @@ data class AppSettingPalette(
     val panelRadiusPx: Float,
     val bodyFontFamily: FontFamily,
     val titleFontFamily: FontFamily
+)
+
+@Immutable
+data class AppManagementPalette(
+    val settings: AppSettingPalette,
+    val miuix: LegadoMiuixPalette
 )
 
 @Composable
@@ -91,6 +135,281 @@ fun rememberAppSettingPalette(): AppSettingPalette {
             panelRadiusPx = panelRadiusPx,
             bodyFontFamily = dialogStyle.bodyFontFamily,
             titleFontFamily = dialogStyle.titleFontFamily
+        )
+    }
+}
+
+@Composable
+fun rememberAppManagementPalette(): AppManagementPalette {
+    val context = LocalContext.current
+    val colors = rememberAppSettingPalette()
+    val panelRadius = context.composePanelRadius()
+    val actionRadius = context.composeActionRadius()
+    return remember(colors, panelRadius, actionRadius) {
+        AppManagementPalette(
+            settings = colors,
+            miuix = LegadoMiuixPalette(
+                accent = colors.accent,
+                surface = colors.page,
+                surfaceVariant = Color(colors.row),
+                primaryText = colors.primaryText,
+                secondaryText = colors.secondaryText,
+                danger = colors.danger,
+                onAccent = colors.onAccent,
+                panelRadius = panelRadius,
+                actionRadius = actionRadius
+            )
+        )
+    }
+}
+
+@Composable
+fun AppManagementLazyColumn(
+    palette: AppManagementPalette,
+    modifier: Modifier = Modifier,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues =
+        androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+    content: LazyListScope.() -> Unit
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.settings.page)
+            .windowInsetsPadding(WindowInsets.navigationBars),
+        contentPadding = contentPadding,
+        content = content
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun AppManagementCard(
+    palette: AppManagementPalette,
+    modifier: Modifier = Modifier,
+    insidePadding: androidx.compose.foundation.layout.PaddingValues =
+        androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val context = LocalContext.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val panelRadiusPx = palette.settings.panelRadiusPx
+    val panelImage = remember(context, panelRadiusPx) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    }
+    val clickableModifier = when {
+        onClick != null && onLongClick != null -> Modifier.combinedClickable(
+            enabled = enabled,
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+        onClick != null -> Modifier.clickable(
+            enabled = enabled,
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick
+        )
+        else -> Modifier
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .appSettingPanelBackground(
+                normalColor = if (pressed) palette.settings.rowPressed else palette.settings.row,
+                panelImage = panelImage,
+                borderColor = palette.settings.border,
+                radiusPx = panelRadiusPx
+            )
+            .then(clickableModifier)
+            .padding(insidePadding),
+        content = content
+    )
+}
+
+@Composable
+fun AppManagementListRow(
+    title: String,
+    palette: AppManagementPalette,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    selected: Boolean = false,
+    selectionVisible: Boolean = true,
+    animatedSelection: Boolean = false,
+    onToggleSelection: (() -> Unit)? = null,
+    switchChecked: Boolean? = null,
+    onSwitchChange: ((Boolean) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
+    onMore: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    moreIndicatorColor: Color? = null,
+    headerContent: (@Composable ColumnScope.() -> Unit)? = null,
+    trailingBeforeSwitch: (@Composable RowScope.() -> Unit)? = null
+) {
+    AppManagementCard(
+        palette = palette,
+        modifier = modifier.fillMaxWidth(),
+        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        onClick = onClick,
+        onLongClick = onLongClick
+    ) {
+        headerContent?.invoke(this)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AppManagementSelectionSlot(
+                visible = selectionVisible && onToggleSelection != null,
+                animated = animatedSelection,
+                selected = selected,
+                palette = palette,
+                onToggleSelection = onToggleSelection
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = palette.settings.primaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = palette.settings.bodyFontFamily,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                subtitle?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        color = palette.settings.secondaryText,
+                        fontSize = 12.sp,
+                        fontFamily = palette.settings.bodyFontFamily,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            trailingBeforeSwitch?.invoke(this)
+            if (switchChecked != null && onSwitchChange != null) {
+                LegadoMiuixSwitch(
+                    checked = switchChecked,
+                    onCheckedChange = onSwitchChange,
+                    palette = palette.miuix
+                )
+            }
+            onEdit?.let {
+                AppManagementIconAction(
+                    iconRes = R.drawable.ic_edit,
+                    contentDescription = stringResource(R.string.edit),
+                    tint = palette.settings.primaryText,
+                    onClick = it
+                )
+            }
+            onMore?.let {
+                Box(
+                    modifier = Modifier.size(36.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AppManagementIconAction(
+                        iconRes = R.drawable.ic_more_vert,
+                        contentDescription = stringResource(R.string.more_menu),
+                        tint = palette.settings.primaryText,
+                        onClick = it
+                    )
+                    moreIndicatorColor?.let { color ->
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                        )
+                    }
+                }
+            }
+            onDelete?.let {
+                AppManagementIconAction(
+                    iconRes = R.drawable.ic_outline_delete,
+                    contentDescription = stringResource(R.string.delete),
+                    tint = palette.settings.danger,
+                    onClick = it
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppManagementSelectionSlot(
+    visible: Boolean,
+    animated: Boolean,
+    selected: Boolean,
+    palette: AppManagementPalette,
+    onToggleSelection: (() -> Unit)?
+) {
+    if (animated) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn() + expandHorizontally(expandFrom = Alignment.Start),
+            exit = fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.Start)
+        ) {
+            AppManagementCheckbox(
+                selected = selected,
+                palette = palette,
+                onToggleSelection = onToggleSelection
+            )
+        }
+    } else if (visible) {
+        AppManagementCheckbox(
+            selected = selected,
+            palette = palette,
+            onToggleSelection = onToggleSelection
+        )
+    }
+}
+
+@Composable
+private fun AppManagementCheckbox(
+    selected: Boolean,
+    palette: AppManagementPalette,
+    onToggleSelection: (() -> Unit)?
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(
+            checked = selected,
+            onCheckedChange = { onToggleSelection?.invoke() },
+            colors = CheckboxDefaults.colors(
+                checkedColor = palette.settings.accent,
+                uncheckedColor = palette.settings.secondaryText,
+                checkmarkColor = palette.settings.onAccent
+            )
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+    }
+}
+
+@Composable
+fun AppManagementIconAction(
+    iconRes: Int,
+    contentDescription: String?,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier.size(36.dp)
+    ) {
+        Icon(
+            painter = painterResource(id = iconRes),
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(20.dp)
         )
     }
 }

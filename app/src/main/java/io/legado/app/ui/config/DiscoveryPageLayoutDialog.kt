@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.preference.Preference
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.dialogs.selector
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 
 object DiscoveryPageLayoutDialog {
 
@@ -19,8 +19,12 @@ object DiscoveryPageLayoutDialog {
 
     fun show(context: Context, onChanged: () -> Unit) {
         val labels = layoutValues.map { label(context, it) }
-        context.selector(context.getString(R.string.discovery_page_layout), labels) { _, index ->
-            val value = layoutValues.getOrNull(index) ?: return@selector
+        context.showComposeChoiceListDialog(
+            title = context.getString(R.string.discovery_page_layout),
+            labels = labels,
+            selectedIndex = layoutValues.indexOf(AppConfig.discoveryPageLayout)
+        ) { index ->
+            val value = layoutValues.getOrNull(index) ?: return@showComposeChoiceListDialog
             AppConfig.discoveryPageLayout = value
             onChanged()
         }

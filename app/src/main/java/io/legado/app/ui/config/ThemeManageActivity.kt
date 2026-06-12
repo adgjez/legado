@@ -110,6 +110,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var pendingPanelBorderAlpha = 100
     private var pendingUiCornerScale = 1f
     private var pendingUiLayoutAlpha = 100
+    private var pendingDialogAlpha = 100
     private var pendingFontScale = 0
     private var pendingUiCornerSearchFollow = false
     private var pendingUiCornerReplyFollow = false
@@ -413,6 +414,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingBlur = current.backgroundImgBlur
         pendingUiCornerScale = current.uiCornerScale ?: AppConfig.uiCornerScale
         pendingUiLayoutAlpha = current.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha
+        pendingDialogAlpha = current.dialogAlpha ?: AppConfig.dialogAlpha
         pendingFontScale = current.fontScale ?: getPrefInt(PreferKey.fontScale, 0)
         pendingUiFontPath = current.uiFontPath ?: AppConfig.uiFontPath
         pendingTitleFontPath = current.titleFontPath ?: AppConfig.titleFontPath
@@ -480,6 +482,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun setupInterfaceRows(binding: DialogThemePackageEditBinding) = binding.run {
         setupCornerScaleRow(rowCornerScale)
         setupLayoutAlphaRow(rowLayoutAlpha)
+        setupDialogAlphaRow(rowDialogAlpha)
         setupPanelBorderColorRow(rowPanelBorderColor)
         setupPanelBorderAlphaRow(rowPanelBorderAlpha)
         setupFontScaleRow(rowFontScale)
@@ -526,6 +529,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             binding.rowPanelBackgroundMode.tvTitle,
             binding.rowCornerScale.tvTitle,
             binding.rowLayoutAlpha.tvTitle,
+            binding.rowDialogAlpha.tvTitle,
             binding.rowPanelBorderColor.tvTitle,
             binding.rowPanelBorderAlpha.tvTitle,
             binding.rowFontScale.tvTitle,
@@ -596,6 +600,28 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 .show {
                     pendingUiLayoutAlpha = it.coerceIn(0, 100)
                     row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingUiLayoutAlpha)
+                }
+        }
+    }
+
+    private fun setupDialogAlphaRow(row: ItemThemePackageOptionBinding) {
+        applyOptionRowBackground(row)
+        row.tvTitle.text = getString(R.string.dialog_alpha)
+        row.viewSwatch.visibility = View.INVISIBLE
+        row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingDialogAlpha)
+        row.root.setOnClickListener {
+            NumberPickerDialog(this)
+                .setTitle(getString(R.string.dialog_alpha))
+                .setMaxValue(100)
+                .setMinValue(0)
+                .setValue(pendingDialogAlpha)
+                .setCustomButton(R.string.btn_default_s) {
+                    pendingDialogAlpha = 100
+                    row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingDialogAlpha)
+                }
+                .show {
+                    pendingDialogAlpha = it.coerceIn(0, 100)
+                    row.tvValue.text = getString(R.string.ui_layout_alpha_value, pendingDialogAlpha)
                 }
         }
     }
@@ -896,6 +922,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 panelBorderAlpha = pendingPanelBorderAlpha,
                 uiCornerScale = pendingUiCornerScale,
                 uiLayoutAlpha = pendingUiLayoutAlpha,
+                dialogAlpha = pendingDialogAlpha,
                 uiCornerSearchFollow = pendingUiCornerSearchFollow,
                 uiCornerReplyFollow = pendingUiCornerReplyFollow,
                 fontScale = pendingFontScale,
@@ -1041,6 +1068,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             panelBorderAlpha = getPrefInt(if (isNightTheme) PreferKey.panelBorderAlphaN else PreferKey.panelBorderAlpha, 100),
             uiCornerScale = AppConfig.uiCornerScale,
             uiLayoutAlpha = AppConfig.uiLayoutAlpha,
+            dialogAlpha = AppConfig.dialogAlpha,
             uiCornerSearchFollow = AppConfig.uiCornerSearchFollow,
             uiCornerReplyFollow = AppConfig.uiCornerReplyFollow,
             fontScale = getPrefInt(PreferKey.fontScale, 0),

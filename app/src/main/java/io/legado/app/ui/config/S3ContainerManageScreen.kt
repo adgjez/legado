@@ -26,7 +26,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -37,11 +36,10 @@ import io.legado.app.R
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.cloud.S3ContainerScope
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
 internal fun S3ContainerManageScreen(
@@ -51,16 +49,14 @@ internal fun S3ContainerManageScreen(
     onItemClick: (S3Container) -> Unit,
     onMoreClick: (S3Container) -> Unit
 ) {
-    val context = LocalContext.current
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.settings.bodyFontFamily)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(context.backgroundColor),
-            contentColor = style.primaryText
+            color = palette.settings.page,
+            contentColor = palette.settings.primaryText
         ) {
             Column(
                 modifier = Modifier
@@ -71,7 +67,7 @@ internal fun S3ContainerManageScreen(
                 S3ContainerTopBar(onBack = onBack)
                 Text(
                     text = stringResource(R.string.s3_container_manage_summary),
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier
@@ -82,8 +78,8 @@ internal fun S3ContainerManageScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items(containers, key = { it.id }) { container ->
                         S3ContainerCard(
@@ -96,13 +92,13 @@ internal fun S3ContainerManageScreen(
                 }
                 LegadoMiuixActionButton(
                     text = stringResource(R.string.s3_container_add),
-                    palette = palette,
+                    palette = palette.miuix,
                     onClick = onAdd,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     primary = true,
-                    cornerRadius = style.actionRadius,
+                    cornerRadius = palette.miuix.actionRadius,
                     minHeight = 46.dp
                 )
             }
@@ -112,7 +108,7 @@ internal fun S3ContainerManageScreen(
 
 @Composable
 private fun S3ContainerTopBar(onBack: () -> Unit) {
-    val style = rememberAppDialogStyle()
+    val palette = rememberAppManagementPalette()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -124,9 +120,9 @@ private fun S3ContainerTopBar(onBack: () -> Unit) {
             modifier = Modifier
                 .size(42.dp)
                 .clickable(onClick = onBack),
-            shape = RoundedCornerShape(style.actionRadius),
+            shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
             color = Color.Transparent,
-            contentColor = style.primaryText,
+            contentColor = palette.settings.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -137,17 +133,17 @@ private fun S3ContainerTopBar(onBack: () -> Unit) {
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = null,
-                    tint = style.primaryText,
+                    tint = palette.settings.primaryText,
                     modifier = Modifier.size(22.dp)
                 )
             }
         }
         Text(
             text = stringResource(R.string.s3_container_manage),
-            color = style.primaryText,
+            color = palette.settings.primaryText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = style.titleFontFamily,
+            fontFamily = palette.settings.titleFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -163,8 +159,7 @@ private fun S3ContainerCard(
     onClick: () -> Unit,
     onMore: () -> Unit
 ) {
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
     val displayName = if (isDefault) {
         stringResource(
             R.string.s3_container_default_name,
@@ -193,20 +188,18 @@ private fun S3ContainerCard(
         else stringResource(R.string.s3_container_disabled)
     )
 
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = style.fieldSurface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
+            .fillMaxWidth(),
+        onClick = onClick,
         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = displayName,
-                    color = style.primaryText,
+                    color = palette.settings.primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -215,7 +208,7 @@ private fun S3ContainerCard(
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(
                     text = "${container.bucket}/${container.prefix.trim('/')}",
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -223,7 +216,7 @@ private fun S3ContainerCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = capacityText,
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -231,7 +224,7 @@ private fun S3ContainerCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stateText,
-                    color = if (container.enabled) palette.accent else style.secondaryText,
+                    color = if (container.enabled) palette.settings.accent else palette.settings.secondaryText,
                     fontSize = 12.sp,
                     fontWeight = if (container.enabled) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
@@ -243,9 +236,9 @@ private fun S3ContainerCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clickable(onClick = onMore),
-                shape = RoundedCornerShape(style.actionRadius),
-                color = palette.surfaceVariant,
-                contentColor = style.primaryText,
+                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+                color = palette.miuix.surfaceVariant,
+                contentColor = palette.settings.primaryText,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
@@ -256,7 +249,7 @@ private fun S3ContainerCard(
                     Icon(
                         painter = painterResource(R.drawable.ic_more_vert),
                         contentDescription = stringResource(R.string.more),
-                        tint = style.primaryText,
+                        tint = palette.settings.primaryText,
                         modifier = Modifier.size(21.dp)
                     )
                 }

@@ -33,6 +33,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.ui.widget.compose.AppDialogFrame
+import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
@@ -258,7 +259,7 @@ private fun TxtTocRuleTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    style: io.legado.app.ui.widget.compose.AppDialogStyle,
+    style: AppDialogStyle,
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = 1

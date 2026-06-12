@@ -955,6 +955,7 @@ private fun NumberPickerStepButton(
     palette: LegadoMiuixPalette,
     onClick: () -> Unit
 ) {
+    val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
     LegadoMiuixCard(
         modifier = Modifier
             .width(48.dp)
@@ -962,7 +963,7 @@ private fun NumberPickerStepButton(
             .clickable(enabled = enabled, onClick = onClick),
         color = if (enabled) palette.surfaceVariant else palette.surfaceVariant.copy(alpha = 0.42f),
         contentColor = if (enabled) palette.primaryText else palette.secondaryText.copy(alpha = 0.52f),
-        cornerRadius = 16.dp,
+        cornerRadius = actionRadius,
         insidePadding = PaddingValues(0.dp)
     ) {
         Box(

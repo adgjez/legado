@@ -27,7 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import io.legado.app.R
@@ -88,7 +88,7 @@ class CrashLogsDialog : ComposeDialogFragment() {
         }
     }
 
-    class CrashViewModel(application: android.app.Application) : ViewModel() {
+    class CrashViewModel(application: android.app.Application) : AndroidViewModel(application) {
 
         private val appCtx: android.content.Context = application
 

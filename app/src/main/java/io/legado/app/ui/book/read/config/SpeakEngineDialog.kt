@@ -69,6 +69,8 @@ import io.legado.app.model.ReadBook
 import io.legado.app.ui.association.ImportHttpTtsDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileUtils
@@ -109,17 +111,15 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
 
     private val exportDirResult = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton { requireContext().sendToClip(uri.toString()) }
-            }
+            showComposeTextInputDialog(
+                title = getString(R.string.export_success),
+                hint = getString(R.string.path),
+                initialValue = uri.toString(),
+                message = DirectLinkUpload.getSummary().takeIf { uri.toString().isAbsUrl() },
+                readOnly = true,
+                positiveText = getString(R.string.copy_text),
+                onPositive = { requireContext().sendToClip(uri.toString()) }
+            )
         }
     }
 
@@ -193,10 +193,12 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
     }
 
     override fun deleteHttpTts(httpTTS: HttpTTS) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + httpTTS.name)
-            noButton()
-            yesButton {
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del) + "\n" + httpTTS.name,
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            onPositive = {
                 val appContext = requireContext().applicationContext
                 lifecycleScope.launch(IO) {
                     appDb.httpTTSDao.delete(httpTTS)
@@ -213,7 +215,7 @@ class SpeakEngineDialog : BaseDialogFragment(0), SpeakEngineDialogActions {
                     notifyReadAloudEngineChanged()
                 }
             }
-        }
+        )
     }
 
     private fun notifyReadAloudEngineChanged() {
@@ -362,7 +364,7 @@ private fun SpeakEngineScreen(
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = colors.page,
-        shape = RoundedCornerShape(context.composeActionRadius().coerceAtLeast(18.dp))
+        shape = RoundedCornerShape(context.composePanelRadius())
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -502,7 +504,7 @@ private fun ImportChoiceDialog(
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
             color = colors.page,
-            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(18.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -535,7 +537,7 @@ private fun ImportChoiceRow(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
@@ -559,7 +561,7 @@ private fun EngineGroupRow(
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         color = if (selected) colors.accent.copy(alpha = 0.15f) else colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
@@ -625,7 +627,7 @@ private fun EngineManagementActions(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -654,7 +656,7 @@ private fun CompactEngineAction(
     Surface(
         modifier = modifier.height(34.dp).clickable(onClick = onClick),
         color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -674,7 +676,7 @@ private fun EngineDetailCard(
     Surface(
         modifier = modifier,
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         EngineDetail(group = group, httpTts = httpTts, colors = colors, actions = actions)
@@ -751,7 +753,7 @@ private fun EngineDetail(
                 group.emotions.forEach { emotion ->
                     Surface(
                         color = colors.page,
-                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
                         border = BorderStroke(1.dp, colors.stroke)
                     ) {
                         Text(emotion.emotionName, color = colors.text, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
@@ -773,7 +775,7 @@ private fun EngineDetail(
 private fun SpeakerOptionRow(option: SpeechVoiceOption, colors: SpeakEngineColors) {
     Surface(
         color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Row(
@@ -808,7 +810,7 @@ private fun SpeakerOptionRow(option: SpeechVoiceOption, colors: SpeakEngineColor
 private fun InfoPill(text: String, colors: SpeakEngineColors) {
     Surface(
         color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(10.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Text(text, color = colors.subText, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
@@ -827,7 +829,7 @@ private fun DetailEngineAction(text: String, color: Color, onClick: () -> Unit) 
     Surface(
         modifier = Modifier.height(34.dp).clickable(onClick = onClick),
         color = color.copy(alpha = 0.10f),
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, color.copy(alpha = 0.28f))
     ) {
         Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
@@ -841,7 +843,7 @@ private fun SmallEngineAction(text: String, onClick: () -> Unit, colors: SpeakEn
     Surface(
         modifier = Modifier.height(34.dp).clickable(onClick = onClick),
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Box(modifier = Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {

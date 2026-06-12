@@ -26,7 +26,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,11 +34,9 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerManager
-import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
 internal fun LibraryContainerManageScreen(
@@ -49,16 +46,14 @@ internal fun LibraryContainerManageScreen(
     onItemClick: (LibraryContainerConfig) -> Unit,
     onMoreClick: (LibraryContainerConfig) -> Unit
 ) {
-    val context = LocalContext.current
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.settings.bodyFontFamily)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(context.backgroundColor),
-            contentColor = style.primaryText
+            color = palette.settings.page,
+            contentColor = palette.settings.primaryText
         ) {
             Column(
                 modifier = Modifier
@@ -69,7 +64,7 @@ internal fun LibraryContainerManageScreen(
                 LibraryContainerTopBar(onBack = onBack)
                 Text(
                     text = "书库容器只用于同步阅读章节缓存，不参与备份、主题、气泡或缓存包同步。阅读时会先读取目录索引，只有命中缓存章节才请求正文。",
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier
@@ -80,8 +75,8 @@ internal fun LibraryContainerManageScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     items(containers, key = { it.id }) { item ->
                         LibraryContainerCard(
@@ -94,13 +89,13 @@ internal fun LibraryContainerManageScreen(
                 }
                 LegadoMiuixActionButton(
                     text = "添加书库容器",
-                    palette = palette,
+                    palette = palette.miuix,
                     onClick = onAdd,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     primary = true,
-                    cornerRadius = style.actionRadius,
+                    cornerRadius = palette.miuix.actionRadius,
                     minHeight = 46.dp
                 )
             }
@@ -110,7 +105,7 @@ internal fun LibraryContainerManageScreen(
 
 @Composable
 private fun LibraryContainerTopBar(onBack: () -> Unit) {
-    val style = rememberAppDialogStyle()
+    val palette = rememberAppManagementPalette()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -122,9 +117,9 @@ private fun LibraryContainerTopBar(onBack: () -> Unit) {
             modifier = Modifier
                 .size(42.dp)
                 .clickable(onClick = onBack),
-            shape = RoundedCornerShape(style.actionRadius),
+            shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
             color = Color.Transparent,
-            contentColor = style.primaryText,
+            contentColor = palette.settings.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -135,17 +130,17 @@ private fun LibraryContainerTopBar(onBack: () -> Unit) {
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = null,
-                    tint = style.primaryText,
+                    tint = palette.settings.primaryText,
                     modifier = Modifier.size(22.dp)
                 )
             }
         }
         Text(
             text = "书库容器",
-            color = style.primaryText,
+            color = palette.settings.primaryText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = style.titleFontFamily,
+            fontFamily = palette.settings.titleFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -161,8 +156,7 @@ private fun LibraryContainerCard(
     onClick: () -> Unit,
     onMore: () -> Unit
 ) {
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
     val container = item.container
     val displayName = LibraryContainerManager.displayLabel(item)
     val capacityMb = container.capacityMb.coerceAtLeast(0)
@@ -178,20 +172,18 @@ private fun LibraryContainerCard(
     val lockState = if (item.lockedImported) " · 加密导入" else ""
     val stateText = "状态：${if (container.enabled) "启用" else "禁用"}$lockState · 书源优先 · ${item.sourceUrls.size} 个书源 · $minUpload · $dailyLimit"
 
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = style.fieldSurface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
+            .fillMaxWidth(),
+        onClick = onClick,
         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = displayName,
-                    color = style.primaryText,
+                    color = palette.settings.primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -200,7 +192,7 @@ private fun LibraryContainerCard(
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(
                     text = "${container.bucket}/${container.prefix.trim('/')}",
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -208,7 +200,7 @@ private fun LibraryContainerCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = capacityText,
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -216,7 +208,7 @@ private fun LibraryContainerCard(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stateText,
-                    color = if (container.enabled) palette.accent else style.secondaryText,
+                    color = if (container.enabled) palette.settings.accent else palette.settings.secondaryText,
                     fontSize = 12.sp,
                     fontWeight = if (container.enabled) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
@@ -227,7 +219,7 @@ private fun LibraryContainerCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "✓",
-                    color = palette.accent,
+                    color = palette.settings.accent,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -237,9 +229,9 @@ private fun LibraryContainerCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clickable(onClick = onMore),
-                shape = RoundedCornerShape(style.actionRadius),
-                color = palette.surfaceVariant,
-                contentColor = style.primaryText,
+                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+                color = palette.miuix.surfaceVariant,
+                contentColor = palette.settings.primaryText,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
@@ -250,7 +242,7 @@ private fun LibraryContainerCard(
                     Icon(
                         painter = painterResource(R.drawable.ic_more_vert),
                         contentDescription = "更多",
-                        tint = style.primaryText,
+                        tint = palette.settings.primaryText,
                         modifier = Modifier.size(21.dp)
                     )
                 }

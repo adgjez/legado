@@ -154,6 +154,10 @@
                     layout="@layout/item_theme_package_option" />
 
                 <include
+                    android:id="@+id/row_dialog_alpha"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
                     android:id="@+id/row_panel_border_color"
                     layout="@layout/item_theme_package_option" />
 

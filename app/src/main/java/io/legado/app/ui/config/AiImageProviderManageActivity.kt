@@ -79,6 +79,8 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                 providers = providersState.value,
                 currentProviderId = currentProviderIdState.value,
                 onBack = { finish() },
+                onImportRules = { showImportActions() },
+                onExportRules = { exportAllRules() },
                 onAdd = { showAddSelector() },
                 onOpenProvider = { provider ->
                     openEdit(AiImageProviderEditActivity.newIntent(this, provider.id, provider.type))
@@ -94,9 +96,10 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
     }
 
     private fun reload() {
+        AppConfig.ensureCurrentImageProvider()
         val providers = AppConfig.aiImageProviderList.sortedBy { it.order }
         providersState.value = providers
-        currentProviderIdState.value = AppConfig.aiCurrentImageProviderId.orEmpty()
+        currentProviderIdState.value = AppConfig.aiCurrentImageProvider?.id.orEmpty()
     }
 
     private fun showAddSelector() {

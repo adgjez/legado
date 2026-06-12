@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -28,9 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,14 +43,14 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
-import io.legado.app.ui.widget.compose.LegadoMiuixSlider
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
+import io.legado.app.ui.widget.compose.LegadoResourceIcon
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.ui.widget.compose.toMiuixPalette
-import kotlin.math.roundToInt
 
 private val PanelHorizontalPadding = 12.dp
 
@@ -184,6 +183,7 @@ private fun SettingRow(
     }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
+    val dialogStyle = rememberAppDialogStyle()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -212,7 +212,7 @@ private fun SettingRow(
         when (item) {
             is SettingSwitchSpec -> {
                 Spacer(modifier = Modifier.width(12.dp))
-                val palette = rememberAppDialogStyle().toMiuixPalette()
+                val palette = dialogStyle.toMiuixPalette()
                 LegadoMiuixSwitch(
                     checked = item.checked,
                     onCheckedChange = item.onCheckedChange,
@@ -223,18 +223,29 @@ private fun SettingRow(
 
             is SettingChoiceSpec -> {
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = item.selectedLabel.toString(),
-                    color = if (item.enabled) colors.accent else colors.disabledText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(RoundedCornerShape(dialogStyle.actionRadius))
                         .background(colors.accent.copy(alpha = if (item.enabled) 0.10f else 0.05f))
                         .padding(horizontal = 10.dp, vertical = 5.dp)
-                )
+                ) {
+                    item.selectedOption?.iconName?.let { iconName ->
+                        LegadoResourceIcon(
+                            iconName = iconName,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = item.selectedLabel.toString(),
+                        color = if (item.enabled) colors.accent else colors.disabledText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             is SettingSliderSpec -> Unit
@@ -287,15 +298,8 @@ private fun SettingSliderRow(
     showDivider: Boolean,
     isLast: Boolean
 ) {
-    var sliderValue by remember(item.key, item.value) {
-        mutableFloatStateOf(item.value.toFloat())
-    }
     val palette = rememberAppDialogStyle().toMiuixPalette()
-    fun commit(value: Int) {
-        val nextValue = value.coerceIn(item.valueRange.first, item.valueRange.last)
-        sliderValue = nextValue.toFloat()
-        item.onValueChange(nextValue)
-    }
+    val sliderValue = item.value.coerceIn(item.valueRange)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -318,27 +322,24 @@ private fun SettingSliderRow(
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = sliderValue.toInt().toString(),
+                text = item.valueFormatter(sliderValue),
                 color = if (item.enabled) colors.accent else colors.disabledText,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
-        LegadoMiuixSlider(
+        Spacer(modifier = Modifier.height(6.dp))
+        AppThemedStepperSlider(
             value = sliderValue,
-            onValueChange = {
-                val nextValue = it.roundToInt().coerceIn(item.valueRange.first, item.valueRange.last)
-                if (sliderValue.toInt() != nextValue) {
-                    commit(nextValue)
-                } else {
-                    sliderValue = it
-                }
-            },
+            range = item.valueRange,
+            onValueChange = { item.onValueChange(it.coerceIn(item.valueRange)) },
             palette = palette,
-            valueRange = item.valueRange.first.toFloat()..item.valueRange.last.toFloat(),
-            steps = (item.valueRange.last - item.valueRange.first - 1).coerceAtLeast(0),
             modifier = Modifier.fillMaxWidth(),
-            enabled = item.enabled
+            enabled = item.enabled,
+            step = item.step,
+            onValueChangeFinished = item.onValueChangeFinished
         )
     }
 }

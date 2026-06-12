@@ -20,7 +20,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogReadBgTextBinding
 import io.legado.app.databinding.ItemBgImageBinding
 import io.legado.app.help.DefaultData
@@ -29,8 +28,6 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
@@ -39,6 +36,8 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
@@ -226,26 +225,20 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
     @SuppressLint("InflateParams")
     private fun initEvent() = with(ReadBookConfig.durConfig) {
         binding.ivEdit.setOnClickListener {
-            alert(R.string.style_name) {
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = "name"
-                    editView.setText(ReadBookConfig.durConfig.name)
-                    root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
+            showComposeTextInputDialog(
+                title = getString(R.string.style_name),
+                hint = "name",
+                initialValue = ReadBookConfig.durConfig.name,
+                onPositive = {
+                    binding.tvName.text = it
+                    ReadBookConfig.durConfig.name = it
                 }
-                customView { alertBinding.root }
-                okButton {
-                    alertBinding.editView.text?.toString()?.let {
-                        binding.tvName.text = it
-                        ReadBookConfig.durConfig.name = it
-                    }
-                }
-                cancelButton()
-            }
+            )
         }
         binding.tvRestore.setOnClickListener {
             val defaultConfigs = DefaultData.readConfigs
             val layoutNames = defaultConfigs.map { it.name }
-            context?.selector("选择预设布局", layoutNames) { _, i ->
+            showComposeChoiceListDialog("选择预设布局", layoutNames) { i ->
                 if (i >= 0) {
                     ReadBookConfig.durConfig = defaultConfigs[i].copy()
                     initData()
@@ -399,17 +392,14 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
 
     @SuppressLint("InflateParams")
     private fun importNetConfigAlert() {
-        alert("输入地址") {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater)
-            alertBinding.root.applyUiBodyTypefaceDeep(requireContext().uiTypeface())
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let { url ->
+        showComposeTextInputDialog(
+            title = "输入地址",
+            onPositive = { url ->
+                if (url.isNotBlank()) {
                     importNetConfig(url)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun importNetConfig(url: String) {

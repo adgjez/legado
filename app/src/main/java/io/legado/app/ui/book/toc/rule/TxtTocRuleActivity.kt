@@ -6,6 +6,7 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -46,7 +47,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     override val viewModel by viewModels<TxtTocRuleViewModel>()
     override val binding by viewBinding(ActivityTxtTocRuleBinding::inflate)
 
-    private val rulesState = mutableStateOf<List<TxtTocRule>>(emptyList())
+    private val rulesState = mutableStateOf<List<TxtTocRule>>(emptyList(), neverEqualPolicy())
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private val importTocRuleKey = "tocRuleUrl"
 
@@ -70,7 +71,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
             showComposeConfirmDialog(
                 title = getString(R.string.export_success),
                 message = summary,
-                positiveText = getString(R.string.copy),
+                positiveText = getString(R.string.copy_text),
                 negativeText = getString(R.string.cancel),
                 onPositive = { sendToClip(uriStr) }
             )
@@ -143,6 +144,9 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
 
     private fun onToggleEnable(rule: TxtTocRule) {
         val updated = rule.copy(enable = !rule.enable)
+        rulesState.value = rulesState.value.map {
+            if (it.id == rule.id) updated else it
+        }
         viewModel.update(updated)
     }
 
@@ -272,13 +276,15 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     override fun onMenuItemClick(item: MenuItem): Boolean {
         val selected = rulesState.value.filter { it.id in selectedIds.value }
         when (item.itemId) {
-            R.id.menu_enable_selection -> viewModel.enableSelection(
-                *selected.toTypedArray()
-            )
+            R.id.menu_enable_selection -> {
+                updateSelectedEnabled(enabled = true)
+                viewModel.enableSelection(*selected.toTypedArray())
+            }
 
-            R.id.menu_disable_selection -> viewModel.disableSelection(
-                *selected.toTypedArray()
-            )
+            R.id.menu_disable_selection -> {
+                updateSelectedEnabled(enabled = false)
+                viewModel.disableSelection(*selected.toTypedArray())
+            }
 
             R.id.menu_export_selection -> exportResult.launch {
                 mode = HandleFileContract.EXPORT
@@ -290,6 +296,14 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
             }
         }
         return true
+    }
+
+    private fun updateSelectedEnabled(enabled: Boolean) {
+        val ids = selectedIds.value
+        if (ids.isEmpty()) return
+        rulesState.value = rulesState.value.map { rule ->
+            if (rule.id in ids) rule.copy(enable = enabled) else rule
+        }
     }
 
 }

@@ -35,7 +35,8 @@ data class SettingSwitchSpec(
 data class SettingChoiceOption(
     val value: String,
     val label: CharSequence,
-    val description: CharSequence? = null
+    val description: CharSequence? = null,
+    val iconName: String? = null
 )
 
 data class SettingChoiceSpec(
@@ -49,9 +50,11 @@ data class SettingChoiceSpec(
     override val enabled: Boolean = true,
     override val searchKeys: List<String> = emptyList()
 ) : SettingItemSpec {
+    val selectedOption: SettingChoiceOption?
+        get() = options.firstOrNull { it.value == selectedValue }
+
     val selectedLabel: CharSequence
-        get() = options.firstOrNull { it.value == selectedValue }?.label
-            ?: selectedValue
+        get() = selectedOption?.label ?: selectedValue
 }
 
 data class SettingSliderSpec(
@@ -60,6 +63,9 @@ data class SettingSliderSpec(
     val value: Int,
     val valueRange: IntRange,
     val onValueChange: (Int) -> Unit,
+    val step: Int = 1,
+    val valueFormatter: (Int) -> String = { it.toString() },
+    val onValueChangeFinished: (() -> Unit)? = null,
     override val summary: CharSequence? = null,
     override val visible: Boolean = true,
     override val enabled: Boolean = true,

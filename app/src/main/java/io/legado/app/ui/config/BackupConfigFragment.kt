@@ -13,7 +13,6 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.databinding.DialogWebdavAccountEditBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.lib.cloud.CloudStorageType
@@ -25,8 +24,6 @@ import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupConfig
 import io.legado.app.help.storage.ImportOldData
 import io.legado.app.help.storage.Restore
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.about.AppLogDialog
@@ -39,6 +36,10 @@ import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeMultiChoiceDialog
+import io.legado.app.ui.widget.compose.showComposeTextFormDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.applyTint
@@ -469,39 +470,47 @@ class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
      * 备份忽略设置
      */
     private fun backupIgnore() {
-        val checkedItems = BooleanArray(BackupConfig.ignoreKeys.size) {
-            BackupConfig.ignoreConfig[BackupConfig.ignoreKeys[it]] ?: false
-        }
-        alert(R.string.restore_ignore) {
-            multiChoiceItems(BackupConfig.ignoreTitle, checkedItems) { _, which, isChecked ->
-                BackupConfig.ignoreConfig[BackupConfig.ignoreKeys[which]] = isChecked
+        val checkedIndices = BackupConfig.ignoreKeys.indices
+            .filter { BackupConfig.ignoreConfig[BackupConfig.ignoreKeys[it]] ?: false }
+            .toSet()
+        showComposeMultiChoiceDialog(
+            title = getString(R.string.restore_ignore),
+            labels = BackupConfig.ignoreTitle.toList(),
+            checkedIndices = checkedIndices,
+            negativeText = getString(android.R.string.ok),
+            onItemCheckedChange = { which, isChecked ->
+                BackupConfig.ignoreKeys.getOrNull(which)?.let { key ->
+                    BackupConfig.ignoreConfig[key] = isChecked
+                    BackupConfig.saveIgnoreConfig()
+                }
             }
-            onDismiss {
-                BackupConfig.saveIgnoreConfig()
-            }
-        }
+        )
     }
 
     private fun showWebDavAccountDialog() {
-        val dialogBinding = DialogWebdavAccountEditBinding.inflate(layoutInflater).apply {
-            editUrl.setText(getPrefString(PreferKey.webDavUrl).orEmpty())
-            editAccount.setText(getPrefString(PreferKey.webDavAccount).orEmpty())
-            editPassword.setText(getPrefString(PreferKey.webDavPassword).orEmpty())
-            editPassword.setSelection(editPassword.text.length)
-        }
-        alert(R.string.webdav_account_manage) {
-            customView { dialogBinding.root }
-            okButton {
+        showComposeTextFormDialog(
+            title = getString(R.string.webdav_account_manage),
+            labels = listOf(
+                getString(R.string.web_dav_url),
+                getString(R.string.web_dav_account),
+                getString(R.string.web_dav_pw)
+            ),
+            initialValues = listOf(
+                getPrefString(PreferKey.webDavUrl).orEmpty(),
+                getPrefString(PreferKey.webDavAccount).orEmpty(),
+                getPrefString(PreferKey.webDavPassword).orEmpty()
+            ),
+            passwordFields = setOf(2),
+            onPositive = { values ->
                 appCtx.defaultSharedPreferences.edit {
-                    putString(PreferKey.webDavUrl, dialogBinding.editUrl.text?.toString()?.trim().orEmpty())
-                    putString(PreferKey.webDavAccount, dialogBinding.editAccount.text?.toString()?.trim().orEmpty())
-                    putString(PreferKey.webDavPassword, dialogBinding.editPassword.text?.toString().orEmpty())
+                    putString(PreferKey.webDavUrl, values.getOrNull(0).orEmpty().trim())
+                    putString(PreferKey.webDavAccount, values.getOrNull(1).orEmpty().trim())
+                    putString(PreferKey.webDavPassword, values.getOrNull(2).orEmpty())
                 }
                 refreshSettings()
                 viewModel.upCloudStorageConfig()
             }
-            cancelButton()
-        }
+        )
     }
 
 
@@ -600,28 +609,44 @@ class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
         pendingS3FullBackupPath = backupPath
         val hasWebDav = !getPrefString(PreferKey.webDavAccount).isNullOrBlank()
                 && !getPrefString(PreferKey.webDavPassword).isNullOrBlank()
-        alert(R.string.s3_full_webdav_fallback_title) {
-            setMessage(
-                if (hasWebDav) {
-                    R.string.s3_full_webdav_fallback_message
-                } else {
-                    R.string.s3_full_no_webdav_fallback_message
-                }
-            )
-            if (hasWebDav) {
-                positiveButton(R.string.s3_full_webdav_fallback_upload) {
+        val messageRes = if (hasWebDav) {
+            R.string.s3_full_webdav_fallback_message
+        } else {
+            R.string.s3_full_no_webdav_fallback_message
+        }
+        val neverRemind = {
+            appCtx.defaultSharedPreferences.edit {
+                putBoolean(PreferKey.s3FullWebDavFallbackNeverRemind, true)
+            }
+            retryActiveBackup(uploadCloud = false, uploadWebDavFallback = false)
+        }
+        if (hasWebDav) {
+            showComposeConfirmDialog(
+                title = getString(R.string.s3_full_webdav_fallback_title),
+                message = getString(messageRes),
+                positiveText = getString(R.string.s3_full_webdav_fallback_upload),
+                negativeText = getString(R.string.s3_full_webdav_fallback_ignore),
+                neutralText = getString(R.string.s3_full_webdav_fallback_never),
+                onPositive = {
                     retryActiveBackup(uploadCloud = true, uploadWebDavFallback = true)
-                }
-            }
-            negativeButton(R.string.s3_full_webdav_fallback_ignore) {
-                retryActiveBackup(uploadCloud = false, uploadWebDavFallback = false)
-            }
-            neutralButton(R.string.s3_full_webdav_fallback_never) {
-                appCtx.defaultSharedPreferences.edit {
-                    putBoolean(PreferKey.s3FullWebDavFallbackNeverRemind, true)
-                }
-                retryActiveBackup(uploadCloud = false, uploadWebDavFallback = false)
-            }
+                },
+                onNegative = {
+                    retryActiveBackup(uploadCloud = false, uploadWebDavFallback = false)
+                },
+                onNeutral = neverRemind
+            )
+        } else {
+            showComposeConfirmDialog(
+                title = getString(R.string.s3_full_webdav_fallback_title),
+                message = getString(messageRes),
+                positiveText = getString(R.string.s3_full_webdav_fallback_ignore),
+                neutralText = getString(R.string.s3_full_webdav_fallback_never),
+                showNegative = false,
+                onPositive = {
+                    retryActiveBackup(uploadCloud = false, uploadWebDavFallback = false)
+                },
+                onNeutral = neverRemind
+            )
         }
     }
 
@@ -663,14 +688,13 @@ class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
             if (context == null) {
                 return@onError
             }
-            alert {
-                setTitle(R.string.restore)
-                setMessage("Cloud storage error\n${it.localizedMessage}\nRestore from local backup?")
-                okButton {
+            showComposeConfirmDialog(
+                title = getString(R.string.restore),
+                message = "Cloud storage error\n${it.localizedMessage}\nRestore from local backup?",
+                onPositive = {
                     restoreFromLocal()
                 }
-                cancelButton()
-            }
+            )
         }.onFinally {
             waitDialog.dismiss()
         }
@@ -687,10 +711,10 @@ class BackupConfigFragment : ComposeSettingFragment(), MenuProvider {
         if (names.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
                 withContext(Main) {
-                    context.selector(
+                    context.showComposeChoiceListDialog(
                         title = context.getString(R.string.select_restore_file),
-                        items = names
-                    ) { _, index ->
+                        labels = names
+                    ) { index ->
                         if (index in 0 until names.size) {
                             view?.post {
                                 restoreWebDav(names[index])

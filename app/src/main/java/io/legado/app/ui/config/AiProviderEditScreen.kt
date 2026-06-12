@@ -151,11 +151,12 @@ fun AiProviderConfigTab(
     apiModeLabel: String,
     onApiModeClick: () -> Unit,
     promptCache: Boolean,
-    onPromptCacheChange: (Boolean) -> Unit
+    onPromptCacheChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val style = rememberAppDialogStyle()
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp)

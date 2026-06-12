@@ -532,7 +532,7 @@ private fun SpeakerGroupCard(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -591,7 +591,7 @@ private fun SpeakerItemRow(
 ) {
     Surface(
         color = colors.page,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         val blocked = SpeechVoiceGroupRepository.isBlockedItem(item)
@@ -632,7 +632,7 @@ private fun GroupEditorDialog(
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
             color = colors.page,
-            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(20.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -687,7 +687,7 @@ private fun SpeakerMultiSelectDialog(
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 560.dp),
             color = colors.page,
-            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(22.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -832,7 +832,7 @@ private fun SpeakerSourceGroupHeaderRow(
         onClick = onExpandToggle,
         modifier = Modifier.fillMaxWidth(),
         color = colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, colors.stroke)
     ) {
         Row(
@@ -892,7 +892,7 @@ private fun SpeakerOptionSelectRow(
             selected -> colors.accent.copy(alpha = 0.14f)
             else -> colors.card
         },
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
         Row(
@@ -929,7 +929,7 @@ private fun ConfirmDeleteGroupDialog(
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 380.dp),
             color = colors.page,
-            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(20.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -954,7 +954,7 @@ private fun EngineChip(
     Surface(
         onClick = onClick,
         color = if (selected) colors.accent.copy(alpha = 0.14f) else colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
         Text(
@@ -979,7 +979,7 @@ private fun SpeakerActionButton(
         onClick = onClick,
         modifier = modifier.height(42.dp),
         color = colors.accent,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp))
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius())
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(text, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -1000,7 +1000,7 @@ private fun SpeakerSubActionButton(
         onClick = onClick,
         modifier = modifier.height(42.dp),
         color = if (danger) colors.danger.copy(alpha = 0.10f) else colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (danger) colors.danger.copy(alpha = 0.28f) else colors.stroke)
     ) {
         Box(contentAlignment = Alignment.Center) {

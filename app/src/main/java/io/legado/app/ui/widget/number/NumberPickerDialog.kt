@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +46,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
@@ -154,6 +157,10 @@ private fun NumberPickerContent(
     var inputText by remember(currentValue, isDecimalMode) {
         mutableStateOf(formatPickerValue(currentValue, isDecimalMode))
     }
+    val usePercentSlider = !isDecimalMode &&
+        safeMax == 100 &&
+        safeMin in 0..100 &&
+        safeMin < safeMax
     fun inputValueOrCurrent(): Int {
         return parsePickerValue(inputText, isDecimalMode)
             ?.coerceIn(safeMin, safeMax)
@@ -190,61 +197,94 @@ private fun NumberPickerContent(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StepButton(
-                    text = "-",
-                    enabled = inputValueOrCurrent() > safeMin,
-                    palette = palette,
-                    onClick = {
-                        currentValue = (inputValueOrCurrent() - 1).coerceAtLeast(safeMin)
-                        inputText = formatPickerValue(currentValue, isDecimalMode)
-                    }
-                )
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = when {
-                            safeMin < 0 -> KeyboardType.Text
-                            isDecimalMode -> KeyboardType.Decimal
-                            else -> KeyboardType.Number
-                        }
-                    ),
-                    textStyle = LocalTextStyle.current.copy(
+            if (usePercentSlider) {
+                LegadoMiuixCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = style.fieldSurface,
+                    contentColor = style.primaryText,
+                    cornerRadius = style.actionRadius,
+                    insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    Text(
+                        text = "${currentValue.coerceIn(safeMin, safeMax)}%",
                         color = style.primaryText,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth(),
                         textAlign = TextAlign.Center
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = style.primaryText,
-                        unfocusedTextColor = style.primaryText,
-                        focusedContainerColor = style.fieldSurface,
-                        unfocusedContainerColor = style.fieldSurface,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = style.accent
                     )
-                )
-                StepButton(
-                    text = "+",
-                    enabled = inputValueOrCurrent() < safeMax,
-                    palette = palette,
-                    onClick = {
-                        currentValue = (inputValueOrCurrent() + 1).coerceAtMost(safeMax)
-                        inputText = formatPickerValue(currentValue, isDecimalMode)
-                    }
-                )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AppThemedStepperSlider(
+                        value = currentValue.coerceIn(safeMin, safeMax),
+                        range = safeMin..safeMax,
+                        onValueChange = {
+                            currentValue = it.coerceIn(safeMin, safeMax)
+                            inputText = formatPickerValue(currentValue, isDecimalMode)
+                        },
+                        palette = palette
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    StepButton(
+                        text = "-",
+                        enabled = inputValueOrCurrent() > safeMin,
+                        palette = palette,
+                        onClick = {
+                            currentValue = (inputValueOrCurrent() - 1).coerceAtLeast(safeMin)
+                            inputText = formatPickerValue(currentValue, isDecimalMode)
+                        }
+                    )
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = when {
+                                safeMin < 0 -> KeyboardType.Text
+                                isDecimalMode -> KeyboardType.Decimal
+                                else -> KeyboardType.Number
+                            }
+                        ),
+                        textStyle = LocalTextStyle.current.copy(
+                            color = style.primaryText,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = style.primaryText,
+                            unfocusedTextColor = style.primaryText,
+                            focusedContainerColor = style.fieldSurface,
+                            unfocusedContainerColor = style.fieldSurface,
+                            focusedBorderColor = style.accent.copy(alpha = 0.55f),
+                            unfocusedBorderColor = style.stroke,
+                            cursorColor = style.accent
+                        )
+                    )
+                    StepButton(
+                        text = "+",
+                        enabled = inputValueOrCurrent() < safeMax,
+                        palette = palette,
+                        onClick = {
+                            currentValue = (inputValueOrCurrent() + 1).coerceAtMost(safeMax)
+                            inputText = formatPickerValue(currentValue, isDecimalMode)
+                        }
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "${formatPickerValue(safeMin, isDecimalMode)} - ${formatPickerValue(safeMax, isDecimalMode)}",
+                text = if (usePercentSlider) {
+                    "$safeMin% - $safeMax%"
+                } else {
+                    "${formatPickerValue(safeMin, isDecimalMode)} - ${formatPickerValue(safeMax, isDecimalMode)}"
+                },
                 color = style.secondaryText,
                 fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth(),
@@ -300,6 +340,7 @@ private fun StepButton(
     palette: LegadoMiuixPalette,
     onClick: () -> Unit
 ) {
+    val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
     LegadoMiuixCard(
         modifier = Modifier
             .width(48.dp)
@@ -307,7 +348,7 @@ private fun StepButton(
             .clickable(enabled = enabled, onClick = onClick),
         color = if (enabled) palette.surfaceVariant else palette.surfaceVariant.copy(alpha = 0.42f),
         contentColor = if (enabled) palette.primaryText else palette.secondaryText.copy(alpha = 0.52f),
-        cornerRadius = 16.dp,
+        cornerRadius = actionRadius,
         insidePadding = PaddingValues(0.dp)
     ) {
         Box(

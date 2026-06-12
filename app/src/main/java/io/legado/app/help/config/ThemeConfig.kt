@@ -299,6 +299,9 @@ object ThemeConfig {
             config.uiLayoutAlpha?.let {
                 context.putPrefInt(PreferKey.uiLayoutAlpha, it.coerceIn(0, 100))
             }
+            config.dialogAlpha?.let {
+                context.putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
+            }
             config.uiCornerSearchFollow?.let {
                 context.putPrefBoolean(PreferKey.uiCornerSearchFollow, it)
             }
@@ -466,6 +469,7 @@ object ThemeConfig {
                 panelBorderAlpha = panelBorderAlpha,
                 uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
                 uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                dialogAlpha = stored?.dialogAlpha ?: AppConfig.dialogAlpha,
                 uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
@@ -530,6 +534,7 @@ object ThemeConfig {
                 panelBorderAlpha = panelBorderAlpha,
                 uiCornerScale = stored?.uiCornerScale ?: AppConfig.uiCornerScale,
                 uiLayoutAlpha = stored?.uiLayoutAlpha ?: AppConfig.uiLayoutAlpha,
+                dialogAlpha = stored?.dialogAlpha ?: AppConfig.dialogAlpha,
                 uiCornerSearchFollow = stored?.uiCornerSearchFollow ?: AppConfig.uiCornerSearchFollow,
                 uiCornerReplyFollow = stored?.uiCornerReplyFollow ?: AppConfig.uiCornerReplyFollow,
                 fontScale = stored?.fontScale ?: appCtx.getPrefInt(PreferKey.fontScale, 0),
@@ -564,6 +569,7 @@ object ThemeConfig {
             },
             uiCornerScale = config.uiCornerScale ?: stored.uiCornerScale,
             uiLayoutAlpha = config.uiLayoutAlpha ?: stored.uiLayoutAlpha,
+            dialogAlpha = config.dialogAlpha ?: stored.dialogAlpha,
             uiCornerSearchFollow = config.uiCornerSearchFollow ?: stored.uiCornerSearchFollow,
             uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow,
             fontScale = config.fontScale ?: stored.fontScale,
@@ -723,6 +729,7 @@ object ThemeConfig {
         var panelBorderAlpha: Int? = null,
         var uiCornerScale: Float? = null,
         var uiLayoutAlpha: Int? = null,
+        var dialogAlpha: Int? = null,
         var uiCornerSearchFollow: Boolean? = null,
         var uiCornerReplyFollow: Boolean? = null,
         var fontScale: Int? = null,
@@ -753,6 +760,7 @@ object ThemeConfig {
                         && other.panelBorderAlpha == panelBorderAlpha
                         && other.uiCornerScale == uiCornerScale
                         && other.uiLayoutAlpha == uiLayoutAlpha
+                        && other.dialogAlpha == dialogAlpha
                         && other.uiCornerSearchFollow == uiCornerSearchFollow
                         && other.uiCornerReplyFollow == uiCornerReplyFollow
                         && other.fontScale == fontScale
@@ -779,6 +787,7 @@ object ThemeConfig {
             "panelBorderAlpha" to panelBorderAlpha,
             "uiCornerScale" to uiCornerScale,
             "uiLayoutAlpha" to uiLayoutAlpha,
+            "dialogAlpha" to dialogAlpha,
             "uiCornerSearchFollow" to uiCornerSearchFollow,
             "uiCornerReplyFollow" to uiCornerReplyFollow,
             "fontScale" to fontScale,

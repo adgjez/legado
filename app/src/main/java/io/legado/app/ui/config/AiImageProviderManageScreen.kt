@@ -26,7 +26,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,32 +33,31 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
 internal fun AiImageProviderManageScreen(
     providers: List<AiImageProviderConfig>,
     currentProviderId: String,
     onBack: () -> Unit,
+    onImportRules: () -> Unit,
+    onExportRules: () -> Unit,
     onAdd: () -> Unit,
     onOpenProvider: (AiImageProviderConfig) -> Unit,
     onShowActions: (AiImageProviderConfig) -> Unit
 ) {
-    val context = LocalContext.current
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.settings.bodyFontFamily)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = Color(context.backgroundColor),
-            contentColor = style.primaryText
+            color = palette.settings.page,
+            contentColor = palette.settings.primaryText
         ) {
             Column(
                 modifier = Modifier
@@ -67,10 +65,14 @@ internal fun AiImageProviderManageScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                AiImageProviderTopBar(onBack = onBack)
+                AiImageProviderTopBar(
+                    onBack = onBack,
+                    onImportRules = onImportRules,
+                    onExportRules = onExportRules
+                )
                 Text(
                     text = stringResource(R.string.ai_image_provider_manage_summary),
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     modifier = Modifier
@@ -81,8 +83,8 @@ internal fun AiImageProviderManageScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     if (providers.isEmpty()) {
                         item {
@@ -101,13 +103,13 @@ internal fun AiImageProviderManageScreen(
                 }
                 LegadoMiuixActionButton(
                     text = stringResource(R.string.add),
-                    palette = palette,
+                    palette = palette.miuix,
                     onClick = onAdd,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     primary = true,
-                    cornerRadius = style.actionRadius,
+                    cornerRadius = palette.miuix.actionRadius,
                     minHeight = 46.dp
                 )
             }
@@ -116,8 +118,12 @@ internal fun AiImageProviderManageScreen(
 }
 
 @Composable
-private fun AiImageProviderTopBar(onBack: () -> Unit) {
-    val style = rememberAppDialogStyle()
+private fun AiImageProviderTopBar(
+    onBack: () -> Unit,
+    onImportRules: () -> Unit,
+    onExportRules: () -> Unit
+) {
+    val palette = rememberAppManagementPalette()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -129,9 +135,9 @@ private fun AiImageProviderTopBar(onBack: () -> Unit) {
             modifier = Modifier
                 .size(42.dp)
                 .clickable(onClick = onBack),
-            shape = RoundedCornerShape(style.actionRadius),
+            shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
             color = Color.Transparent,
-            contentColor = style.primaryText,
+            contentColor = palette.settings.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -142,22 +148,65 @@ private fun AiImageProviderTopBar(onBack: () -> Unit) {
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = null,
-                    tint = style.primaryText,
+                    tint = palette.settings.primaryText,
                     modifier = Modifier.size(22.dp)
                 )
             }
         }
         Text(
             text = stringResource(R.string.ai_image_provider_manage),
-            color = style.primaryText,
+            color = palette.settings.primaryText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = style.titleFontFamily,
+            fontFamily = palette.settings.titleFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        Spacer(modifier = Modifier.width(42.dp))
+        AiImageProviderTopBarButton(
+            iconRes = R.drawable.ic_import,
+            contentDescription = stringResource(R.string.import_str),
+            palette = palette,
+            onClick = onImportRules
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        AiImageProviderTopBarButton(
+            iconRes = R.drawable.ic_export,
+            contentDescription = stringResource(R.string.export_str),
+            palette = palette,
+            onClick = onExportRules
+        )
+    }
+}
+
+@Composable
+private fun AiImageProviderTopBarButton(
+    iconRes: Int,
+    contentDescription: String,
+    palette: AppManagementPalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .size(42.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+        color = Color.Transparent,
+        contentColor = palette.settings.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = contentDescription,
+                tint = palette.settings.primaryText,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
@@ -168,15 +217,12 @@ private fun AiImageProviderCard(
     onClick: () -> Unit,
     onMore: () -> Unit
 ) {
-    val style = rememberAppDialogStyle()
-    val palette = style.toMiuixPalette()
-    LegadoMiuixCard(
+    val palette = rememberAppManagementPalette()
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = style.fieldSurface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
+            .fillMaxWidth(),
+        onClick = onClick,
         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,7 +230,7 @@ private fun AiImageProviderCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = provider.displayName(),
-                        color = style.primaryText,
+                        color = palette.settings.primaryText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -192,7 +238,7 @@ private fun AiImageProviderCard(
                         modifier = Modifier.weight(1f)
                     )
                     if (current) {
-                        AiImageProviderCurrentBadge()
+                        AiImageProviderCurrentBadge(palette)
                     }
                 }
                 Spacer(modifier = Modifier.height(5.dp))
@@ -202,7 +248,7 @@ private fun AiImageProviderCard(
                     } else {
                         stringResource(R.string.ai_image_provider_js)
                     },
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.MiddleEllipsis
@@ -212,7 +258,7 @@ private fun AiImageProviderCard(
                     text = provider.model.ifBlank {
                         if (provider.type == AiImageProviderConfig.TYPE_OPENAI) "gpt-image-1" else "JS"
                     },
-                    color = style.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -223,7 +269,7 @@ private fun AiImageProviderCard(
                         if (current) append(stringResource(R.string.ai_current_provider)).append(" · ")
                         append(stringResource(if (provider.enabled) R.string.enabled else R.string.disabled))
                     },
-                    color = if (current) palette.accent else style.secondaryText,
+                    color = if (current) palette.settings.accent else palette.settings.secondaryText,
                     fontSize = 12.sp,
                     fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
@@ -235,9 +281,9 @@ private fun AiImageProviderCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clickable(onClick = onMore),
-                shape = RoundedCornerShape(style.actionRadius),
-                color = palette.surfaceVariant,
-                contentColor = style.primaryText,
+                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+                color = palette.miuix.surfaceVariant,
+                contentColor = palette.settings.primaryText,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
@@ -248,7 +294,7 @@ private fun AiImageProviderCard(
                     Icon(
                         painter = painterResource(R.drawable.ic_more_vert),
                         contentDescription = stringResource(R.string.more),
-                        tint = style.primaryText,
+                        tint = palette.settings.primaryText,
                         modifier = Modifier.size(21.dp)
                     )
                 }
@@ -258,18 +304,17 @@ private fun AiImageProviderCard(
 }
 
 @Composable
-private fun AiImageProviderCurrentBadge() {
-    val style = rememberAppDialogStyle()
+private fun AiImageProviderCurrentBadge(palette: AppManagementPalette) {
     Surface(
-        shape = RoundedCornerShape(style.actionRadius),
-        color = style.accent.copy(alpha = 0.14f),
-        contentColor = style.accent,
+        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+        color = palette.settings.accent.copy(alpha = 0.14f),
+        contentColor = palette.settings.accent,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
         Text(
             text = stringResource(R.string.ai_current_provider),
-            color = style.accent,
+            color = palette.settings.accent,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -280,24 +325,22 @@ private fun AiImageProviderCurrentBadge() {
 
 @Composable
 private fun AiImageProviderEmptyCard() {
-    val style = rememberAppDialogStyle()
-    LegadoMiuixCard(
+    val palette = rememberAppManagementPalette()
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier.fillMaxWidth(),
-        color = style.fieldSurface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 18.dp)
     ) {
         Text(
             text = stringResource(R.string.ai_image_provider_manage),
-            color = style.primaryText,
+            color = palette.settings.primaryText,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = stringResource(R.string.ai_image_provider_manage_summary),
-            color = style.secondaryText,
+            color = palette.settings.secondaryText,
             fontSize = 13.sp,
             lineHeight = 18.sp
         )

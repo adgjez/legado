@@ -2780,7 +2780,7 @@ private fun RoleDialogAction(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = colors.panel.copy(alpha = 0.7f),
         border = BorderStroke(1.dp, colors.panelBorder)
     ) {
@@ -3005,7 +3005,7 @@ private fun RolePreviewList(
     if (preview.isEmpty()) {
         Surface(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
             color = colors.panel.copy(alpha = 0.55f),
             border = BorderStroke(1.dp, colors.panelBorder)
         ) {
@@ -3068,7 +3068,7 @@ private fun RolePreviewParagraphGroup(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(16.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = if (current) colors.accent.copy(alpha = 0.12f) else colors.panel.copy(alpha = 0.52f),
         border = BorderStroke(1.dp, colors.panelBorder)
     ) {
@@ -3105,7 +3105,7 @@ private fun RolePreviewSegmentRow(
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = colors.panelStrong.copy(alpha = 0.58f),
         border = BorderStroke(1.dp, colors.panelBorder)
     ) {
@@ -3290,7 +3290,7 @@ private fun RoleSegmentEditDialog(
                                 onSave(roleType, selectedCharacterId, selectedCharacterName)
                             }
                         },
-                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+                        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
                         color = if (canSave) colors.accent.copy(alpha = 0.20f) else colors.panel.copy(alpha = 0.55f),
                         border = BorderStroke(1.dp, if (canSave) colors.accent.copy(alpha = 0.35f) else colors.panelBorder)
                     ) {
@@ -3317,7 +3317,7 @@ private fun RoleEditChoice(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = if (selected) colors.accent.copy(alpha = 0.18f) else colors.panel.copy(alpha = 0.58f),
         border = BorderStroke(1.dp, if (selected) colors.accent.copy(alpha = 0.35f) else colors.panelBorder)
     ) {
@@ -3346,7 +3346,7 @@ private fun RoleCharacterChoiceRow(
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = if (selected) colors.accent.copy(alpha = 0.16f) else colors.panel.copy(alpha = 0.52f),
         border = BorderStroke(1.dp, if (selected) colors.accent.copy(alpha = 0.36f) else colors.panelBorder)
     ) {
@@ -3399,7 +3399,7 @@ private fun RoleTypeChip(
         else -> colors.secondaryText
     }
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         color = color.copy(alpha = 0.14f),
         border = BorderStroke(1.dp, Color.Transparent)
     ) {

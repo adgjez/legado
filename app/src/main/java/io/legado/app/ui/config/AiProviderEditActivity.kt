@@ -152,7 +152,8 @@ class AiProviderEditActivity : BaseActivity<ViewBinding>() {
                     ),
                     onApiModeClick = { showApiModeSelector() },
                     promptCache = promptCache,
-                    onPromptCacheChange = { promptCache = it }
+                    onPromptCacheChange = { promptCache = it },
+                    modifier = Modifier.weight(1f)
                 )
             }
             // Save button (config tab only)

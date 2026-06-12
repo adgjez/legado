@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.core.view.doOnLayout
 import androidx.recyclerview.widget.DiffUtil
@@ -15,6 +16,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ItemBookSourceBinding
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.model.Debug
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.ModernActionPopup
@@ -97,6 +99,19 @@ class BookSourceAdapter(
     ) {
         binding.run {
             if (payloads.isEmpty()) {
+                val cardColor = ContextCompat.getColor(context, R.color.background_card)
+                root.background = UiCorner.panelRounded(
+                    context,
+                    cardColor,
+                    UiCorner.panelRadius(context)
+                )
+                val iconBackground = UiCorner.actionSelector(
+                    UiCorner.surfaceColor(cardColor),
+                    UiCorner.surfaceColor(cardColor, pressed = true),
+                    UiCorner.actionRadius(context)
+                )
+                ivEdit.background = iconBackground.constantState?.newDrawable() ?: iconBackground
+                ivMenuMore.background = iconBackground.constantState?.newDrawable() ?: iconBackground
                 cbBookSource.text = item.getDisPlayNameGroup()
                 swtEnabled.isChecked = item.enabled
                 cbBookSource.isChecked = selected.contains(item)

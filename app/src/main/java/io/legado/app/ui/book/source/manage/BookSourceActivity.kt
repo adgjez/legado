@@ -5,17 +5,20 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
-import androidx.core.os.bundleOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.ItemTouchHelper
 import com.google.android.material.snackbar.Snackbar
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
@@ -29,7 +32,6 @@ import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -40,11 +42,11 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.config.CheckSourceConfig
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
-import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.ui.widget.recycler.VerticalDivider
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.applyTint
@@ -56,7 +58,6 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
@@ -81,14 +82,11 @@ import kotlinx.coroutines.launch
  */
 class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceViewModel>(),
     MenuItem.OnMenuItemClickListener,
-    BookSourceAdapter.CallBack,
     SelectActionBar.CallBack,
     SearchView.OnQueryTextListener {
     override val binding by viewBinding(ActivityBookSourceBinding::inflate)
     override val viewModel by viewModels<BookSourceViewModel>()
     private val importRecordKey = "bookSourceRecordKey"
-    private val adapter by lazy { BookSourceAdapter(this, this, binding.recyclerView) }
-    private val itemTouchCallback by lazy { ItemTouchCallback(adapter) }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
@@ -96,13 +94,21 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private var checkMessageRefreshJob: Job? = null
     private val groups = linkedSetOf<String>()
     private var groupMenu: SubMenu? = null
-    override var sort = BookSourceSort.Default
+    private var sort = BookSourceSort.Default
         private set
-    override var sortAscending = true
+    private var sortAscending = true
         private set
     private var snackBar: Snackbar? = null
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
+    private val finalMessageRegex = Regex("成功|失败")
+    private val sourcesState = mutableStateOf<List<BookSourcePart>>(emptyList(), neverEqualPolicy())
+    private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
+    private val isSelectMode = mutableStateOf(false)
+    private val showSourceHostState = mutableStateOf(false)
+    private val sourceHostHeaders = mutableStateOf<Map<String, String?>>(emptyMap())
+    private val debugMessagesState = mutableStateOf<Map<String, String>>(emptyMap())
+    private val isCheckingState = mutableStateOf(Debug.isChecking)
     private val qrResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
         showDialogFragment(ImportBookSourceDialog(it))
@@ -144,7 +150,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initRecyclerView()
+        initComposeContent()
         initSearchView()
         upBookSource()
         initLiveDataGroup()
@@ -153,6 +159,35 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         if (!LocalConfig.bookSourcesHelpVersionIsLast) {
             showHelp("SourceMBookHelp")
         }
+    }
+
+    private fun initComposeContent() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                BookSourceScreen(
+                    sources = sourcesState.value,
+                    selectedUrls = selectedUrls.value,
+                    isSelectMode = isSelectMode.value,
+                    showSourceHost = showSourceHostState.value,
+                    sourceHostHeaders = sourceHostHeaders.value,
+                    debugMessages = debugMessagesState.value,
+                    isChecking = isCheckingState.value,
+                    onToggleSelect = ::toggleSourceSelection,
+                    onToggleEnabled = ::toggleSourceEnabled,
+                    onEdit = ::edit,
+                    onShowMenu = ::showSourceMenu
+                )
+            }
+        }
+        container.addView(cv, index)
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -256,7 +291,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_group_sources_by_domain -> {
                 item.isChecked = !item.isChecked
                 groupSourcesByDomain = item.isChecked
-                adapter.showSourceHost = item.isChecked
+                showSourceHostState.value = item.isChecked
+                sourceHostHeaders.value = buildSourceHostHeaders(sourcesState.value)
                 upBookSource(searchView.query?.toString())
             }
 
@@ -266,20 +302,6 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             searchView.setQuery("group:${item.title}", true)
         }
         return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.addItemDecoration(VerticalDivider(this))
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.recycledViewPool.setMaxRecycledViews(0, 15)
-        // When this page is opened, it is in selection mode
-        val dragSelectTouchHelper =
-            DragSelectTouchHelper(adapter.dragSelectCallback).setSlideArea(16, 50)
-        dragSelectTouchHelper.attachToRecyclerView(binding.recyclerView)
-        dragSelectTouchHelper.activeSlideSelect()
-        // Note: need judge selection first, so add ItemTouchHelper after it.
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
     }
 
     private fun initSearchView() {
@@ -383,9 +405,13 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             ).catch {
                 AppLog.put("书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
-                adapter.setItems(data, adapter.diffItemCallback, !Debug.isChecking)
-                itemTouchCallback.isCanDrag =
-                    sort == BookSourceSort.Default && !groupSourcesByDomain
+                sourcesState.value = data
+                val currentUrls = data.mapTo(mutableSetOf()) { it.bookSourceUrl }
+                selectedUrls.value = selectedUrls.value.filter { it in currentUrls }.toSet()
+                isSelectMode.value = selectedUrls.value.isNotEmpty()
+                sourceHostHeaders.value = buildSourceHostHeaders(data)
+                refreshDebugMessages()
+                upCountView()
                 delay(500)
             }
         }
@@ -393,11 +419,9 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun onResume() {
         super.onResume()
-        adapter.upResumed(true)
     }
 
     override fun onPause() {
-        adapter.upResumed(false)
         super.onPause()
     }
 
@@ -426,21 +450,35 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            adapter.selectAll()
+            selectedUrls.value = sourcesState.value.map { it.bookSourceUrl }.toSet()
         } else {
-            adapter.revertSelection()
+            selectedUrls.value = emptySet()
         }
+        isSelectMode.value = selectedUrls.value.isNotEmpty()
+        upCountView()
     }
 
     override fun revertSelection() {
-        adapter.revertSelection()
+        val allUrls = sourcesState.value.map { it.bookSourceUrl }.toSet()
+        selectedUrls.value = allUrls - selectedUrls.value
+        isSelectMode.value = selectedUrls.value.isNotEmpty()
+        upCountView()
     }
 
     override fun onClickSelectBarMainAction() {
-        alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
-            yesButton { viewModel.del(adapter.selection) }
-            noButton()
-        }
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del),
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            dangerPositive = true,
+            onPositive = {
+                viewModel.del(getSelectedSources())
+                selectedUrls.value = emptySet()
+                isSelectMode.value = false
+                upCountView()
+            }
+        )
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
@@ -466,17 +504,34 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_enable_selection -> viewModel.enableSelection(adapter.selection)
-            R.id.menu_disable_selection -> viewModel.disableSelection(adapter.selection)
-            R.id.menu_enable_explore -> viewModel.enableSelectExplore(adapter.selection)
-            R.id.menu_disable_explore -> viewModel.disableSelectExplore(adapter.selection)
+            R.id.menu_enable_selection -> {
+                val selection = getSelectedSources()
+                updateSelectedEnabled(true)
+                viewModel.enableSelection(selection)
+            }
+            R.id.menu_disable_selection -> {
+                val selection = getSelectedSources()
+                updateSelectedEnabled(false)
+                viewModel.disableSelection(selection)
+            }
+            R.id.menu_enable_explore -> {
+                val selection = getSelectedSources()
+                updateSelectedExplore(true)
+                viewModel.enableSelectExplore(selection)
+            }
+            R.id.menu_disable_explore -> {
+                val selection = getSelectedSources()
+                updateSelectedExplore(false)
+                viewModel.disableSelectExplore(selection)
+            }
             R.id.menu_check_source -> checkSource()
-            R.id.menu_top_sel -> viewModel.topSource(*adapter.selection.toTypedArray())
-            R.id.menu_bottom_sel -> viewModel.bottomSource(*adapter.selection.toTypedArray())
+            R.id.menu_top_sel -> viewModel.topSource(*getSelectedSources().toTypedArray())
+            R.id.menu_bottom_sel -> viewModel.bottomSource(*getSelectedSources().toTypedArray())
             R.id.menu_add_group -> selectionAddToGroups()
             R.id.menu_remove_group -> selectionRemoveFromGroups()
             R.id.menu_export_selection -> viewModel.saveToFile(
-                adapter,
+                getSelectedSources(),
+                sourcesState.value.size,
                 searchView.query?.toString(),
                 sortAscending,
                 sort
@@ -492,7 +547,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             }
 
             R.id.menu_share_source -> viewModel.saveToFile(
-                adapter,
+                getSelectedSources(),
+                sourcesState.value.size,
                 searchView.query?.toString(),
                 sortAscending,
                 sort
@@ -500,7 +556,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 share(file)
             }
 
-            R.id.menu_check_selected_interval -> adapter.checkSelectedInterval()
+            R.id.menu_check_selected_interval -> checkSelectedInterval()
         }
         return true
     }
@@ -520,12 +576,14 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         CheckSource.keyword = it
                     }
                 }
-                val selectItems = adapter.selection
+                val selectItems = getSelectedSources()
                 CheckSource.start(this@BookSourceActivity, selectItems)
-                val adapterItems = adapter.getItems()
-                val firstItem = adapterItems.indexOf(selectItems.firstOrNull())
-                val lastItem = adapterItems.indexOf(selectItems.lastOrNull())
+                val currentItems = sourcesState.value
+                val firstItem = currentItems.indexOf(selectItems.firstOrNull())
+                val lastItem = currentItems.indexOf(selectItems.lastOrNull())
                 Debug.isChecking = firstItem >= 0 && lastItem >= 0
+                isCheckingState.value = Debug.isChecking
+                refreshDebugMessages(force = true)
                 startCheckMessageRefreshJob(firstItem, lastItem)
             }
             neutralButton(R.string.check_source_config)
@@ -543,6 +601,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
         keepScreenOn(true)
         CheckSource.resume(this)
+        isCheckingState.value = Debug.isChecking
+        refreshDebugMessages(force = true)
         startCheckMessageRefreshJob(0, 0)
     }
 
@@ -558,7 +618,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             okButton {
                 alertBinding.editView.text?.toString()?.let {
                     if (it.isNotEmpty()) {
-                        viewModel.selectionAddToGroups(adapter.selection, it)
+                        viewModel.selectionAddToGroups(getSelectedSources(), it)
                     }
                 }
             }
@@ -578,7 +638,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             okButton {
                 alertBinding.editView.text?.toString()?.let {
                     if (it.isNotEmpty()) {
-                        viewModel.selectionRemoveFromGroups(adapter.selection, it)
+                        viewModel.selectionRemoveFromGroups(getSelectedSources(), it)
                     }
                 }
             }
@@ -632,6 +692,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                     .setAction(R.string.cancel) {
                         CheckSource.stop(this)
                         Debug.finishChecking()
+                        isCheckingState.value = false
+                        refreshDebugMessages(force = true)
                     }.apply { show() }
             }
         }
@@ -639,11 +701,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             keepScreenOn(false)
             snackBar?.dismiss()
             snackBar = null
-            adapter.notifyItemRangeChanged(
-                0,
-                adapter.itemCount,
-                bundleOf(Pair("checkSourceMessage", null))
-            )
+            isCheckingState.value = false
+            refreshDebugMessages(force = true)
             groups.forEach { group ->
                 if (group.contains("失效") && searchView.query.isEmpty()) {
                     searchView.setQuery("失效", true)
@@ -658,23 +717,13 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         checkMessageRefreshJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (isActive) {
-                    if (lastItem == 0) {
-                        adapter.notifyItemRangeChanged(
-                            0,
-                            adapter.itemCount,
-                            bundleOf(Pair("checkSourceMessage", null))
-                        )
-                    } else {
-                        adapter.notifyItemRangeChanged(
-                            firstItem,
-                            lastItem + 1,
-                            bundleOf(Pair("checkSourceMessage", null))
-                        )
-                    }
+                    refreshDebugMessages()
                     if (!Debug.isChecking) {
+                        isCheckingState.value = false
+                        refreshDebugMessages(force = true)
                         checkMessageRefreshJob?.cancel()
                     }
-                    delay(300L)
+                    delay(500L)
                 }
             }
         }
@@ -694,12 +743,102 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    override fun upCountView() {
+    private fun upCountView() {
         binding.selectActionBar
-            .upCountView(adapter.selection.size, adapter.itemCount)
+            .upCountView(getSelectedSources().size, sourcesState.value.size)
     }
 
-    override fun getSourceHost(origin: String): String {
+    private fun getSelectedSources(): List<BookSourcePart> {
+        val urls = selectedUrls.value
+        return sourcesState.value.filter { it.bookSourceUrl in urls }
+    }
+
+    private fun toggleSourceSelection(source: BookSourcePart) {
+        val current = selectedUrls.value.toMutableSet()
+        if (source.bookSourceUrl in current) {
+            current.remove(source.bookSourceUrl)
+        } else {
+            current.add(source.bookSourceUrl)
+        }
+        selectedUrls.value = current
+        isSelectMode.value = current.isNotEmpty()
+        upCountView()
+    }
+
+    private fun toggleSourceEnabled(source: BookSourcePart, enabled: Boolean) {
+        val updated = source.copy(enabled = enabled)
+        sourcesState.value = sourcesState.value.map {
+            if (it.bookSourceUrl == source.bookSourceUrl) updated else it
+        }
+        viewModel.enable(enabled, listOf(updated))
+    }
+
+    private fun updateSelectedEnabled(enabled: Boolean) {
+        val urls = selectedUrls.value
+        if (urls.isEmpty()) return
+        sourcesState.value = sourcesState.value.map {
+            if (it.bookSourceUrl in urls) it.copy(enabled = enabled) else it
+        }
+    }
+
+    private fun updateSelectedExplore(enabled: Boolean) {
+        val urls = selectedUrls.value
+        if (urls.isEmpty()) return
+        sourcesState.value = sourcesState.value.map {
+            if (it.bookSourceUrl in urls) it.copy(enabledExplore = enabled) else it
+        }
+    }
+
+    private fun checkSelectedInterval() {
+        val urls = selectedUrls.value
+        val positions = sourcesState.value.mapIndexedNotNull { index, source ->
+            if (source.bookSourceUrl in urls) index else null
+        }
+        if (positions.isEmpty()) return
+        val newSelected = urls.toMutableSet()
+        for (index in positions.min()..positions.max()) {
+            newSelected.add(sourcesState.value[index].bookSourceUrl)
+        }
+        selectedUrls.value = newSelected
+        isSelectMode.value = newSelected.isNotEmpty()
+        upCountView()
+    }
+
+    private fun buildSourceHostHeaders(sources: List<BookSourcePart>): Map<String, String?> {
+        if (!groupSourcesByDomain) return emptyMap()
+        val headers = linkedMapOf<String, String?>()
+        var lastHost: String? = null
+        sources.forEachIndexed { index, source ->
+            val host = getSourceHost(source.bookSourceUrl)
+            headers[source.bookSourceUrl] = if (index == 0 || host != lastHost) host else null
+            lastHost = host
+        }
+        return headers
+    }
+
+    private fun refreshDebugMessages(force: Boolean = false) {
+        val next = buildDebugMessagesSnapshot()
+        if (force || next != debugMessagesState.value) {
+            debugMessagesState.value = next
+        }
+    }
+
+    private fun buildDebugMessagesSnapshot(): Map<String, String> {
+        return sourcesState.value.mapNotNull { source ->
+            val initial = Debug.debugMessageMap[source.bookSourceUrl].orEmpty()
+            if (initial.isBlank()) {
+                null
+            } else {
+                if (!Debug.isChecking && !initial.contains(finalMessageRegex)) {
+                    Debug.updateFinalMessage(source.bookSourceUrl, "校验失败")
+                }
+                val latest = Debug.debugMessageMap[source.bookSourceUrl].orEmpty()
+                source.bookSourceUrl to latest
+            }
+        }.toMap()
+    }
+
+    private fun getSourceHost(origin: String): String {
         return hostMap.getOrPut(origin) {
             NetworkUtils.getSubDomainOrNull(origin) ?: "#"
         }
@@ -716,35 +855,84 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         return false
     }
 
-    override fun del(bookSource: BookSourcePart) {
-        alert(R.string.draw) {
-            setMessage(getString(R.string.sure_del) + "\n" + bookSource.bookSourceName)
-            noButton()
-            yesButton {
-                viewModel.del(listOf(bookSource))
+    private fun showSourceMenu(bookSource: BookSourcePart) {
+        val labels = buildList {
+            if (sort == BookSourceSort.Default) {
+                add(getString(R.string.to_top))
+                add(getString(R.string.to_bottom))
+            }
+            if (bookSource.hasLoginUrl) {
+                add(getString(R.string.login))
+            }
+            add(getString(R.string.search))
+            add(getString(R.string.debug))
+            add(getString(R.string.delete))
+            if (bookSource.hasExploreUrl) {
+                add(
+                    if (bookSource.enabledExplore) {
+                        getString(R.string.disable_explore)
+                    } else {
+                        getString(R.string.enable_explore)
+                    }
+                )
+            }
+        }
+        val dangerIndex = labels.indexOf(getString(R.string.delete)).takeIf { it >= 0 }
+        showComposeActionListDialog(
+            title = bookSource.bookSourceName,
+            labels = labels,
+            dangerIndices = dangerIndex?.let { setOf(it) } ?: emptySet()
+        ) { index ->
+            when (labels[index]) {
+                getString(R.string.to_top) -> toTop(bookSource)
+                getString(R.string.to_bottom) -> toBottom(bookSource)
+                getString(R.string.login) -> startActivity<SourceLoginActivity> {
+                    putExtra("type", "bookSource")
+                    putExtra("key", bookSource.bookSourceUrl)
+                }
+                getString(R.string.search) -> searchBook(bookSource)
+                getString(R.string.debug) -> debug(bookSource)
+                getString(R.string.delete) -> del(bookSource)
+                getString(R.string.enable_explore) -> enableExplore(true, bookSource)
+                getString(R.string.disable_explore) -> enableExplore(false, bookSource)
             }
         }
     }
 
-    override fun edit(bookSource: BookSourcePart) {
+    private fun del(bookSource: BookSourcePart) {
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del) + "\n" + bookSource.bookSourceName,
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            dangerPositive = true,
+            onPositive = { viewModel.del(listOf(bookSource)) }
+        )
+    }
+
+    private fun edit(bookSource: BookSourcePart) {
         startActivity<BookSourceEditActivity> {
             putExtra("sourceUrl", bookSource.bookSourceUrl)
         }
     }
 
-    override fun upOrder(items: List<BookSourcePart>) {
+    private fun upOrder(items: List<BookSourcePart>) {
         viewModel.upOrder(items)
     }
 
-    override fun enable(enable: Boolean, bookSource: BookSourcePart) {
+    private fun enable(enable: Boolean, bookSource: BookSourcePart) {
         viewModel.enable(enable, listOf(bookSource))
     }
 
-    override fun enableExplore(enable: Boolean, bookSource: BookSourcePart) {
-        viewModel.enableExplore(enable, listOf(bookSource))
+    private fun enableExplore(enable: Boolean, bookSource: BookSourcePart) {
+        val updated = bookSource.copy(enabledExplore = enable)
+        sourcesState.value = sourcesState.value.map {
+            if (it.bookSourceUrl == bookSource.bookSourceUrl) updated else it
+        }
+        viewModel.enableExplore(enable, listOf(updated))
     }
 
-    override fun toTop(bookSource: BookSourcePart) {
+    private fun toTop(bookSource: BookSourcePart) {
         if (sortAscending) {
             viewModel.topSource(bookSource)
         } else {
@@ -752,7 +940,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    override fun toBottom(bookSource: BookSourcePart) {
+    private fun toBottom(bookSource: BookSourcePart) {
         if (sortAscending) {
             viewModel.bottomSource(bookSource)
         } else {
@@ -760,11 +948,11 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    override fun searchBook(bookSource: BookSourcePart) {
+    private fun searchBook(bookSource: BookSourcePart) {
         SearchActivity.start(this, bookSource)
     }
 
-    override fun debug(bookSource: BookSourcePart) {
+    private fun debug(bookSource: BookSourcePart) {
         startActivity<BookSourceDebugActivity> {
             putExtra("key", bookSource.bookSourceUrl)
         }

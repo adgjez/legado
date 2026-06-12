@@ -45,6 +45,9 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
                 val descriptions = remember {
                     args.getStringArrayList(ARG_DESCRIPTIONS)?.toList().orEmpty()
                 }
+                val iconNames = remember {
+                    args.getStringArrayList(ARG_ICON_NAMES)?.toList().orEmpty()
+                }
                 val selectedIndex = args.getInt(ARG_SELECTED_INDEX)
                 val negativeText = args.getString(ARG_NEGATIVE_TEXT)
                     .orEmpty()
@@ -71,7 +74,8 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
                                         onSelected?.invoke(index)
                                     },
                                     description = descriptions.getOrNull(index),
-                                    minHeight = 42.dp
+                                    minHeight = 42.dp,
+                                    leadingIconName = iconNames.getOrNull(index)?.takeIf { it.isNotBlank() }
                                 )
                             }
                         }
@@ -98,12 +102,16 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
             selectedIndex: Int = -1,
             message: String? = null,
             descriptions: List<String> = emptyList(),
+            iconNames: List<String> = emptyList(),
             negativeText: String,
             onSelected: (Int) -> Unit
         ): ComposeChoiceListDialog {
             val safeLabels = labels.toList()
             val safeDescriptions = List(safeLabels.size) { index ->
                 descriptions.getOrNull(index).orEmpty()
+            }
+            val safeIconNames = List(safeLabels.size) { index ->
+                iconNames.getOrNull(index).orEmpty()
             }
             return ComposeChoiceListDialog().apply {
                 arguments = Bundle().apply {
@@ -112,6 +120,7 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
                     putInt(ARG_SELECTED_INDEX, selectedIndex)
                     putString(ARG_MESSAGE, message)
                     putStringArrayList(ARG_DESCRIPTIONS, ArrayList(safeDescriptions))
+                    putStringArrayList(ARG_ICON_NAMES, ArrayList(safeIconNames))
                     putString(ARG_NEGATIVE_TEXT, negativeText)
                 }
                 this.onSelected = onSelected
@@ -123,6 +132,7 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
         private const val ARG_SELECTED_INDEX = "selectedIndex"
         private const val ARG_MESSAGE = "message"
         private const val ARG_DESCRIPTIONS = "descriptions"
+        private const val ARG_ICON_NAMES = "iconNames"
         private const val ARG_NEGATIVE_TEXT = "negativeText"
     }
 }

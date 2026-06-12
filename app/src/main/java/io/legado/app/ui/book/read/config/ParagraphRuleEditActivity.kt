@@ -20,10 +20,10 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ParagraphRuleProcessor
 import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.selector
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -151,8 +151,10 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
             val labels = candidates.map { chapter ->
                 "${chapter.index + 1}. ${chapter.title}"
             }
-            selector(getString(R.string.debug), labels) { _, index ->
-                runDebugRule(debugRule, book, candidates[index])
+            showComposeChoiceListDialog(getString(R.string.debug), labels) { index ->
+                candidates.getOrNull(index)?.let { chapter ->
+                    runDebugRule(debugRule, book, chapter)
+                }
             }
         }
     }
@@ -190,9 +192,13 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
             }.getOrElse {
                 "Paragraph rule debug failed:\n${it.localizedMessage ?: it}\n\n${it.stackTraceStr}"
             }
-            alert(getString(R.string.debug), message) {
-                okButton()
-            }
+            showComposeConfirmDialog(
+                title = getString(R.string.debug),
+                message = message,
+                showNegative = false,
+                messageInContent = true,
+                onPositive = {}
+            )
         }
     }
 

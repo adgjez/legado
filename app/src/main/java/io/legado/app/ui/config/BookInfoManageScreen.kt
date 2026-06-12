@@ -26,18 +26,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.BookInfoComponentItem
 import io.legado.app.help.config.BookInfoPageStyle
+import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
 internal fun BookInfoManageScreen(
@@ -48,20 +46,18 @@ internal fun BookInfoManageScreen(
     onReset: () -> Unit,
     onMoveItem: (Int, Int) -> Unit
 ) {
-    val dialogStyle = rememberAppDialogStyle()
-    val palette = dialogStyle.toMiuixPalette()
+    val palette = rememberAppManagementPalette()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.surface)
+            .background(palette.settings.page)
     ) {
         // Tab bar
         StyleTabBar(
             style = style,
             palette = palette,
-            onStyleChanged = onStyleChanged,
-            cornerRadius = dialogStyle.actionRadius
+            onStyleChanged = onStyleChanged
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -73,7 +69,7 @@ internal fun BookInfoManageScreen(
         }
         Text(
             text = summaryText,
-            color = palette.secondaryText,
+            color = palette.settings.secondaryText,
             fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 18.dp),
             maxLines = 3,
@@ -89,8 +85,8 @@ internal fun BookInfoManageScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     itemsIndexed(
                         items = components,
@@ -99,7 +95,6 @@ internal fun BookInfoManageScreen(
                         ComponentItemRow(
                             item = item,
                             palette = palette,
-                            cornerRadius = dialogStyle.panelRadius,
                             onCheckedChange = { checked ->
                                 onComponentToggle(index, checked)
                             }
@@ -110,7 +105,7 @@ internal fun BookInfoManageScreen(
                 // Reset button
                 LegadoMiuixActionButton(
                     text = stringResource(R.string.reset),
-                    palette = palette,
+                    palette = palette.miuix,
                     onClick = onReset,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -120,18 +115,15 @@ internal fun BookInfoManageScreen(
 
             BookInfoPageStyle.IMMERSIVE_COMPOSE -> {
                 // Immersive info panel
-                LegadoMiuixCard(
+                AppManagementCard(
+                    palette = palette,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = palette.surfaceVariant,
-                    contentColor = palette.primaryText,
-                    cornerRadius = dialogStyle.panelRadius,
+                        .fillMaxWidth(),
                     insidePadding = PaddingValues(16.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.book_info_style_immersive_title),
-                        color = palette.primaryText,
+                        color = palette.settings.primaryText,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
@@ -140,7 +132,7 @@ internal fun BookInfoManageScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = stringResource(R.string.book_info_style_immersive_desc),
-                        color = palette.secondaryText,
+                        color = palette.settings.secondaryText,
                         fontSize = 13.5.sp,
                         lineHeight = 20.sp,
                         maxLines = 6,
@@ -157,9 +149,8 @@ internal fun BookInfoManageScreen(
 @Composable
 private fun StyleTabBar(
     style: BookInfoPageStyle,
-    palette: LegadoMiuixPalette,
-    onStyleChanged: (BookInfoPageStyle) -> Unit,
-    cornerRadius: Dp
+    palette: AppManagementPalette,
+    onStyleChanged: (BookInfoPageStyle) -> Unit
 ) {
     val isClassic = style == BookInfoPageStyle.CLASSIC
     Row(
@@ -172,7 +163,6 @@ private fun StyleTabBar(
             text = stringResource(R.string.book_info_style_classic),
             selected = isClassic,
             palette = palette,
-            cornerRadius = cornerRadius,
             onClick = { onStyleChanged(BookInfoPageStyle.CLASSIC) },
             modifier = Modifier.weight(1f)
         )
@@ -180,7 +170,6 @@ private fun StyleTabBar(
             text = stringResource(R.string.book_info_style_immersive),
             selected = !isClassic,
             palette = palette,
-            cornerRadius = cornerRadius,
             onClick = { onStyleChanged(BookInfoPageStyle.IMMERSIVE_COMPOSE) },
             modifier = Modifier.weight(1f)
         )
@@ -191,22 +180,21 @@ private fun StyleTabBar(
 private fun StyleTabButton(
     text: String,
     selected: Boolean,
-    palette: LegadoMiuixPalette,
-    cornerRadius: Dp,
+    palette: AppManagementPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val backgroundColor = if (selected) {
-        palette.accent.copy(alpha = 0.14f)
+        palette.settings.accent.copy(alpha = 0.14f)
     } else {
-        palette.surfaceVariant
+        palette.miuix.surfaceVariant
     }
-    val textColor = if (selected) palette.accent else palette.secondaryText
+    val textColor = if (selected) palette.settings.accent else palette.settings.secondaryText
 
     Box(
         modifier = modifier
             .height(42.dp)
-            .background(backgroundColor, RoundedCornerShape(cornerRadius))
+            .background(backgroundColor, RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -224,15 +212,12 @@ private fun StyleTabButton(
 @Composable
 private fun ComponentItemRow(
     item: BookInfoComponentItem,
-    palette: LegadoMiuixPalette,
-    cornerRadius: Dp,
+    palette: AppManagementPalette,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier.fillMaxWidth(),
-        color = palette.surfaceVariant,
-        contentColor = palette.primaryText,
-        cornerRadius = cornerRadius,
         insidePadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(
@@ -242,7 +227,7 @@ private fun ComponentItemRow(
             LegadoMiuixSwitch(
                 checked = item.enabled,
                 onCheckedChange = onCheckedChange,
-                palette = palette
+                palette = palette.miuix
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -250,7 +235,7 @@ private fun ComponentItemRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(item.type.titleRes),
-                    color = palette.primaryText,
+                    color = palette.settings.primaryText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -259,7 +244,7 @@ private fun ComponentItemRow(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = stringResource(item.type.hintRes),
-                    color = palette.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -271,7 +256,7 @@ private fun ComponentItemRow(
             Icon(
                 painter = painterResource(R.drawable.ic_arrange),
                 contentDescription = stringResource(R.string.read_record_drag_sort),
-                tint = palette.secondaryText.copy(alpha = 0.6f),
+                tint = palette.settings.secondaryText.copy(alpha = 0.6f),
                 modifier = Modifier.size(24.dp)
             )
         }

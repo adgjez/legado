@@ -361,6 +361,9 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             }.flowOn(IO).conflate().collect {
                 sourcesState.clear()
                 sourcesState.addAll(it)
+                val currentUrls = it.mapTo(mutableSetOf()) { source -> source.sourceUrl }
+                selectedUrls.value = selectedUrls.value.filter { url -> url in currentUrls }.toSet()
+                isSelectMode.value = selectedUrls.value.isNotEmpty()
                 upCountView()
                 delay(100)
             }
@@ -404,6 +407,10 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
 
     private fun toggleSourceEnabled(source: RssSource, enabled: Boolean) {
         val updated = source.copy(enabled = enabled)
+        val index = sourcesState.indexOfFirst { it.sourceUrl == source.sourceUrl }
+        if (index >= 0) {
+            sourcesState[index] = updated
+        }
         viewModel.update(updated)
     }
 
@@ -466,9 +473,9 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         upCountView()
     }
 
-    override fun upCountView() {
+    private fun upCountView() {
         binding.selectActionBar.upCountView(
-            selectedUrls.value.size,
+            getSelectedSources().size,
             sourcesState.size
         )
     }

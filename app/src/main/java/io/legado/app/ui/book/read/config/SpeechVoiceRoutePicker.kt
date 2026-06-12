@@ -64,7 +64,7 @@ fun SpeechVoiceRoutePickerDialog(
                 .fillMaxWidth()
                 .widthIn(max = 560.dp),
             color = colors.page,
-            shape = RoundedCornerShape(LocalContext.current.composePanelRadius().coerceAtLeast(22.dp)),
+            shape = RoundedCornerShape(LocalContext.current.composePanelRadius()),
             border = BorderStroke(1.dp, colors.stroke)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -281,7 +281,7 @@ private fun SpeakerPickerList(
                     .fillMaxWidth()
                     .padding(top = 12.dp),
                 color = colors.accent.copy(alpha = 0.11f),
-                shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+                shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
                 border = BorderStroke(1.dp, colors.accent.copy(alpha = 0.28f))
             ) {
                 Text(
@@ -316,7 +316,7 @@ private fun PickerRow(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         color = if (selected) colors.accent.copy(alpha = 0.14f) else colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(14.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
         Row(
@@ -363,7 +363,7 @@ private fun EmotionChip(
     Surface(
         onClick = onClick,
         color = if (selected) colors.accent.copy(alpha = 0.14f) else colors.card,
-        shape = RoundedCornerShape(LocalContext.current.composeActionRadius().coerceAtLeast(12.dp)),
+        shape = RoundedCornerShape(LocalContext.current.composeActionRadius()),
         border = BorderStroke(1.dp, if (selected) colors.accent else colors.stroke)
     ) {
         Text(

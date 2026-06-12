@@ -26,7 +26,7 @@ import io.legado.app.ui.config.compose.SettingSectionSpec
 import io.legado.app.ui.config.compose.SettingSwitchSpec
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.ui.widget.number.NumberPickerDialog
+import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.postEvent
@@ -421,45 +421,49 @@ class MoreConfigDialog : BasePrefDialogFragment() {
         }
 
         private fun showPageTouchSlopDialog() {
-            NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.page_touch_slop_dialog_title))
-                .setMaxValue(9999)
-                .setMinValue(0)
-                .setValue(AppConfig.pageTouchSlop)
-                .show {
+            showComposeNumberPickerDialog(
+                title = getString(R.string.page_touch_slop_dialog_title),
+                value = AppConfig.pageTouchSlop,
+                minValue = 0,
+                maxValue = 9999,
+                onValue = {
                     AppConfig.pageTouchSlop = it
                     postEvent(EventBus.UP_CONFIG, arrayListOf(4))
                 }
+            )
         }
 
         private fun showPageTouchClickDialog() {
-            NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.page_touch_click_dialog_title))
-                .setMaxValue(399)
-                .setMinValue(0)
-                .setValue(AppConfig.pageTouchClick)
-                .show {
+            showComposeNumberPickerDialog(
+                title = getString(R.string.page_touch_click_dialog_title),
+                value = AppConfig.pageTouchClick,
+                minValue = 0,
+                maxValue = 399,
+                onValue = {
                     AppConfig.pageTouchClick = it
                     postEvent(EventBus.UP_CONFIG, arrayListOf(12))
                 }
+            )
         }
 
         private fun showReadMenuAlphaDialog() {
-            NumberPickerDialog(requireContext())
-                .setTitle(getString(R.string.read_menu_alpha))
-                .setMaxValue(100)
-                .setMinValue(35)
-                .setValue(AppConfig.readMenuAlpha)
-                .setCustomButton(R.string.btn_default_s) {
+            showComposeNumberPickerDialog(
+                title = getString(R.string.read_menu_alpha),
+                value = AppConfig.readMenuAlpha,
+                minValue = 35,
+                maxValue = 100,
+                customText = getString(R.string.btn_default_s),
+                onCustom = {
                     AppConfig.readMenuAlpha = 100
                     refreshSettings()
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
-                }
-                .show {
+                },
+                onValue = {
                     AppConfig.readMenuAlpha = it.coerceIn(35, 100)
                     refreshSettings()
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
                 }
+            )
         }
 
         companion object {

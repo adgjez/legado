@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,33 +37,34 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.help.config.CoverCollectionManager
-import io.legado.app.ui.widget.compose.AppSettingPalette
+import io.legado.app.lib.theme.composeActionRadius
+import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
-import io.legado.app.ui.widget.compose.LegadoMiuixPalette
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
 internal fun CoverCollectionManageScreen(
     isNight: Boolean,
     entries: List<CoverCollectionManager.Entry>,
-    palette: AppSettingPalette,
-    miuixPalette: LegadoMiuixPalette,
     onTabChanged: (Boolean) -> Unit,
     onItemClick: (CoverCollectionManager.Entry) -> Unit,
     onItemMore: (CoverCollectionManager.Entry) -> Unit,
     onAddClick: () -> Unit
 ) {
-    val panelRadiusDp = palette.panelRadiusPx.dp
+    val context = LocalContext.current
+    val palette = rememberAppManagementPalette()
+    val actionRadius = palette.miuix.actionRadius ?: context.composeActionRadius()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.page)
+            .background(palette.settings.page)
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
         // Tab bar
         CoverCollectionTabBar(
             isNight = isNight,
-            palette = miuixPalette,
+            palette = palette,
             onTabChanged = onTabChanged
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -71,13 +73,13 @@ internal fun CoverCollectionManageScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            contentPadding = PaddingValues(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             itemsIndexed(entries, key = { _, entry -> "${entry.collection.id}_${entry.source}" }) { _, entry ->
                 CoverCollectionItemRow(
                     entry = entry,
-                    palette = miuixPalette,
+                    palette = palette,
                     onClick = { onItemClick(entry) },
                     onMoreClick = { onItemMore(entry) }
                 )
@@ -86,12 +88,12 @@ internal fun CoverCollectionManageScreen(
         // Add button
         LegadoMiuixActionButton(
             text = stringResource(R.string.cover_collection_add),
-            palette = miuixPalette,
+            palette = palette.miuix,
             onClick = onAddClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
-            cornerRadius = panelRadiusDp
+            cornerRadius = actionRadius
         )
     }
 }
@@ -99,16 +101,13 @@ internal fun CoverCollectionManageScreen(
 @Composable
 private fun CoverCollectionTabBar(
     isNight: Boolean,
-    palette: LegadoMiuixPalette,
+    palette: AppManagementPalette,
     onTabChanged: (Boolean) -> Unit
 ) {
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, top = 10.dp, end = 16.dp),
-        color = palette.surfaceVariant,
-        contentColor = palette.primaryText,
-        cornerRadius = 22.dp,
+            .fillMaxWidth(),
         insidePadding = PaddingValues(4.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -135,23 +134,27 @@ private fun CoverCollectionTabBar(
 private fun TabButton(
     text: String,
     selected: Boolean,
-    palette: LegadoMiuixPalette,
+    palette: AppManagementPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LegadoMiuixCard(
+    val actionRadius = palette.miuix.actionRadius ?: LocalContext.current.composeActionRadius()
+    androidx.compose.material3.Surface(
         modifier = modifier.clickable(onClick = onClick),
-        color = if (selected) palette.surface else Color.Transparent,
-        contentColor = if (selected) palette.accent else palette.primaryText,
-        cornerRadius = 18.dp,
-        insidePadding = PaddingValues(vertical = 8.dp)
+        shape = RoundedCornerShape(actionRadius),
+        color = if (selected) palette.settings.accent.copy(alpha = 0.14f) else Color.Transparent,
+        contentColor = if (selected) palette.settings.accent else palette.settings.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
         Text(
             text = text,
-            color = if (selected) palette.accent else palette.primaryText,
+            color = if (selected) palette.settings.accent else palette.settings.primaryText,
             fontSize = 14.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
@@ -162,10 +165,12 @@ private fun TabButton(
 @Composable
 private fun CoverCollectionItemRow(
     entry: CoverCollectionManager.Entry,
-    palette: LegadoMiuixPalette,
+    palette: AppManagementPalette,
     onClick: () -> Unit,
     onMoreClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val actionRadius = palette.miuix.actionRadius ?: context.composeActionRadius()
     val collection = entry.collection
     val sourceText = when (entry.source) {
         CoverCollectionManager.Source.LOCAL -> stringResource(R.string.theme_source_local)
@@ -174,13 +179,11 @@ private fun CoverCollectionItemRow(
     }
     val infoText = "${stringResource(R.string.cover_collection_images_count, collection.images.size)} · $sourceText"
 
-    LegadoMiuixCard(
+    AppManagementCard(
+        palette = palette,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = palette.surfaceVariant,
-        contentColor = palette.primaryText,
-        cornerRadius = 16.dp,
+            .fillMaxWidth(),
+        onClick = onClick,
         insidePadding = PaddingValues(12.dp)
     ) {
         Row(
@@ -211,7 +214,7 @@ private fun CoverCollectionItemRow(
             ) {
                 Text(
                     text = collection.name,
-                    color = palette.primaryText,
+                    color = palette.settings.primaryText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -220,7 +223,7 @@ private fun CoverCollectionItemRow(
                 Spacer(modifier = Modifier.height(5.dp))
                 Text(
                     text = infoText,
-                    color = palette.secondaryText,
+                    color = palette.settings.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -230,9 +233,9 @@ private fun CoverCollectionItemRow(
             // More button
             LegadoMiuixActionButton(
                 text = stringResource(R.string.more),
-                palette = palette,
+                palette = palette.miuix,
                 onClick = onMoreClick,
-                cornerRadius = 12.dp,
+                cornerRadius = actionRadius,
                 minWidth = 56.dp,
                 minHeight = 34.dp,
                 insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)

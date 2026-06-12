@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -35,11 +37,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.ui.widget.compose.AppSettingPalette
@@ -56,7 +61,8 @@ internal fun FileManageScreen(
     onFileClick: (File) -> Unit,
     onFileLongClick: (File) -> Unit,
     onBreadcrumbClick: (Int) -> Unit,
-    onRootBreadcrumbClick: () -> Unit
+    onRootBreadcrumbClick: () -> Unit,
+    onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
     val palette = rememberAppSettingPalette()
@@ -79,6 +85,12 @@ internal fun FileManageScreen(
             .fillMaxSize()
             .background(palette.page)
     ) {
+        FileTopBar(
+            title = stringResource(R.string.file_manage),
+            palette = palette,
+            onBackClick = onBackClick
+        )
+
         // Breadcrumb bar
         BreadcrumbBar(
             subDocs = subDocs,
@@ -107,7 +119,7 @@ internal fun FileManageScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "",
+                    text = stringResource(R.string.empty),
                     color = palette.secondaryText,
                     fontSize = 14.sp
                 )
@@ -129,7 +141,9 @@ internal fun FileManageScreen(
                         file = file,
                         palette = palette,
                         onClick = { onFileClick(file) },
-                        onLongClick = if (file.name == "..") null else { onFileLongClick(file) }
+                        onLongClick = if (file.name == "..") null else {
+                            { onFileLongClick(file) }
+                        }
                     )
                 }
             }
@@ -152,7 +166,7 @@ private fun SearchBar(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         placeholder = {
             Text(
-                text = "Search files...",
+                text = stringResource(R.string.search),
                 color = palette.secondaryText,
                 fontSize = 14.sp
             )
@@ -172,6 +186,41 @@ private fun SearchBar(
         ),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
     )
+}
+
+@Composable
+private fun FileTopBar(
+    title: String,
+    palette: AppSettingPalette,
+    onBackClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.page)
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_arrow_back),
+            contentDescription = stringResource(R.string.back),
+            tint = palette.accent,
+            modifier = Modifier
+                .size(40.dp)
+                .clickable(onClick = onBackClick)
+                .padding(8.dp)
+        )
+        Text(
+            text = title,
+            color = palette.primaryText,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @Composable

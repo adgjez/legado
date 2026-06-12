@@ -65,6 +65,7 @@ import io.legado.app.lib.prefs.SeekBarPreference
 import io.legado.app.lib.prefs.Preference as LegadoPreference
 import io.legado.app.lib.prefs.SwitchPreference as LegadoSwitchPreference
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
@@ -317,6 +318,7 @@ private fun PreferenceWidget(
     enabled: Boolean,
     onSwitchChange: (SwitchPreferenceCompat, Boolean) -> Unit
 ) {
+    val actionRadius = LocalContext.current.composeActionRadius()
     when (preference) {
         is SwitchPreferenceCompat -> {
             Spacer(modifier = Modifier.width(12.dp))
@@ -356,7 +358,7 @@ private fun PreferenceWidget(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(RoundedCornerShape(actionRadius))
                         .background(colors.accent.copy(alpha = if (enabled) 0.10f else 0.05f))
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 )
@@ -502,13 +504,14 @@ private fun StepControlButton(
     colors: AppSettingPalette,
     onClick: () -> Unit
 ) {
+    val actionRadius = LocalContext.current.composeActionRadius()
     Text(
         text = text,
         color = if (enabled) colors.accent else colors.disabledText,
         fontSize = 16.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(RoundedCornerShape(actionRadius))
             .background(colors.accent.copy(alpha = if (enabled) 0.10f else 0.04f))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 4.dp)

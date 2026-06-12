@@ -16,10 +16,8 @@ import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.ui.file.HandleFileContract
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
-import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -64,14 +62,9 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                val style = rememberAppDialogStyle()
-                val palette = style.toMiuixPalette()
-                val settingPalette = io.legado.app.ui.widget.compose.rememberAppSettingPalette()
                 CoverCollectionManageScreen(
                     isNight = isNightState.value,
                     entries = entriesState.value,
-                    palette = settingPalette,
-                    miuixPalette = palette,
                     onTabChanged = { night ->
                         isNightState.value = night
                         loadCollections()
