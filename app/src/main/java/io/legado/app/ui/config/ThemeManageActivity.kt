@@ -5,18 +5,33 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.SimpleItemAnimator
 import com.bumptech.glide.Glide
 import com.bumptech.glide.signature.ObjectKey
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
@@ -27,7 +42,6 @@ import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.databinding.DialogImageBlurringBinding
 import io.legado.app.databinding.DialogThemePackageEditBinding
 import io.legado.app.databinding.ItemThemePackageOptionBinding
-import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
@@ -40,14 +54,11 @@ import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.theme.UiCorner
-import io.legado.app.lib.theme.applyUiLabelStyle
-import io.legado.app.lib.theme.applyUiSectionTitleStyle
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.loadUiTypeface
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.cache.WebDavTaskManager
@@ -57,6 +68,10 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppPackageManageItemCard
+import io.legado.app.ui.widget.compose.AppPackageManageScreen
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -98,8 +113,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     override val binding by viewBinding(ActivityThemeManageBinding::inflate)
 
-    private val adapter = Adapter()
-    private var isNightTheme = false
+    private var entriesState by mutableStateOf<List<ThemePackageManager.Entry>>(emptyList())
+    private var summaryTextState by mutableStateOf("")
+    private var isNightTheme by mutableStateOf(false)
     private var editDialogBinding: DialogThemePackageEditBinding? = null
     private var editingEntry: ThemePackageManager.Entry? = null
     private var pendingBlur = 0
@@ -121,7 +137,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
-    private var itemMenuPopup: ModernActionPopup.Handle? = null
+    private var containerMenuPopup: ModernActionPopup.Handle? = null
     private val pendingRemoteSyncTasks = linkedMapOf<String, RemoteSyncTask>()
     @Volatile
     private var syncingRemoteTasks = false
@@ -192,48 +208,42 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         invalidateOptionsMenu()
     }
 
-    private fun initView() = binding.run {
-        tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
-            UiCorner.panelRadius(this@ThemeManageActivity)
-        )
-        listOf(btnDay, btnNight).forEach {
-            it.background = UiCorner.actionSelector(
-                Color.TRANSPARENT,
-                ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
-                UiCorner.actionRadius(this@ThemeManageActivity)
+    private fun initView() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        container.removeView(binding.tabBar)
+        container.removeView(binding.tvSummary)
+        container.removeView(binding.btnAdd)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
             )
-        }
-        recyclerView.layoutManager = LinearLayoutManager(this@ThemeManageActivity)
-        recyclerView.adapter = adapter
-        (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
-        btnDay.setOnClickListener {
-            if (isNightTheme) {
-                isNightTheme = false
-                updateTabs()
-                loadThemes()
+            setContent {
+                ThemePackageManageScreen(
+                    entries = entriesState,
+                    isNightTheme = isNightTheme,
+                    summaryText = summaryTextState,
+                    onSwitchDayNight = { night ->
+                        if (night != isNightTheme) {
+                            isNightTheme = night
+                            loadThemes()
+                        }
+                    },
+                    onAdd = ::showAddDialog,
+                    onApply = ::applyTheme,
+                    onEdit = { entry -> showEditDialog(entry) },
+                    isApplied = ::isApplied,
+                    entryInfo = ::entryInfo,
+                    entryActions = ::entryActions,
+                    previewData = ::previewData
+                )
             }
         }
-        btnNight.setOnClickListener {
-            if (!isNightTheme) {
-                isNightTheme = true
-                updateTabs()
-                loadThemes()
-            }
-        }
-        btnAdd.setOnClickListener {
-            showAddDialog()
-        }
-        root.applyUiBodyTypefaceDeep(this@ThemeManageActivity.uiTypeface())
-        binding.tvSummary.applyUiLabelStyle(this@ThemeManageActivity)
-        binding.tvSummary.setTextColor(secondaryTextColor)
-        updateTabs()
-    }
-    private fun updateTabs() = binding.run {
-        btnDay.isSelected = !isNightTheme
-        btnNight.isSelected = isNightTheme
-        btnDay.setTextColor(if (!isNightTheme) accentColor else primaryTextColor)
-        btnNight.setTextColor(if (isNightTheme) accentColor else primaryTextColor)
+        container.addView(cv, index.coerceAtMost(container.childCount))
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -284,28 +294,34 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 return@launch
             }
             val selected = cloudContainerId ?: AppCloudStorage.selectedContainer(CLOUD_SCOPE)?.id
-            selector(getString(R.string.s3_bucket), containers.map(AppCloudStorage::containerDisplayLabel)) { _, index ->
-                val container = containers[index]
-                if (container.id == selected) return@selector
-                AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
-                cloudContainerId = container.id
-                updateContainerButton()
-                loadThemes()
+            val actions = containers.map { container ->
+                ModernActionPopup.Action(AppCloudStorage.containerDisplayLabel(container)) {
+                    if (container.id == selected) return@Action
+                    AppCloudStorage.selectContainer(CLOUD_SCOPE, container.id)
+                    cloudContainerId = container.id
+                    updateContainerButton()
+                    loadThemes()
+                }
             }
+            containerMenuPopup = ModernActionPopup.show(
+                anchor = binding.titleBar.toolbar,
+                actions = actions,
+                previousPopup = containerMenuPopup
+            )
         }
     }
     private fun loadThemes() {
         val version = ++loadVersion
         val useCloud = AppConfig.syncThemePackages
-        binding.tvSummary.text = appendPendingRemoteSummary(getString(R.string.theme_package_summary_default))
+        summaryTextState = appendPendingRemoteSummary(getString(R.string.theme_package_summary_default))
         lifecycleScope.launch {
             kotlin.runCatching {
                 ThemePackageManager.load(isNightTheme, cloudContainerId, CLOUD_SCOPE)
             }.onSuccess {
                 if (version != loadVersion) return@onSuccess
                 if (isFinishing || isDestroyed) return@onSuccess
-                adapter.items = it
-                binding.tvSummary.text = appendPendingRemoteSummary(
+                entriesState = it
+                summaryTextState = appendPendingRemoteSummary(
                     if (it.isEmpty()) {
                         getString(
                             R.string.theme_package_empty,
@@ -319,7 +335,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (it.isJobCancellation()) return@onFailure
                 if (version != loadVersion) return@onFailure
                 if (isFinishing || isDestroyed) return@onFailure
-                binding.tvSummary.text = if (useCloud) {
+                summaryTextState = if (useCloud) {
                     getString(R.string.theme_package_cloud_load_failed, it.localizedMessage)
                 } else {
                     getString(R.string.theme_package_load_failed, it.localizedMessage)
@@ -329,10 +345,13 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun showAddDialog() {
-        selector(
-            getString(R.string.theme_add),
-            listOf(getString(R.string.theme_manual_config), getString(R.string.theme_import_zip))
-        ) { _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.theme_add),
+            labels = listOf(
+                getString(R.string.theme_manual_config),
+                getString(R.string.theme_import_zip)
+            )
+        ) { index ->
             when (index) {
                 0 -> showManualAddDialog()
                 1 -> importThemePackage.launch {
@@ -1181,7 +1200,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         cropImage.launch(request.params)
     }
 
-    private fun showActions(anchor: View, entry: ThemePackageManager.Entry) {
+    private fun entryActions(entry: ThemePackageManager.Entry): List<AppManagementMenuAction> {
         val actions = buildList {
             add(ThemeAction.APPLY)
             if (entry.source != ThemePackageManager.Source.REMOTE &&
@@ -1206,42 +1225,41 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (entry.source == ThemePackageManager.Source.BOTH) add(ThemeAction.DELETE_BOTH)
             }
         }
-        itemMenuPopup = ModernActionPopup.show(
-            anchor = anchor,
-            actions = actions.map { action ->
-                ModernActionPopup.Action(getString(action.titleRes)) {
-                    when (action) {
-                        ThemeAction.APPLY -> applyTheme(entry)
-                        ThemeAction.EDIT -> showEditDialog(entry)
-                        ThemeAction.EXPORT -> exportThemeZip(entry)
-                        ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) {
-                            ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
-                        }
-                        ThemeAction.UPLOAD -> uploadThemeNow(entry)
-                        ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(
-                            entry,
-                            getString(R.string.theme_delete_local_confirm)
-                        ) {
-                            ThemePackageManager.deleteLocal(entry)
-                        }
-                        ThemeAction.DELETE_REMOTE -> confirmDeleteTheme(
-                            entry,
-                            getString(R.string.theme_delete_remote_confirm)
-                        ) {
-                            enqueueRemoteDelete(entry)
-                        }
-                        ThemeAction.DELETE_BOTH -> confirmDeleteTheme(
-                            entry,
-                            getString(R.string.theme_delete_both_confirm)
-                        ) {
-                            ThemePackageManager.deleteLocal(entry)
-                            enqueueRemoteDelete(entry)
-                        }
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = getString(action.titleRes),
+                danger = action.name.startsWith("DELETE")
+            ) {
+                when (action) {
+                    ThemeAction.APPLY -> applyTheme(entry)
+                    ThemeAction.EDIT -> showEditDialog(entry)
+                    ThemeAction.EXPORT -> exportThemeZip(entry)
+                    ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) {
+                        ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    ThemeAction.UPLOAD -> uploadThemeNow(entry)
+                    ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(
+                        entry,
+                        getString(R.string.theme_delete_local_confirm)
+                    ) {
+                        ThemePackageManager.deleteLocal(entry)
+                    }
+                    ThemeAction.DELETE_REMOTE -> confirmDeleteTheme(
+                        entry,
+                        getString(R.string.theme_delete_remote_confirm)
+                    ) {
+                        enqueueRemoteDelete(entry)
+                    }
+                    ThemeAction.DELETE_BOTH -> confirmDeleteTheme(
+                        entry,
+                        getString(R.string.theme_delete_both_confirm)
+                    ) {
+                        ThemePackageManager.deleteLocal(entry)
+                        enqueueRemoteDelete(entry)
                     }
                 }
-            },
-            previousPopup = itemMenuPopup
-        )
+            }
+        }
     }
 
     private fun uploadThemeNow(entry: ThemePackageManager.Entry) {
@@ -1314,7 +1332,6 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     appliedDayThemeOverride = entry.packageInfo.name
                 }
                 toastOnUi(getString(R.string.theme_applied))
-                adapter.notifyDataSetChanged()
                 loadThemes()
             }
         }
@@ -1331,6 +1348,52 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
         val key = if (entry.packageInfo.isNightTheme) PreferKey.dNThemeName else PreferKey.dThemeName
         return getPrefString(key) == entry.packageInfo.name
+    }
+
+    private fun entryInfo(entry: ThemePackageManager.Entry): String {
+        val pkg = entry.packageInfo
+        return buildString {
+            if (isApplied(entry)) {
+                append(getString(R.string.theme_current_applied))
+                append(" \u00B7 ")
+            }
+            append(getString(if (pkg.isNightTheme) R.string.theme_night_short else R.string.theme_day_short))
+            append(" \u00B7 ")
+            val time = maxOf(pkg.updatedAt, entry.remoteUpdatedAt)
+            append(if (time > 0) dateFormat.format(Date(time)) else getString(R.string.theme_time_unknown))
+        }
+    }
+
+    private fun previewData(entry: ThemePackageManager.Entry): ThemePreviewData {
+        val config = kotlin.runCatching { ThemePackageManager.getConfig(entry) }
+            .getOrElse { entry.packageInfo.config }
+        val fallbackColor = config?.backgroundColor.toPreviewColor(entry.packageInfo.isNightTheme)
+        val backgroundPath = config?.backgroundImgPath?.takeIf { it.isNotBlank() }
+        val previewSignature = backgroundPath
+            ?.takeIf { !it.startsWith("http", ignoreCase = true) }
+            ?.let { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    ObjectKey("${file.absolutePath}:${file.length()}:${file.lastModified()}")
+                } else {
+                    null
+                }
+            }
+        return ThemePreviewData(
+            fallbackColor = fallbackColor,
+            backgroundPath = backgroundPath,
+            signature = previewSignature
+        )
+    }
+
+    private fun String?.toPreviewColor(isNightTheme: Boolean): Int {
+        return kotlin.runCatching {
+            val color = this?.trim().orEmpty()
+            val normalized = if (color.startsWith("#")) color else "#$color"
+            normalized.toColorInt()
+        }.getOrElse {
+            if (isNightTheme) Color.BLACK else Color.WHITE
+        }
     }
 
     private fun runAction(successMessage: String, block: suspend () -> Unit) {
@@ -1429,7 +1492,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     toastOnUi(getString(R.string.theme_sync_done))
                     loadThemes()
                 } else {
-                    binding.tvSummary.text = appendPendingRemoteSummary(getString(R.string.theme_sync_failed_retry))
+                    summaryTextState = appendPendingRemoteSummary(getString(R.string.theme_sync_failed_retry))
                     toastOnUi(getString(R.string.theme_sync_failed, failed.values.first().lastError))
                 }
             }
@@ -1469,152 +1532,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
         confirmDelete(message, block)
     }
-
-    private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {
-
-        var items: List<ThemePackageManager.Entry> = emptyList()
-            set(value) {
-                val oldItems = field
-                field = value
-                DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-                    override fun getOldListSize(): Int = oldItems.size
-                    override fun getNewListSize(): Int = value.size
-                    override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                        val old = oldItems[oldItemPosition]
-                        val new = value[newItemPosition]
-                        return old.packageInfo.isNightTheme == new.packageInfo.isNightTheme &&
-                                old.dirName == new.dirName
-                    }
-
-                    override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                        val old = oldItems[oldItemPosition]
-                        val new = value[newItemPosition]
-                        return old.packageInfo == new.packageInfo &&
-                                old.source == new.source &&
-                                old.remoteUpdatedAt == new.remoteUpdatedAt &&
-                                isApplied(old) == isApplied(new)
-                    }
-                }).dispatchUpdatesTo(this)
-            }
-
-        init {
-            setHasStableIds(true)
-        }
-
-        override fun getItemId(position: Int): Long {
-            val item = items[position]
-            return "${item.packageInfo.isNightTheme}:${item.dirName}".hashCode().toLong()
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(
-                ItemThemePackageBinding.inflate(
-                    LayoutInflater.from(parent.context),
-                    parent,
-                    false
-                )
-            )
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            holder.bind(items[position])
-        }
-
-        inner class Holder(private val itemBinding: ItemThemePackageBinding) :
-            RecyclerView.ViewHolder(itemBinding.root) {
-
-            fun bind(entry: ThemePackageManager.Entry) = itemBinding.run {
-                val pkg = entry.packageInfo
-                root.background = UiCorner.panelRounded(
-                    this@ThemeManageActivity,
-                    ContextCompat.getColor(this@ThemeManageActivity, R.color.background_card),
-                    UiCorner.panelRadius(this@ThemeManageActivity)
-                )
-                cardPreview.radius = UiCorner.panelRadius(this@ThemeManageActivity)
-                tvName.text = pkg.name
-                tvSource.visibility = View.GONE
-                tvInfo.text = buildString {
-                    if (isApplied(entry)) {
-                        append(getString(R.string.theme_current_applied))
-                        append(" · ")
-                    }
-                    append(getString(if (pkg.isNightTheme) R.string.theme_night_short else R.string.theme_day_short))
-                    append(" · ")
-                    val time = maxOf(pkg.updatedAt, entry.remoteUpdatedAt)
-                    append(if (time > 0) dateFormat.format(Date(time)) else getString(R.string.theme_time_unknown))
-                }
-                tvName.applyUiSectionTitleStyle(this@ThemeManageActivity)
-                tvInfo.applyUiLabelStyle(this@ThemeManageActivity)
-                tvInfo.setTextColor(secondaryTextColor)
-                listOf(btnApply, btnEdit, btnMore).forEach {
-                    it.background = UiCorner.actionSelector(
-                        Color.TRANSPARENT,
-                        ContextCompat.getColor(this@ThemeManageActivity, R.color.background_menu),
-                        UiCorner.actionRadius(this@ThemeManageActivity)
-                    )
-                }
-                btnApply.setTextColor(accentColor)
-                btnApply.text = getString(if (isApplied(entry)) R.string.theme_applied_state else R.string.theme_apply)
-                btnEdit.setTextColor(primaryTextColor)
-                btnMore.setTextColor(primaryTextColor)
-                listOf(btnApply, btnEdit, btnMore).forEach {
-                    it.typeface = this@ThemeManageActivity.uiTypeface()
-                }
-                bindPreview(entry)
-                btnApply.setOnClickListener { applyTheme(entry) }
-                btnEdit.visibility = if (entry.source == ThemePackageManager.Source.BUILTIN ||
-                    entry.source == ThemePackageManager.Source.REMOTE
-                ) View.GONE else View.VISIBLE
-                btnEdit.setOnClickListener {
-                    if (entry.source != ThemePackageManager.Source.BUILTIN &&
-                        entry.source != ThemePackageManager.Source.REMOTE
-                    ) showEditDialog(entry)
-                }
-                btnMore.setOnClickListener { showActions(btnMore, entry) }
-                root.setOnClickListener { showActions(root, entry) }
-            }
-
-            private fun ItemThemePackageBinding.bindPreview(entry: ThemePackageManager.Entry) {
-                val config = kotlin.runCatching { ThemePackageManager.getConfig(entry) }
-                    .getOrElse { entry.packageInfo.config }
-                val fallbackColor = config?.backgroundColor.toPreviewColor(entry.packageInfo.isNightTheme)
-                Glide.with(ivPreview.context).clear(ivPreview)
-                cardPreview.setCardBackgroundColor(fallbackColor)
-                ivPreview.setBackgroundColor(fallbackColor)
-                ivPreview.setImageDrawable(null)
-                val backgroundPath = config?.backgroundImgPath?.takeIf { it.isNotBlank() }
-                if (backgroundPath.isNullOrBlank()) {
-                    return
-                }
-                val previewSignature = backgroundPath.takeIf { !it.startsWith("http", ignoreCase = true) }
-                    ?.let { path ->
-                        val file = File(path)
-                        if (file.exists()) ObjectKey("${file.absolutePath}:${file.length()}:${file.lastModified()}") else null
-                    }
-                val request = ImageLoader.load(ivPreview.context, backgroundPath)
-                    .centerCrop()
-                    .error(ColorDrawable(fallbackColor))
-                if (previewSignature != null) {
-                    request.signature(previewSignature)
-                }
-                request.into(ivPreview)
-            }
-
-            private fun String?.toPreviewColor(isNightTheme: Boolean): Int {
-                return kotlin.runCatching {
-                    val color = this?.trim().orEmpty()
-                    val normalized = if (color.startsWith("#")) color else "#$color"
-                    normalized.toColorInt()
-                }.getOrElse {
-                    if (isNightTheme) Color.BLACK else Color.WHITE
-                }
-            }
-        }
-    }
-
-    override fun onColorSelected(dialogId: Int, color: Int) {
+override fun onColorSelected(dialogId: Int, color: Int) {
         val binding = editDialogBinding ?: return
         val hex = "#${color.hexString}".uppercase(Locale.ROOT)
         val row = when (dialogId) {
@@ -1715,5 +1633,99 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             UPLOAD,
             DELETE
         }
+    }
+}
+
+private data class ThemePreviewData(
+    val fallbackColor: Int,
+    val backgroundPath: String?,
+    val signature: ObjectKey?
+)
+
+@Composable
+private fun ThemePackageManageScreen(
+    entries: List<ThemePackageManager.Entry>,
+    isNightTheme: Boolean,
+    summaryText: String,
+    onSwitchDayNight: (Boolean) -> Unit,
+    onAdd: () -> Unit,
+    onApply: (ThemePackageManager.Entry) -> Unit,
+    onEdit: (ThemePackageManager.Entry) -> Unit,
+    isApplied: (ThemePackageManager.Entry) -> Boolean,
+    entryInfo: (ThemePackageManager.Entry) -> String,
+    entryActions: (ThemePackageManager.Entry) -> List<AppManagementMenuAction>,
+    previewData: (ThemePackageManager.Entry) -> ThemePreviewData
+) {
+    val applyText = stringResource(R.string.theme_apply)
+    val appliedText = stringResource(R.string.theme_applied_state)
+    val editText = stringResource(R.string.edit)
+    AppPackageManageScreen(
+        isNightMode = isNightTheme,
+        summaryText = summaryText,
+        addText = stringResource(R.string.theme_add),
+        onSwitchDayNight = onSwitchDayNight,
+        onAdd = onAdd
+    ) { palette ->
+        items(
+            entries,
+            key = { "${it.packageInfo.isNightTheme}_${it.dirName}" }
+        ) { entry ->
+            val active = isApplied(entry)
+            AppPackageManageItemCard(
+                title = entry.packageInfo.name,
+                info = entryInfo(entry),
+                isActive = active,
+                canEdit = entry.source != ThemePackageManager.Source.BUILTIN &&
+                    entry.source != ThemePackageManager.Source.REMOTE,
+                applyText = if (active) appliedText else applyText,
+                editText = editText,
+                moreActions = entryActions(entry),
+                palette = palette,
+                onApply = { onApply(entry) },
+                onEdit = { onEdit(entry) },
+                leadingContent = {
+                    ThemePackagePreview(
+                        preview = previewData(entry),
+                        radius = palette.miuix.panelRadius ?: 12.dp
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemePackagePreview(
+    preview: ThemePreviewData,
+    radius: androidx.compose.ui.unit.Dp
+) {
+    Box(
+        modifier = Modifier
+            .size(width = 74.dp, height = 102.dp)
+            .clip(RoundedCornerShape(radius))
+            .background(ComposeColor(preview.fallbackColor))
+    ) {
+        AndroidView(
+            factory = { context ->
+                ImageView(context).apply {
+                    contentDescription = context.getString(R.string.background_image)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+            },
+            update = { imageView ->
+                Glide.with(imageView.context).clear(imageView)
+                imageView.setBackgroundColor(preview.fallbackColor)
+                imageView.setImageDrawable(null)
+                val path = preview.backgroundPath
+                if (!path.isNullOrBlank()) {
+                    val request = ImageLoader.load(imageView.context, path)
+                        .centerCrop()
+                        .error(ColorDrawable(preview.fallbackColor))
+                    preview.signature?.let { request.signature(it) }
+                    request.into(imageView)
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
