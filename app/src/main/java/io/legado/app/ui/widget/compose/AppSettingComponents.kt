@@ -5,6 +5,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -372,19 +373,25 @@ private fun AppManagementSelectionSlot(
     palette: AppManagementPalette,
     onToggleSelection: (() -> Unit)?
 ) {
-    if (!reserveSpace && !visible) {
+    if (!animated && !reserveSpace && !visible) {
         return
     }
+    val targetWidth = if (visible || reserveSpace) 36.dp else 0.dp
+    val width by animateDpAsState(
+        targetValue = targetWidth,
+        animationSpec = tween(durationMillis = 140),
+        label = "managementSelectionSlotWidth"
+    )
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = tween(durationMillis = 140),
         label = "managementSelectionSlot"
     )
     Box(
-        modifier = Modifier.width(36.dp),
+        modifier = Modifier.width(if (animated) width else targetWidth),
         contentAlignment = Alignment.CenterStart
     ) {
-        if (visible || animated) {
+        if (visible || progress > 0.01f) {
             AppManagementCheckbox(
                 selected = selected,
                 palette = palette,
