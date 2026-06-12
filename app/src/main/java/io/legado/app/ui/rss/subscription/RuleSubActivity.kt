@@ -101,9 +101,12 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
                         } else {
                             getString(R.string.search_result)
                         },
+                        dragEnabled = searchQueryState.value.isBlank(),
                         onOpen = ::openSubscription,
                         onEdit = ::editSubscription,
-                        onMenuMore = ::showRuleSubMenu
+                        onMenuMore = ::showRuleSubMenu,
+                        onMoveBy = ::moveSubscriptionBy,
+                        onMoveFinished = ::persistSubscriptionOrder
                     )
                 }
             }
@@ -215,6 +218,21 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
     }
 
     private fun moveSubscription(ruleSub: RuleSub, targetIndex: Int) {
+        moveSubscription(ruleSub, targetIndex, true)
+    }
+
+    private fun moveSubscriptionBy(ruleSub: RuleSub, offset: Int) {
+        if (offset == 0 || ruleSubsState.size < 2) {
+            return
+        }
+        val fromIndex = ruleSubsState.indexOfFirst { it.id == ruleSub.id }
+        if (fromIndex < 0) {
+            return
+        }
+        moveSubscription(ruleSub, (fromIndex + offset).coerceIn(0, ruleSubsState.lastIndex), false)
+    }
+
+    private fun moveSubscription(ruleSub: RuleSub, targetIndex: Int, persist: Boolean) {
         val items = ruleSubsState.map { it.copy() }.toMutableList()
         val fromIndex = items.indexOfFirst { it.id == ruleSub.id }
         if (fromIndex < 0 || items.size < 2) {
@@ -226,7 +244,16 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
             sub.customOrder = index + 1
         }
         ruleSubsState.replaceByIndex(items, ::sameRuleSubContent)
-        updateSourceSub(*items.toTypedArray())
+        if (persist) {
+            persistSubscriptionOrder()
+        }
+    }
+
+    private fun persistSubscriptionOrder() {
+        if (ruleSubsState.isEmpty()) {
+            return
+        }
+        updateSourceSub(*ruleSubsState.map { it.copy() }.toTypedArray())
     }
 
     private fun updateSourceSub(vararg ruleSub: RuleSub) {
