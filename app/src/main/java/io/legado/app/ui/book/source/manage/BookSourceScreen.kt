@@ -122,7 +122,7 @@ private fun BookSourceItemRow(
         selected = isSelected,
         selectionVisible = isSelectMode,
         animatedSelection = true,
-        reserveSelectionSlot = true,
+        reserveSelectionSlot = isSelectMode,
         onToggleSelection = onToggleSelect,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,

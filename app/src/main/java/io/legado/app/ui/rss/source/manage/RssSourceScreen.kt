@@ -66,7 +66,7 @@ private fun RssSourceItemRow(
         selected = isSelected,
         selectionVisible = isSelectMode,
         animatedSelection = true,
-        reserveSelectionSlot = true,
+        reserveSelectionSlot = isSelectMode,
         onToggleSelection = onToggleSelect,
         switchChecked = source.enabled,
         onSwitchChange = onToggleEnabled,
