@@ -5,11 +5,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -50,6 +47,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -189,6 +188,7 @@ fun AppManagementCard(
     insidePadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     enabled: Boolean = true,
+    drawPanelImage: Boolean = true,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
@@ -222,7 +222,7 @@ fun AppManagementCard(
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .appSettingPanelBackground(
                 normalColor = if (pressed) palette.settings.rowPressed else palette.settings.row,
-                panelImage = panelImage,
+                panelImage = panelImage.takeIf { drawPanelImage },
                 borderColor = palette.settings.border,
                 radiusPx = panelRadiusPx
             )
@@ -241,9 +241,14 @@ fun AppManagementListRow(
     selected: Boolean = false,
     selectionVisible: Boolean = true,
     animatedSelection: Boolean = false,
+    reserveSelectionSlot: Boolean = false,
     onToggleSelection: (() -> Unit)? = null,
     switchChecked: Boolean? = null,
     onSwitchChange: ((Boolean) -> Unit)? = null,
+    titleMaxLines: Int = 2,
+    subtitleMaxLines: Int = 1,
+    minHeight: Dp = 0.dp,
+    drawPanelImage: Boolean = true,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
@@ -257,17 +262,21 @@ fun AppManagementListRow(
         palette = palette,
         modifier = modifier.fillMaxWidth(),
         insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        drawPanelImage = drawPanelImage,
         onClick = onClick,
         onLongClick = onLongClick
     ) {
         headerContent?.invoke(this)
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AppManagementSelectionSlot(
                 visible = selectionVisible && onToggleSelection != null,
                 animated = animatedSelection,
+                reserveSpace = reserveSelectionSlot || animatedSelection,
                 selected = selected,
                 palette = palette,
                 onToggleSelection = onToggleSelection
@@ -279,7 +288,7 @@ fun AppManagementListRow(
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = palette.settings.bodyFontFamily,
-                    maxLines = 2,
+                    maxLines = titleMaxLines,
                     overflow = TextOverflow.Ellipsis
                 )
                 subtitle?.takeIf { it.isNotBlank() }?.let {
@@ -288,7 +297,7 @@ fun AppManagementListRow(
                         color = palette.settings.secondaryText,
                         fontSize = 12.sp,
                         fontFamily = palette.settings.bodyFontFamily,
-                        maxLines = 1,
+                        maxLines = subtitleMaxLines,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -348,28 +357,35 @@ fun AppManagementListRow(
 private fun AppManagementSelectionSlot(
     visible: Boolean,
     animated: Boolean,
+    reserveSpace: Boolean,
     selected: Boolean,
     palette: AppManagementPalette,
     onToggleSelection: (() -> Unit)?
 ) {
-    if (animated) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn() + expandHorizontally(expandFrom = Alignment.Start),
-            exit = fadeOut() + shrinkHorizontally(shrinkTowards = Alignment.Start)
-        ) {
+    if (!reserveSpace && !visible) {
+        return
+    }
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        label = "managementSelectionSlot"
+    )
+    Box(
+        modifier = Modifier.width(52.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        if (visible || animated) {
             AppManagementCheckbox(
                 selected = selected,
                 palette = palette,
-                onToggleSelection = onToggleSelection
+                onToggleSelection = onToggleSelection.takeIf { visible },
+                modifier = Modifier.graphicsLayer {
+                    alpha = if (animated) progress else 1f
+                    scaleX = if (animated) 0.88f + progress * 0.12f else 1f
+                    scaleY = if (animated) 0.88f + progress * 0.12f else 1f
+                    translationX = if (animated) (1f - progress) * -8.dp.toPx() else 0f
+                }
             )
         }
-    } else if (visible) {
-        AppManagementCheckbox(
-            selected = selected,
-            palette = palette,
-            onToggleSelection = onToggleSelection
-        )
     }
 }
 
@@ -377,9 +393,13 @@ private fun AppManagementSelectionSlot(
 private fun AppManagementCheckbox(
     selected: Boolean,
     palette: AppManagementPalette,
-    onToggleSelection: (() -> Unit)?
+    onToggleSelection: (() -> Unit)?,
+    modifier: Modifier = Modifier
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Checkbox(
             checked = selected,
             onCheckedChange = { onToggleSelection?.invoke() },
