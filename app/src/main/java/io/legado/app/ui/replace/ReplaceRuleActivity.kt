@@ -9,7 +9,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.widget.SearchView
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
@@ -24,7 +23,6 @@ import io.legado.app.databinding.ActivityReplaceRuleBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
@@ -40,7 +38,6 @@ import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
 import io.legado.app.utils.sendToClip
@@ -61,14 +58,10 @@ import kotlinx.coroutines.launch
  * 替换规则管理
  */
 class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRuleViewModel>(),
-    SearchView.OnQueryTextListener,
     SelectActionBar.CallBack {
     override val binding by viewBinding(ActivityReplaceRuleBinding::inflate)
     override val viewModel by viewModels<ReplaceRuleViewModel>()
     private val importRecordKey = "replaceRuleRecordKey"
-    private val searchView: SearchView by lazy {
-        binding.titleBar.findViewById(R.id.search_view)
-    }
     private val rulesState = mutableStateListOf<ReplaceRule>()
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private val searchQueryState = mutableStateOf("")
@@ -200,12 +193,6 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             }
         }
         container.addView(cv, index)
-    }
-
-    private fun initSearchView() {
-        searchView.applyTint(primaryTextColor)
-        searchView.queryHint = getString(R.string.replace_purify_search)
-        searchView.setOnQueryTextListener(this)
     }
 
     override fun selectAll(selectAll: Boolean) {
@@ -534,15 +521,6 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         }
         searchQueryState.value = query
         observeReplaceRuleData(query)
-    }
-
-    override fun onQueryTextChange(newText: String?): Boolean {
-        updateSearchQuery(newText.orEmpty())
-        return false
-    }
-
-    override fun onQueryTextSubmit(query: String?): Boolean {
-        return false
     }
 
     override fun onDestroy() {
