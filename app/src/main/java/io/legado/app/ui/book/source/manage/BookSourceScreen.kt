@@ -1,13 +1,15 @@
 package io.legado.app.ui.book.source.manage
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,29 +41,62 @@ internal fun BookSourceScreen(
         palette = palette,
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        itemsIndexed(
-            items = sources,
-            key = { _, source -> source.bookSourceUrl }
-        ) { _, source ->
-            val message = debugMessages[source.bookSourceUrl].orEmpty()
-            BookSourceItemRow(
-                title = source.getDisPlayNameGroup(),
-                enabled = source.enabled,
-                hasExploreUrl = source.hasExploreUrl,
-                enabledExplore = source.enabledExplore,
-                hostText = if (showSourceHost) sourceHostHeaders[source.bookSourceUrl] else null,
-                debugMessage = message,
-                debugInProgress = message.isNotBlank() && isChecking && !message.contains(FINAL_DEBUG_MESSAGE_REGEX),
-                isSelected = source.bookSourceUrl in selectedUrls,
-                isSelectMode = isSelectMode,
-                palette = palette,
-                onToggleSelect = { onToggleSelect(source) },
-                onToggleEnabled = { enabled -> onToggleEnabled(source, enabled) },
-                onEdit = { onEdit(source) },
-                onShowMenu = { onShowMenu(source) }
-            )
+        sources.forEach { source ->
+            val hostText = if (showSourceHost) sourceHostHeaders[source.bookSourceUrl] else null
+            hostText?.takeIf { it.isNotBlank() }?.let {
+                item(
+                    key = "host:${source.bookSourceUrl}",
+                    contentType = "bookSourceHost"
+                ) {
+                    BookSourceHostHeader(
+                        hostText = it,
+                        palette = palette
+                    )
+                }
+            }
+            item(
+                key = source.bookSourceUrl,
+                contentType = "bookSource"
+            ) {
+                val message = debugMessages[source.bookSourceUrl].orEmpty()
+                BookSourceItemRow(
+                    title = source.getDisPlayNameGroup(),
+                    enabled = source.enabled,
+                    hasExploreUrl = source.hasExploreUrl,
+                    enabledExplore = source.enabledExplore,
+                    debugMessage = message,
+                    debugInProgress = message.isNotBlank() &&
+                        isChecking &&
+                        !message.contains(FINAL_DEBUG_MESSAGE_REGEX),
+                    isSelected = source.bookSourceUrl in selectedUrls,
+                    isSelectMode = isSelectMode,
+                    palette = palette,
+                    onToggleSelect = { onToggleSelect(source) },
+                    onToggleEnabled = { enabled -> onToggleEnabled(source, enabled) },
+                    onEdit = { onEdit(source) },
+                    onShowMenu = { onShowMenu(source) }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun BookSourceHostHeader(
+    hostText: String,
+    palette: AppManagementPalette
+) {
+    Text(
+        text = hostText,
+        color = palette.settings.accent,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+    )
 }
 
 @Composable
@@ -70,7 +105,6 @@ private fun BookSourceItemRow(
     enabled: Boolean,
     hasExploreUrl: Boolean,
     enabledExplore: Boolean,
-    hostText: String?,
     debugMessage: String,
     debugInProgress: Boolean,
     isSelected: Boolean,
@@ -88,9 +122,14 @@ private fun BookSourceItemRow(
         selected = isSelected,
         selectionVisible = isSelectMode,
         animatedSelection = true,
+        reserveSelectionSlot = true,
         onToggleSelection = onToggleSelect,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,
+        titleMaxLines = 1,
+        subtitleMaxLines = 1,
+        minHeight = 56.dp,
+        drawPanelImage = false,
         onClick = {
             if (isSelectMode) onToggleSelect() else onEdit()
         },
@@ -102,30 +141,18 @@ private fun BookSourceItemRow(
         } else {
             null
         },
-        headerContent = {
-            hostText?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    text = it,
-                    color = palette.settings.accent,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp)
-                )
-            }
-        },
         trailingBeforeSwitch = {
-            if (debugInProgress) {
-                CircularProgressIndicator(
-                    color = palette.settings.accent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier
-                        .padding(horizontal = 6.dp)
-                        .size(18.dp)
-                )
+            Box(
+                modifier = Modifier.width(30.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (debugInProgress) {
+                    CircularProgressIndicator(
+                        color = palette.settings.accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     )
