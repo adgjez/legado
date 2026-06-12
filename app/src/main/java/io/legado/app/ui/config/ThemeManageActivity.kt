@@ -141,8 +141,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private val pendingRemoteSyncTasks = linkedMapOf<String, RemoteSyncTask>()
     @Volatile
     private var syncingRemoteTasks = false
-    private var appliedDayThemeOverride: String? = null
-    private var appliedNightThemeOverride: String? = null
+    private var appliedDayThemeOverride by mutableStateOf<String?>(null)
+    private var appliedNightThemeOverride by mutableStateOf<String?>(null)
     private var pendingImageCropRequest: ImageCropHelper.Request? = null
     private val handledWebDavTasks = mutableSetOf<String>()
     private val selectImage = registerForActivityResult(HandleFileContract()) {
