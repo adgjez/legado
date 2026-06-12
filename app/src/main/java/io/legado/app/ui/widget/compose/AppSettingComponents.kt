@@ -6,8 +6,10 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -18,21 +20,19 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -197,8 +197,12 @@ fun AppManagementCard(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val panelRadiusPx = palette.settings.panelRadiusPx
-    val panelImage = remember(context, panelRadiusPx) {
-        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    val panelImage = if (drawPanelImage) {
+        remember(context, panelRadiusPx) {
+            UiCorner.panelImageDrawable(context, panelRadiusPx)
+        }
+    } else {
+        null
     }
     val clickableModifier = when {
         onClick != null && onLongClick != null -> Modifier.combinedClickable(
@@ -270,13 +274,19 @@ fun AppManagementListRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = minHeight),
+                .then(
+                    if (minHeight > 0.dp) {
+                        Modifier.height(minHeight)
+                    } else {
+                        Modifier
+                    }
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AppManagementSelectionSlot(
                 visible = selectionVisible && onToggleSelection != null,
                 animated = animatedSelection,
-                reserveSpace = reserveSelectionSlot || animatedSelection,
+                reserveSpace = reserveSelectionSlot,
                 selected = selected,
                 palette = palette,
                 onToggleSelection = onToggleSelection
@@ -367,10 +377,11 @@ private fun AppManagementSelectionSlot(
     }
     val progress by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 140),
         label = "managementSelectionSlot"
     )
     Box(
-        modifier = Modifier.width(52.dp),
+        modifier = Modifier.width(36.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         if (visible || animated) {
@@ -380,8 +391,6 @@ private fun AppManagementSelectionSlot(
                 onToggleSelection = onToggleSelection.takeIf { visible },
                 modifier = Modifier.graphicsLayer {
                     alpha = if (animated) progress else 1f
-                    scaleX = if (animated) 0.88f + progress * 0.12f else 1f
-                    scaleY = if (animated) 0.88f + progress * 0.12f else 1f
                     translationX = if (animated) (1f - progress) * -8.dp.toPx() else 0f
                 }
             )
@@ -396,20 +405,42 @@ private fun AppManagementCheckbox(
     onToggleSelection: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = selected,
-            onCheckedChange = { onToggleSelection?.invoke() },
-            colors = CheckboxDefaults.colors(
-                checkedColor = palette.settings.accent,
-                uncheckedColor = palette.settings.secondaryText,
-                checkmarkColor = palette.settings.onAccent
+    val checkedProgress by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "managementCheckboxChecked"
+    )
+    Box(
+        modifier = modifier
+            .size(24.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(palette.settings.accent.copy(alpha = checkedProgress))
+            .border(
+                width = 1.2.dp,
+                color = if (selected) {
+                    palette.settings.accent
+                } else {
+                    palette.settings.secondaryText.copy(alpha = 0.46f)
+                },
+                shape = RoundedCornerShape(8.dp)
             )
+            .clickable(
+                enabled = onToggleSelection != null,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onToggleSelection?.invoke() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_check),
+            contentDescription = null,
+            tint = palette.settings.onAccent,
+            modifier = Modifier
+                .size(16.dp)
+                .graphicsLayer {
+                    alpha = checkedProgress
+                }
         )
-        Spacer(modifier = Modifier.width(4.dp))
     }
 }
 
