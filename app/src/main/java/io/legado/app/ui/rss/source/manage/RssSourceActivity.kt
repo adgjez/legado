@@ -212,10 +212,12 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         when (item.itemId) {
             R.id.menu_enable_selection -> {
                 val selection = getSelectedSources()
+                updateSelectedEnabled(enabled = true)
                 viewModel.enableSelection(selection)
             }
             R.id.menu_disable_selection -> {
                 val selection = getSelectedSources()
+                updateSelectedEnabled(enabled = false)
                 viewModel.disableSelection(selection)
             }
             R.id.menu_add_group -> selectionAddToGroups()
@@ -412,6 +414,17 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             sourcesState[index] = updated
         }
         viewModel.update(updated)
+    }
+
+    private fun updateSelectedEnabled(enabled: Boolean) {
+        val urls = selectedUrls.value
+        if (urls.isEmpty()) return
+        sourcesState.indices.forEach { index ->
+            val source = sourcesState[index]
+            if (source.sourceUrl in urls && source.enabled != enabled) {
+                sourcesState[index] = source.copy(enabled = enabled)
+            }
+        }
     }
 
     private fun editSource(source: RssSource) {

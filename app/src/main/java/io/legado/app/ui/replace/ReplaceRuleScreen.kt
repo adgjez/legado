@@ -30,7 +30,8 @@ internal fun ReplaceRuleScreen(
     ) {
         itemsIndexed(
             rules,
-            key = { _, rule -> rule.id }
+            key = { _, rule -> rule.id },
+            contentType = { _, _ -> "replaceRule" }
         ) { _, rule ->
             ReplaceRuleItemRow(
                 title = rule.getDisplayNameGroup(),
@@ -62,9 +63,13 @@ private fun ReplaceRuleItemRow(
         palette = palette,
         selected = isSelected,
         selectionVisible = true,
+        reserveSelectionSlot = true,
         onToggleSelection = onSelectToggle,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,
+        titleMaxLines = 1,
+        minHeight = 56.dp,
+        drawPanelImage = false,
         onEdit = onEdit,
         onMore = onShowMenu
     )

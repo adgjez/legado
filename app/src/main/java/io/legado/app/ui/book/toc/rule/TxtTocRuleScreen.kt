@@ -17,7 +17,7 @@ internal fun TxtTocRuleScreen(
     rules: List<TxtTocRule>,
     selectedIds: Set<Long>,
     onToggleSelect: (TxtTocRule) -> Unit,
-    onToggleEnable: (TxtTocRule) -> Unit,
+    onToggleEnable: (TxtTocRule, Boolean) -> Unit,
     onEdit: (TxtTocRule) -> Unit,
     onMenuMore: (TxtTocRule) -> Unit,
     onSelectAll: () -> Unit,
@@ -33,7 +33,8 @@ internal fun TxtTocRuleScreen(
     ) {
         itemsIndexed(
             items = rules,
-            key = { _, rule -> rule.id }
+            key = { _, rule -> rule.id },
+            contentType = { _, _ -> "txtTocRule" }
         ) { _, rule ->
             TxtTocRuleItemRow(
                 name = rule.name,
@@ -42,7 +43,7 @@ internal fun TxtTocRuleScreen(
                 isSelected = selectedIds.contains(rule.id),
                 palette = palette,
                 onToggleSelect = { onToggleSelect(rule) },
-                onToggleEnable = { onToggleEnable(rule) },
+                onToggleEnable = { enabled -> onToggleEnable(rule, enabled) },
                 onEdit = { onEdit(rule) },
                 onMenuMore = { onMenuMore(rule) }
             )
@@ -58,7 +59,7 @@ private fun TxtTocRuleItemRow(
     isSelected: Boolean,
     palette: AppManagementPalette,
     onToggleSelect: () -> Unit,
-    onToggleEnable: () -> Unit,
+    onToggleEnable: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onMenuMore: () -> Unit
 ) {
@@ -68,9 +69,14 @@ private fun TxtTocRuleItemRow(
         palette = palette,
         selected = isSelected,
         selectionVisible = true,
+        reserveSelectionSlot = true,
         onToggleSelection = onToggleSelect,
         switchChecked = enabled,
-        onSwitchChange = { onToggleEnable() },
+        onSwitchChange = onToggleEnable,
+        titleMaxLines = 1,
+        subtitleMaxLines = 1,
+        minHeight = 56.dp,
+        drawPanelImage = false,
         onEdit = onEdit,
         onMore = onMenuMore
     )

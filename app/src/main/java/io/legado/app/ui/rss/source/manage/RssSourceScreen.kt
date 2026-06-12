@@ -31,7 +31,8 @@ internal fun RssSourceScreen(
     ) {
         itemsIndexed(
             items = sources,
-            key = { _, item -> item.sourceUrl }
+            key = { _, item -> item.sourceUrl },
+            contentType = { _, _ -> "rssSource" }
         ) { _, source ->
             RssSourceItemRow(
                 source = source,
@@ -65,9 +66,14 @@ private fun RssSourceItemRow(
         selected = isSelected,
         selectionVisible = isSelectMode,
         animatedSelection = true,
+        reserveSelectionSlot = true,
         onToggleSelection = onToggleSelect,
         switchChecked = source.enabled,
         onSwitchChange = onToggleEnabled,
+        titleMaxLines = 1,
+        subtitleMaxLines = 1,
+        minHeight = 56.dp,
+        drawPanelImage = false,
         onClick = {
             if (isSelectMode) onToggleSelect() else onEdit()
         },

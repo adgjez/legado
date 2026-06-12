@@ -30,7 +30,8 @@ internal fun DictRuleScreen(
     ) {
         itemsIndexed(
             items = rules,
-            key = { _, rule -> rule.name }
+            key = { _, rule -> rule.name },
+            contentType = { _, _ -> "dictRule" }
         ) { _, rule ->
             DictRuleItemRow(
                 name = rule.name,
@@ -62,9 +63,13 @@ private fun DictRuleItemRow(
         palette = palette,
         selected = isSelected,
         selectionVisible = true,
+        reserveSelectionSlot = true,
         onToggleSelection = onToggleSelection,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,
+        titleMaxLines = 1,
+        minHeight = 56.dp,
+        drawPanelImage = false,
         onEdit = onEdit,
         onDelete = onDelete
     )

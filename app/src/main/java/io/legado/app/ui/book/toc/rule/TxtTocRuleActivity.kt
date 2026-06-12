@@ -142,8 +142,8 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
         upCountView()
     }
 
-    private fun onToggleEnable(rule: TxtTocRule) {
-        val updated = rule.copy(enable = !rule.enable)
+    private fun onToggleEnable(rule: TxtTocRule, enabled: Boolean) {
+        val updated = rule.copy(enable = enabled)
         rulesState.value = rulesState.value.map {
             if (it.id == rule.id) updated else it
         }
