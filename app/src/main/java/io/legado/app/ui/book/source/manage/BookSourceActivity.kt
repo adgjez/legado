@@ -10,6 +10,7 @@ import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
@@ -45,6 +46,9 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.replaceByIndex
+import io.legado.app.ui.widget.compose.replaceFirst
+import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.ACache
@@ -102,7 +106,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
     private val finalMessageRegex = Regex("成功|失败")
-    private val sourcesState = mutableStateOf<List<BookSourcePart>>(emptyList())
+    private val sourcesState = mutableStateListOf<BookSourcePart>()
     private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
     private val isSelectMode = mutableStateOf(false)
     private val showSourceHostState = mutableStateOf(false)
@@ -173,7 +177,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             )
             setContent {
                 BookSourceScreen(
-                    sources = sourcesState.value,
+                    sources = sourcesState,
                     selectedUrls = selectedUrls.value,
                     isSelectMode = isSelectMode.value,
                     showSourceHost = showSourceHostState.value,
@@ -292,7 +296,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 item.isChecked = !item.isChecked
                 groupSourcesByDomain = item.isChecked
                 showSourceHostState.value = item.isChecked
-                updateSourceHostHeaders(sourcesState.value)
+                updateSourceHostHeaders(sourcesState)
                 upBookSource(searchView.query?.toString())
             }
 
@@ -405,7 +409,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             ).catch {
                 AppLog.put("书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
-                sourcesState.value = data
+                sourcesState.replaceByIndex(data)
                 val currentUrls = data.mapTo(mutableSetOf()) { it.bookSourceUrl }
                 selectedUrls.value = selectedUrls.value.filter { it in currentUrls }.toSet()
                 isSelectMode.value = selectedUrls.value.isNotEmpty()
@@ -450,7 +454,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            selectedUrls.value = sourcesState.value.map { it.bookSourceUrl }.toSet()
+            selectedUrls.value = sourcesState.map { it.bookSourceUrl }.toSet()
         } else {
             selectedUrls.value = emptySet()
         }
@@ -459,7 +463,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     override fun revertSelection() {
-        val allUrls = sourcesState.value.map { it.bookSourceUrl }.toSet()
+        val allUrls = sourcesState.map { it.bookSourceUrl }.toSet()
         selectedUrls.value = allUrls - selectedUrls.value
         isSelectMode.value = selectedUrls.value.isNotEmpty()
         upCountView()
@@ -531,7 +535,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             R.id.menu_remove_group -> selectionRemoveFromGroups()
             R.id.menu_export_selection -> viewModel.saveToFile(
                 getSelectedSources(),
-                sourcesState.value.size,
+                sourcesState.size,
                 searchView.query?.toString(),
                 sortAscending,
                 sort
@@ -548,7 +552,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
             R.id.menu_share_source -> viewModel.saveToFile(
                 getSelectedSources(),
-                sourcesState.value.size,
+                sourcesState.size,
                 searchView.query?.toString(),
                 sortAscending,
                 sort
@@ -578,7 +582,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 }
                 val selectItems = getSelectedSources()
                 CheckSource.start(this@BookSourceActivity, selectItems)
-                val currentItems = sourcesState.value
+                val currentItems = sourcesState
                 val firstItem = currentItems.indexOf(selectItems.firstOrNull())
                 val lastItem = currentItems.indexOf(selectItems.lastOrNull())
                 Debug.isChecking = firstItem >= 0 && lastItem >= 0
@@ -745,12 +749,12 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
 
     private fun upCountView() {
         binding.selectActionBar
-            .upCountView(getSelectedSources().size, sourcesState.value.size)
+            .upCountView(getSelectedSources().size, sourcesState.size)
     }
 
     private fun getSelectedSources(): List<BookSourcePart> {
         val urls = selectedUrls.value
-        return sourcesState.value.filter { it.bookSourceUrl in urls }
+        return sourcesState.filter { it.bookSourceUrl in urls }
     }
 
     private fun toggleSourceSelection(source: BookSourcePart) {
@@ -766,38 +770,36 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun toggleSourceEnabled(source: BookSourcePart, enabled: Boolean) {
-        val updated = source.copy(enabled = enabled)
-        sourcesState.value = sourcesState.value.map {
-            if (it.bookSourceUrl == source.bookSourceUrl) updated else it
-        }
+        val updated = sourcesState.replaceFirst(
+            predicate = { it.bookSourceUrl == source.bookSourceUrl },
+            transform = { it.copy(enabled = enabled) }
+        ) ?: source.copy(enabled = enabled)
         viewModel.enable(enabled, listOf(updated))
     }
 
     private fun updateSelectedEnabled(enabled: Boolean) {
         val urls = selectedUrls.value
         if (urls.isEmpty()) return
-        sourcesState.value = sourcesState.value.map {
-            if (it.bookSourceUrl in urls) it.copy(enabled = enabled) else it
-        }
+        sourcesState.replaceMatching({ it.bookSourceUrl in urls }) { it.copy(enabled = enabled) }
     }
 
     private fun updateSelectedExplore(enabled: Boolean) {
         val urls = selectedUrls.value
         if (urls.isEmpty()) return
-        sourcesState.value = sourcesState.value.map {
-            if (it.bookSourceUrl in urls) it.copy(enabledExplore = enabled) else it
+        sourcesState.replaceMatching({ it.bookSourceUrl in urls }) {
+            it.copy(enabledExplore = enabled)
         }
     }
 
     private fun checkSelectedInterval() {
         val urls = selectedUrls.value
-        val positions = sourcesState.value.mapIndexedNotNull { index, source ->
+        val positions = sourcesState.mapIndexedNotNull { index, source ->
             if (source.bookSourceUrl in urls) index else null
         }
         if (positions.isEmpty()) return
         val newSelected = urls.toMutableSet()
         for (index in positions.min()..positions.max()) {
-            newSelected.add(sourcesState.value[index].bookSourceUrl)
+            newSelected.add(sourcesState[index].bookSourceUrl)
         }
         selectedUrls.value = newSelected
         isSelectMode.value = newSelected.isNotEmpty()
@@ -849,7 +851,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun buildDebugMessagesSnapshot(): Map<String, String> {
-        return sourcesState.value.mapNotNull { source ->
+        return sourcesState.mapNotNull { source ->
             val initial = Debug.debugMessageMap[source.bookSourceUrl].orEmpty()
             if (initial.isBlank()) {
                 null
@@ -950,10 +952,10 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun enableExplore(enable: Boolean, bookSource: BookSourcePart) {
-        val updated = bookSource.copy(enabledExplore = enable)
-        sourcesState.value = sourcesState.value.map {
-            if (it.bookSourceUrl == bookSource.bookSourceUrl) updated else it
-        }
+        val updated = sourcesState.replaceFirst(
+            predicate = { it.bookSourceUrl == bookSource.bookSourceUrl },
+            transform = { it.copy(enabledExplore = enable) }
+        ) ?: bookSource.copy(enabledExplore = enable)
         viewModel.enableExplore(enable, listOf(updated))
     }
 

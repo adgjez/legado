@@ -25,6 +25,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -361,8 +362,7 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             }.catch {
                 AppLog.put("订阅源管理界面更新数据出错", it)
             }.flowOn(IO).conflate().collect {
-                sourcesState.clear()
-                sourcesState.addAll(it)
+                sourcesState.replaceByIndex(it)
                 val currentUrls = it.mapTo(mutableSetOf()) { source -> source.sourceUrl }
                 selectedUrls.value = selectedUrls.value.filter { url -> url in currentUrls }.toSet()
                 isSelectMode.value = selectedUrls.value.isNotEmpty()
