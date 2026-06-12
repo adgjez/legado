@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.source.manage
 
-import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -8,7 +7,6 @@ import android.view.SubMenu
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -29,10 +27,8 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.databinding.ActivityBookSourceBinding
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
@@ -51,11 +47,11 @@ import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
-import io.legado.app.utils.dpToPx
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
 import io.legado.app.utils.isAbsUrl
@@ -124,19 +120,20 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
     private val exportDir = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            alert(R.string.export_success) {
-                if (uri.toString().isAbsUrl()) {
-                    setMessage(DirectLinkUpload.getSummary())
-                }
-                val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                    editView.hint = getString(R.string.path)
-                    editView.setText(uri.toString())
-                }
-                customView { alertBinding.root }
-                okButton {
+            showComposeTextInputDialog(
+                title = getString(R.string.export_success),
+                hint = getString(R.string.path),
+                initialValue = uri.toString(),
+                message = if (uri.toString().isAbsUrl()) {
+                    DirectLinkUpload.getSummary()
+                } else {
+                    null
+                },
+                readOnly = true,
+                onPositive = {
                     sendToClip(uri.toString())
                 }
-            }
+            )
         }
     }
     private val groupMenuLifecycleOwner = object : LifecycleOwner {
@@ -565,20 +562,16 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         return true
     }
 
-    @SuppressLint("InflateParams")
     private fun checkSource() {
-        val dialog = alert(titleResource = R.string.search_book_key) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "search word"
-                editView.setText(CheckSource.keyword)
-            }
-            customView { alertBinding.root }
-            okButton {
+        showComposeTextInputDialog(
+            title = getString(R.string.search_book_key),
+            hint = "search word",
+            initialValue = CheckSource.keyword,
+            neutralText = getString(R.string.check_source_config),
+            onPositive = { text ->
                 keepScreenOn(true)
-                alertBinding.editView.text?.toString()?.let {
-                    if (it.isNotEmpty()) {
-                        CheckSource.keyword = it
-                    }
+                if (text.isNotEmpty()) {
+                    CheckSource.keyword = text
                 }
                 val selectItems = getSelectedSources()
                 CheckSource.start(this@BookSourceActivity, selectItems)
@@ -589,14 +582,12 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 updateCheckingState(Debug.isChecking)
                 refreshDebugMessages(force = true)
                 startCheckMessageRefreshJob(firstItem, lastItem)
+            },
+            onNeutral = {
+                showDialogFragment<CheckSourceConfig>()
             }
-            neutralButton(R.string.check_source_config)
-            cancelButton()
-        }
+        )
         //手动设置监听 避免点击打开校验设置后对话框关闭
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
-            showDialogFragment<CheckSourceConfig>()
-        }
     }
 
     private fun resumeCheckSource() {
@@ -610,44 +601,30 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         startCheckMessageRefreshJob(0, 0)
     }
 
-    @SuppressLint("InflateParams")
     private fun selectionAddToGroups() {
-        alert(titleResource = R.string.add_group) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-                editView.setFilterValues(groups.toList())
-                editView.dropDownHeight = 180.dpToPx()
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
-                    if (it.isNotEmpty()) {
-                        viewModel.selectionAddToGroups(getSelectedSources(), it)
-                    }
+        showComposeTextInputDialog(
+            title = getString(R.string.add_group),
+            hint = getString(R.string.group_name),
+            message = groups.takeIf { it.isNotEmpty() }?.joinToString(", "),
+            onPositive = { text ->
+                if (text.isNotEmpty()) {
+                    viewModel.selectionAddToGroups(getSelectedSources(), text)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
-    @SuppressLint("InflateParams")
     private fun selectionRemoveFromGroups() {
-        alert(titleResource = R.string.remove_group) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.setHint(R.string.group_name)
-                editView.setFilterValues(groups.toList())
-                editView.dropDownHeight = 180.dpToPx()
-            }
-            customView { alertBinding.root }
-            okButton {
-                alertBinding.editView.text?.toString()?.let {
-                    if (it.isNotEmpty()) {
-                        viewModel.selectionRemoveFromGroups(getSelectedSources(), it)
-                    }
+        showComposeTextInputDialog(
+            title = getString(R.string.remove_group),
+            hint = getString(R.string.group_name),
+            message = groups.takeIf { it.isNotEmpty() }?.joinToString(", "),
+            onPositive = { text ->
+                if (text.isNotEmpty()) {
+                    viewModel.selectionRemoveFromGroups(getSelectedSources(), text)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
     private fun upGroupMenu() = groupMenu?.transaction { menu ->
@@ -657,35 +634,24 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    @SuppressLint("InflateParams")
     private fun showImportDialog() {
         val aCache = ACache.get(cacheDir = false)
         val cacheUrls: MutableList<String> = aCache
             .getAsString(importRecordKey)
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
-        alert(titleResource = R.string.import_on_line) {
-            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
-                editView.hint = "url"
-                editView.setFilterValues(cacheUrls)
-                editView.delCallBack = {
-                    cacheUrls.remove(it)
+        showComposeTextInputDialog(
+            title = getString(R.string.import_on_line),
+            hint = "url",
+            message = cacheUrls.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+            onPositive = { text ->
+                if (text.isAbsUrl() && !cacheUrls.contains(text)) {
+                    cacheUrls.add(0, text)
                     aCache.put(importRecordKey, cacheUrls.joinToString(","))
                 }
+                showDialogFragment(ImportBookSourceDialog(text))
             }
-            customView { alertBinding.root }
-            okButton {
-                val text = alertBinding.editView.text?.toString()
-                text?.let {
-                    if (it.isAbsUrl() && !cacheUrls.contains(it)) {
-                        cacheUrls.add(0, it)
-                        aCache.put(importRecordKey, cacheUrls.joinToString(","))
-                    }
-                    showDialogFragment(ImportBookSourceDialog(it))
-                }
-            }
-            cancelButton()
-        }
+        )
     }
 
     override fun observeLiveBus() {
