@@ -5,7 +5,6 @@ import android.app.Application
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Gravity
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -43,8 +42,6 @@ import io.legado.app.utils.*
 class DictRuleEditDialog() : ComposeDialogFragment() {
 
     val viewModel by viewModels<DictRuleEditViewModel>()
-    override val dialogHeight: Int = ViewGroup.LayoutParams.MATCH_PARENT
-    override val dialogGravity: Int = Gravity.CENTER
     override val widthFraction: Float = 0.96f
     override val maxWidthDp: Int = 680
 
