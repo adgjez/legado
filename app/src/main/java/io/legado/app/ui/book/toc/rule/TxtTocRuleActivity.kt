@@ -23,6 +23,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
@@ -115,7 +116,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
                         AppManagementAction(
                             text = getString(R.string.more_menu),
                             iconRes = R.drawable.ic_more_vert,
-                            onClick = ::showPageMenu
+                            menuActions = ::pageMenuActions
                         )
                     ),
                     bottomActions = listOf(
@@ -148,7 +149,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
                         onToggleSelect = ::onToggleSelect,
                         onToggleEnable = ::onToggleEnable,
                         onEdit = ::onEdit,
-                        onMenuMore = ::onMenuMore
+                        ruleMenuActions = ::ruleMenuActions
                     )
                 }
             }
@@ -198,23 +199,20 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
         showDialogFragment(TxtTocRuleEditComposeDialog.create(rule.id))
     }
 
-    private fun onMenuMore(rule: TxtTocRule) {
-        showComposeActionListDialog(
-            title = rule.name,
-            labels = listOf(
-                getString(R.string.to_top),
-                getString(R.string.to_bottom),
-                getString(R.string.delete)
-            ),
-            dangerIndices = setOf(2),
-            negativeText = getString(R.string.cancel)
-        ) { index ->
-            when (index) {
-                0 -> viewModel.toTop(rule)
-                1 -> viewModel.toBottom(rule)
-                2 -> del(rule)
-            }
-        }
+    private fun ruleMenuActions(rule: TxtTocRule): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.to_top)) {
+                viewModel.toTop(rule)
+            },
+            AppManagementMenuAction(getString(R.string.to_bottom)) {
+                viewModel.toBottom(rule)
+            },
+            AppManagementMenuAction(
+                text = getString(R.string.delete),
+                danger = true,
+                onClick = { del(rule) }
+            )
+        )
     }
 
     private fun del(source: TxtTocRule) {
@@ -248,29 +246,27 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun showPageMenu() {
-        val labels = listOf(
-            getString(R.string.import_local),
-            getString(R.string.import_on_line),
-            getString(R.string.import_by_qr_code),
-            getString(R.string.import_default_rule),
-            getString(R.string.help)
-        )
-        showComposeActionListDialog(
-            title = getString(R.string.txt_toc_rule),
-            labels = labels
-        ) { index ->
-            when (index) {
-                0 -> importDoc.launch {
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_local)) {
+                importDoc.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("txt", "json")
                 }
-                1 -> showImportDialog()
-                2 -> qrCodeResult.launch()
-                3 -> viewModel.importDefault()
-                4 -> showHelp("txtTocRuleHelp")
+            },
+            AppManagementMenuAction(getString(R.string.import_on_line)) {
+                showImportDialog()
+            },
+            AppManagementMenuAction(getString(R.string.import_by_qr_code)) {
+                qrCodeResult.launch()
+            },
+            AppManagementMenuAction(getString(R.string.import_default_rule)) {
+                viewModel.importDefault()
+            },
+            AppManagementMenuAction(getString(R.string.help)) {
+                showHelp("txtTocRuleHelp")
             }
-        }
+        )
     }
 
     override fun saveTxtTocRule(txtTocRule: TxtTocRule) {

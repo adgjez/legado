@@ -83,6 +83,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private var containerMenuPopup: ModernActionPopup.Handle? = null
+    private var itemMenuPopup: ModernActionPopup.Handle? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val selectIcon = registerForActivityResult(HandleFileContract()) { result ->
@@ -821,7 +822,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
-    private fun showActions(entry: NavigationBarIconConfig.Entry) {
+    private fun showActions(anchor: View, entry: NavigationBarIconConfig.Entry) {
         val actions = buildList {
             add(NavAction.APPLY)
             if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) {
@@ -834,26 +835,43 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (entry.source == NavigationBarIconConfig.Source.BOTH) add(NavAction.DELETE_BOTH)
             }
         }
-        selector(entry.config.name, actions.map { getString(it.titleRes) }) { _, index ->
-            when (actions[index]) {
-                NavAction.APPLY -> applyPackage(entry)
-                NavAction.EDIT -> showEditDialog(entry)
-                NavAction.EXPORT -> exportPackage(entry)
-                NavAction.UPLOAD -> enqueueUpload(entry)
-                NavAction.DOWNLOAD -> runAction { NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE) }
-                NavAction.DELETE_LOCAL -> confirmDelete(entry, getString(R.string.navigation_bar_delete_local_confirm)) {
-                    NavigationBarIconConfig.deleteLocal(entry)
-                    postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
+        itemMenuPopup = ModernActionPopup.show(
+            anchor = anchor,
+            actions = actions.map { action ->
+                ModernActionPopup.Action(getString(action.titleRes)) {
+                    when (action) {
+                        NavAction.APPLY -> applyPackage(entry)
+                        NavAction.EDIT -> showEditDialog(entry)
+                        NavAction.EXPORT -> exportPackage(entry)
+                        NavAction.UPLOAD -> enqueueUpload(entry)
+                        NavAction.DOWNLOAD -> runAction {
+                            NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE)
+                        }
+                        NavAction.DELETE_LOCAL -> confirmDelete(
+                            entry,
+                            getString(R.string.navigation_bar_delete_local_confirm)
+                        ) {
+                            NavigationBarIconConfig.deleteLocal(entry)
+                            postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
+                        }
+                        NavAction.DELETE_REMOTE -> confirmDelete(
+                            entry,
+                            getString(R.string.navigation_bar_delete_remote_confirm)
+                        ) {
+                            NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
+                        }
+                        NavAction.DELETE_BOTH -> confirmDelete(
+                            entry,
+                            getString(R.string.navigation_bar_delete_both_confirm)
+                        ) {
+                            NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
+                            postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
+                        }
+                    }
                 }
-                NavAction.DELETE_REMOTE -> confirmDelete(entry, getString(R.string.navigation_bar_delete_remote_confirm)) {
-                    NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
-                }
-                NavAction.DELETE_BOTH -> confirmDelete(entry, getString(R.string.navigation_bar_delete_both_confirm)) {
-                    NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
-                    postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
-                }
-            }
-        }
+            },
+            previousPopup = itemMenuPopup
+        )
     }
 
     private fun confirmDelete(
@@ -1160,8 +1178,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 btnEdit.setOnClickListener {
                     if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) showEditDialog(entry)
                 }
-                btnMore.setOnClickListener { showActions(entry) }
-                root.setOnClickListener { showActions(entry) }
+                btnMore.setOnClickListener { showActions(btnMore, entry) }
+                root.setOnClickListener { showActions(root, entry) }
             }
         }
     }

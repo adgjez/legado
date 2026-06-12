@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -48,7 +50,7 @@ internal fun AiImageProviderManageScreen(
     onExportRules: () -> Unit,
     onAdd: () -> Unit,
     onOpenProvider: (AiImageProviderConfig) -> Unit,
-    onShowActions: (AiImageProviderConfig) -> Unit
+    providerActions: (AiImageProviderConfig) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
@@ -96,7 +98,7 @@ internal fun AiImageProviderManageScreen(
                                 provider = provider,
                                 current = provider.id == currentProviderId,
                                 onClick = { onOpenProvider(provider) },
-                                onMore = { onShowActions(provider) }
+                                moreActions = providerActions(provider)
                             )
                         }
                     }
@@ -215,7 +217,7 @@ private fun AiImageProviderCard(
     provider: AiImageProviderConfig,
     current: Boolean,
     onClick: () -> Unit,
-    onMore: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     AppManagementCard(
@@ -277,28 +279,11 @@ private fun AiImageProviderCard(
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clickable(onClick = onMore),
-                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-                color = palette.miuix.surfaceVariant,
-                contentColor = palette.settings.primaryText,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
-                        contentDescription = stringResource(R.string.more),
-                        tint = palette.settings.primaryText,
-                        modifier = Modifier.size(21.dp)
-                    )
-                }
-            }
+            AppManagementMoreActionButton(
+                actionsProvider = { moreActions },
+                palette = palette,
+                contentDescription = stringResource(R.string.more)
+            )
         }
     }
 }

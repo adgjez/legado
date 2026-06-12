@@ -39,6 +39,8 @@ import io.legado.app.R
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -49,7 +51,7 @@ internal fun CoverCollectionManageScreen(
     entries: List<CoverCollectionManager.Entry>,
     onTabChanged: (Boolean) -> Unit,
     onItemClick: (CoverCollectionManager.Entry) -> Unit,
-    onItemMore: (CoverCollectionManager.Entry) -> Unit,
+    itemActions: (CoverCollectionManager.Entry) -> List<AppManagementMenuAction>,
     onAddClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -81,7 +83,7 @@ internal fun CoverCollectionManageScreen(
                     entry = entry,
                     palette = palette,
                     onClick = { onItemClick(entry) },
-                    onMoreClick = { onItemMore(entry) }
+                    moreActions = itemActions(entry)
                 )
             }
         }
@@ -167,10 +169,9 @@ private fun CoverCollectionItemRow(
     entry: CoverCollectionManager.Entry,
     palette: AppManagementPalette,
     onClick: () -> Unit,
-    onMoreClick: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     val context = LocalContext.current
-    val actionRadius = palette.miuix.actionRadius ?: context.composeActionRadius()
     val collection = entry.collection
     val sourceText = when (entry.source) {
         CoverCollectionManager.Source.LOCAL -> stringResource(R.string.theme_source_local)
@@ -230,15 +231,10 @@ private fun CoverCollectionItemRow(
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
-            // More button
-            LegadoMiuixActionButton(
-                text = stringResource(R.string.more),
-                palette = palette.miuix,
-                onClick = onMoreClick,
-                cornerRadius = actionRadius,
-                minWidth = 56.dp,
-                minHeight = 34.dp,
-                insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            AppManagementMoreActionButton(
+                actionsProvider = { moreActions },
+                palette = palette,
+                contentDescription = stringResource(R.string.more)
             )
         }
     }

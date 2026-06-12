@@ -30,6 +30,7 @@ import io.legado.app.R
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.ui.widget.compose.AppManagementLazyColumn
 import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -42,7 +43,7 @@ internal fun RuleSubScreen(
     dragEnabled: Boolean,
     onOpen: (RuleSub) -> Unit,
     onEdit: (RuleSub) -> Unit,
-    onMenuMore: (RuleSub) -> Unit,
+    ruleSubMenuActions: (RuleSub) -> List<AppManagementMenuAction>,
     onMoveBy: (RuleSub, Int) -> Unit,
     onMoveFinished: () -> Unit,
     modifier: Modifier = Modifier
@@ -67,7 +68,7 @@ internal fun RuleSubScreen(
                     dragEnabled = dragEnabled,
                     onOpen = { onOpen(item) },
                     onEdit = { onEdit(item) },
-                    onMenuMore = { onMenuMore(item) },
+                    moreActions = ruleSubMenuActions(item),
                     onMoveBy = { delta -> onMoveBy(item, delta) },
                     onMoveFinished = onMoveFinished
                 )
@@ -97,7 +98,7 @@ private fun RuleSubItemRow(
     dragEnabled: Boolean,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
-    onMenuMore: () -> Unit,
+    moreActions: List<AppManagementMenuAction>,
     onMoveBy: (Int) -> Unit,
     onMoveFinished: () -> Unit
 ) {
@@ -111,7 +112,7 @@ private fun RuleSubItemRow(
         drawPanelImage = false,
         onClick = onOpen,
         onEdit = onEdit,
-        onMore = onMenuMore,
+        moreActions = moreActions,
         trailingBeforeSwitch = {
             if (typeLabel.isNotBlank()) {
                 RuleSubTypeChip(label = typeLabel, palette = palette)

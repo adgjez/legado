@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.BubblePackageManager
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
@@ -58,7 +60,7 @@ internal fun BubbleManageScreen(
     previewBitmapProvider: (BubblePackageManager.Config) -> Bitmap?,
     onApply: (BubblePackageManager.Entry) -> Unit,
     onEdit: (BubblePackageManager.Entry) -> Unit,
-    onMoreActions: (BubblePackageManager.Entry) -> Unit,
+    onMoreActions: (BubblePackageManager.Entry) -> List<AppManagementMenuAction>,
     onAddClick: () -> Unit
 ) {
     val palette = rememberAppManagementPalette()
@@ -99,7 +101,7 @@ internal fun BubbleManageScreen(
                     previewBitmapProvider = previewBitmapProvider,
                     onApply = { onApply(entry) },
                     onEdit = { onEdit(entry) },
-                    onMoreActions = { onMoreActions(entry) }
+                    moreActions = onMoreActions(entry)
                 )
             }
         }
@@ -127,13 +129,12 @@ private fun BubbleItemRow(
     previewBitmapProvider: (BubblePackageManager.Config) -> Bitmap?,
     onApply: () -> Unit,
     onEdit: () -> Unit,
-    onMoreActions: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementCard(
         palette = palette,
         modifier = Modifier
             .fillMaxWidth(),
-        onClick = onMoreActions,
         insidePadding = PaddingValues(10.dp)
     ) {
         Row(
@@ -206,10 +207,10 @@ private fun BubbleItemRow(
                             onClick = onEdit
                         )
                     }
-                    ActionTextButton(
-                        text = "更多",
-                        palette = palette.miuix,
-                        onClick = onMoreActions
+                    AppManagementMoreActionButton(
+                        actionsProvider = { moreActions },
+                        palette = palette,
+                        contentDescription = "更多"
                     )
                 }
             }

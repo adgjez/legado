@@ -58,6 +58,8 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -175,7 +177,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     onAdd = ::showAddDialog,
                     onApply = ::applyPackage,
                     onEdit = { entry -> showEditDialog(entry) },
-                    onShowActions = ::showActions
+                    entryActions = ::entryActions
                 )
             }
         }
@@ -494,7 +496,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }
     }
 
-    private fun showActions(entry: TopBarConfig.Entry) {
+    private fun entryActions(entry: TopBarConfig.Entry): List<AppManagementMenuAction> {
         val actions = buildList {
             add(Action.APPLY)
             if (entry.dirName != TopBarConfig.DEFAULT_DIR_NAME) {
@@ -507,40 +509,39 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (entry.source == TopBarConfig.Source.BOTH) add(Action.DELETE_BOTH)
             }
         }
-        showComposeActionListDialog(
-            title = entry.config.name,
-            labels = actions.map { getString(it.titleRes) },
-            dangerIndices = actions.indices.filter {
-                actions[it] in setOf(Action.DELETE_LOCAL, Action.DELETE_REMOTE, Action.DELETE_BOTH)
-            }.toSet()
-        ) { index ->
-            when (actions[index]) {
-                Action.APPLY -> applyPackage(entry)
-                Action.EDIT -> showEditDialog(entry)
-                Action.EXPORT -> exportPackage(entry)
-                Action.UPLOAD -> enqueueUpload(entry)
-                Action.DOWNLOAD -> runAction {
-                    TopBarConfig.download(entry, cloudContainerId, CLOUD_SCOPE)
-                }
-                Action.DELETE_LOCAL -> confirmDelete(
-                    entry,
-                    getString(R.string.navigation_bar_delete_local_confirm)
-                ) {
-                    TopBarConfig.deleteLocal(entry)
-                    postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
-                }
-                Action.DELETE_REMOTE -> confirmDelete(
-                    entry,
-                    getString(R.string.navigation_bar_delete_remote_confirm)
-                ) {
-                    TopBarConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
-                }
-                Action.DELETE_BOTH -> confirmDelete(
-                    entry,
-                    getString(R.string.navigation_bar_delete_both_confirm)
-                ) {
-                    TopBarConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
-                    postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = getString(action.titleRes),
+                danger = action in setOf(Action.DELETE_LOCAL, Action.DELETE_REMOTE, Action.DELETE_BOTH)
+            ) {
+                when (action) {
+                    Action.APPLY -> applyPackage(entry)
+                    Action.EDIT -> showEditDialog(entry)
+                    Action.EXPORT -> exportPackage(entry)
+                    Action.UPLOAD -> enqueueUpload(entry)
+                    Action.DOWNLOAD -> runAction {
+                        TopBarConfig.download(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    Action.DELETE_LOCAL -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_local_confirm)
+                    ) {
+                        TopBarConfig.deleteLocal(entry)
+                        postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
+                    }
+                    Action.DELETE_REMOTE -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_remote_confirm)
+                    ) {
+                        TopBarConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    Action.DELETE_BOTH -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_both_confirm)
+                    ) {
+                        TopBarConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
+                        postEvent(EventBus.TOP_BAR_CHANGED, entry.config.isNightMode)
+                    }
                 }
             }
         }
@@ -813,7 +814,7 @@ private fun TopBarManageScreen(
     onAdd: () -> Unit,
     onApply: (TopBarConfig.Entry) -> Unit,
     onEdit: (TopBarConfig.Entry) -> Unit,
-    onShowActions: (TopBarConfig.Entry) -> Unit
+    entryActions: (TopBarConfig.Entry) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
@@ -861,7 +862,7 @@ private fun TopBarManageScreen(
                             palette = palette,
                             onApply = { onApply(entry) },
                             onEdit = { onEdit(entry) },
-                            onShowActions = { onShowActions(entry) }
+                            moreActions = entryActions(entry)
                         )
                     }
                 }
@@ -962,13 +963,12 @@ private fun TopBarEntryCard(
     palette: AppManagementPalette,
     onApply: () -> Unit,
     onEdit: () -> Unit,
-    onShowActions: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementCard(
         palette = palette,
         modifier = Modifier
             .fillMaxWidth(),
-        onClick = onShowActions,
         insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -1028,14 +1028,10 @@ private fun TopBarEntryCard(
                         insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
-                LegadoMiuixActionButton(
-                    text = stringResource(R.string.more),
-                    palette = palette.miuix,
-                    onClick = onShowActions,
-                    cornerRadius = palette.miuix.actionRadius,
-                    minWidth = 56.dp,
-                    minHeight = 34.dp,
-                    insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                AppManagementMoreActionButton(
+                    actionsProvider = { moreActions },
+                    palette = palette,
+                    contentDescription = stringResource(R.string.more)
                 )
             }
         }

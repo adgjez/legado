@@ -8,8 +8,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.RssSource
 import io.legado.app.ui.widget.compose.AppManagementLazyColumn
-import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
@@ -20,7 +21,7 @@ internal fun RssSourceScreen(
     onToggleSelect: (RssSource) -> Unit,
     onToggleEnabled: (RssSource, Boolean) -> Unit,
     onEdit: (RssSource) -> Unit,
-    onShowMenu: (RssSource) -> Unit
+    sourceMenuActions: (RssSource) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
 
@@ -42,7 +43,7 @@ internal fun RssSourceScreen(
                 onToggleSelect = { onToggleSelect(source) },
                 onToggleEnabled = { enabled -> onToggleEnabled(source, enabled) },
                 onEdit = { onEdit(source) },
-                onShowMenu = { onShowMenu(source) }
+                moreActions = sourceMenuActions(source)
             )
         }
     }
@@ -57,7 +58,7 @@ private fun RssSourceItemRow(
     onToggleSelect: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onShowMenu: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementListRow(
         title = source.sourceName,
@@ -79,6 +80,6 @@ private fun RssSourceItemRow(
         },
         onLongClick = onToggleSelect,
         onEdit = onEdit,
-        onMore = onShowMenu
+        moreActions = moreActions
     )
 }

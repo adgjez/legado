@@ -56,6 +56,7 @@ import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -120,6 +121,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var loadVersion = 0
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
+    private var itemMenuPopup: ModernActionPopup.Handle? = null
     private val pendingRemoteSyncTasks = linkedMapOf<String, RemoteSyncTask>()
     @Volatile
     private var syncingRemoteTasks = false
@@ -1179,7 +1181,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         cropImage.launch(request.params)
     }
 
-    private fun showActions(entry: ThemePackageManager.Entry) {
+    private fun showActions(anchor: View, entry: ThemePackageManager.Entry) {
         val actions = buildList {
             add(ThemeAction.APPLY)
             if (entry.source != ThemePackageManager.Source.REMOTE &&
@@ -1204,25 +1206,42 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (entry.source == ThemePackageManager.Source.BOTH) add(ThemeAction.DELETE_BOTH)
             }
         }
-        selector(entry.packageInfo.name, actions.map { getString(it.titleRes) }) { _, index ->
-            when (actions[index]) {
-                ThemeAction.APPLY -> applyTheme(entry)
-                ThemeAction.EDIT -> showEditDialog(entry)
-                ThemeAction.EXPORT -> exportThemeZip(entry)
-                ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) { ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
-                ThemeAction.UPLOAD -> uploadThemeNow(entry)
-                ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(entry, getString(R.string.theme_delete_local_confirm)) {
-                    ThemePackageManager.deleteLocal(entry)
+        itemMenuPopup = ModernActionPopup.show(
+            anchor = anchor,
+            actions = actions.map { action ->
+                ModernActionPopup.Action(getString(action.titleRes)) {
+                    when (action) {
+                        ThemeAction.APPLY -> applyTheme(entry)
+                        ThemeAction.EDIT -> showEditDialog(entry)
+                        ThemeAction.EXPORT -> exportThemeZip(entry)
+                        ThemeAction.DOWNLOAD -> runAction(getString(R.string.theme_downloaded)) {
+                            ThemePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
+                        }
+                        ThemeAction.UPLOAD -> uploadThemeNow(entry)
+                        ThemeAction.DELETE_LOCAL -> confirmDeleteTheme(
+                            entry,
+                            getString(R.string.theme_delete_local_confirm)
+                        ) {
+                            ThemePackageManager.deleteLocal(entry)
+                        }
+                        ThemeAction.DELETE_REMOTE -> confirmDeleteTheme(
+                            entry,
+                            getString(R.string.theme_delete_remote_confirm)
+                        ) {
+                            enqueueRemoteDelete(entry)
+                        }
+                        ThemeAction.DELETE_BOTH -> confirmDeleteTheme(
+                            entry,
+                            getString(R.string.theme_delete_both_confirm)
+                        ) {
+                            ThemePackageManager.deleteLocal(entry)
+                            enqueueRemoteDelete(entry)
+                        }
+                    }
                 }
-                ThemeAction.DELETE_REMOTE -> confirmDeleteTheme(entry, getString(R.string.theme_delete_remote_confirm)) {
-                    enqueueRemoteDelete(entry)
-                }
-                ThemeAction.DELETE_BOTH -> confirmDeleteTheme(entry, getString(R.string.theme_delete_both_confirm)) {
-                    ThemePackageManager.deleteLocal(entry)
-                    enqueueRemoteDelete(entry)
-                }
-            }
-        }
+            },
+            previousPopup = itemMenuPopup
+        )
     }
 
     private fun uploadThemeNow(entry: ThemePackageManager.Entry) {
@@ -1553,8 +1572,8 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         entry.source != ThemePackageManager.Source.REMOTE
                     ) showEditDialog(entry)
                 }
-                btnMore.setOnClickListener { showActions(entry) }
-                root.setOnClickListener { showActions(entry) }
+                btnMore.setOnClickListener { showActions(btnMore, entry) }
+                root.setOnClickListener { showActions(root, entry) }
             }
 
             private fun ItemThemePackageBinding.bindPreview(entry: ThemePackageManager.Entry) {

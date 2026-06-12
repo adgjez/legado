@@ -31,6 +31,7 @@ import io.legado.app.ui.book.cache.WebDavTaskStatus
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.code.CodeEditActivity
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.compose.ComposeConfirmDialog
 import io.legado.app.ui.widget.compose.ComposeNumberPickerDialog
@@ -142,7 +143,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     previewBitmapProvider = ::previewBitmap,
                     onApply = ::applyEntry,
                     onEdit = { entry -> showEditDialog(entry) },
-                    onMoreActions = { entry -> showActions(entry) },
+                    onMoreActions = ::bubbleActions,
                     onAddClick = ::showAddActions
                 )
             }
@@ -260,7 +261,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         )
     }
 
-    private fun showActions(entry: BubblePackageManager.Entry) {
+    private fun bubbleActions(entry: BubblePackageManager.Entry): List<AppManagementMenuAction> {
         val actions = buildList {
             add(Action.APPLY)
             if (entry.source != BubblePackageManager.Source.BUILTIN) {
@@ -273,38 +274,38 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (entry.source == BubblePackageManager.Source.BOTH) add(Action.DELETE_BOTH)
             }
         }
-        showDialogFragment(
-            ComposeActionListDialog.create(
-                title = entry.config.name,
-                labels = actions.map { it.title },
-                negativeText = getString(R.string.cancel),
-                onSelected = { index ->
-                    when (actions[index]) {
-                        Action.APPLY -> applyEntry(entry)
-                        Action.EDIT -> showEditDialog(entry)
-                        Action.EXPORT -> exportZip(entry)
-                        Action.UPLOAD -> enqueueUpload(entry)
-                        Action.DOWNLOAD -> runAction(refreshReading = false) {
-                            BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
-                        }
-                        Action.DELETE_LOCAL -> confirmDelete {
-                            BubblePackageManager.deleteLocal(entry)
-                        }
-                        Action.DELETE_REMOTE -> confirmDelete {
-                            BubblePackageManager.deleteRemote(
-                                entry, cloudContainerId, CLOUD_SCOPE
-                            )
-                        }
-                        Action.DELETE_BOTH -> confirmDelete {
-                            BubblePackageManager.deleteLocal(entry)
-                            BubblePackageManager.deleteRemote(
-                                entry, cloudContainerId, CLOUD_SCOPE
-                            )
-                        }
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = action.title,
+                danger = action == Action.DELETE_LOCAL ||
+                    action == Action.DELETE_REMOTE ||
+                    action == Action.DELETE_BOTH
+            ) {
+                when (action) {
+                    Action.APPLY -> applyEntry(entry)
+                    Action.EDIT -> showEditDialog(entry)
+                    Action.EXPORT -> exportZip(entry)
+                    Action.UPLOAD -> enqueueUpload(entry)
+                    Action.DOWNLOAD -> runAction(refreshReading = false) {
+                        BubblePackageManager.download(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    Action.DELETE_LOCAL -> confirmDelete {
+                        BubblePackageManager.deleteLocal(entry)
+                    }
+                    Action.DELETE_REMOTE -> confirmDelete {
+                        BubblePackageManager.deleteRemote(
+                            entry, cloudContainerId, CLOUD_SCOPE
+                        )
+                    }
+                    Action.DELETE_BOTH -> confirmDelete {
+                        BubblePackageManager.deleteLocal(entry)
+                        BubblePackageManager.deleteRemote(
+                            entry, cloudContainerId, CLOUD_SCOPE
+                        )
                     }
                 }
-            )
-        )
+            }
+        }
     }
 
     // region Edit dialog

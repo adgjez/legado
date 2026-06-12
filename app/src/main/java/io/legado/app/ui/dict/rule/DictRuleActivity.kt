@@ -23,6 +23,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
@@ -108,7 +109,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
                         AppManagementAction(
                             text = getString(R.string.more_menu),
                             iconRes = R.drawable.ic_more_vert,
-                            onClick = ::showPageMenu
+                            menuActions = ::pageMenuActions
                         )
                     ),
                     bottomActions = listOf(
@@ -197,29 +198,27 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun showPageMenu() {
-        val labels = listOf(
-            getString(R.string.import_local),
-            getString(R.string.import_on_line),
-            getString(R.string.import_by_qr_code),
-            getString(R.string.import_default_rule),
-            getString(R.string.help)
-        )
-        showComposeActionListDialog(
-            title = getString(R.string.dict_rule),
-            labels = labels
-        ) { index ->
-            when (index) {
-                0 -> importDoc.launch {
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_local)) {
+                importDoc.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("txt", "json")
                 }
-                1 -> showImportDialog()
-                2 -> qrCodeResult.launch()
-                3 -> viewModel.importDefault()
-                4 -> showHelp("dictRuleHelp")
+            },
+            AppManagementMenuAction(getString(R.string.import_on_line)) {
+                showImportDialog()
+            },
+            AppManagementMenuAction(getString(R.string.import_by_qr_code)) {
+                qrCodeResult.launch()
+            },
+            AppManagementMenuAction(getString(R.string.import_default_rule)) {
+                viewModel.importDefault()
+            },
+            AppManagementMenuAction(getString(R.string.help)) {
+                showHelp("dictRuleHelp")
             }
-        }
+        )
     }
 
     override fun onClickSelectBarMainAction() {

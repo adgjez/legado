@@ -14,7 +14,7 @@ import io.legado.app.lib.cloud.S3CloudStorageBackend
 import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.lib.cloud.S3ContainerScope
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextFormDialogWithChecks
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -59,7 +59,7 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
                     onBack = { finish() },
                     onAdd = { showEditDialog(null) },
                     onItemClick = { showEditDialog(it) },
-                    onMoreClick = { showActions(it) }
+                    onMoreActions = ::containerActions
                 )
             }
         }
@@ -161,7 +161,7 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
         return newItem
     }
 
-    private fun showActions(item: S3Container) {
+    private fun containerActions(item: S3Container): List<AppManagementMenuAction> {
         val actions = listOf(
             Action.EDIT,
             Action.TEST,
@@ -170,13 +170,12 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
             if (item.enabled) Action.DISABLE else Action.ENABLE,
             Action.DELETE
         )
-        showComposeActionListDialog(
-            title = AppCloudStorage.containerDisplayLabel(item),
-            labels = actions.map { getString(it.titleRes) },
-            dangerIndices = setOf(actions.indexOf(Action.DELETE)).filter { it >= 0 }.toSet(),
-            negativeText = getString(R.string.cancel),
-            onSelected = { index ->
-                when (actions.getOrNull(index)) {
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = getString(action.titleRes),
+                danger = action == Action.DELETE
+            ) {
+                when (action) {
                     Action.EDIT -> showEditDialog(item)
                     Action.TEST -> testConnection(item)
                     Action.REFRESH -> refreshCapacity(item)
@@ -192,10 +191,9 @@ class S3ContainerManageActivity : BaseActivity<ActivityS3ContainerManageBinding>
                     Action.ENABLE -> updateItem(item.copy(enabled = true, isFull = false))
                     Action.DISABLE -> updateItem(item.copy(enabled = false))
                     Action.DELETE -> confirmDelete(item)
-                    null -> Unit
                 }
             }
-        )
+        }
     }
 
     private fun updateItem(item: S3Container) {

@@ -42,6 +42,7 @@ import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
@@ -197,7 +198,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         AppManagementAction(
                             text = getString(R.string.more_menu),
                             iconRes = R.drawable.ic_more_vert,
-                            onClick = ::showPageMenu
+                            menuActions = ::pageMenuActions
                         )
                     ),
                     bottomActions = listOf(
@@ -270,7 +271,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         onToggleSelect = ::toggleSourceSelection,
                         onToggleEnabled = ::toggleSourceEnabled,
                         onEdit = ::edit,
-                        onShowMenu = ::showSourceMenu
+                        sourceMenuActions = ::sourceMenuActions
                     )
                 }
             }
@@ -448,29 +449,27 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    private fun showPageMenu() {
-        val labels = listOf(
-            getString(R.string.import_local),
-            getString(R.string.import_on_line),
-            getString(R.string.import_by_qr_code),
-            getString(R.string.group_sources_by_domain),
-            getString(R.string.help)
-        )
-        showComposeActionListDialog(
-            title = getString(R.string.book_source_manage),
-            labels = labels
-        ) { index ->
-            when (index) {
-                0 -> importDoc.launch {
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_local)) {
+                importDoc.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("txt", "json")
                 }
-                1 -> showImportDialog()
-                2 -> qrResult.launch()
-                3 -> setGroupSourcesByDomain(!groupSourcesByDomain)
-                4 -> showHelp("SourceMBookHelp")
+            },
+            AppManagementMenuAction(getString(R.string.import_on_line)) {
+                showImportDialog()
+            },
+            AppManagementMenuAction(getString(R.string.import_by_qr_code)) {
+                qrResult.launch()
+            },
+            AppManagementMenuAction(getString(R.string.group_sources_by_domain)) {
+                setGroupSourcesByDomain(!groupSourcesByDomain)
+            },
+            AppManagementMenuAction(getString(R.string.help)) {
+                showHelp("SourceMBookHelp")
             }
-        }
+        )
     }
 
     private fun setSort(next: BookSourceSort) {
@@ -1050,46 +1049,43 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
     }
 
-    private fun showSourceMenu(bookSource: BookSourcePart) {
-        val labels = buildList {
+    private fun sourceMenuActions(bookSource: BookSourcePart): List<AppManagementMenuAction> {
+        return buildList {
             if (sort == BookSourceSort.Default) {
-                add(getString(R.string.to_top))
-                add(getString(R.string.to_bottom))
+                add(AppManagementMenuAction(getString(R.string.to_top)) { toTop(bookSource) })
+                add(AppManagementMenuAction(getString(R.string.to_bottom)) { toBottom(bookSource) })
             }
             if (bookSource.hasLoginUrl) {
-                add(getString(R.string.login))
-            }
-            add(getString(R.string.search))
-            add(getString(R.string.debug))
-            add(getString(R.string.delete))
-            if (bookSource.hasExploreUrl) {
                 add(
-                    if (bookSource.enabledExplore) {
-                        getString(R.string.disable_explore)
-                    } else {
-                        getString(R.string.enable_explore)
+                    AppManagementMenuAction(getString(R.string.login)) {
+                        startActivity<SourceLoginActivity> {
+                            putExtra("type", "bookSource")
+                            putExtra("key", bookSource.bookSourceUrl)
+                        }
                     }
                 )
             }
-        }
-        val dangerIndex = labels.indexOf(getString(R.string.delete)).takeIf { it >= 0 }
-        showComposeActionListDialog(
-            title = bookSource.bookSourceName,
-            labels = labels,
-            dangerIndices = dangerIndex?.let { setOf(it) } ?: emptySet()
-        ) { index ->
-            when (labels[index]) {
-                getString(R.string.to_top) -> toTop(bookSource)
-                getString(R.string.to_bottom) -> toBottom(bookSource)
-                getString(R.string.login) -> startActivity<SourceLoginActivity> {
-                    putExtra("type", "bookSource")
-                    putExtra("key", bookSource.bookSourceUrl)
-                }
-                getString(R.string.search) -> searchBook(bookSource)
-                getString(R.string.debug) -> debug(bookSource)
-                getString(R.string.delete) -> del(bookSource)
-                getString(R.string.enable_explore) -> enableExplore(true, bookSource)
-                getString(R.string.disable_explore) -> enableExplore(false, bookSource)
+            add(AppManagementMenuAction(getString(R.string.search)) { searchBook(bookSource) })
+            add(AppManagementMenuAction(getString(R.string.debug)) { debug(bookSource) })
+            add(
+                AppManagementMenuAction(
+                    text = getString(R.string.delete),
+                    danger = true,
+                    onClick = { del(bookSource) }
+                )
+            )
+            if (bookSource.hasExploreUrl) {
+                add(
+                    AppManagementMenuAction(
+                        if (bookSource.enabledExplore) {
+                            getString(R.string.disable_explore)
+                        } else {
+                            getString(R.string.enable_explore)
+                        }
+                    ) {
+                        enableExplore(!bookSource.enabledExplore, bookSource)
+                    }
+                )
             }
         }
     }

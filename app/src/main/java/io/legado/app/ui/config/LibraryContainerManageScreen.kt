@@ -35,6 +35,8 @@ import io.legado.app.R
 import io.legado.app.help.book.library.LibraryContainerConfig
 import io.legado.app.help.book.library.LibraryContainerManager
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
@@ -44,7 +46,7 @@ internal fun LibraryContainerManageScreen(
     onBack: () -> Unit,
     onAdd: () -> Unit,
     onItemClick: (LibraryContainerConfig) -> Unit,
-    onMoreClick: (LibraryContainerConfig) -> Unit
+    onMoreActions: (LibraryContainerConfig) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
@@ -83,7 +85,7 @@ internal fun LibraryContainerManageScreen(
                             item = item,
                             isDefault = LibraryContainerManager.selectedId() == item.id,
                             onClick = { onItemClick(item) },
-                            onMore = { onMoreClick(item) }
+                            moreActions = onMoreActions(item)
                         )
                     }
                 }
@@ -154,7 +156,7 @@ private fun LibraryContainerCard(
     item: LibraryContainerConfig,
     isDefault: Boolean,
     onClick: () -> Unit,
-    onMore: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     val container = item.container
@@ -225,28 +227,11 @@ private fun LibraryContainerCard(
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clickable(onClick = onMore),
-                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-                color = palette.miuix.surfaceVariant,
-                contentColor = palette.settings.primaryText,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
-                        contentDescription = "更多",
-                        tint = palette.settings.primaryText,
-                        modifier = Modifier.size(21.dp)
-                    )
-                }
-            }
+            AppManagementMoreActionButton(
+                actionsProvider = { moreActions },
+                palette = palette,
+                contentDescription = "更多"
+            )
         }
     }
 }

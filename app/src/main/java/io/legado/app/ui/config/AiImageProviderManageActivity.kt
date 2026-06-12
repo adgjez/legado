@@ -16,6 +16,7 @@ import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -85,7 +86,7 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
                 onOpenProvider = { provider ->
                     openEdit(AiImageProviderEditActivity.newIntent(this, provider.id, provider.type))
                 },
-                onShowActions = { provider -> showActions(provider) }
+                providerActions = ::providerActions
             )
         }
     }
@@ -143,6 +144,63 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
 
     private fun openEdit(intent: Intent) {
         startActivity(intent)
+    }
+
+    private fun providerActions(provider: AiImageProviderConfig): List<AppManagementMenuAction> {
+        val isJsRule = provider.type == AiImageProviderConfig.TYPE_JS
+        val isCurrent = provider.id == AppConfig.aiCurrentImageProviderId
+        return buildList {
+            if (!isCurrent) {
+                add(
+                    AppManagementMenuAction("设为当前生图模型") {
+                        if (!provider.enabled) {
+                            toastOnUi("请先启用该生图模型")
+                        } else {
+                            AppConfig.aiCurrentImageProviderId = provider.id
+                            notifyAiConfigChanged()
+                            reload()
+                            toastOnUi("已设为当前生图模型")
+                        }
+                    }
+                )
+            }
+            add(
+                AppManagementMenuAction(getString(if (provider.enabled) R.string.disable else R.string.enable)) {
+                    AppConfig.aiImageProviderList = AppConfig.aiImageProviderList.map {
+                        if (it.id == provider.id) it.copy(enabled = !it.enabled) else it
+                    }
+                    notifyAiConfigChanged()
+                    reload()
+                }
+            )
+            add(
+                AppManagementMenuAction(getString(R.string.edit)) {
+                    openEdit(
+                        AiImageProviderEditActivity.newIntent(
+                            this@AiImageProviderManageActivity,
+                            provider.id,
+                            provider.type
+                        )
+                    )
+                }
+            )
+            if (isJsRule) {
+                add(AppManagementMenuAction("导出规则") { exportRule(provider) })
+                add(
+                    AppManagementMenuAction("复制规则") {
+                        sendToClip(serializeRule(provider))
+                        toastOnUi(R.string.copy_complete)
+                    }
+                )
+            }
+            add(
+                AppManagementMenuAction(
+                    text = getString(R.string.delete),
+                    danger = true,
+                    onClick = { confirmDelete(provider) }
+                )
+            )
+        }
     }
 
     private fun showActions(provider: AiImageProviderConfig) {

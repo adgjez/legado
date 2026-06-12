@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.ui.widget.compose.AppManagementLazyColumn
 import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
@@ -20,7 +21,7 @@ internal fun TxtTocRuleScreen(
     onToggleSelect: (TxtTocRule) -> Unit,
     onToggleEnable: (TxtTocRule, Boolean) -> Unit,
     onEdit: (TxtTocRule) -> Unit,
-    onMenuMore: (TxtTocRule) -> Unit,
+    ruleMenuActions: (TxtTocRule) -> List<AppManagementMenuAction>,
     modifier: Modifier = Modifier
 ) {
     val palette = rememberAppManagementPalette()
@@ -45,7 +46,7 @@ internal fun TxtTocRuleScreen(
                 onToggleSelect = { onToggleSelect(rule) },
                 onToggleEnable = { enabled -> onToggleEnable(rule, enabled) },
                 onEdit = { onEdit(rule) },
-                onMenuMore = { onMenuMore(rule) }
+                moreActions = ruleMenuActions(rule)
             )
         }
     }
@@ -62,7 +63,7 @@ private fun TxtTocRuleItemRow(
     onToggleSelect: () -> Unit,
     onToggleEnable: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onMenuMore: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementListRow(
         title = name,
@@ -84,6 +85,6 @@ private fun TxtTocRuleItemRow(
         },
         onLongClick = onToggleSelect,
         onEdit = onEdit,
-        onMore = onMenuMore
+        moreActions = moreActions
     )
 }

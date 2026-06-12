@@ -3,30 +3,32 @@ package io.legado.app.ui.widget.compose
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -35,13 +37,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
+import io.legado.app.lib.theme.bottomBackground
+import io.legado.app.lib.theme.primaryColor
 
 data class AppManagementAction(
     val text: String,
     @param:DrawableRes val iconRes: Int? = null,
     val primary: Boolean = false,
     val danger: Boolean = false,
-    val onClick: () -> Unit
+    val onClick: () -> Unit = {},
+    val menuActions: (() -> List<AppManagementMenuAction>)? = null
 )
 
 @Composable
@@ -64,7 +69,7 @@ fun AppManagementScaffold(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Transparent)
+            .background(Color.Transparent)
     ) {
         AppManagementTopBar(
             title = title,
@@ -99,21 +104,18 @@ private fun AppManagementTopBar(
     actions: List<AppManagementAction>,
     onBack: (() -> Unit)?
 ) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(Color(context.primaryColor))
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .appSettingPanelBackground(
-                normalColor = palette.settings.row,
-                panelImage = null,
-                borderColor = palette.settings.border,
-                radiusPx = palette.settings.panelRadiusPx
-            )
-            .padding(horizontal = 8.dp, vertical = 8.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .padding(start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             onBack?.let {
@@ -134,7 +136,7 @@ private fun AppManagementTopBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = 12.dp)
             )
             actions.forEach { action ->
                 AppManagementTopAction(action = action, palette = palette)
@@ -146,7 +148,7 @@ private fun AppManagementTopBar(
                 hint = searchHint.orEmpty(),
                 palette = palette,
                 onQueryChange = onSearchChange,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)
             )
         }
     }
@@ -157,12 +159,24 @@ private fun AppManagementTopAction(
     action: AppManagementAction,
     palette: AppManagementPalette
 ) {
-    AppManagementIconAction(
-        iconRes = action.iconRes ?: R.drawable.ic_more_vert,
-        contentDescription = action.text,
-        tint = if (action.danger) palette.settings.danger else palette.settings.primaryText,
-        onClick = action.onClick
-    )
+    val iconRes = action.iconRes ?: R.drawable.ic_more_vert
+    val menuActions = action.menuActions
+    if (menuActions != null) {
+        AppManagementMoreActionButton(
+            actionsProvider = menuActions,
+            palette = palette,
+            iconRes = iconRes,
+            contentDescription = action.text,
+            tint = if (action.danger) palette.settings.danger else palette.settings.primaryText
+        )
+    } else {
+        AppManagementIconAction(
+            iconRes = iconRes,
+            contentDescription = action.text,
+            tint = if (action.danger) palette.settings.danger else palette.settings.primaryText,
+            onClick = action.onClick
+        )
+    }
 }
 
 @Composable
@@ -175,10 +189,10 @@ private fun AppManagementSearchField(
 ) {
     LegadoMiuixCard(
         modifier = modifier.fillMaxWidth(),
-        color = palette.settings.primaryText.copy(alpha = 0.06f),
+        color = Color(palette.settings.row),
         contentColor = palette.settings.primaryText,
         cornerRadius = palette.miuix.actionRadius ?: 12.dp,
-        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -241,76 +255,94 @@ private fun AppManagementSelectionBottomBar(
     onInvertSelection: (() -> Unit)?
 ) {
     AnimatedVisibility(visible = selectedCount > 0) {
-        Column(
+        val context = LocalContext.current
+        val mainAction = actions.lastOrNull { it.danger } ?: actions.lastOrNull()
+        val moreActions = if (mainAction == null) actions else actions.filterNot { it === mainAction }
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(Color(context.bottomBackground))
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .appSettingPanelBackground(
-                    normalColor = palette.settings.row,
-                    panelImage = null,
-                    borderColor = palette.settings.border,
-                    radiusPx = palette.settings.panelRadiusPx
-                )
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "$selectedCount / $totalCount",
-                    color = palette.settings.primaryText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = palette.settings.bodyFontFamily,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
+            Text(
+                text = stringResource(R.string.select_all_count, selectedCount, totalCount),
+                color = palette.settings.primaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = palette.settings.bodyFontFamily,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = onSelectAll != null) { onSelectAll?.invoke() }
+                    .padding(vertical = 9.dp)
+            )
+            onInvertSelection?.let {
+                CompactSelectionButton(
+                    text = stringResource(R.string.revert_selection),
+                    palette = palette,
+                    onClick = it
                 )
-                onSelectAll?.let {
-                    LegadoMiuixActionButton(
-                        text = stringResource(R.string.select_all),
-                        palette = palette.miuix,
-                        onClick = it,
-                        minWidth = 58.dp,
-                        minHeight = 34.dp,
-                        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
-                    )
-                }
-                onInvertSelection?.let {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    LegadoMiuixActionButton(
-                        text = stringResource(R.string.revert_selection),
-                        palette = palette.miuix,
-                        onClick = it,
-                        minWidth = 58.dp,
-                        minHeight = 34.dp,
-                        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
-                    )
-                }
             }
-            if (actions.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    actions.forEach { action ->
-                        LegadoMiuixActionButton(
-                            text = action.text,
-                            palette = palette.miuix,
-                            onClick = action.onClick,
-                            primary = action.primary,
-                            danger = action.danger,
-                            minWidth = 72.dp,
-                            minHeight = 36.dp,
-                            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
-                }
+            mainAction?.let { action ->
+                Spacer(modifier = Modifier.width(6.dp))
+                CompactSelectionButton(
+                    text = action.text,
+                    palette = palette,
+                    danger = action.danger,
+                    primary = action.primary,
+                    onClick = action.onClick
+                )
+            }
+            if (moreActions.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(4.dp))
+                SelectionMoreMenu(
+                    actions = moreActions,
+                    palette = palette
+                )
             }
         }
     }
+}
+
+@Composable
+private fun RowScope.CompactSelectionButton(
+    text: String,
+    palette: AppManagementPalette,
+    danger: Boolean = false,
+    primary: Boolean = false,
+    onClick: () -> Unit
+) {
+    LegadoMiuixActionButton(
+        text = text,
+        palette = palette.miuix,
+        onClick = onClick,
+        primary = primary,
+        danger = danger,
+        minWidth = 72.dp,
+        minHeight = 34.dp,
+        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
+    )
+}
+
+@Composable
+private fun SelectionMoreMenu(
+    actions: List<AppManagementAction>,
+    palette: AppManagementPalette
+) {
+    AppManagementMoreActionButton(
+        actionsProvider = {
+            actions.map { action ->
+                AppManagementMenuAction(
+                    text = action.text,
+                    danger = action.danger,
+                    onClick = action.onClick
+                )
+            }
+        },
+        palette = palette,
+        contentDescription = stringResource(R.string.more_menu)
+    )
 }

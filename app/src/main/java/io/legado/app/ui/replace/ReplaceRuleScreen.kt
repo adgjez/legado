@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.widget.compose.AppManagementLazyColumn
 import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
@@ -20,7 +21,7 @@ internal fun ReplaceRuleScreen(
     onSelectToggle: (ReplaceRule) -> Unit,
     onToggleEnabled: (ReplaceRule, Boolean) -> Unit,
     onEdit: (ReplaceRule) -> Unit,
-    onShowMenu: (ReplaceRule) -> Unit
+    ruleMenuActions: (ReplaceRule) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
 
@@ -43,7 +44,7 @@ internal fun ReplaceRuleScreen(
                 onSelectToggle = { onSelectToggle(rule) },
                 onToggleEnabled = { onToggleEnabled(rule, it) },
                 onEdit = { onEdit(rule) },
-                onShowMenu = { onShowMenu(rule) }
+                moreActions = ruleMenuActions(rule)
             )
         }
     }
@@ -59,7 +60,7 @@ private fun ReplaceRuleItemRow(
     onSelectToggle: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onShowMenu: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementListRow(
         title = title,
@@ -79,6 +80,6 @@ private fun ReplaceRuleItemRow(
         },
         onLongClick = onSelectToggle,
         onEdit = onEdit,
-        onMore = onShowMenu
+        moreActions = moreActions
     )
 }

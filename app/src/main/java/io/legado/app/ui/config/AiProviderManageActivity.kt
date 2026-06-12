@@ -45,10 +45,11 @@ import io.legado.app.databinding.ActivityAiProviderManageBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.widget.compose.AppManagementCard
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
-import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
@@ -73,7 +74,7 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
                 onBack = { finish() },
                 onAdd = { openEdit(null) },
                 onOpenProvider = { openEdit(it) },
-                onShowActions = { showActions(it) }
+                providerActions = ::providerActions
             )
         }
     }
@@ -97,18 +98,17 @@ class AiProviderManageActivity : BaseActivity<ActivityAiProviderManageBinding>()
         })
     }
 
-    private fun showActions(provider: AiProviderConfig) {
-        val actions = listOf(getString(R.string.edit), getString(R.string.delete))
-        showComposeActionListDialog(
-            title = providerName(provider),
-            labels = actions,
-            dangerIndices = setOf(1)
-        ) { index ->
-            when (index) {
-                0 -> openEdit(provider)
-                1 -> confirmRemoveProvider(provider)
-            }
-        }
+    private fun providerActions(provider: AiProviderConfig): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.edit)) {
+                openEdit(provider)
+            },
+            AppManagementMenuAction(
+                text = getString(R.string.delete),
+                danger = true,
+                onClick = { confirmRemoveProvider(provider) }
+            )
+        )
     }
 
     private fun providerName(provider: AiProviderConfig): String {
@@ -151,7 +151,7 @@ private fun AiProviderManageScreen(
     onBack: () -> Unit,
     onAdd: () -> Unit,
     onOpenProvider: (AiProviderConfig) -> Unit,
-    onShowActions: (AiProviderConfig) -> Unit
+    providerActions: (AiProviderConfig) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     CompositionLocalProvider(
@@ -196,7 +196,7 @@ private fun AiProviderManageScreen(
                                 modelCount = modelCounts[provider.id] ?: 0,
                                 current = provider.id == currentProviderId,
                                 onClick = { onOpenProvider(provider) },
-                                onMore = { onShowActions(provider) }
+                                moreActions = providerActions(provider)
                             )
                         }
                     }
@@ -269,7 +269,7 @@ private fun AiProviderCard(
     modelCount: Int,
     current: Boolean,
     onClick: () -> Unit,
-    onMore: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
     AppManagementCard(
@@ -322,28 +322,11 @@ private fun AiProviderCard(
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clickable(onClick = onMore),
-                shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-                color = palette.miuix.surfaceVariant,
-                contentColor = palette.settings.primaryText,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
-                        contentDescription = stringResource(R.string.more),
-                        tint = palette.settings.primaryText,
-                        modifier = Modifier.size(21.dp)
-                    )
-                }
-            }
+            AppManagementMoreActionButton(
+                actionsProvider = { moreActions },
+                palette = palette,
+                contentDescription = stringResource(R.string.more)
+            )
         }
     }
 }

@@ -17,8 +17,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.ui.widget.compose.AppManagementLazyColumn
-import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.AppManagementListRow
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 
 @Composable
@@ -33,7 +34,7 @@ internal fun BookSourceScreen(
     onToggleSelect: (BookSourcePart) -> Unit,
     onToggleEnabled: (BookSourcePart, Boolean) -> Unit,
     onEdit: (BookSourcePart) -> Unit,
-    onShowMenu: (BookSourcePart) -> Unit
+    sourceMenuActions: (BookSourcePart) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
 
@@ -74,7 +75,7 @@ internal fun BookSourceScreen(
                     onToggleSelect = { onToggleSelect(source) },
                     onToggleEnabled = { enabled -> onToggleEnabled(source, enabled) },
                     onEdit = { onEdit(source) },
-                    onShowMenu = { onShowMenu(source) }
+                    moreActions = sourceMenuActions(source)
                 )
             }
         }
@@ -113,7 +114,7 @@ private fun BookSourceItemRow(
     onToggleSelect: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onShowMenu: () -> Unit
+    moreActions: List<AppManagementMenuAction>
 ) {
     AppManagementListRow(
         title = title,
@@ -135,7 +136,7 @@ private fun BookSourceItemRow(
         },
         onLongClick = onToggleSelect,
         onEdit = onEdit,
-        onMore = onShowMenu,
+        moreActions = moreActions,
         moreIndicatorColor = if (hasExploreUrl) {
             if (enabledExplore) palette.settings.accent else palette.settings.danger
         } else {

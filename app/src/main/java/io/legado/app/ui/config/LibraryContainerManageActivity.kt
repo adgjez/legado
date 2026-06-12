@@ -22,6 +22,7 @@ import io.legado.app.lib.cloud.S3Config
 import io.legado.app.lib.cloud.S3Container
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.SourceSelectDialog
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -94,7 +95,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                     onBack = { finish() },
                     onAdd = { showEditDialog(null) },
                     onItemClick = { showEditDialog(it) },
-                    onMoreClick = { showActions(it) }
+                    onMoreActions = ::containerActions
                 )
             }
         }
@@ -477,7 +478,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
         return saved
     }
 
-    private fun showActions(item: LibraryContainerConfig) {
+    private fun containerActions(item: LibraryContainerConfig): List<AppManagementMenuAction> {
         val actions = if (item.lockedImported) {
             listOf(Action.EDIT, Action.DELETE)
         } else {
@@ -491,13 +492,12 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                 Action.DELETE
             )
         }
-        showComposeActionListDialog(
-            title = LibraryContainerManager.displayLabel(item),
-            labels = actions.map { it.title as CharSequence },
-            dangerIndices = setOf(actions.indexOf(Action.DELETE)).filter { it >= 0 }.toSet(),
-            negativeText = getString(R.string.cancel),
-            onSelected = { index ->
-                when (actions.getOrNull(index)) {
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = action.title,
+                danger = action == Action.DELETE
+            ) {
+                when (action) {
                     Action.EDIT -> showEditDialog(item)
                     Action.EXPORT -> exportContainers(
                         listOf(item),
@@ -508,19 +508,18 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                     Action.SET_DEFAULT -> {
                         if (!item.container.enabled) {
                             toastOnUi(R.string.s3_container_disabled)
-                            return@showComposeActionListDialog
+                        } else {
+                            LibraryContainerManager.select(item.id)
+                            toastOnUi(R.string.s3_container_set_default_success)
+                            reload()
                         }
-                        LibraryContainerManager.select(item.id)
-                        toastOnUi(R.string.s3_container_set_default_success)
-                        reload()
                     }
                     Action.ENABLE -> updateItem(item.copy(container = item.container.copy(enabled = true, isFull = false)))
                     Action.DISABLE -> updateItem(item.copy(container = item.container.copy(enabled = false)))
                     Action.DELETE -> confirmDelete(item)
-                    null -> Unit
                 }
             }
-        )
+        }
     }
 
     private fun updateItem(item: LibraryContainerConfig) {

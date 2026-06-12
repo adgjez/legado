@@ -20,6 +20,7 @@ import io.legado.app.ui.association.ImportBookSourceDialog
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.association.ImportRssSourceDialog
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
@@ -104,7 +105,7 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
                         dragEnabled = searchQueryState.value.isBlank(),
                         onOpen = ::openSubscription,
                         onEdit = ::editSubscription,
-                        onMenuMore = ::showRuleSubMenu,
+                        ruleSubMenuActions = ::ruleSubMenuActions,
                         onMoveBy = ::moveSubscriptionBy,
                         onMoveFinished = ::persistSubscriptionOrder
                     )
@@ -182,25 +183,23 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
         }
     }
 
-    private fun showRuleSubMenu(ruleSub: RuleSub) {
-        showComposeActionListDialog(
-            title = ruleSub.name.ifBlank { ruleSub.url },
-            labels = listOf(
-                getString(R.string.to_top),
-                getString(R.string.to_bottom),
-                getString(R.string.edit),
-                getString(R.string.delete)
-            ),
-            dangerIndices = setOf(3),
-            negativeText = getString(R.string.cancel)
-        ) { index ->
-            when (index) {
-                0 -> moveSubscription(ruleSub, 0)
-                1 -> moveSubscription(ruleSub, ruleSubsState.lastIndex)
-                2 -> editSubscription(ruleSub)
-                3 -> delSubscription(ruleSub)
-            }
-        }
+    private fun ruleSubMenuActions(ruleSub: RuleSub): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.to_top)) {
+                moveSubscription(ruleSub, 0)
+            },
+            AppManagementMenuAction(getString(R.string.to_bottom)) {
+                moveSubscription(ruleSub, ruleSubsState.lastIndex)
+            },
+            AppManagementMenuAction(getString(R.string.edit)) {
+                editSubscription(ruleSub)
+            },
+            AppManagementMenuAction(
+                text = getString(R.string.delete),
+                danger = true,
+                onClick = { delSubscription(ruleSub) }
+            )
+        )
     }
 
     private fun delSubscription(ruleSub: RuleSub) {

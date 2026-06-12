@@ -29,6 +29,7 @@ import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
@@ -146,7 +147,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                         AppManagementAction(
                             text = getString(R.string.more_menu),
                             iconRes = R.drawable.ic_more_vert,
-                            onClick = ::showPageMenu
+                            menuActions = ::pageMenuActions
                         )
                     ),
                     bottomActions = listOf(
@@ -187,7 +188,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                         onSelectToggle = ::onSelectToggle,
                         onToggleEnabled = ::onToggleEnabled,
                         onEdit = ::edit,
-                        onShowMenu = ::showItemMenu
+                        ruleMenuActions = ::ruleMenuActions
                     )
                 }
             }
@@ -356,27 +357,24 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         }
     }
 
-    private fun showPageMenu() {
-        val labels = listOf(
-            getString(R.string.import_local),
-            getString(R.string.import_on_line),
-            getString(R.string.import_by_qr_code),
-            getString(R.string.help)
-        )
-        showComposeActionListDialog(
-            title = getString(R.string.replace_purify),
-            labels = labels
-        ) { index ->
-            when (index) {
-                0 -> importDoc.launch {
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_local)) {
+                importDoc.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("txt", "json")
                 }
-                1 -> showImportDialog()
-                2 -> qrCodeResult.launch()
-                3 -> showHelp("replaceRuleHelp")
+            },
+            AppManagementMenuAction(getString(R.string.import_on_line)) {
+                showImportDialog()
+            },
+            AppManagementMenuAction(getString(R.string.import_by_qr_code)) {
+                qrCodeResult.launch()
+            },
+            AppManagementMenuAction(getString(R.string.help)) {
+                showHelp("replaceRuleHelp")
             }
-        }
+        )
     }
 
     private fun onMenuItemClick(item: MenuItem): Boolean {
@@ -468,40 +466,33 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         editActivity.launch(ReplaceEditActivity.startIntent(this, rule.id))
     }
 
-    private fun showItemMenu(rule: ReplaceRule) {
-        showComposeActionListDialog(
-            title = rule.name,
-            labels = listOf(
-                getString(R.string.to_top),
-                getString(R.string.to_bottom),
-                getString(R.string.delete)
-            ),
-            dangerIndices = setOf(2)
-        ) { index ->
-            when (index) {
-                0 -> {
-                    setResult(RESULT_OK)
-                    viewModel.toTop(rule)
-                }
-                1 -> {
-                    setResult(RESULT_OK)
-                    viewModel.toBottom(rule)
-                }
-                2 -> {
-                    showComposeConfirmDialog(
-                        title = getString(R.string.draw),
-                        message = getString(R.string.sure_del) + "\n" + rule.name,
-                        positiveText = getString(R.string.ok),
-                        negativeText = getString(R.string.cancel),
-                        dangerPositive = true,
-                        onPositive = {
-                            setResult(RESULT_OK)
-                            viewModel.delete(rule)
-                        }
-                    )
-                }
+    private fun ruleMenuActions(rule: ReplaceRule): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.to_top)) {
+                setResult(RESULT_OK)
+                viewModel.toTop(rule)
+            },
+            AppManagementMenuAction(getString(R.string.to_bottom)) {
+                setResult(RESULT_OK)
+                viewModel.toBottom(rule)
+            },
+            AppManagementMenuAction(
+                text = getString(R.string.delete),
+                danger = true
+            ) {
+                showComposeConfirmDialog(
+                    title = getString(R.string.draw),
+                    message = getString(R.string.sure_del) + "\n" + rule.name,
+                    positiveText = getString(R.string.ok),
+                    negativeText = getString(R.string.cancel),
+                    dangerPositive = true,
+                    onPositive = {
+                        setResult(RESULT_OK)
+                        viewModel.delete(rule)
+                    }
+                )
             }
-        }
+        )
     }
 
     private fun getSelectedRules(): List<ReplaceRule> {

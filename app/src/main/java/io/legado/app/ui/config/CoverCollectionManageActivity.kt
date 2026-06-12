@@ -16,6 +16,7 @@ import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.externalFiles
@@ -70,7 +71,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                         loadCollections()
                     },
                     onItemClick = ::openDetail,
-                    onItemMore = ::showActions,
+                    itemActions = ::coverActions,
                     onAddClick = ::showAddActions
                 )
             }
@@ -252,7 +253,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
         }
     }
 
-    private fun showActions(entry: CoverCollectionManager.Entry) {
+    private fun coverActions(entry: CoverCollectionManager.Entry): List<AppManagementMenuAction> {
         val actions = buildList {
             if (entry.source != CoverCollectionManager.Source.REMOTE) add(CoverAction.RENAME)
             if (entry.source != CoverCollectionManager.Source.REMOTE) add(CoverAction.EXPORT)
@@ -261,15 +262,19 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
             if (entry.source != CoverCollectionManager.Source.REMOTE) add(CoverAction.DELETE_LOCAL)
             if (entry.source != CoverCollectionManager.Source.LOCAL) add(CoverAction.DELETE_REMOTE)
         }
-        showComposeChoiceListDialog(entry.collection.name, actions.map { getString(it.titleRes) }) { index ->
-            val action = actions.getOrNull(index) ?: return@showComposeChoiceListDialog
-            when (action) {
-                CoverAction.RENAME -> showRenameDialog(entry)
-                CoverAction.EXPORT -> exportCollection(entry)
-                CoverAction.UPLOAD -> runAction { CoverCollectionManager.upload(entry, cloudContainerId, CLOUD_SCOPE) }
-                CoverAction.DOWNLOAD -> runAction { CoverCollectionManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
-                CoverAction.DELETE_LOCAL -> runAction { CoverCollectionManager.deleteLocal(entry) }
-                CoverAction.DELETE_REMOTE -> runAction { CoverCollectionManager.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE) }
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = getString(action.titleRes),
+                danger = action == CoverAction.DELETE_LOCAL || action == CoverAction.DELETE_REMOTE
+            ) {
+                when (action) {
+                    CoverAction.RENAME -> showRenameDialog(entry)
+                    CoverAction.EXPORT -> exportCollection(entry)
+                    CoverAction.UPLOAD -> runAction { CoverCollectionManager.upload(entry, cloudContainerId, CLOUD_SCOPE) }
+                    CoverAction.DOWNLOAD -> runAction { CoverCollectionManager.download(entry, cloudContainerId, CLOUD_SCOPE) }
+                    CoverAction.DELETE_LOCAL -> runAction { CoverCollectionManager.deleteLocal(entry) }
+                    CoverAction.DELETE_REMOTE -> runAction { CoverCollectionManager.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE) }
+                }
             }
         }
     }

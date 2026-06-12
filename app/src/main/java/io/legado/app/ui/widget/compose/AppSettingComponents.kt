@@ -5,6 +5,8 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import android.widget.ImageButton
+import android.widget.ImageView
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -38,9 +40,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
@@ -67,6 +73,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
+import io.legado.app.ui.widget.ModernActionPopup
 
 @Immutable
 data class AppSettingPalette(
@@ -90,6 +97,15 @@ data class AppSettingPalette(
 data class AppManagementPalette(
     val settings: AppSettingPalette,
     val miuix: LegadoMiuixPalette
+)
+
+@Immutable
+data class AppManagementMenuAction(
+    val text: CharSequence,
+    val checked: Boolean = false,
+    val enabled: Boolean = true,
+    val danger: Boolean = false,
+    val onClick: () -> Unit
 )
 
 @Composable
@@ -257,6 +273,7 @@ fun AppManagementListRow(
     onLongClick: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onMore: (() -> Unit)? = null,
+    moreActions: List<AppManagementMenuAction> = emptyList(),
     onDelete: (() -> Unit)? = null,
     moreIndicatorColor: Color? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
@@ -329,16 +346,16 @@ fun AppManagementListRow(
                     onClick = it
                 )
             }
-            onMore?.let {
+            if (moreActions.isNotEmpty()) {
                 Box(
                     modifier = Modifier.size(36.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    AppManagementIconAction(
-                        iconRes = R.drawable.ic_more_vert,
+                    AppManagementMoreActionButton(
+                        actionsProvider = { moreActions },
+                        palette = palette,
                         contentDescription = stringResource(R.string.more_menu),
-                        tint = palette.settings.primaryText,
-                        onClick = it
+                        modifier = Modifier.fillMaxSize()
                     )
                     moreIndicatorColor?.let { color ->
                         Box(
@@ -348,6 +365,29 @@ fun AppManagementListRow(
                                 .clip(CircleShape)
                                 .background(color)
                         )
+                    }
+                }
+            } else {
+                onMore?.let {
+                    Box(
+                        modifier = Modifier.size(36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AppManagementIconAction(
+                            iconRes = R.drawable.ic_more_vert,
+                            contentDescription = stringResource(R.string.more_menu),
+                            tint = palette.settings.primaryText,
+                            onClick = it
+                        )
+                        moreIndicatorColor?.let { color ->
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                            )
+                        }
                     }
                 }
             }
@@ -448,6 +488,56 @@ private fun AppManagementCheckbox(
                 }
         )
     }
+}
+
+@Composable
+fun AppManagementMoreActionButton(
+    actionsProvider: () -> List<AppManagementMenuAction>,
+    palette: AppManagementPalette,
+    modifier: Modifier = Modifier,
+    iconRes: Int = R.drawable.ic_more_vert,
+    contentDescription: String? = null,
+    tint: Color = palette.settings.primaryText
+) {
+    var popupHandle by remember { mutableStateOf<ModernActionPopup.Handle?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            popupHandle?.dismiss()
+            popupHandle = null
+        }
+    }
+    AndroidView(
+        factory = { context ->
+            ImageButton(context).apply {
+                val padding = (8 * resources.displayMetrics.density).toInt()
+                background = null
+                scaleType = ImageView.ScaleType.CENTER
+                setPadding(padding, padding, padding, padding)
+            }
+        },
+        update = { button ->
+            button.setImageResource(iconRes)
+            button.contentDescription = contentDescription
+            button.setColorFilter(tint.toArgb())
+            button.setOnClickListener { view ->
+                val actions = actionsProvider().filter { it.text.isNotBlank() }
+                if (actions.isEmpty()) return@setOnClickListener
+                popupHandle = ModernActionPopup.show(
+                    anchor = view,
+                    actions = actions.map { action ->
+                        ModernActionPopup.Action(
+                            title = action.text.toString(),
+                            checked = action.checked,
+                            enabled = action.enabled,
+                            invoke = action.onClick
+                        )
+                    },
+                    previousPopup = popupHandle
+                )
+            }
+        },
+        modifier = modifier.size(36.dp)
+    )
 }
 
 @Composable

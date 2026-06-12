@@ -25,6 +25,7 @@ import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
@@ -132,7 +133,7 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                         AppManagementAction(
                             text = getString(R.string.more_menu),
                             iconRes = R.drawable.ic_more_vert,
-                            onClick = ::showPageMenu
+                            menuActions = ::pageMenuActions
                         )
                     ),
                     bottomActions = listOf(
@@ -189,7 +190,7 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                         onToggleSelect = ::toggleSourceSelection,
                         onToggleEnabled = ::toggleSourceEnabled,
                         onEdit = ::editSource,
-                        onShowMenu = ::showSourceMenu
+                        sourceMenuActions = ::sourceMenuActions
                     )
                 }
             }
@@ -268,29 +269,27 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         }
     }
 
-    private fun showPageMenu() {
-        val labels = listOf(
-            getString(R.string.import_local),
-            getString(R.string.import_on_line),
-            getString(R.string.import_by_qr_code),
-            getString(R.string.import_default_rule),
-            getString(R.string.help)
-        )
-        showComposeActionListDialog(
-            title = getString(R.string.rss_source_manage),
-            labels = labels
-        ) { index ->
-            when (index) {
-                0 -> importDoc.launch {
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_local)) {
+                importDoc.launch {
                     mode = HandleFileContract.FILE
                     allowExtensions = arrayOf("txt", "json")
                 }
-                1 -> showImportDialog()
-                2 -> qrCodeResult.launch()
-                3 -> viewModel.importDefault()
-                4 -> showHelp("SourceMRssHelp")
+            },
+            AppManagementMenuAction(getString(R.string.import_on_line)) {
+                showImportDialog()
+            },
+            AppManagementMenuAction(getString(R.string.import_by_qr_code)) {
+                qrCodeResult.launch()
+            },
+            AppManagementMenuAction(getString(R.string.import_default_rule)) {
+                viewModel.importDefault()
+            },
+            AppManagementMenuAction(getString(R.string.help)) {
+                showHelp("SourceMRssHelp")
             }
-        }
+        )
     }
 
     private fun initSelectActionBar() {
@@ -556,31 +555,26 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
         }
     }
 
-    private fun showSourceMenu(source: RssSource) {
-        val labels = listOf(
-            getString(R.string.selection_to_top),
-            getString(R.string.selection_to_bottom),
-            getString(R.string.delete)
-        )
-        showComposeActionListDialog(
-            title = source.sourceName,
-            labels = labels,
-            dangerIndices = setOf(2),
-            onSelected = { index ->
-                when (index) {
-                    0 -> viewModel.topSource(source)
-                    1 -> viewModel.bottomSource(source)
-                    2 -> {
-                        showComposeConfirmDialog(
-                            title = getString(R.string.draw),
-                            message = getString(R.string.sure_del) + "\n" + source.sourceName,
-                            positiveText = getString(R.string.yes),
-                            negativeText = getString(R.string.no),
-                            dangerPositive = true,
-                            onPositive = { viewModel.del(source) }
-                        )
-                    }
-                }
+    private fun sourceMenuActions(source: RssSource): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.selection_to_top)) {
+                viewModel.topSource(source)
+            },
+            AppManagementMenuAction(getString(R.string.selection_to_bottom)) {
+                viewModel.bottomSource(source)
+            },
+            AppManagementMenuAction(
+                text = getString(R.string.delete),
+                danger = true
+            ) {
+                showComposeConfirmDialog(
+                    title = getString(R.string.draw),
+                    message = getString(R.string.sure_del) + "\n" + source.sourceName,
+                    positiveText = getString(R.string.yes),
+                    negativeText = getString(R.string.no),
+                    dangerPositive = true,
+                    onPositive = { viewModel.del(source) }
+                )
             }
         )
     }
