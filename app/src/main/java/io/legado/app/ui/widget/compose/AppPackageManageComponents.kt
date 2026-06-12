@@ -1,5 +1,7 @@
 package io.legado.app.ui.widget.compose
 
+import android.view.Gravity
+import android.widget.TextView
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -22,15 +24,25 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.R
+import io.legado.app.ui.widget.ModernActionPopup
 
 @Composable
 fun AppPackageManageScreen(
@@ -148,35 +160,130 @@ fun AppPackageManageItemCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LegadoMiuixActionButton(
+                    AppPackageManageActionButton(
                         text = applyText,
                         palette = palette.miuix,
-                        onClick = onApply,
-                        cornerRadius = palette.miuix.actionRadius,
-                        minWidth = 56.dp,
-                        minHeight = 34.dp,
-                        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        selected = isActive,
+                        onClick = onApply
                     )
                     if (canEdit) {
-                        LegadoMiuixActionButton(
+                        AppPackageManageActionButton(
                             text = editText,
                             palette = palette.miuix,
-                            onClick = onEdit,
-                            cornerRadius = palette.miuix.actionRadius,
-                            minWidth = 56.dp,
-                            minHeight = 34.dp,
-                            insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            onClick = onEdit
                         )
                     }
-                    AppManagementMoreActionButton(
+                    AppPackageManageMoreButton(
                         actionsProvider = { moreActions },
                         palette = palette,
-                        contentDescription = stringResource(R.string.more)
+                        text = stringResource(R.string.more)
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AppPackageManageActionButton(
+    text: String,
+    palette: LegadoMiuixPalette,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    val radius = palette.actionRadius ?: 12.dp
+    val background = if (selected) {
+        palette.accent.copy(alpha = 0.14f)
+    } else {
+        palette.surfaceVariant
+    }
+    val content = if (selected) palette.accent else palette.primaryText
+    Surface(
+        modifier = modifier
+            .width(72.dp)
+            .height(34.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(radius),
+        color = background,
+        contentColor = content,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                color = content,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppPackageManageMoreButton(
+    actionsProvider: () -> List<AppManagementMenuAction>,
+    palette: AppManagementPalette,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var popupHandle by remember { mutableStateOf<ModernActionPopup.Handle?>(null) }
+    val actionRadius = palette.miuix.actionRadius ?: 12.dp
+    DisposableEffect(Unit) {
+        onDispose {
+            popupHandle?.dismiss()
+            popupHandle = null
+        }
+    }
+    AndroidView(
+        factory = { viewContext ->
+            TextView(viewContext).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                isSingleLine = true
+                textSize = 13f
+                minWidth = (72 * resources.displayMetrics.density).toInt()
+                minHeight = (34 * resources.displayMetrics.density).toInt()
+            }
+        },
+        update = { button ->
+            button.text = text
+            button.setTextColor(palette.settings.primaryText.toArgb())
+            button.typeface = null
+            button.background = UiCorner.actionSelector(
+                palette.miuix.surfaceVariant.toArgb(),
+                palette.settings.rowPressed,
+                (actionRadius.value * context.resources.displayMetrics.density)
+            )
+            button.setOnClickListener { view ->
+                val actions = actionsProvider().filter { it.text.isNotBlank() }
+                if (actions.isEmpty()) return@setOnClickListener
+                popupHandle = ModernActionPopup.show(
+                    anchor = view,
+                    actions = actions.map { action ->
+                        ModernActionPopup.Action(
+                            title = action.text.toString(),
+                            checked = action.checked,
+                            enabled = action.enabled,
+                            invoke = action.onClick
+                        )
+                    },
+                    previousPopup = popupHandle
+                )
+            }
+        },
+        modifier = modifier
+            .width(72.dp)
+            .height(34.dp)
+    )
 }
 
 @Composable
