@@ -3,7 +3,6 @@ package io.legado.app.ui.config
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -14,12 +13,16 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.SimpleItemAnimator
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
 import io.legado.app.R
@@ -27,7 +30,6 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
-import io.legado.app.databinding.ItemThemePackageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.NavigationBarIconConfig
@@ -36,9 +38,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
-import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.book.cache.WebDavTaskManager
 import io.legado.app.ui.book.cache.WebDavTaskStatus
@@ -46,6 +46,10 @@ import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
+import io.legado.app.ui.widget.compose.AppManagementMenuAction
+import io.legado.app.ui.widget.compose.AppPackageManageItemCard
+import io.legado.app.ui.widget.compose.AppPackageManageScreen
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.externalFiles
@@ -69,8 +73,10 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
 
     override val binding by viewBinding(ActivityThemeManageBinding::inflate)
 
-    private val adapter = Adapter()
-    private var isNightMode = false
+    private var entriesState by mutableStateOf<List<NavigationBarIconConfig.Entry>>(emptyList())
+    private var activeDirNameState by mutableStateOf(NavigationBarIconConfig.DEFAULT_DIR_NAME)
+    private var summaryTextState by mutableStateOf("")
+    private var isNightMode by mutableStateOf(false)
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
     private var pendingConfig: NavigationBarIconConfig.Config? = null
@@ -83,7 +89,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var cloudContainerId: String? = null
     private var containerMenuItem: MenuItem? = null
     private var containerMenuPopup: ModernActionPopup.Handle? = null
-    private var itemMenuPopup: ModernActionPopup.Handle? = null
     private val dateFormat by lazy { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
 
     private val selectIcon = registerForActivityResult(HandleFileContract()) { result ->
@@ -208,46 +213,41 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
-    private fun initView() = binding.run {
-        tabBar.background = UiCorner.opaqueRounded(
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
-            UiCorner.panelRadius(this@NavigationBarManageActivity)
-        )
-        listOf(btnDay, btnNight).forEach {
-            it.background = UiCorner.actionSelector(
-                android.graphics.Color.TRANSPARENT,
-                ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
-                UiCorner.actionRadius(this@NavigationBarManageActivity)
+    private fun initView() {
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        container.removeView(binding.tabBar)
+        container.removeView(binding.tvSummary)
+        container.removeView(binding.btnAdd)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
             )
-        }
-        btnAdd.text = getString(R.string.theme_add)
-        btnAdd.background = UiCorner.actionSelector(
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
-            ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
-            UiCorner.actionRadius(this@NavigationBarManageActivity)
-        )
-        btnAdd.setOnClickListener {
-            showAddDialog()
-        }
-        tvSummary.text = getString(R.string.navigation_bar_package_summary)
-        recyclerView.layoutManager = LinearLayoutManager(this@NavigationBarManageActivity)
-        recyclerView.adapter = adapter
-        (recyclerView.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
-        btnDay.setOnClickListener {
-            if (isNightMode) {
-                isNightMode = false
-                updateTabs()
-                loadPackages()
+            setContent {
+                NavigationBarPackageManageScreen(
+                    entries = entriesState,
+                    activeDirName = activeDirNameState,
+                    isNightMode = isNightMode,
+                    summaryText = summaryTextState,
+                    onSwitchDayNight = { night ->
+                        if (night != isNightMode) {
+                            isNightMode = night
+                            loadPackages()
+                        }
+                    },
+                    onAdd = ::showAddDialog,
+                    onApply = ::applyPackage,
+                    onEdit = { entry -> showEditDialog(entry) },
+                    entryInfo = ::entryInfo,
+                    entryActions = ::entryActions
+                )
             }
         }
-        btnNight.setOnClickListener {
-            if (!isNightMode) {
-                isNightMode = true
-                updateTabs()
-                loadPackages()
-            }
-        }
-        updateTabs()
+        container.addView(cv, index.coerceAtMost(container.childCount))
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
@@ -298,10 +298,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
     private fun showAddDialog() {
-        selector(
-            getString(R.string.theme_add),
-            listOf(getString(R.string.theme_manual_config), getString(R.string.theme_import_zip))
-        ) { _, index ->
+        showComposeActionListDialog(
+            title = getString(R.string.theme_add),
+            labels = listOf(
+                getString(R.string.theme_manual_config),
+                getString(R.string.theme_import_zip)
+            )
+        ) { index ->
             when (index) {
                 0 -> showEditDialog(null)
                 1 -> importPackage.launch {
@@ -311,13 +314,6 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 }
             }
         }
-    }
-
-    private fun updateTabs() = binding.run {
-        btnDay.isSelected = !isNightMode
-        btnNight.isSelected = isNightMode
-        btnDay.setTextColor(if (!isNightMode) accentColor else primaryTextColor)
-        btnNight.setTextColor(if (isNightMode) accentColor else primaryTextColor)
     }
 
     private fun updateContainerMenu() {
@@ -368,15 +364,16 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 }
             }.onSuccess {
                 if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
-                adapter.submit(it, NavigationBarIconConfig.activeDirName(isNightMode))
-                binding.tvSummary.text = if (it.size <= 1) {
+                entriesState = it
+                activeDirNameState = NavigationBarIconConfig.activeDirName(isNightMode)
+                summaryTextState = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
                 } else {
                     getString(R.string.navigation_bar_package_summary)
                 }
             }.onFailure {
                 if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
-                binding.tvSummary.text = it.localizedMessage
+                summaryTextState = it.localizedMessage.orEmpty()
             }
         }
     }
@@ -822,7 +819,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         }
     }
 
-    private fun showActions(anchor: View, entry: NavigationBarIconConfig.Entry) {
+    private fun entryActions(entry: NavigationBarIconConfig.Entry): List<AppManagementMenuAction> {
         val actions = buildList {
             add(NavAction.APPLY)
             if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) {
@@ -835,43 +832,42 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (entry.source == NavigationBarIconConfig.Source.BOTH) add(NavAction.DELETE_BOTH)
             }
         }
-        itemMenuPopup = ModernActionPopup.show(
-            anchor = anchor,
-            actions = actions.map { action ->
-                ModernActionPopup.Action(getString(action.titleRes)) {
-                    when (action) {
-                        NavAction.APPLY -> applyPackage(entry)
-                        NavAction.EDIT -> showEditDialog(entry)
-                        NavAction.EXPORT -> exportPackage(entry)
-                        NavAction.UPLOAD -> enqueueUpload(entry)
-                        NavAction.DOWNLOAD -> runAction {
-                            NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE)
-                        }
-                        NavAction.DELETE_LOCAL -> confirmDelete(
-                            entry,
-                            getString(R.string.navigation_bar_delete_local_confirm)
-                        ) {
-                            NavigationBarIconConfig.deleteLocal(entry)
-                            postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
-                        }
-                        NavAction.DELETE_REMOTE -> confirmDelete(
-                            entry,
-                            getString(R.string.navigation_bar_delete_remote_confirm)
-                        ) {
-                            NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
-                        }
-                        NavAction.DELETE_BOTH -> confirmDelete(
-                            entry,
-                            getString(R.string.navigation_bar_delete_both_confirm)
-                        ) {
-                            NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
-                            postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
-                        }
+        return actions.map { action ->
+            AppManagementMenuAction(
+                text = getString(action.titleRes),
+                danger = action.name.startsWith("DELETE")
+            ) {
+                when (action) {
+                    NavAction.APPLY -> applyPackage(entry)
+                    NavAction.EDIT -> showEditDialog(entry)
+                    NavAction.EXPORT -> exportPackage(entry)
+                    NavAction.UPLOAD -> enqueueUpload(entry)
+                    NavAction.DOWNLOAD -> runAction {
+                        NavigationBarIconConfig.download(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    NavAction.DELETE_LOCAL -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_local_confirm)
+                    ) {
+                        NavigationBarIconConfig.deleteLocal(entry)
+                        postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
+                    }
+                    NavAction.DELETE_REMOTE -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_remote_confirm)
+                    ) {
+                        NavigationBarIconConfig.deleteRemote(entry, cloudContainerId, CLOUD_SCOPE)
+                    }
+                    NavAction.DELETE_BOTH -> confirmDelete(
+                        entry,
+                        getString(R.string.navigation_bar_delete_both_confirm)
+                    ) {
+                        NavigationBarIconConfig.delete(entry, cloudContainerId, CLOUD_SCOPE)
+                        postEvent(EventBus.NAVIGATION_BAR_CHANGED, entry.config.isNightMode)
                     }
                 }
-            },
-            previousPopup = itemMenuPopup
-        )
+            }
+        }
     }
 
     private fun confirmDelete(
@@ -1044,9 +1040,34 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         return if (path.isNullOrBlank()) getString(R.string.theme_image_select) else getString(R.string.theme_image_selected)
     }
 
+    private fun entryInfo(entry: NavigationBarIconConfig.Entry): String {
+        return buildString {
+            append(layoutModeLabel(entry.config.layoutMode))
+            if (entry.config.layoutMode == "floating") {
+                append(" \u00B7 ")
+                append(effectModeLabel(entry.config.effectMode))
+            }
+            if (entry.config.layoutMode != "sidebar") {
+                append(" \u00B7 ")
+                append(getString(R.string.bottom_bar_opacity))
+                append(" ")
+                append(entry.config.opacity)
+                append("%")
+                if (entry.config.layoutMode == "standard" && !entry.config.wallpaperPath.isNullOrBlank()) {
+                    append(" \u00B7 ")
+                    append(getString(R.string.bottom_bar_wallpaper))
+                }
+            }
+            if (entry.config.updatedAt > 0) {
+                append(" \u00B7 ")
+                append(dateFormat.format(Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))))
+            }
+        }
+    }
+
     private fun nextPackageName(): String {
         val base = getString(R.string.navigation_bar_custom_name)
-        val usedNames = adapter.items.map { it.config.name }.toSet()
+        val usedNames = entriesState.map { it.config.name }.toSet()
         if (base !in usedNames) return base
         for (index in 2..999) {
             val name = "$base $index"
@@ -1083,110 +1104,49 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         DELETE_REMOTE(R.string.theme_delete_remote),
         DELETE_BOTH(R.string.theme_delete_both)
     }
-
-    private inner class Adapter : RecyclerView.Adapter<Adapter.Holder>() {
-
-        var items: List<NavigationBarIconConfig.Entry> = emptyList()
-            private set
-        private var activeDirName = NavigationBarIconConfig.DEFAULT_DIR_NAME
-
-        fun submit(value: List<NavigationBarIconConfig.Entry>, activeDirName: String) {
-            val old = items
-            val oldActive = this.activeDirName
-            items = value
-            this.activeDirName = activeDirName
-            DiffUtil.calculateDiff(object : DiffUtil.Callback() {
-                override fun getOldListSize(): Int = old.size
-                override fun getNewListSize(): Int = value.size
-                override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                    return old[oldItemPosition].dirName == value[newItemPosition].dirName &&
-                        old[oldItemPosition].config.isNightMode == value[newItemPosition].config.isNightMode
-                }
-
-                override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
-                    val oldItem = old[oldItemPosition]
-                    val newItem = value[newItemPosition]
-                    val oldApplied = oldItem.dirName == oldActive
-                    val newApplied = newItem.dirName == activeDirName
-                    return oldItem == newItem && oldApplied == newApplied
-                }
-            }).dispatchUpdatesTo(this)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
-            return Holder(ItemThemePackageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-        }
-
-        override fun getItemCount(): Int = items.size
-
-        override fun onBindViewHolder(holder: Holder, position: Int) {
-            holder.bind(items[position])
-        }
-
-        inner class Holder(private val itemBinding: ItemThemePackageBinding) : RecyclerView.ViewHolder(itemBinding.root) {
-
-            fun bind(entry: NavigationBarIconConfig.Entry) = itemBinding.run {
-                root.background = UiCorner.panelRounded(
-                    this@NavigationBarManageActivity,
-                    ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_card),
-                    UiCorner.panelRadius(this@NavigationBarManageActivity)
-                )
-                tvName.text = entry.config.name
-                tvInfo.text = buildString {
-                    append(layoutModeLabel(entry.config.layoutMode))
-                    if (entry.config.layoutMode == "floating") {
-                        append(" · ")
-                        append(effectModeLabel(entry.config.effectMode))
-                    }
-                    if (entry.config.layoutMode != "sidebar") {
-                        append(" · ")
-                        append(getString(R.string.bottom_bar_opacity))
-                        append(" ")
-                        append(entry.config.opacity)
-                        append("%")
-                        if (entry.config.layoutMode == "standard" && !entry.config.wallpaperPath.isNullOrBlank()) {
-                            append(" · ")
-                            append(getString(R.string.bottom_bar_wallpaper))
-                        }
-                    }
-                    if (entry.config.updatedAt > 0) {
-                        append(" · ")
-                        append(dateFormat.format(Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))))
-                    }
-                }
-                tvSource.visibility = View.GONE
-                tvName.setTextColor(primaryTextColor)
-                tvInfo.setTextColor(secondaryTextColor)
-                listOf(btnApply, btnEdit, btnMore).forEach {
-                    it.background = UiCorner.actionSelector(
-                        android.graphics.Color.TRANSPARENT,
-                        ContextCompat.getColor(this@NavigationBarManageActivity, R.color.background_menu),
-                        UiCorner.actionRadius(this@NavigationBarManageActivity)
-                    )
-                }
-                cardPreview.visibility = View.GONE
-                btnApply.text = getString(if (entry.dirName == activeDirName) R.string.theme_applied_state else R.string.theme_apply)
-                btnEdit.text = getString(R.string.edit)
-                btnEdit.visibility = if (entry.dirName == NavigationBarIconConfig.DEFAULT_DIR_NAME) View.GONE else View.VISIBLE
-                btnApply.setTextColor(accentColor)
-                btnEdit.setTextColor(primaryTextColor)
-                btnMore.setTextColor(primaryTextColor)
-                listOf(btnApply, btnEdit, btnMore).forEach {
-                    it.typeface = this@NavigationBarManageActivity.uiTypeface()
-                }
-                btnApply.setOnClickListener { applyPackage(entry) }
-                btnEdit.setOnClickListener {
-                    if (entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME) showEditDialog(entry)
-                }
-                btnMore.setOnClickListener { showActions(btnMore, entry) }
-                root.setOnClickListener { showActions(root, entry) }
-            }
-        }
-    }
-
-    private fun displayEffectMode(config: NavigationBarIconConfig.Config): String {
-        return if (config.layoutMode == "standard") "solid" else config.effectMode
-    }
-
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
+}
+
+@Composable
+private fun NavigationBarPackageManageScreen(
+    entries: List<NavigationBarIconConfig.Entry>,
+    activeDirName: String,
+    isNightMode: Boolean,
+    summaryText: String,
+    onSwitchDayNight: (Boolean) -> Unit,
+    onAdd: () -> Unit,
+    onApply: (NavigationBarIconConfig.Entry) -> Unit,
+    onEdit: (NavigationBarIconConfig.Entry) -> Unit,
+    entryInfo: (NavigationBarIconConfig.Entry) -> String,
+    entryActions: (NavigationBarIconConfig.Entry) -> List<AppManagementMenuAction>
+) {
+    val applyText = stringResource(R.string.theme_apply)
+    val appliedText = stringResource(R.string.theme_applied_state)
+    val editText = stringResource(R.string.edit)
+    AppPackageManageScreen(
+        isNightMode = isNightMode,
+        summaryText = summaryText,
+        addText = stringResource(R.string.theme_add),
+        onSwitchDayNight = onSwitchDayNight,
+        onAdd = onAdd
+    ) { palette ->
+        items(
+            entries,
+            key = { "${it.dirName}_${it.config.isNightMode}" }
+        ) { entry ->
+            val isActive = entry.dirName == activeDirName
+            AppPackageManageItemCard(
+                title = entry.config.name,
+                info = entryInfo(entry),
+                isActive = isActive,
+                canEdit = entry.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME,
+                applyText = if (isActive) appliedText else applyText,
+                editText = editText,
+                moreActions = entryActions(entry),
+                palette = palette,
+                onApply = { onApply(entry) },
+                onEdit = { onEdit(entry) }
+            )
+        }
+    }
 }
