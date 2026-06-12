@@ -16,6 +16,7 @@ import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 internal fun ReplaceRuleScreen(
     rules: List<ReplaceRule>,
     selected: Set<Long>,
+    isSelectMode: Boolean,
     onSelectToggle: (ReplaceRule) -> Unit,
     onToggleEnabled: (ReplaceRule, Boolean) -> Unit,
     onEdit: (ReplaceRule) -> Unit,
@@ -37,6 +38,7 @@ internal fun ReplaceRuleScreen(
                 title = rule.getDisplayNameGroup(),
                 enabled = rule.isEnabled,
                 isSelected = rule.id in selected,
+                isSelectMode = isSelectMode,
                 palette = palette,
                 onSelectToggle = { onSelectToggle(rule) },
                 onToggleEnabled = { onToggleEnabled(rule, it) },
@@ -52,6 +54,7 @@ private fun ReplaceRuleItemRow(
     title: String,
     enabled: Boolean,
     isSelected: Boolean,
+    isSelectMode: Boolean,
     palette: AppManagementPalette,
     onSelectToggle: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
@@ -62,14 +65,19 @@ private fun ReplaceRuleItemRow(
         title = title,
         palette = palette,
         selected = isSelected,
-        selectionVisible = true,
-        reserveSelectionSlot = true,
+        selectionVisible = isSelectMode,
+        animatedSelection = true,
+        reserveSelectionSlot = false,
         onToggleSelection = onSelectToggle,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,
         titleMaxLines = 1,
         minHeight = 56.dp,
         drawPanelImage = false,
+        onClick = {
+            if (isSelectMode) onSelectToggle() else onEdit()
+        },
+        onLongClick = onSelectToggle,
         onEdit = onEdit,
         onMore = onShowMenu
     )

@@ -16,6 +16,7 @@ import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 internal fun DictRuleScreen(
     rules: List<DictRule>,
     selectedNames: Set<String>,
+    isSelectMode: Boolean,
     onToggleSelection: (DictRule) -> Unit,
     onToggleEnabled: (DictRule, Boolean) -> Unit,
     onEdit: (DictRule) -> Unit,
@@ -37,6 +38,7 @@ internal fun DictRuleScreen(
                 name = rule.name,
                 enabled = rule.enabled,
                 isSelected = rule.name in selectedNames,
+                isSelectMode = isSelectMode,
                 palette = palette,
                 onToggleSelection = { onToggleSelection(rule) },
                 onToggleEnabled = { enabled -> onToggleEnabled(rule, enabled) },
@@ -52,6 +54,7 @@ private fun DictRuleItemRow(
     name: String,
     enabled: Boolean,
     isSelected: Boolean,
+    isSelectMode: Boolean,
     palette: AppManagementPalette,
     onToggleSelection: () -> Unit,
     onToggleEnabled: (Boolean) -> Unit,
@@ -62,14 +65,19 @@ private fun DictRuleItemRow(
         title = name,
         palette = palette,
         selected = isSelected,
-        selectionVisible = true,
-        reserveSelectionSlot = true,
+        selectionVisible = isSelectMode,
+        animatedSelection = true,
+        reserveSelectionSlot = false,
         onToggleSelection = onToggleSelection,
         switchChecked = enabled,
         onSwitchChange = onToggleEnabled,
         titleMaxLines = 1,
         minHeight = 56.dp,
         drawPanelImage = false,
+        onClick = {
+            if (isSelectMode) onToggleSelection() else onEdit()
+        },
+        onLongClick = onToggleSelection,
         onEdit = onEdit,
         onDelete = onDelete
     )

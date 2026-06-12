@@ -3,6 +3,7 @@ package io.legado.app.ui.book.toc.rule
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableStateListOf
@@ -21,6 +22,8 @@ import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
@@ -83,11 +86,12 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
-        initBottomActionBar()
         initData()
     }
 
     private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        binding.selectActionBar.visibility = View.GONE
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
         container.removeView(binding.recyclerView)
@@ -98,16 +102,55 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                TxtTocRuleScreen(
-                    rules = rulesState,
-                    selectedIds = selectedIds.value,
-                    onToggleSelect = ::onToggleSelect,
-                    onToggleEnable = ::onToggleEnable,
-                    onEdit = ::onEdit,
-                    onMenuMore = ::onMenuMore,
+                AppManagementScaffold(
+                    title = getString(R.string.txt_toc_rule),
+                    selectedCount = selectedIds.value.size,
+                    totalCount = rulesState.size,
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.add),
+                            iconRes = R.drawable.ic_add,
+                            onClick = { showDialogFragment(TxtTocRuleEditComposeDialog.create()) }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.more_menu),
+                            iconRes = R.drawable.ic_more_vert,
+                            onClick = ::showPageMenu
+                        )
+                    ),
+                    bottomActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.enable_selection),
+                            onClick = ::enableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_selection),
+                            onClick = ::disableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.export_selection),
+                            onClick = ::exportSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.delete),
+                            danger = true,
+                            onClick = ::delSourceDialog
+                        )
+                    ),
+                    onBack = { finish() },
                     onSelectAll = { selectAll(true) },
-                    onRevertSelection = { revertSelection() }
-                )
+                    onInvertSelection = { revertSelection() }
+                ) {
+                    TxtTocRuleScreen(
+                        rules = rulesState,
+                        selectedIds = selectedIds.value,
+                        isSelectMode = selectedIds.value.isNotEmpty(),
+                        onToggleSelect = ::onToggleSelect,
+                        onToggleEnable = ::onToggleEnable,
+                        onEdit = ::onEdit,
+                        onMenuMore = ::onMenuMore
+                    )
+                }
             }
         }
         container.addView(cv, index)
@@ -205,6 +248,31 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
         return super.onCompatOptionsItemSelected(item)
     }
 
+    private fun showPageMenu() {
+        val labels = listOf(
+            getString(R.string.import_local),
+            getString(R.string.import_on_line),
+            getString(R.string.import_by_qr_code),
+            getString(R.string.import_default_rule),
+            getString(R.string.help)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.txt_toc_rule),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> importDoc.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
+                }
+                1 -> showImportDialog()
+                2 -> qrCodeResult.launch()
+                3 -> viewModel.importDefault()
+                4 -> showHelp("txtTocRuleHelp")
+            }
+        }
+    }
+
     override fun saveTxtTocRule(txtTocRule: TxtTocRule) {
         viewModel.save(txtTocRule)
     }
@@ -275,28 +343,41 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
-        val selected = rulesState.filter { it.id in selectedIds.value }
         when (item.itemId) {
-            R.id.menu_enable_selection -> {
-                updateSelectedEnabled(enabled = true)
-                viewModel.enableSelection(*selected.toTypedArray())
-            }
-
-            R.id.menu_disable_selection -> {
-                updateSelectedEnabled(enabled = false)
-                viewModel.disableSelection(*selected.toTypedArray())
-            }
-
-            R.id.menu_export_selection -> exportResult.launch {
-                mode = HandleFileContract.EXPORT
-                fileData = HandleFileContract.FileData(
-                    "exportTxtTocRule.json",
-                    GSON.toJson(selected).toByteArray(),
-                    "application/json"
-                )
-            }
+            R.id.menu_enable_selection -> enableSelected()
+            R.id.menu_disable_selection -> disableSelected()
+            R.id.menu_export_selection -> exportSelected()
         }
         return true
+    }
+
+    private fun getSelectedRules(): List<TxtTocRule> {
+        val ids = selectedIds.value
+        return rulesState.filter { it.id in ids }
+    }
+
+    private fun enableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = true)
+        viewModel.enableSelection(*selected.toTypedArray())
+    }
+
+    private fun disableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = false)
+        viewModel.disableSelection(*selected.toTypedArray())
+    }
+
+    private fun exportSelected() {
+        val selected = getSelectedRules()
+        exportResult.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "exportTxtTocRule.json",
+                GSON.toJson(selected).toByteArray(),
+                "application/json"
+            )
+        }
     }
 
     private fun updateSelectedEnabled(enabled: Boolean) {

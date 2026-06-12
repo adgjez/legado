@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.SubMenu
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -29,6 +30,8 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
@@ -68,6 +71,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     }
     private val rulesState = mutableStateListOf<ReplaceRule>()
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
+    private val searchQueryState = mutableStateOf("")
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
     private var replaceRuleFlowJob: Job? = null
@@ -107,13 +111,13 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
-        initSearchView()
-        initSelectActionView()
         observeReplaceRuleData()
         observeGroupData()
     }
 
     private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        binding.selectActionBar.visibility = View.GONE
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
         container.removeView(binding.recyclerView)
@@ -124,14 +128,75 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                ReplaceRuleScreen(
-                    rules = rulesState,
-                    selected = selectedIds.value,
-                    onSelectToggle = ::onSelectToggle,
-                    onToggleEnabled = ::onToggleEnabled,
-                    onEdit = ::edit,
-                    onShowMenu = ::showItemMenu
-                )
+                AppManagementScaffold(
+                    title = getString(R.string.replace_purify),
+                    selectedCount = selectedIds.value.size,
+                    totalCount = rulesState.size,
+                    searchQuery = searchQueryState.value,
+                    searchHint = getString(R.string.replace_purify_search),
+                    onSearchChange = ::updateSearchQuery,
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.menu_action_group),
+                            iconRes = R.drawable.ic_groups,
+                            onClick = ::showFilterMenu
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.add_replace_rule),
+                            iconRes = R.drawable.ic_add,
+                            onClick = {
+                                editActivity.launch(
+                                    ReplaceEditActivity.startIntent(this@ReplaceRuleActivity)
+                                )
+                            }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.more_menu),
+                            iconRes = R.drawable.ic_more_vert,
+                            onClick = ::showPageMenu
+                        )
+                    ),
+                    bottomActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.enable_selection),
+                            onClick = ::enableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_selection),
+                            onClick = ::disableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_top),
+                            onClick = { viewModel.topSelect(getSelectedRules()) }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.selection_to_bottom),
+                            onClick = { viewModel.bottomSelect(getSelectedRules()) }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.export_selection),
+                            onClick = ::exportSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.delete),
+                            danger = true,
+                            onClick = ::onClickSelectBarMainAction
+                        )
+                    ),
+                    onBack = { finish() },
+                    onSelectAll = { selectAll(true) },
+                    onInvertSelection = { revertSelection() }
+                ) {
+                    ReplaceRuleScreen(
+                        rules = rulesState,
+                        selected = selectedIds.value,
+                        isSelectMode = selectedIds.value.isNotEmpty(),
+                        onSelectToggle = ::onSelectToggle,
+                        onToggleEnabled = ::onToggleEnabled,
+                        onEdit = ::edit,
+                        onShowMenu = ::showItemMenu
+                    )
+                }
             }
         }
         container.addView(cv, index)
@@ -256,11 +321,11 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
             R.id.menu_group_manage -> showDialogFragment<GroupManageDialog>()
             R.id.menu_enabled_group -> {
-                searchView.setQuery(getString(R.string.enabled), true)
+                updateSearchQuery(getString(R.string.enabled))
             }
 
             R.id.menu_disabled_group -> {
-                searchView.setQuery(getString(R.string.disabled), true)
+                updateSearchQuery(getString(R.string.disabled))
             }
             R.id.menu_del_selection -> viewModel.delSelection(getSelectedRules())
             R.id.menu_import_onLine -> showImportDialog()
@@ -272,40 +337,93 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             R.id.menu_import_qr -> qrCodeResult.launch()
             R.id.menu_help -> showHelp("replaceRuleHelp")
             R.id.menu_group_null -> {
-                searchView.setQuery(getString(R.string.no_group), true)
+                updateSearchQuery(getString(R.string.no_group))
             }
 
             else -> if (item.groupId == R.id.replace_group) {
-                searchView.setQuery("group:${item.title}", true)
+                updateSearchQuery("group:${item.title}")
             }
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun onMenuItemClick(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_enable_selection -> {
-                val selected = getSelectedRules()
-                updateSelectedEnabled(enabled = true)
-                viewModel.enableSelection(selected)
-            }
-            R.id.menu_disable_selection -> {
-                val selected = getSelectedRules()
-                updateSelectedEnabled(enabled = false)
-                viewModel.disableSelection(selected)
-            }
-            R.id.menu_top_sel -> viewModel.topSelect(getSelectedRules())
-            R.id.menu_bottom_sel -> viewModel.bottomSelect(getSelectedRules())
-            R.id.menu_export_selection -> exportResult.launch {
-                mode = HandleFileContract.EXPORT
-                fileData = HandleFileContract.FileData(
-                    "exportReplaceRule.json",
-                    GSON.toJson(getSelectedRules()).toByteArray(),
-                    "application/json"
-                )
+    private fun showFilterMenu() {
+        val fixedLabels = listOf(
+            getString(R.string.group_manage),
+            getString(R.string.enabled),
+            getString(R.string.disabled),
+            getString(R.string.no_group)
+        )
+        val labels = fixedLabels + groups
+        showComposeActionListDialog(
+            title = getString(R.string.menu_action_group),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> showDialogFragment<GroupManageDialog>()
+                1 -> updateSearchQuery(getString(R.string.enabled))
+                2 -> updateSearchQuery(getString(R.string.disabled))
+                3 -> updateSearchQuery(getString(R.string.no_group))
+                else -> updateSearchQuery("group:${labels[index]}")
             }
         }
+    }
+
+    private fun showPageMenu() {
+        val labels = listOf(
+            getString(R.string.import_local),
+            getString(R.string.import_on_line),
+            getString(R.string.import_by_qr_code),
+            getString(R.string.help)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.replace_purify),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> importDoc.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
+                }
+                1 -> showImportDialog()
+                2 -> qrCodeResult.launch()
+                3 -> showHelp("replaceRuleHelp")
+            }
+        }
+    }
+
+    private fun onMenuItemClick(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_enable_selection -> enableSelected()
+            R.id.menu_disable_selection -> disableSelected()
+            R.id.menu_top_sel -> viewModel.topSelect(getSelectedRules())
+            R.id.menu_bottom_sel -> viewModel.bottomSelect(getSelectedRules())
+            R.id.menu_export_selection -> exportSelected()
+        }
         return true
+    }
+
+    private fun enableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = true)
+        viewModel.enableSelection(selected)
+    }
+
+    private fun disableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = false)
+        viewModel.disableSelection(selected)
+    }
+
+    private fun exportSelected() {
+        exportResult.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "exportReplaceRule.json",
+                GSON.toJson(getSelectedRules()).toByteArray(),
+                "application/json"
+            )
+        }
     }
 
     private fun upGroupMenu() = groupMenu?.transaction { menu ->
@@ -410,8 +528,16 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
         rulesState.replaceMatching({ it.id in ids }) { it.copy(isEnabled = enabled) }
     }
 
+    private fun updateSearchQuery(query: String) {
+        if (searchQueryState.value == query) {
+            return
+        }
+        searchQueryState.value = query
+        observeReplaceRuleData(query)
+    }
+
     override fun onQueryTextChange(newText: String?): Boolean {
-        observeReplaceRuleData(newText)
+        updateSearchQuery(newText.orEmpty())
         return false
     }
 

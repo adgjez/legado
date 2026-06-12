@@ -38,7 +38,7 @@ import io.legado.app.R
 
 data class AppManagementAction(
     val text: String,
-    @DrawableRes val iconRes: Int? = null,
+    @param:DrawableRes val iconRes: Int? = null,
     val primary: Boolean = false,
     val danger: Boolean = false,
     val onClick: () -> Unit

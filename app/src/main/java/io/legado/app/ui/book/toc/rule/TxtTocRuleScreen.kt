@@ -16,12 +16,11 @@ import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 internal fun TxtTocRuleScreen(
     rules: List<TxtTocRule>,
     selectedIds: Set<Long>,
+    isSelectMode: Boolean,
     onToggleSelect: (TxtTocRule) -> Unit,
     onToggleEnable: (TxtTocRule, Boolean) -> Unit,
     onEdit: (TxtTocRule) -> Unit,
     onMenuMore: (TxtTocRule) -> Unit,
-    onSelectAll: () -> Unit,
-    onRevertSelection: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val palette = rememberAppManagementPalette()
@@ -41,6 +40,7 @@ internal fun TxtTocRuleScreen(
                 example = rule.example,
                 enabled = rule.enable,
                 isSelected = selectedIds.contains(rule.id),
+                isSelectMode = isSelectMode,
                 palette = palette,
                 onToggleSelect = { onToggleSelect(rule) },
                 onToggleEnable = { enabled -> onToggleEnable(rule, enabled) },
@@ -57,6 +57,7 @@ private fun TxtTocRuleItemRow(
     example: String?,
     enabled: Boolean,
     isSelected: Boolean,
+    isSelectMode: Boolean,
     palette: AppManagementPalette,
     onToggleSelect: () -> Unit,
     onToggleEnable: (Boolean) -> Unit,
@@ -68,8 +69,9 @@ private fun TxtTocRuleItemRow(
         subtitle = example,
         palette = palette,
         selected = isSelected,
-        selectionVisible = true,
-        reserveSelectionSlot = true,
+        selectionVisible = isSelectMode,
+        animatedSelection = true,
+        reserveSelectionSlot = false,
         onToggleSelection = onToggleSelect,
         switchChecked = enabled,
         onSwitchChange = onToggleEnable,
@@ -77,6 +79,10 @@ private fun TxtTocRuleItemRow(
         subtitleMaxLines = 1,
         minHeight = 56.dp,
         drawPanelImage = false,
+        onClick = {
+            if (isSelectMode) onToggleSelect() else onEdit()
+        },
+        onLongClick = onToggleSelect,
         onEdit = onEdit,
         onMore = onMenuMore
     )

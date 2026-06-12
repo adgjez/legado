@@ -3,6 +3,7 @@ package io.legado.app.ui.dict.rule
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
 import androidx.activity.viewModels
 import androidx.compose.runtime.mutableStateListOf
@@ -21,6 +22,8 @@ import io.legado.app.ui.association.ImportDictRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
 import io.legado.app.ui.widget.compose.replaceByIndex
 import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
@@ -76,11 +79,12 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initComposeContent()
-        initSelectActionView()
         observeDictRuleData()
     }
 
     private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        binding.selectActionBar.visibility = View.GONE
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
         container.removeView(binding.recyclerView)
@@ -91,14 +95,55 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setContent {
-                DictRuleScreen(
-                    rules = rulesState,
-                    selectedNames = selectedNames.value,
-                    onToggleSelection = ::toggleSelection,
-                    onToggleEnabled = ::toggleEnabled,
-                    onEdit = ::editRule,
-                    onDelete = ::deleteRule
-                )
+                AppManagementScaffold(
+                    title = getString(R.string.dict_rule),
+                    selectedCount = selectedNames.value.size,
+                    totalCount = rulesState.size,
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.create),
+                            iconRes = R.drawable.ic_add,
+                            onClick = { showDialogFragment<DictRuleEditDialog>() }
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.more_menu),
+                            iconRes = R.drawable.ic_more_vert,
+                            onClick = ::showPageMenu
+                        )
+                    ),
+                    bottomActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.enable_selection),
+                            onClick = ::enableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.disable_selection),
+                            onClick = ::disableSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.export_selection),
+                            onClick = ::exportSelected
+                        ),
+                        AppManagementAction(
+                            text = getString(R.string.delete),
+                            danger = true,
+                            onClick = ::onClickSelectBarMainAction
+                        )
+                    ),
+                    onBack = { finish() },
+                    onSelectAll = { selectAll(true) },
+                    onInvertSelection = { revertSelection() }
+                ) {
+                    DictRuleScreen(
+                        rules = rulesState,
+                        selectedNames = selectedNames.value,
+                        isSelectMode = selectedNames.value.isNotEmpty(),
+                        onToggleSelection = ::toggleSelection,
+                        onToggleEnabled = ::toggleEnabled,
+                        onEdit = ::editRule,
+                        onDelete = ::deleteRule
+                    )
+                }
             }
         }
         container.addView(cv, index)
@@ -109,27 +154,9 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         binding.selectActionBar.inflateMenu(R.menu.dict_rule_sel)
         binding.selectActionBar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                R.id.menu_enable_selection -> {
-                    val selected = rulesState.filter { it.name in selectedNames.value }
-                    updateSelectedEnabled(enabled = true)
-                    viewModel.enableSelection(*selected.toTypedArray())
-                }
-                R.id.menu_disable_selection -> {
-                    val selected = rulesState.filter { it.name in selectedNames.value }
-                    updateSelectedEnabled(enabled = false)
-                    viewModel.disableSelection(*selected.toTypedArray())
-                }
-                R.id.menu_export_selection -> {
-                    val selected = rulesState.filter { it.name in selectedNames.value }
-                    exportResult.launch {
-                        mode = HandleFileContract.EXPORT
-                        fileData = HandleFileContract.FileData(
-                            "exportDictRule.json",
-                            GSON.toJson(selected).toByteArray(),
-                            "application/json"
-                        )
-                    }
-                }
+                R.id.menu_enable_selection -> enableSelected()
+                R.id.menu_disable_selection -> disableSelected()
+                R.id.menu_export_selection -> exportSelected()
             }
             true
         }
@@ -170,9 +197,63 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         return super.onCompatOptionsItemSelected(item)
     }
 
+    private fun showPageMenu() {
+        val labels = listOf(
+            getString(R.string.import_local),
+            getString(R.string.import_on_line),
+            getString(R.string.import_by_qr_code),
+            getString(R.string.import_default_rule),
+            getString(R.string.help)
+        )
+        showComposeActionListDialog(
+            title = getString(R.string.dict_rule),
+            labels = labels
+        ) { index ->
+            when (index) {
+                0 -> importDoc.launch {
+                    mode = HandleFileContract.FILE
+                    allowExtensions = arrayOf("txt", "json")
+                }
+                1 -> showImportDialog()
+                2 -> qrCodeResult.launch()
+                3 -> viewModel.importDefault()
+                4 -> showHelp("dictRuleHelp")
+            }
+        }
+    }
+
     override fun onClickSelectBarMainAction() {
         val selected = rulesState.filter { it.name in selectedNames.value }
         viewModel.delete(*selected.toTypedArray())
+    }
+
+    private fun getSelectedRules(): List<DictRule> {
+        val names = selectedNames.value
+        return rulesState.filter { it.name in names }
+    }
+
+    private fun enableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = true)
+        viewModel.enableSelection(*selected.toTypedArray())
+    }
+
+    private fun disableSelected() {
+        val selected = getSelectedRules()
+        updateSelectedEnabled(enabled = false)
+        viewModel.disableSelection(*selected.toTypedArray())
+    }
+
+    private fun exportSelected() {
+        val selected = getSelectedRules()
+        exportResult.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(
+                "exportDictRule.json",
+                GSON.toJson(selected).toByteArray(),
+                "application/json"
+            )
+        }
     }
 
     override fun selectAll(selectAll: Boolean) {
