@@ -437,6 +437,40 @@ fun AppCompatActivity.showComposeTextInputDialog(
     )
 }
 
+fun AppCompatActivity.showComposeSuggestionTextInputDialog(
+    title: CharSequence,
+    hint: CharSequence = "",
+    initialValue: CharSequence = "",
+    suggestions: List<CharSequence> = emptyList(),
+    message: CharSequence? = null,
+    deletable: Boolean = false,
+    positiveText: CharSequence = getString(android.R.string.ok),
+    negativeText: CharSequence = getString(android.R.string.cancel),
+    neutralText: CharSequence? = null,
+    validateInput: ((String) -> Boolean)? = null,
+    onPositive: (String) -> Unit,
+    onNeutral: (() -> Unit)? = null,
+    onSuggestionDeleted: ((String) -> Unit)? = null
+) {
+    showDialogFragment(
+        ComposeSuggestionTextInputDialog.create(
+            title = title.toString(),
+            hint = hint.toString(),
+            initialValue = initialValue.toString(),
+            suggestions = suggestions.map { it.toString() },
+            message = message?.toString(),
+            deletable = deletable,
+            positiveText = positiveText.toString(),
+            negativeText = negativeText.toString(),
+            neutralText = neutralText?.toString(),
+            validateInput = validateInput,
+            onPositive = onPositive,
+            onNeutral = onNeutral,
+            onSuggestionDeleted = onSuggestionDeleted
+        )
+    )
+}
+
 fun AppCompatActivity.showComposeTextFormDialog(
     title: CharSequence,
     labels: List<CharSequence>,

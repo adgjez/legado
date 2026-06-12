@@ -47,6 +47,7 @@ import io.legado.app.ui.widget.compose.replaceFirst
 import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeSuggestionTextInputDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
@@ -602,10 +603,10 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun selectionAddToGroups() {
-        showComposeTextInputDialog(
+        showComposeSuggestionTextInputDialog(
             title = getString(R.string.add_group),
             hint = getString(R.string.group_name),
-            message = groups.takeIf { it.isNotEmpty() }?.joinToString(", "),
+            suggestions = groups.toList(),
             onPositive = { text ->
                 if (text.isNotEmpty()) {
                     viewModel.selectionAddToGroups(getSelectedSources(), text)
@@ -615,10 +616,10 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     }
 
     private fun selectionRemoveFromGroups() {
-        showComposeTextInputDialog(
+        showComposeSuggestionTextInputDialog(
             title = getString(R.string.remove_group),
             hint = getString(R.string.group_name),
-            message = groups.takeIf { it.isNotEmpty() }?.joinToString(", "),
+            suggestions = groups.toList(),
             onPositive = { text ->
                 if (text.isNotEmpty()) {
                     viewModel.selectionRemoveFromGroups(getSelectedSources(), text)
@@ -640,16 +641,21 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             .getAsString(importRecordKey)
             ?.splitNotBlank(",")
             ?.toMutableList() ?: mutableListOf()
-        showComposeTextInputDialog(
+        showComposeSuggestionTextInputDialog(
             title = getString(R.string.import_on_line),
             hint = "url",
-            message = cacheUrls.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+            suggestions = cacheUrls,
+            deletable = true,
             onPositive = { text ->
                 if (text.isAbsUrl() && !cacheUrls.contains(text)) {
                     cacheUrls.add(0, text)
                     aCache.put(importRecordKey, cacheUrls.joinToString(","))
                 }
                 showDialogFragment(ImportBookSourceDialog(text))
+            },
+            onSuggestionDeleted = { url ->
+                cacheUrls.remove(url)
+                aCache.put(importRecordKey, cacheUrls.joinToString(","))
             }
         )
     }

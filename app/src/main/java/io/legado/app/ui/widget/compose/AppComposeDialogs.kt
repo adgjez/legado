@@ -461,6 +461,220 @@ class ComposeTextInputDialog : ComposeDialogFragment() {
     }
 }
 
+class ComposeSuggestionTextInputDialog : ComposeDialogFragment() {
+
+    override val widthFraction: Float? = 0.96f
+    override val maxWidthDp: Int? = 700
+
+    private var validateInput: ((String) -> Boolean)? = null
+    private var onPositive: ((String) -> Unit)? = null
+    private var onNeutral: (() -> Unit)? = null
+    private var onSuggestionDeleted: ((String) -> Unit)? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val args = arguments ?: Bundle()
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                DismissWhenCallbackMissing(
+                    missing = onPositive == null,
+                    dismiss = ::dismissAllowingStateLoss
+                )
+                val hintText = args.getString(ARG_HINT).orEmpty()
+                val positiveText = args.getString(ARG_POSITIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.ok) }
+                val negativeText = args.getString(ARG_NEGATIVE_TEXT)
+                    .orEmpty()
+                    .ifBlank { stringResource(R.string.cancel) }
+                val neutralText = args.getString(ARG_NEUTRAL_TEXT)?.takeIf { it.isNotBlank() }
+                val suggestions = remember {
+                    mutableStateListOf<String>().apply {
+                        addAll(args.getStringArrayList(ARG_SUGGESTIONS).orEmpty())
+                    }
+                }
+                var text by rememberSaveable {
+                    mutableStateOf(args.getString(ARG_INITIAL_TEXT).orEmpty())
+                }
+                val style = rememberAppDialogStyle()
+                AppDialogFrame(
+                    title = args.getString(ARG_TITLE).orEmpty(),
+                    message = args.getString(ARG_MESSAGE),
+                    content = {
+                        AppDialogTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            label = hintText,
+                            minLines = 1,
+                            maxLines = 4
+                        )
+                        if (suggestions.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                itemsIndexed(
+                                    items = suggestions,
+                                    key = { index, item -> "$index:$item" }
+                                ) { index, suggestion ->
+                                    SuggestionInputRow(
+                                        text = suggestion,
+                                        style = style,
+                                        deletable = args.getBoolean(ARG_DELETABLE) &&
+                                            onSuggestionDeleted != null,
+                                        onClick = { text = suggestion },
+                                        onDelete = {
+                                            suggestions.removeAt(index)
+                                            onSuggestionDeleted?.invoke(suggestion)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    actions = {
+                        val palette = style.toMiuixPalette()
+                        val neutralLabel = neutralText
+                        val neutralCallback = onNeutral
+                        if (neutralLabel != null && neutralCallback != null) {
+                            LegadoMiuixActionButton(
+                                text = neutralLabel,
+                                palette = palette,
+                                onClick = {
+                                    dismissAllowingStateLoss()
+                                    neutralCallback.invoke()
+                                },
+                                cornerRadius = style.actionRadius
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        LegadoMiuixActionButton(
+                            text = negativeText,
+                            palette = palette,
+                            onClick = { dismissAllowingStateLoss() },
+                            cornerRadius = style.actionRadius
+                        )
+                        onPositive?.let { positiveCallback ->
+                            Spacer(modifier = Modifier.width(8.dp))
+                            LegadoMiuixActionButton(
+                                text = positiveText,
+                                palette = palette,
+                                onClick = {
+                                    val current = text
+                                    if (validateInput?.invoke(current) != false) {
+                                        dismissAllowingStateLoss()
+                                        positiveCallback.invoke(current)
+                                    }
+                                },
+                                primary = true,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    companion object {
+        fun create(
+            title: String,
+            hint: String = "",
+            initialValue: String = "",
+            suggestions: List<String> = emptyList(),
+            message: String? = null,
+            deletable: Boolean = false,
+            positiveText: String,
+            negativeText: String,
+            neutralText: String? = null,
+            validateInput: ((String) -> Boolean)? = null,
+            onPositive: (String) -> Unit,
+            onNeutral: (() -> Unit)? = null,
+            onSuggestionDeleted: ((String) -> Unit)? = null
+        ): ComposeSuggestionTextInputDialog {
+            return ComposeSuggestionTextInputDialog().apply {
+                arguments = Bundle().apply {
+                    putString(ARG_TITLE, title)
+                    putString(ARG_HINT, hint)
+                    putString(ARG_INITIAL_TEXT, initialValue)
+                    putStringArrayList(ARG_SUGGESTIONS, ArrayList(suggestions))
+                    putString(ARG_MESSAGE, message)
+                    putBoolean(ARG_DELETABLE, deletable)
+                    putString(ARG_POSITIVE_TEXT, positiveText)
+                    putString(ARG_NEGATIVE_TEXT, negativeText)
+                    putString(ARG_NEUTRAL_TEXT, neutralText)
+                }
+                this.validateInput = validateInput
+                this.onPositive = onPositive
+                this.onNeutral = onNeutral
+                this.onSuggestionDeleted = onSuggestionDeleted
+            }
+        }
+
+        private const val ARG_TITLE = "title"
+        private const val ARG_HINT = "hint"
+        private const val ARG_INITIAL_TEXT = "initialText"
+        private const val ARG_SUGGESTIONS = "suggestions"
+        private const val ARG_MESSAGE = "message"
+        private const val ARG_DELETABLE = "deletable"
+        private const val ARG_POSITIVE_TEXT = "positiveText"
+        private const val ARG_NEGATIVE_TEXT = "negativeText"
+        private const val ARG_NEUTRAL_TEXT = "neutralText"
+    }
+}
+
+@Composable
+private fun SuggestionInputRow(
+    text: String,
+    style: AppDialogStyle,
+    deletable: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val palette = style.toMiuixPalette()
+    LegadoMiuixCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        color = style.fieldSurface,
+        contentColor = style.primaryText,
+        cornerRadius = style.actionRadius,
+        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = text,
+                modifier = Modifier.weight(1f),
+                color = style.primaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (deletable) {
+                Spacer(modifier = Modifier.width(8.dp))
+                LegadoMiuixActionButton(
+                    text = stringResource(R.string.delete),
+                    palette = palette,
+                    onClick = onDelete,
+                    danger = true,
+                    cornerRadius = style.actionRadius,
+                    minWidth = 58.dp,
+                    minHeight = 32.dp,
+                    insidePadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
+
 class ComposeTextFormDialog : ComposeDialogFragment() {
 
     override val widthFraction: Float? = 0.98f
