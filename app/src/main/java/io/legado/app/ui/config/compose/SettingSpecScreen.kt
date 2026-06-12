@@ -1,5 +1,6 @@
 package io.legado.app.ui.config.compose
 
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -24,23 +25,28 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
@@ -184,6 +190,26 @@ private fun SettingRow(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val dialogStyle = rememberAppDialogStyle()
+    var choiceAnchor by remember(item.key) { mutableStateOf<View?>(null) }
+    var choicePopupHandle by remember(item.key) { mutableStateOf<ModernActionPopup.Handle?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            choicePopupHandle?.dismiss()
+            choicePopupHandle = null
+        }
+    }
+    fun openChoicePopup(choice: SettingChoiceSpec) {
+        val anchor = choiceAnchor
+        if (anchor == null) {
+            onItemClick(choice)
+            return
+        }
+        choicePopupHandle = ModernActionPopup.show(
+            anchor = anchor,
+            actions = choice.toPopupActions(),
+            previousPopup = choicePopupHandle
+        )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -200,7 +226,13 @@ private fun SettingRow(
             .settingRowClick(
                 item = item,
                 interactionSource = interactionSource,
-                onItemClick = onItemClick
+                onItemClick = { clickedItem ->
+                    if (clickedItem is SettingChoiceSpec) {
+                        openChoicePopup(clickedItem)
+                    } else {
+                        onItemClick(clickedItem)
+                    }
+                }
             )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
@@ -245,11 +277,36 @@ private fun SettingRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    AndroidView(
+                        factory = { context ->
+                            View(context).apply {
+                                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                                isClickable = false
+                                isFocusable = false
+                            }
+                        },
+                        update = { view -> choiceAnchor = view },
+                        modifier = Modifier.size(1.dp)
+                    )
                 }
             }
 
             is SettingSliderSpec -> Unit
             is SettingActionSpec -> Unit
+        }
+    }
+}
+
+private fun SettingChoiceSpec.toPopupActions(): List<ModernActionPopup.Action> {
+    return options.map { option ->
+        ModernActionPopup.Action(
+            title = option.label.toString(),
+            description = option.description?.toString(),
+            iconName = option.iconName,
+            checked = option.value == selectedValue,
+            enabled = enabled
+        ) {
+            onSelected(option.value)
         }
     }
 }

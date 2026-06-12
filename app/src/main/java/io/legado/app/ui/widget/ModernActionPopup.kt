@@ -59,6 +59,8 @@ object ModernActionPopup {
 
     data class Action(
         val title: String,
+        val description: String? = null,
+        val iconName: String? = null,
         val checked: Boolean = false,
         val enabled: Boolean = true,
         val invoke: () -> Unit
@@ -295,7 +297,9 @@ object ModernActionPopup {
                                 minHeight = 42.dp,
                                 compact = true,
                                 showSelectedMark = action.checked,
-                                enabled = action.enabled
+                                enabled = action.enabled,
+                                description = action.description,
+                                leadingIconName = action.iconName
                             )
                         }
                     }
