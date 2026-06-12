@@ -1,27 +1,29 @@
 package io.legado.app.ui.rss.subscription
 
-import android.annotation.SuppressLint
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
-import androidx.core.view.isGone
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.ItemTouchHelper
 import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.databinding.ActivityRuleSubBinding
-import io.legado.app.databinding.DialogRuleSubEditBinding
-import io.legado.app.lib.dialogs.alert
 import io.legado.app.ui.association.ImportBookSourceDialog
 import io.legado.app.ui.association.ImportReplaceRuleDialog
 import io.legado.app.ui.association.ImportRssSourceDialog
-import io.legado.app.ui.widget.recycler.ItemTouchCallback
-import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.ui.widget.compose.AppManagementAction
+import io.legado.app.ui.widget.compose.AppManagementScaffold
+import io.legado.app.ui.widget.compose.replaceByIndex
+import io.legado.app.ui.widget.compose.showComposeActionListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
@@ -33,16 +35,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 规则订阅界面
+ * 规则订阅管理界面
  */
 class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
-    RuleSubAdapter.Callback {
+    RuleSubEditComposeDialog.Callback {
 
     override val binding by viewBinding(ActivityRuleSubBinding::inflate)
-    private val adapter by lazy { RuleSubAdapter(this, this) }
+
+    private val ruleSubsState = mutableStateListOf<RuleSub>()
+    private val searchQueryState = mutableStateOf("")
+    private val typeLabels by lazy { resources.getStringArray(R.array.rule_type).toList() }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        initView()
+        initComposeContent()
         initData()
     }
 
@@ -53,20 +58,57 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_add -> {
-                val order = appDb.ruleSubDao.maxOrder + 1
-                editSubscription(RuleSub(customOrder = order))
-            }
+            R.id.menu_add -> addSubscription()
         }
         return super.onCompatOptionsItemSelected(item)
     }
 
-    private fun initView() {
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.applyNavigationBarPadding()
-        val itemTouchCallback = ItemTouchCallback(adapter)
-        itemTouchCallback.isCanDrag = true
-        ItemTouchHelper(itemTouchCallback).attachToRecyclerView(binding.recyclerView)
+    private fun initComposeContent() {
+        binding.titleBar.visibility = View.GONE
+        val container = binding.recyclerView.parent as? ViewGroup ?: return
+        val index = container.indexOfChild(binding.recyclerView)
+        container.removeView(binding.recyclerView)
+        container.removeView(binding.tvEmptyMsg)
+        val cv = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setContent {
+                val filteredItems = filterRuleSubs(searchQueryState.value)
+                AppManagementScaffold(
+                    title = getString(R.string.rule_subscription),
+                    selectedCount = 0,
+                    totalCount = filteredItems.size,
+                    searchQuery = searchQueryState.value,
+                    searchHint = getString(R.string.search),
+                    onSearchChange = { searchQueryState.value = it },
+                    topActions = listOf(
+                        AppManagementAction(
+                            text = getString(R.string.add),
+                            iconRes = R.drawable.ic_add,
+                            onClick = ::addSubscription
+                        )
+                    ),
+                    onBack = { finish() }
+                ) {
+                    RuleSubScreen(
+                        subscriptions = filteredItems,
+                        typeLabels = typeLabels,
+                        emptyMessage = if (searchQueryState.value.isBlank()) {
+                            getString(R.string.rule_sub_empty_msg)
+                        } else {
+                            getString(R.string.search_result)
+                        },
+                        onOpen = ::openSubscription,
+                        onEdit = ::editSubscription,
+                        onMenuMore = ::showRuleSubMenu
+                    )
+                }
+            }
+        }
+        container.addView(cv, index)
     }
 
     private fun initData() {
@@ -74,124 +116,138 @@ class RuleSubActivity : BaseActivity<ActivityRuleSubBinding>(),
             appDb.ruleSubDao.flowAll().catch {
                 AppLog.put("规则订阅界面获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect {
-                binding.tvEmptyMsg.isGone = it.isNotEmpty()
-                adapter.setItems(it)
+                ruleSubsState.replaceByIndex(it, ::sameRuleSubContent)
             }
         }
     }
 
-    override fun openSubscription(ruleSub: RuleSub) {
+    private fun filterRuleSubs(query: String): List<RuleSub> {
+        val key = query.trim()
+        if (key.isEmpty()) {
+            return ruleSubsState
+        }
+        return ruleSubsState.filter { item ->
+            item.name.contains(key, ignoreCase = true) ||
+                item.url.contains(key, ignoreCase = true) ||
+                typeLabels.getOrNull(item.type).orEmpty().contains(key, ignoreCase = true)
+        }
+    }
+
+    private fun addSubscription() {
+        val order = (ruleSubsState.maxOfOrNull { it.customOrder } ?: appDb.ruleSubDao.maxOrder) + 1
+        editSubscription(RuleSub(customOrder = order))
+    }
+
+    private fun openSubscription(ruleSub: RuleSub) {
         when (ruleSub.type) {
-            0 -> showDialogFragment(
-                ImportBookSourceDialog(ruleSub.url)
-            )
-            1 -> showDialogFragment(
-                ImportRssSourceDialog(ruleSub.url)
-            )
-            2 -> showDialogFragment(
-                ImportReplaceRuleDialog(ruleSub.url)
-            )
+            0 -> showDialogFragment(ImportBookSourceDialog(ruleSub.url))
+            1 -> showDialogFragment(ImportRssSourceDialog(ruleSub.url))
+            2 -> showDialogFragment(ImportReplaceRuleDialog(ruleSub.url))
         }
     }
 
-    @SuppressLint("SetTextI18n")
-    override fun editSubscription(ruleSub: RuleSub) {
-        alert(R.string.rule_subscription) {
-            val alertBinding = DialogRuleSubEditBinding.inflate(layoutInflater).apply {
-                if (ruleSub.type !in 0..<spType.count) {
-                    ruleSub.type = 0
-                }
-                spType.setSelection(ruleSub.type)
-                etName.setText(ruleSub.name)
-                etUrl.setText(ruleSub.url)
-                autoUpdate.isChecked = ruleSub.autoUpdate
-                silentUpdate.isChecked = ruleSub.silentUpdate
-                etUpdateInterval.setText(ruleSub.updateInterval.toString())
-                etUpdateInterval.isEnabled = ruleSub.autoUpdate
-                if (ruleSub.updateInterval > 0) {
-                    silentUpdate.isEnabled = true
-                }
-                autoUpdate.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked && ruleSub.updateInterval == 0){
-                        etUpdateInterval.setText("24")
-                    }
-                    else if (!isChecked) {
-                        etUpdateInterval.setText("0")
-                    }
-                    etUpdateInterval.isEnabled = isChecked
-                    silentUpdate.isEnabled = isChecked
-                }
-                etUpdateInterval.addTextChangedListener(object : TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-                    }
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    }
-                    override fun afterTextChanged(s: Editable?) {
-                        if (s.toString().toIntOrNull() == 0) {
-                            silentUpdate.isChecked = false
-                            autoUpdate.isChecked = false
-                            silentUpdate.isEnabled = false
-                        }
-                        else {
-                            silentUpdate.isEnabled = true
-                        }
-                    }
-                })
+    private fun editSubscription(ruleSub: RuleSub) {
+        showDialogFragment(RuleSubEditComposeDialog.create(ruleSub))
+    }
+
+    override fun saveRuleSub(ruleSub: RuleSub, onSaved: () -> Unit) {
+        if (ruleSub.url.isBlank()) {
+            toastOnUi(getString(R.string.null_url))
+            return
+        }
+        lifecycleScope.launch {
+            val duplicate = withContext(IO) {
+                appDb.ruleSubDao.findByUrl(ruleSub.url)
             }
-            customView { alertBinding.root }
-            okButton {
-                lifecycleScope.launch {
-                    ruleSub.type = alertBinding.spType.selectedItemPosition
-                    ruleSub.name = alertBinding.etName.text?.toString() ?: ""
-                    ruleSub.url = alertBinding.etUrl.text?.toString() ?: ""
-                    ruleSub.autoUpdate = alertBinding.autoUpdate.isChecked
-                    ruleSub.silentUpdate = alertBinding.silentUpdate.isChecked
-                    val intervalText = alertBinding.etUpdateInterval.text?.toString()
-                    ruleSub.updateInterval = if (intervalText.isNullOrEmpty()) {
-                        0
-                    } else {
-                        intervalText.toIntOrNull() ?: 0
-                    }
-                    if (ruleSub.url.isBlank()) {
-                        toastOnUi(getString(R.string.null_url))
-                        return@launch
-                    }
-                    val rs = withContext(IO) {
-                        appDb.ruleSubDao.findByUrl(ruleSub.url)
-                    }
-                    if (rs != null && rs.id != ruleSub.id) {
-                        toastOnUi("${getString(R.string.url_already)}(${rs.name})")
-                        return@launch
-                    }
-                    withContext(IO) {
-                        appDb.ruleSubDao.insert(ruleSub)
-                    }
+            if (duplicate != null && duplicate.id != ruleSub.id) {
+                toastOnUi("${getString(R.string.url_already)}(${duplicate.name})")
+                return@launch
+            }
+            val itemToSave = ruleSubsState.firstOrNull { it.id == ruleSub.id }?.copy(
+                name = ruleSub.name,
+                url = ruleSub.url,
+                type = ruleSub.type,
+                customOrder = ruleSub.customOrder,
+                autoUpdate = ruleSub.autoUpdate,
+                updateInterval = ruleSub.updateInterval,
+                silentUpdate = ruleSub.silentUpdate
+            ) ?: ruleSub
+            withContext(IO) {
+                appDb.ruleSubDao.insert(itemToSave)
+            }
+            onSaved()
+        }
+    }
+
+    private fun showRuleSubMenu(ruleSub: RuleSub) {
+        showComposeActionListDialog(
+            title = ruleSub.name.ifBlank { ruleSub.url },
+            labels = listOf(
+                getString(R.string.to_top),
+                getString(R.string.to_bottom),
+                getString(R.string.edit),
+                getString(R.string.delete)
+            ),
+            dangerIndices = setOf(3),
+            negativeText = getString(R.string.cancel)
+        ) { index ->
+            when (index) {
+                0 -> moveSubscription(ruleSub, 0)
+                1 -> moveSubscription(ruleSub, ruleSubsState.lastIndex)
+                2 -> editSubscription(ruleSub)
+                3 -> delSubscription(ruleSub)
+            }
+        }
+    }
+
+    private fun delSubscription(ruleSub: RuleSub) {
+        showComposeConfirmDialog(
+            title = getString(R.string.draw),
+            message = getString(R.string.sure_del) + "\n" + ruleSub.name.ifBlank { ruleSub.url },
+            positiveText = getString(R.string.yes),
+            negativeText = getString(R.string.no),
+            onPositive = {
+                lifecycleScope.launch(IO) {
+                    appDb.ruleSubDao.delete(ruleSub)
                 }
             }
-            cancelButton()
-        }
+        )
     }
 
-    override fun delSubscription(ruleSub: RuleSub) {
-        lifecycleScope.launch(IO) {
-            appDb.ruleSubDao.delete(ruleSub)
+    private fun moveSubscription(ruleSub: RuleSub, targetIndex: Int) {
+        val items = ruleSubsState.map { it.copy() }.toMutableList()
+        val fromIndex = items.indexOfFirst { it.id == ruleSub.id }
+        if (fromIndex < 0 || items.size < 2) {
+            return
         }
+        val item = items.removeAt(fromIndex)
+        items.add(targetIndex.coerceIn(0, items.size), item)
+        items.forEachIndexed { index, sub ->
+            sub.customOrder = index + 1
+        }
+        ruleSubsState.replaceByIndex(items, ::sameRuleSubContent)
+        updateSourceSub(*items.toTypedArray())
     }
 
-    override fun updateSourceSub(vararg ruleSub: RuleSub) {
+    private fun updateSourceSub(vararg ruleSub: RuleSub) {
         lifecycleScope.launch(IO) {
             appDb.ruleSubDao.update(*ruleSub)
         }
     }
 
-    override fun upOrder() {
-        lifecycleScope.launch(IO) {
-            val sourceSubs = appDb.ruleSubDao.all
-            for ((index: Int, ruleSub: RuleSub) in sourceSubs.withIndex()) {
-                ruleSub.customOrder = index + 1
-            }
-            appDb.ruleSubDao.update(*sourceSubs.toTypedArray())
-        }
+    private fun sameRuleSubContent(old: RuleSub, new: RuleSub): Boolean {
+        return old.id == new.id &&
+            old.name == new.name &&
+            old.url == new.url &&
+            old.type == new.type &&
+            old.customOrder == new.customOrder &&
+            old.autoUpdate == new.autoUpdate &&
+            old.update == new.update &&
+            old.updateInterval == new.updateInterval &&
+            old.silentUpdate == new.silentUpdate &&
+            old.js == new.js &&
+            old.showRule == new.showRule &&
+            old.sourceUrl == new.sourceUrl
     }
 
 }
