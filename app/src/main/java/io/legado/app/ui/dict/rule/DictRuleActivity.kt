@@ -141,7 +141,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             appDb.dictRuleDao.flowAll().catch {
                 AppLog.put("字典规则获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect { rules ->
-                rulesState.replaceByIndex(rules)
+                rulesState.replaceByIndex(rules, ::sameDictRuleContent)
                 // Clean up selected names for deleted rules
                 val currentNames = rules.map { it.name }.toSet()
                 selectedNames.value = selectedNames.value.filter { it in currentNames }.toSet()
@@ -253,5 +253,13 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
                 }
             }
         )
+    }
+
+    private fun sameDictRuleContent(old: DictRule, new: DictRule): Boolean {
+        return old.name == new.name &&
+            old.urlRule == new.urlRule &&
+            old.showRule == new.showRule &&
+            old.enabled == new.enabled &&
+            old.sortNumber == new.sortNumber
     }
 }

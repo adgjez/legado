@@ -2,12 +2,15 @@ package io.legado.app.ui.widget.compose
 
 import androidx.compose.runtime.snapshots.SnapshotStateList
 
-internal fun <T> SnapshotStateList<T>.replaceByIndex(items: List<T>) {
+internal fun <T> SnapshotStateList<T>.replaceByIndex(
+    items: List<T>,
+    sameContent: (old: T, new: T) -> Boolean = { old, new -> old == new }
+) {
     var index = 0
     while (index < items.size) {
         val next = items[index]
         if (index < size) {
-            if (this[index] != next) {
+            if (!sameContent(this[index], next)) {
                 this[index] = next
             }
         } else {
@@ -27,7 +30,7 @@ internal inline fun <T> SnapshotStateList<T>.replaceFirst(
     val index = indexOfFirst(predicate)
     if (index < 0) return null
     val next = transform(this[index])
-    if (this[index] != next) {
+    if (this[index] !== next || this[index] != next) {
         this[index] = next
     }
     return next
@@ -41,7 +44,7 @@ internal inline fun <T> SnapshotStateList<T>.replaceMatching(
         val current = this[index]
         if (predicate(current)) {
             val next = transform(current)
-            if (current != next) {
+            if (current !== next || current != next) {
                 this[index] = next
             }
         }

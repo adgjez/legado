@@ -217,7 +217,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 if (dataInit) {
                     setResult(RESULT_OK)
                 }
-                rulesState.replaceByIndex(it)
+                rulesState.replaceByIndex(it, ::sameReplaceRuleContent)
                 // Remove stale selected IDs
                 val currentIds = it.map { rule -> rule.id }.toSet()
                 selectedIds.value = selectedIds.value.filter { id -> id in currentIds }.toSet()
@@ -429,5 +429,21 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             selectedIds.value.size,
             rulesState.size
         )
+    }
+
+    private fun sameReplaceRuleContent(old: ReplaceRule, new: ReplaceRule): Boolean {
+        return old.id == new.id &&
+            old.name == new.name &&
+            old.group == new.group &&
+            old.pattern == new.pattern &&
+            old.replacement == new.replacement &&
+            old.scope == new.scope &&
+            old.scopeTitle == new.scopeTitle &&
+            old.scopeContent == new.scopeContent &&
+            old.excludeScope == new.excludeScope &&
+            old.isEnabled == new.isEnabled &&
+            old.isRegex == new.isRegex &&
+            old.timeoutMillisecond == new.timeoutMillisecond &&
+            old.order == new.order
     }
 }

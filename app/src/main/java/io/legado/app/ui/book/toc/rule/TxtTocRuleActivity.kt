@@ -125,7 +125,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
             appDb.txtTocRuleDao.observeAll().catch {
                 AppLog.put("TXT目录规则界面获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect { tocRules ->
-                rulesState.replaceByIndex(tocRules)
+                rulesState.replaceByIndex(tocRules, ::sameTxtTocRuleContent)
                 // Prune stale selections
                 val currentIds = tocRules.mapTo(mutableSetOf()) { it.id }
                 selectedIds.value = selectedIds.value.filter { it in currentIds }.toSet()
@@ -303,6 +303,16 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
         val ids = selectedIds.value
         if (ids.isEmpty()) return
         rulesState.replaceMatching({ it.id in ids }) { it.copy(enable = enabled) }
+    }
+
+    private fun sameTxtTocRuleContent(old: TxtTocRule, new: TxtTocRule): Boolean {
+        return old.id == new.id &&
+            old.name == new.name &&
+            old.rule == new.rule &&
+            old.replacement == new.replacement &&
+            old.example == new.example &&
+            old.serialNumber == new.serialNumber &&
+            old.enable == new.enable
     }
 
 }
