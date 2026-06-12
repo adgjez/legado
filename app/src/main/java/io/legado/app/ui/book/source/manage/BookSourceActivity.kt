@@ -10,8 +10,8 @@ import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -102,12 +102,12 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
     private var groupSourcesByDomain = false
     private val hostMap = hashMapOf<String, String>()
     private val finalMessageRegex = Regex("成功|失败")
-    private val sourcesState = mutableStateOf<List<BookSourcePart>>(emptyList(), neverEqualPolicy())
+    private val sourcesState = mutableStateOf<List<BookSourcePart>>(emptyList())
     private val selectedUrls = mutableStateOf<Set<String>>(emptySet())
     private val isSelectMode = mutableStateOf(false)
     private val showSourceHostState = mutableStateOf(false)
-    private val sourceHostHeaders = mutableStateOf<Map<String, String?>>(emptyMap())
-    private val debugMessagesState = mutableStateOf<Map<String, String>>(emptyMap())
+    private val sourceHostHeaders = mutableStateMapOf<String, String?>()
+    private val debugMessagesState = mutableStateMapOf<String, String>()
     private val isCheckingState = mutableStateOf(Debug.isChecking)
     private val qrResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
@@ -177,8 +177,8 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                     selectedUrls = selectedUrls.value,
                     isSelectMode = isSelectMode.value,
                     showSourceHost = showSourceHostState.value,
-                    sourceHostHeaders = sourceHostHeaders.value,
-                    debugMessages = debugMessagesState.value,
+                    sourceHostHeaders = sourceHostHeaders,
+                    debugMessages = debugMessagesState,
                     isChecking = isCheckingState.value,
                     onToggleSelect = ::toggleSourceSelection,
                     onToggleEnabled = ::toggleSourceEnabled,
@@ -292,7 +292,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 item.isChecked = !item.isChecked
                 groupSourcesByDomain = item.isChecked
                 showSourceHostState.value = item.isChecked
-                sourceHostHeaders.value = buildSourceHostHeaders(sourcesState.value)
+                updateSourceHostHeaders(sourcesState.value)
                 upBookSource(searchView.query?.toString())
             }
 
@@ -409,7 +409,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 val currentUrls = data.mapTo(mutableSetOf()) { it.bookSourceUrl }
                 selectedUrls.value = selectedUrls.value.filter { it in currentUrls }.toSet()
                 isSelectMode.value = selectedUrls.value.isNotEmpty()
-                sourceHostHeaders.value = buildSourceHostHeaders(data)
+                updateSourceHostHeaders(data)
                 refreshDebugMessages()
                 upCountView()
                 delay(500)
@@ -582,7 +582,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 val firstItem = currentItems.indexOf(selectItems.firstOrNull())
                 val lastItem = currentItems.indexOf(selectItems.lastOrNull())
                 Debug.isChecking = firstItem >= 0 && lastItem >= 0
-                isCheckingState.value = Debug.isChecking
+                updateCheckingState(Debug.isChecking)
                 refreshDebugMessages(force = true)
                 startCheckMessageRefreshJob(firstItem, lastItem)
             }
@@ -601,7 +601,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         }
         keepScreenOn(true)
         CheckSource.resume(this)
-        isCheckingState.value = Debug.isChecking
+        updateCheckingState(Debug.isChecking)
         refreshDebugMessages(force = true)
         startCheckMessageRefreshJob(0, 0)
     }
@@ -692,7 +692,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                     .setAction(R.string.cancel) {
                         CheckSource.stop(this)
                         Debug.finishChecking()
-                        isCheckingState.value = false
+                        updateCheckingState(false)
                         refreshDebugMessages(force = true)
                     }.apply { show() }
             }
@@ -701,7 +701,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             keepScreenOn(false)
             snackBar?.dismiss()
             snackBar = null
-            isCheckingState.value = false
+            updateCheckingState(false)
             refreshDebugMessages(force = true)
             groups.forEach { group ->
                 if (group.contains("失效") && searchView.query.isEmpty()) {
@@ -719,7 +719,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                 while (isActive) {
                     refreshDebugMessages()
                     if (!Debug.isChecking) {
-                        isCheckingState.value = false
+                        updateCheckingState(false)
                         refreshDebugMessages(force = true)
                         checkMessageRefreshJob?.cancel()
                     }
@@ -816,10 +816,35 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
         return headers
     }
 
+    private fun updateSourceHostHeaders(sources: List<BookSourcePart>) {
+        val next = buildSourceHostHeaders(sources)
+        sourceHostHeaders.keys
+            .filter { it !in next }
+            .toList()
+            .forEach { sourceHostHeaders.remove(it) }
+        next.forEach { (url, header) ->
+            if (sourceHostHeaders[url] != header) {
+                sourceHostHeaders[url] = header
+            }
+        }
+    }
+
     private fun refreshDebugMessages(force: Boolean = false) {
         val next = buildDebugMessagesSnapshot()
-        if (force || next != debugMessagesState.value) {
-            debugMessagesState.value = next
+        debugMessagesState.keys
+            .filter { it !in next }
+            .toList()
+            .forEach { debugMessagesState.remove(it) }
+        next.forEach { (url, message) ->
+            if (force || debugMessagesState[url] != message) {
+                debugMessagesState[url] = message
+            }
+        }
+    }
+
+    private fun updateCheckingState(checking: Boolean) {
+        if (isCheckingState.value != checking) {
+            isCheckingState.value = checking
         }
     }
 
