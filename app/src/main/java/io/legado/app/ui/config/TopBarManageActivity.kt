@@ -8,38 +8,14 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import com.jaredrummler.android.colorpicker.ColorPickerDialogListener
@@ -57,12 +33,9 @@ import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
-import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
-import io.legado.app.ui.widget.compose.AppManagementPalette
-import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
-import io.legado.app.ui.widget.compose.rememberAppManagementPalette
+import io.legado.app.ui.widget.compose.AppPackageManageItemCard
+import io.legado.app.ui.widget.compose.AppPackageManageScreen
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
@@ -801,7 +774,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 }
 
-// ── Compose Screen ──────────────────────────────────────────────────────────
+// Compose screen
 
 @Composable
 private fun TopBarManageScreen(
@@ -816,224 +789,56 @@ private fun TopBarManageScreen(
     onEdit: (TopBarConfig.Entry) -> Unit,
     entryActions: (TopBarConfig.Entry) -> List<AppManagementMenuAction>
 ) {
-    val palette = rememberAppManagementPalette()
-    CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.settings.bodyFontFamily)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = palette.settings.page,
-            contentColor = palette.settings.primaryText
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .navigationBarsPadding()
-            ) {
-                TopBarTabBar(
-                    isNightMode = isNightMode,
-                    palette = palette,
-                    onSwitch = onSwitchDayNight
-                )
-                Text(
-                    text = summaryText,
-                    color = palette.settings.secondaryText,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, top = 10.dp, end = 16.dp)
-                )
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    items(
-                        entries,
-                        key = { "${it.dirName}_${it.config.isNightMode}" }
-                    ) { entry ->
-                        TopBarEntryCard(
-                            entry = entry,
-                            isActive = entry.dirName == activeDirName,
-                            dateFormat = dateFormat,
-                            palette = palette,
-                            onApply = { onApply(entry) },
-                            onEdit = { onEdit(entry) },
-                            moreActions = entryActions(entry)
-                        )
-                    }
-                }
-                LegadoMiuixActionButton(
-                    text = stringResource(R.string.theme_add),
-                    palette = palette.miuix,
-                    onClick = onAdd,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    primary = false,
-                    cornerRadius = palette.miuix.actionRadius,
-                    minHeight = 46.dp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TopBarTabBar(
-    isNightMode: Boolean,
-    palette: AppManagementPalette,
-    onSwitch: (Boolean) -> Unit
-) {
-    AppManagementCard(
-        palette = palette,
-        modifier = Modifier
-            .fillMaxWidth(),
-        insidePadding = PaddingValues(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            TopBarTabButton(
-                text = stringResource(R.string.theme_day),
-                selected = !isNightMode,
+    val applyText = stringResource(R.string.theme_apply)
+    val appliedText = stringResource(R.string.theme_applied_state)
+    val editText = stringResource(R.string.edit)
+    AppPackageManageScreen(
+        isNightMode = isNightMode,
+        summaryText = summaryText,
+        addText = stringResource(R.string.theme_add),
+        onSwitchDayNight = onSwitchDayNight,
+        onAdd = onAdd
+    ) { palette ->
+        items(
+            entries,
+            key = { "${it.dirName}_${it.config.isNightMode}" }
+        ) { entry ->
+            val isActive = entry.dirName == activeDirName
+            AppPackageManageItemCard(
+                title = entry.config.name,
+                info = topBarPackageInfo(entry, dateFormat),
+                isActive = isActive,
+                canEdit = entry.dirName != TopBarConfig.DEFAULT_DIR_NAME,
+                applyText = if (isActive) appliedText else applyText,
+                editText = editText,
+                moreActions = entryActions(entry),
                 palette = palette,
-                onClick = { onSwitch(false) },
-                modifier = Modifier.weight(1f)
-            )
-            TopBarTabButton(
-                text = stringResource(R.string.theme_night),
-                selected = isNightMode,
-                palette = palette,
-                onClick = { onSwitch(true) },
-                modifier = Modifier.weight(1f)
+                onApply = { onApply(entry) },
+                onEdit = { onEdit(entry) }
             )
         }
     }
 }
 
 @Composable
-private fun TopBarTabButton(
-    text: String,
-    selected: Boolean,
-    palette: AppManagementPalette,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier
-            .height(34.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-        color = if (selected) {
-            palette.settings.accent.copy(alpha = 0.14f)
-        } else {
-            androidx.compose.ui.graphics.Color.Transparent
-        },
-        contentColor = if (selected) palette.settings.accent else palette.settings.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = text,
-                color = if (selected) palette.settings.accent else palette.settings.primaryText,
-                fontSize = 14.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun TopBarEntryCard(
+private fun topBarPackageInfo(
     entry: TopBarConfig.Entry,
-    isActive: Boolean,
-    dateFormat: SimpleDateFormat,
-    palette: AppManagementPalette,
-    onApply: () -> Unit,
-    onEdit: () -> Unit,
-    moreActions: List<AppManagementMenuAction>
-) {
-    AppManagementCard(
-        palette = palette,
-        modifier = Modifier
-            .fillMaxWidth(),
-        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = entry.config.name,
-                color = palette.settings.primaryText,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = buildString {
-                    append(topBarStyleLabel(entry.config.style))
-                    append(" · ")
-                    append(stringResource(R.string.top_bar_tag_bar_alpha))
-                    append(" ")
-                    append(entry.config.tagBarAlpha)
-                    append("%")
-                    if (entry.config.updatedAt > 0) {
-                        append(" · ")
-                        append(
-                            dateFormat.format(
-                                Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))
-                            )
-                        )
-                    }
-                },
-                color = palette.settings.secondaryText,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LegadoMiuixActionButton(
-                    text = stringResource(
-                        if (isActive) R.string.theme_applied_state
-                        else R.string.theme_apply
-                    ),
-                    palette = palette.miuix,
-                    onClick = onApply,
-                    cornerRadius = palette.miuix.actionRadius,
-                    minWidth = 56.dp,
-                    minHeight = 34.dp,
-                    insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+    dateFormat: SimpleDateFormat
+): String {
+    return buildString {
+        append(topBarStyleLabel(entry.config.style))
+        append(" \u00B7 ")
+        append(stringResource(R.string.top_bar_tag_bar_alpha))
+        append(" ")
+        append(entry.config.tagBarAlpha)
+        append("%")
+        if (entry.config.updatedAt > 0) {
+            append(" \u00B7 ")
+            append(
+                dateFormat.format(
+                    Date(maxOf(entry.config.updatedAt, entry.remoteUpdatedAt))
                 )
-                if (entry.dirName != TopBarConfig.DEFAULT_DIR_NAME) {
-                    LegadoMiuixActionButton(
-                        text = stringResource(R.string.edit),
-                        palette = palette.miuix,
-                        onClick = onEdit,
-                        cornerRadius = palette.miuix.actionRadius,
-                        minWidth = 56.dp,
-                        minHeight = 34.dp,
-                        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-                AppManagementMoreActionButton(
-                    actionsProvider = { moreActions },
-                    palette = palette,
-                    contentDescription = stringResource(R.string.more)
-                )
-            }
+            )
         }
     }
 }
