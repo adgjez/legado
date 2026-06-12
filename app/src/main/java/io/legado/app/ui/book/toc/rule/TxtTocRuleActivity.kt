@@ -5,8 +5,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.viewModels
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +21,9 @@ import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.replaceByIndex
+import io.legado.app.ui.widget.compose.replaceFirst
+import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -47,7 +50,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     override val viewModel by viewModels<TxtTocRuleViewModel>()
     override val binding by viewBinding(ActivityTxtTocRuleBinding::inflate)
 
-    private val rulesState = mutableStateOf<List<TxtTocRule>>(emptyList(), neverEqualPolicy())
+    private val rulesState = mutableStateListOf<TxtTocRule>()
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private val importTocRuleKey = "tocRuleUrl"
 
@@ -96,7 +99,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
             )
             setContent {
                 TxtTocRuleScreen(
-                    rules = rulesState.value,
+                    rules = rulesState,
                     selectedIds = selectedIds.value,
                     onToggleSelect = ::onToggleSelect,
                     onToggleEnable = ::onToggleEnable,
@@ -122,7 +125,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
             appDb.txtTocRuleDao.observeAll().catch {
                 AppLog.put("TXT目录规则界面获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect { tocRules ->
-                rulesState.value = tocRules
+                rulesState.replaceByIndex(tocRules)
                 // Prune stale selections
                 val currentIds = tocRules.mapTo(mutableSetOf()) { it.id }
                 selectedIds.value = selectedIds.value.filter { it in currentIds }.toSet()
@@ -144,9 +147,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
 
     private fun onToggleEnable(rule: TxtTocRule, enabled: Boolean) {
         val updated = rule.copy(enable = enabled)
-        rulesState.value = rulesState.value.map {
-            if (it.id == rule.id) updated else it
-        }
+        rulesState.replaceFirst({ it.id == rule.id }) { updated }
         viewModel.update(updated)
     }
 
@@ -213,7 +214,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     }
 
     override fun revertSelection() {
-        val allIds = rulesState.value.map { it.id }
+        val allIds = rulesState.map { it.id }
         val current = selectedIds.value
         selectedIds.value = allIds.filter { it !in current }.toSet()
         upCountView()
@@ -221,7 +222,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            selectedIds.value = rulesState.value.map { it.id }.toSet()
+            selectedIds.value = rulesState.map { it.id }.toSet()
         } else {
             selectedIds.value = emptySet()
         }
@@ -229,7 +230,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     }
 
     private fun delSourceDialog() {
-        val selected = rulesState.value.filter { it.id in selectedIds.value }
+        val selected = rulesState.filter { it.id in selectedIds.value }
         showComposeConfirmDialog(
             title = getString(R.string.draw),
             message = getString(R.string.sure_del),
@@ -270,11 +271,11 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
 
     private fun upCountView() {
         binding.selectActionBar
-            .upCountView(selectedIds.value.size, rulesState.value.size)
+            .upCountView(selectedIds.value.size, rulesState.size)
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
-        val selected = rulesState.value.filter { it.id in selectedIds.value }
+        val selected = rulesState.filter { it.id in selectedIds.value }
         when (item.itemId) {
             R.id.menu_enable_selection -> {
                 updateSelectedEnabled(enabled = true)
@@ -301,9 +302,7 @@ class TxtTocRuleActivity : VMBaseActivity<ActivityTxtTocRuleBinding, TxtTocRuleV
     private fun updateSelectedEnabled(enabled: Boolean) {
         val ids = selectedIds.value
         if (ids.isEmpty()) return
-        rulesState.value = rulesState.value.map { rule ->
-            if (rule.id in ids) rule.copy(enable = enabled) else rule
-        }
+        rulesState.replaceMatching({ it.id in ids }) { it.copy(enable = enabled) }
     }
 
 }

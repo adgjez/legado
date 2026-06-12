@@ -9,8 +9,8 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -29,6 +29,9 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.replaceByIndex
+import io.legado.app.ui.widget.compose.replaceFirst
+import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -63,7 +66,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
-    private val rulesState = mutableStateOf<List<ReplaceRule>>(emptyList(), neverEqualPolicy())
+    private val rulesState = mutableStateListOf<ReplaceRule>()
     private val selectedIds = mutableStateOf<Set<Long>>(emptySet())
     private var groups = arrayListOf<String>()
     private var groupMenu: SubMenu? = null
@@ -122,7 +125,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
             )
             setContent {
                 ReplaceRuleScreen(
-                    rules = rulesState.value,
+                    rules = rulesState,
                     selected = selectedIds.value,
                     onSelectToggle = ::onSelectToggle,
                     onToggleEnabled = ::onToggleEnabled,
@@ -142,7 +145,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     override fun selectAll(selectAll: Boolean) {
         if (selectAll) {
-            selectedIds.value = rulesState.value.map { it.id }.toSet()
+            selectedIds.value = rulesState.map { it.id }.toSet()
         } else {
             revertSelection()
         }
@@ -150,7 +153,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     }
 
     override fun revertSelection() {
-        val currentRules = rulesState.value
+        val currentRules = rulesState
         val currentSelected = selectedIds.value
         selectedIds.value = currentRules
             .filter { it.id !in currentSelected }
@@ -214,7 +217,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
                 if (dataInit) {
                     setResult(RESULT_OK)
                 }
-                rulesState.value = it
+                rulesState.replaceByIndex(it)
                 // Remove stale selected IDs
                 val currentIds = it.map { rule -> rule.id }.toSet()
                 selectedIds.value = selectedIds.value.filter { id -> id in currentIds }.toSet()
@@ -351,9 +354,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     private fun onToggleEnabled(rule: ReplaceRule, isEnabled: Boolean) {
         setResult(RESULT_OK)
         val updated = rule.copy(isEnabled = isEnabled)
-        rulesState.value = rulesState.value.map {
-            if (it.id == rule.id) updated else it
-        }
+        rulesState.replaceFirst({ it.id == rule.id }) { updated }
         viewModel.update(updated)
     }
 
@@ -400,15 +401,13 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
 
     private fun getSelectedRules(): List<ReplaceRule> {
         val ids = selectedIds.value
-        return rulesState.value.filter { it.id in ids }
+        return rulesState.filter { it.id in ids }
     }
 
     private fun updateSelectedEnabled(enabled: Boolean) {
         val ids = selectedIds.value
         if (ids.isEmpty()) return
-        rulesState.value = rulesState.value.map { rule ->
-            if (rule.id in ids) rule.copy(isEnabled = enabled) else rule
-        }
+        rulesState.replaceMatching({ it.id in ids }) { it.copy(isEnabled = enabled) }
     }
 
     override fun onQueryTextChange(newText: String?): Boolean {
@@ -428,7 +427,7 @@ class ReplaceRuleActivity : VMBaseActivity<ActivityReplaceRuleBinding, ReplaceRu
     private fun upCountView() {
         binding.selectActionBar.upCountView(
             selectedIds.value.size,
-            rulesState.value.size
+            rulesState.size
         )
     }
 }

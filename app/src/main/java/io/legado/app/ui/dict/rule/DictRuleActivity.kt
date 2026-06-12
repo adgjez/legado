@@ -5,8 +5,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
 import androidx.activity.viewModels
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.lifecycleScope
@@ -21,6 +21,9 @@ import io.legado.app.ui.association.ImportDictRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.SelectActionBar
+import io.legado.app.ui.widget.compose.replaceByIndex
+import io.legado.app.ui.widget.compose.replaceFirst
+import io.legado.app.ui.widget.compose.replaceMatching
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeTextInputDialog
@@ -44,7 +47,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     override val viewModel by viewModels<DictRuleViewModel>()
     override val binding by viewBinding(ActivityDictRuleBinding::inflate)
     private val importRecordKey = "dictRuleUrls"
-    private val rulesState = mutableStateOf<List<DictRule>>(emptyList(), neverEqualPolicy())
+    private val rulesState = mutableStateListOf<DictRule>()
     private val selectedNames = mutableStateOf<Set<String>>(emptySet())
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
         it ?: return@registerForActivityResult
@@ -89,7 +92,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             )
             setContent {
                 DictRuleScreen(
-                    rules = rulesState.value,
+                    rules = rulesState,
                     selectedNames = selectedNames.value,
                     onToggleSelection = ::toggleSelection,
                     onToggleEnabled = ::toggleEnabled,
@@ -107,17 +110,17 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
         binding.selectActionBar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.menu_enable_selection -> {
-                    val selected = rulesState.value.filter { it.name in selectedNames.value }
+                    val selected = rulesState.filter { it.name in selectedNames.value }
                     updateSelectedEnabled(enabled = true)
                     viewModel.enableSelection(*selected.toTypedArray())
                 }
                 R.id.menu_disable_selection -> {
-                    val selected = rulesState.value.filter { it.name in selectedNames.value }
+                    val selected = rulesState.filter { it.name in selectedNames.value }
                     updateSelectedEnabled(enabled = false)
                     viewModel.disableSelection(*selected.toTypedArray())
                 }
                 R.id.menu_export_selection -> {
-                    val selected = rulesState.value.filter { it.name in selectedNames.value }
+                    val selected = rulesState.filter { it.name in selectedNames.value }
                     exportResult.launch {
                         mode = HandleFileContract.EXPORT
                         fileData = HandleFileContract.FileData(
@@ -138,7 +141,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
             appDb.dictRuleDao.flowAll().catch {
                 AppLog.put("字典规则获取数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).collect { rules ->
-                rulesState.value = rules
+                rulesState.replaceByIndex(rules)
                 // Clean up selected names for deleted rules
                 val currentNames = rules.map { it.name }.toSet()
                 selectedNames.value = selectedNames.value.filter { it in currentNames }.toSet()
@@ -168,13 +171,13 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     }
 
     override fun onClickSelectBarMainAction() {
-        val selected = rulesState.value.filter { it.name in selectedNames.value }
+        val selected = rulesState.filter { it.name in selectedNames.value }
         viewModel.delete(*selected.toTypedArray())
     }
 
     override fun selectAll(selectAll: Boolean) {
         selectedNames.value = if (selectAll) {
-            rulesState.value.map { it.name }.toSet()
+            rulesState.map { it.name }.toSet()
         } else {
             emptySet()
         }
@@ -182,7 +185,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     }
 
     override fun revertSelection() {
-        val allNames = rulesState.value.map { it.name }.toSet()
+        val allNames = rulesState.map { it.name }.toSet()
         selectedNames.value = allNames - selectedNames.value
         upCountView()
     }
@@ -196,18 +199,14 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
 
     private fun toggleEnabled(rule: DictRule, enabled: Boolean) {
         val updated = rule.copy(enabled = enabled)
-        rulesState.value = rulesState.value.map {
-            if (it.name == rule.name) updated else it
-        }
+        rulesState.replaceFirst({ it.name == rule.name }) { updated }
         viewModel.update(updated)
     }
 
     private fun updateSelectedEnabled(enabled: Boolean) {
         val names = selectedNames.value
         if (names.isEmpty()) return
-        rulesState.value = rulesState.value.map { rule ->
-            if (rule.name in names) rule.copy(enabled = enabled) else rule
-        }
+        rulesState.replaceMatching({ it.name in names }) { it.copy(enabled = enabled) }
     }
 
     private fun editRule(rule: DictRule) {
@@ -228,7 +227,7 @@ class DictRuleActivity : VMBaseActivity<ActivityDictRuleBinding, DictRuleViewMod
     private fun upCountView() {
         binding.selectActionBar.upCountView(
             selectedNames.value.size,
-            rulesState.value.size
+            rulesState.size
         )
     }
 
