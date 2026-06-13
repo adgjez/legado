@@ -167,6 +167,11 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     modifier = Modifier.weight(1f),
                     onClick = { showDialogFragment<FontSelectDialog>() }
                 )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
                 ReaderTextAction(
                     text = stringResource(R.string.text_indent),
                     palette = palette,
