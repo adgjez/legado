@@ -9,14 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
@@ -50,7 +46,6 @@ import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
-import io.legado.app.ui.widget.compose.LegadoMiuixSection
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.setLayout
@@ -147,6 +142,7 @@ private fun TipConfigContent(
     onColorChanged: () -> Unit
 ) {
     val context = LocalContext.current
+    val miuixPalette = style.toMiuixPalette()
     var titleMode by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleMode) }
     var titleSize by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleSize) }
     var titleTopSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleTopSpacing) }
@@ -210,45 +206,39 @@ private fun TipConfigContent(
     LegadoMiuixCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         color = style.surface,
         contentColor = style.primaryText,
         cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
     ) {
-        val palette = rememberReaderComposePalette()
-        val miuixPalette = style.toMiuixPalette()
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 标题设置
-            ReaderSectionCard(palette = palette, style = style, title = null) {
+            TipSection(style = style) {
                 TipCompactSlider(
                     label = stringResource(R.string.title_font_size),
                     value = titleSize,
                     range = 0..20,
-                    palette = palette,
                     style = style
                 ) { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                 TipCompactSlider(
                     label = stringResource(R.string.title_margin_top),
                     value = titleTopSpacing,
                     range = 0..100,
-                    palette = palette,
                     style = style
                 ) { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                 TipCompactSlider(
                     label = stringResource(R.string.title_margin_bottom),
                     value = titleBottomSpacing,
                     range = 0..100,
-                    palette = palette,
                     style = style
                 ) { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     titleModeOptions.forEachIndexed { index, label ->
                         LegadoMiuixChoiceRow(
@@ -279,7 +269,6 @@ private fun TipConfigContent(
                 leftLabel = tipName(headerLeft),
                 middleLabel = tipName(headerMiddle),
                 rightLabel = tipName(headerRight),
-                palette = palette,
                 style = style,
                 onShowClick = {
                     val keys = headerModes.keys.toList()
@@ -300,7 +289,6 @@ private fun TipConfigContent(
                 leftLabel = tipName(footerLeft),
                 middleLabel = tipName(footerMiddle),
                 rightLabel = tipName(footerRight),
-                palette = palette,
                 style = style,
                 onShowClick = {
                     val keys = footerModes.keys.toList()
@@ -317,7 +305,6 @@ private fun TipConfigContent(
             // 颜色
             TipColorSection(
                 colorRefreshTick = colorRefreshTick,
-                palette = palette,
                 style = style,
                 onTipColorClick = {
                     onShowSelector(context.getString(R.string.text_color), ReadTipConfig.tipColorNames) { index ->
@@ -341,11 +328,34 @@ private fun TipConfigContent(
 }
 
 @Composable
+private fun TipSection(
+    style: AppDialogStyle,
+    content: @Composable () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(style.actionRadius),
+        color = style.fieldSurface,
+        contentColor = style.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
 private fun TipCompactSlider(
     label: String,
     value: Int,
     range: IntRange,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onValueChange: (Int) -> Unit
 ) {
@@ -355,7 +365,7 @@ private fun TipCompactSlider(
     ) {
         Text(
             text = label,
-            color = palette.text,
+            color = style.primaryText,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -364,7 +374,7 @@ private fun TipCompactSlider(
         )
         Text(
             text = value.toString(),
-            color = palette.accent,
+            color = style.accent,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -384,58 +394,22 @@ private fun TipCompactSlider(
 }
 
 @Composable
-private fun TipAdvancedActionRow(
-    style: AppDialogStyle,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val alpha = if (enabled) 1f else 0.55f
-    LegadoMiuixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick),
-        color = style.surface,
-        contentColor = style.primaryText.copy(alpha = alpha),
-        cornerRadius = style.actionRadius,
-        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.advanced_title_dialog_title),
-            color = style.primaryText.copy(alpha = alpha),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = stringResource(R.string.advanced_title_rule_label),
-            color = style.secondaryText.copy(alpha = alpha),
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
 private fun TipPlacementSection(
     title: String,
     showLabel: String,
     leftLabel: String,
     middleLabel: String,
     rightLabel: String,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onShowClick: () -> Unit,
     onLeftClick: () -> Unit,
     onMiddleClick: () -> Unit,
     onRightClick: () -> Unit
 ) {
-    ReaderSectionCard(palette = palette, style = style, title = null) {
+    TipSection(style = style) {
         TipValueRow(
             title = stringResource(R.string.show_hide),
             value = showLabel,
-            palette = palette,
             style = style,
             onClick = onShowClick
         )
@@ -446,7 +420,6 @@ private fun TipPlacementSection(
             TipCompactValue(
                 title = stringResource(R.string.left),
                 value = leftLabel,
-                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onLeftClick
@@ -454,7 +427,6 @@ private fun TipPlacementSection(
             TipCompactValue(
                 title = stringResource(R.string.middle),
                 value = middleLabel,
-                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onMiddleClick
@@ -462,7 +434,6 @@ private fun TipPlacementSection(
             TipCompactValue(
                 title = stringResource(R.string.right),
                 value = rightLabel,
-                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onRightClick
@@ -474,25 +445,22 @@ private fun TipPlacementSection(
 @Composable
 private fun TipColorSection(
     colorRefreshTick: Int,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onTipColorClick: () -> Unit,
     onDividerColorClick: () -> Unit
 ) {
     val tipColorLabel = remember(colorRefreshTick) { tipColorText() }
     val dividerColorLabel = remember(colorRefreshTick) { tipDividerColorText() }
-    ReaderSectionCard(palette = palette, style = style, title = null) {
+    TipSection(style = style) {
         TipValueRow(
             title = stringResource(R.string.text_color),
             value = tipColorLabel,
-            palette = palette,
             style = style,
             onClick = onTipColorClick
         )
         TipValueRow(
             title = stringResource(R.string.tip_divider_color),
             value = dividerColorLabel,
-            palette = palette,
             style = style,
             onClick = onDividerColorClick
         )
@@ -503,7 +471,6 @@ private fun TipColorSection(
 private fun TipValueRow(
     title: String,
     value: String,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onClick: () -> Unit
 ) {
@@ -512,19 +479,19 @@ private fun TipValueRow(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(style.actionRadius),
-        color = palette.panelStrong,
-        contentColor = palette.text,
+        color = style.surface,
+        contentColor = style.primaryText,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = title,
-                color = palette.text,
-                fontSize = 11.sp,
+                color = style.primaryText,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -532,8 +499,8 @@ private fun TipValueRow(
             )
             Text(
                 text = value,
-                color = palette.accent,
-                fontSize = 11.sp,
+                color = style.accent,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -546,36 +513,35 @@ private fun TipValueRow(
 private fun TipCompactValue(
     title: String,
     value: String,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = modifier
-            .height(38.dp)
+            .height(44.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(style.actionRadius),
-        color = palette.panelStrong,
-        contentColor = palette.text,
+        color = style.surface,
+        contentColor = style.primaryText,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 1.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text(
                 text = title,
-                color = palette.secondaryText,
-                fontSize = 10.sp,
+                color = style.secondaryText,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = value,
-                color = palette.text,
-                fontSize = 11.sp,
+                color = style.primaryText,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
