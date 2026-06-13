@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -98,7 +99,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 480.dp),
+                    .heightIn(max = 460.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ReaderSheetHeader(
@@ -107,34 +108,45 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 )
                 StyleLibrarySection(style = style, palette = palette)
                 TextMetricSection(style = style, palette = palette)
-                PageAnimSection(style = style, palette = palette)
-                TextToolsSection(style = style, palette = palette)
+                AnimAndToolsSection(style = style, palette = palette)
             }
         }
     }
 
     @Composable
-    private fun TextToolsSection(
+    private fun AnimAndToolsSection(
         style: io.legado.app.ui.widget.compose.AppDialogStyle,
         palette: ReaderComposePalette
     ) {
-        val context = LocalContext.current
+        var selectedAnim by rememberSaveable { mutableIntStateOf(ReadBook.pageAnim()) }
+        var shareLayout by rememberSaveable { mutableIntStateOf(if (ReadBookConfig.shareLayout) 1 else 0) }
         var textBold by rememberSaveable { mutableIntStateOf(ReadBookConfig.textBold) }
         var chineseMode by rememberSaveable { mutableIntStateOf(AppConfig.chineseConverterType) }
         val weightLabels = stringArrayResource(R.array.text_font_weight)
         val chineseLabels = stringArrayResource(R.array.chinese_mode)
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(style.actionRadius),
-            color = palette.panel,
-            contentColor = palette.text,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+        ReaderSectionCard(
+            palette = palette,
+            style = style,
+            title = null
         ) {
+            ReaderSegmentedOptions(
+                options = pageAnimOptions(),
+                selectedValue = selectedAnim.toString(),
+                palette = palette,
+                style = style,
+                scrollable = true
+            ) { value ->
+                val anim = value.toIntOrNull() ?: return@ReaderSegmentedOptions
+                if (selectedAnim != anim) {
+                    ReadBook.book?.setPageAnim(-1)
+                    ReadBookConfig.pageAnim = anim
+                    selectedAnim = anim
+                    callBack?.upPageAnim()
+                    ReadBook.loadContent(false)
+                }
+            }
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 ReaderTextAction(
@@ -193,6 +205,16 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
                     }
                 )
+            }
+            ReaderSwitchRow(
+                title = stringResource(R.string.share_layout),
+                checked = shareLayout == 1,
+                palette = palette,
+                style = style
+            ) { checked ->
+                shareLayout = if (checked) 1 else 0
+                ReadBookConfig.shareLayout = checked
+                postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
             }
         }
     }
@@ -346,47 +368,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         }
     }
 
-    @Composable
-    private fun PageAnimSection(
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
-        palette: ReaderComposePalette
-    ) {
-        var selectedAnim by rememberSaveable { mutableIntStateOf(ReadBook.pageAnim()) }
-        var shareLayout by rememberSaveable { mutableIntStateOf(if (ReadBookConfig.shareLayout) 1 else 0) }
-        ReaderSectionCard(
-            palette = palette,
-            style = style,
-            title = null
-        ) {
-            ReaderSegmentedOptions(
-                options = pageAnimOptions(),
-                selectedValue = selectedAnim.toString(),
-                palette = palette,
-                style = style,
-                scrollable = true
-            ) { value ->
-                val anim = value.toIntOrNull() ?: return@ReaderSegmentedOptions
-                if (selectedAnim != anim) {
-                    ReadBook.book?.setPageAnim(-1)
-                    ReadBookConfig.pageAnim = anim
-                    selectedAnim = anim
-                    callBack?.upPageAnim()
-                    ReadBook.loadContent(false)
-                }
-            }
-            ReaderSwitchRow(
-                title = stringResource(R.string.share_layout),
-                checked = shareLayout == 1,
-                palette = palette,
-                style = style
-            ) { checked ->
-                shareLayout = if (checked) 1 else 0
-                ReadBookConfig.shareLayout = checked
-                postEvent(EventBus.UP_CONFIG, arrayListOf(1, 2, 5))
-            }
-        }
-    }
-
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     private fun StyleLibrarySection(
@@ -501,7 +482,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 modifier = Modifier
                     .size(48.dp)
                     .clickable(onClick = onClick),
-                shape = RoundedCornerShape(style.actionRadius),
+                shape = CircleShape,
                 color = palette.panelStrong,
                 contentColor = palette.text,
                 tonalElevation = 0.dp,
@@ -549,9 +530,9 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
     }
 
     private fun showBgTextConfig(index: Int): Boolean {
-        dismissAllowingStateLoss()
         changeBgTextConfig(index)
-        callBack?.showBgTextConfig()
+        dismissAllowingStateLoss()
+        view?.post { callBack?.showBgTextConfig() }
         return true
     }
 
