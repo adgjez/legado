@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,7 +43,6 @@ import io.legado.app.ui.widget.compose.AppDialogSliderGrid
 import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
-import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
 import io.legado.app.ui.widget.compose.LegadoMiuixSection
@@ -53,24 +51,17 @@ import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.hexString
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.setLayout
 
-class TipConfigDialog : ComposeDialogFragment() {
+class TipConfigDialog : ReaderBottomSheetComposeDialogFragment() {
 
     companion object {
         const val TIP_COLOR = 7897
         const val TIP_DIVIDER_COLOR = 7898
     }
 
-    override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
-    override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
+    override val maxSheetHeightFraction: Float = 0.72f
 
     private var colorRefreshTick by mutableIntStateOf(0)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -226,25 +217,21 @@ private fun TipConfigContent(
         }
     }
 
-    LegadoMiuixCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)
-    ) {
+    ReaderBottomSheetFrame(maxHeightFraction = 0.72f) { _, palette ->
+        val miuixPalette = style.toMiuixPalette()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 640.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            ReaderSheetHeader(
+                title = stringResource(R.string.information),
+                palette = palette
+            )
             LegadoMiuixSection(
                 title = stringResource(R.string.body_title),
-                palette = palette,
+                palette = miuixPalette,
                 cornerRadius = style.actionRadius
             ) {
                 AppDialogSliderGrid(
@@ -290,7 +277,7 @@ private fun TipConfigContent(
                         LegadoMiuixChoiceRow(
                             text = label,
                             selected = titleModeToUiIndex(titleMode) == index,
-                            palette = palette,
+                            palette = miuixPalette,
                             onClick = {
                                 titleMode = uiIndexToTitleMode(index)
                                 ReadBookConfig.titleMode = titleMode

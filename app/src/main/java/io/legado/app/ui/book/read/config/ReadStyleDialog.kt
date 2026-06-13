@@ -146,14 +146,15 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 }
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 ReaderTextAction(
                     text = weightLabels.getOrElse(textBold) { "" },
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         textBold = (textBold + 1) % weightLabels.size
                         ReadBookConfig.textBold = textBold
@@ -164,26 +165,18 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     text = stringResource(R.string.text_font),
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = { showDialogFragment<FontSelectDialog>() }
                 )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
                 ReaderTextAction(
                     text = stringResource(R.string.text_indent),
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = { showTextIndentDialog() }
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.padding),
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         dismissAllowingStateLoss()
                         callBack?.showPaddingConfig()
@@ -193,7 +186,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     text = chineseLabels.getOrElse(chineseMode) { "" },
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         chineseMode = (chineseMode + 1) % chineseLabels.size
                         AppConfig.chineseConverterType = chineseMode
@@ -205,7 +197,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     text = stringResource(R.string.information),
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f),
                     onClick = {
                         TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
                     }
