@@ -10,6 +10,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -425,21 +426,26 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         val context = LocalContext.current
         Column(
             modifier = Modifier
-                .width(62.dp)
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                ),
+                .width(62.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AndroidView(
-                factory = { viewContext ->
-                    CircleImageView(viewContext).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        val padding = 6.dpToPx()
-                        setPadding(padding, padding, padding, padding)
-                    }
-                },
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    )
+            ) {
+                AndroidView(
+                    factory = { viewContext ->
+                        CircleImageView(viewContext).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            val padding = 6.dpToPx()
+                            setPadding(padding, padding, padding, padding)
+                        }
+                    },
                 update = { imageView ->
                     imageView.setText(config.name.ifBlank { context.getString(R.string.text) })
                     imageView.setTypeface(context.uiTypeface())
@@ -450,6 +456,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 },
                 modifier = Modifier.size(48.dp)
             )
+            }
             Text(
                 text = config.name.ifBlank { stringResource(R.string.text) },
                 color = if (selected) palette.accent else palette.secondaryText,
