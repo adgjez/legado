@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,6 +26,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
@@ -135,7 +138,6 @@ private fun TipConfigContent(
     onColorChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    val palette = style.toMiuixPalette()
     var titleMode by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleMode) }
     var titleSize by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleSize) }
     var titleTopSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.titleTopSpacing) }
@@ -180,35 +182,14 @@ private fun TipConfigContent(
     }
     fun clearRepeat(value: Int) {
         if (value == ReadTipConfig.none) return
-        if (headerLeft == value) {
-            headerLeft = ReadTipConfig.none
-            ReadTipConfig.tipHeaderLeft = ReadTipConfig.none
-        }
-        if (headerMiddle == value) {
-            headerMiddle = ReadTipConfig.none
-            ReadTipConfig.tipHeaderMiddle = ReadTipConfig.none
-        }
-        if (headerRight == value) {
-            headerRight = ReadTipConfig.none
-            ReadTipConfig.tipHeaderRight = ReadTipConfig.none
-        }
-        if (footerLeft == value) {
-            footerLeft = ReadTipConfig.none
-            ReadTipConfig.tipFooterLeft = ReadTipConfig.none
-        }
-        if (footerMiddle == value) {
-            footerMiddle = ReadTipConfig.none
-            ReadTipConfig.tipFooterMiddle = ReadTipConfig.none
-        }
-        if (footerRight == value) {
-            footerRight = ReadTipConfig.none
-            ReadTipConfig.tipFooterRight = ReadTipConfig.none
-        }
+        if (headerLeft == value) { headerLeft = ReadTipConfig.none; ReadTipConfig.tipHeaderLeft = ReadTipConfig.none }
+        if (headerMiddle == value) { headerMiddle = ReadTipConfig.none; ReadTipConfig.tipHeaderMiddle = ReadTipConfig.none }
+        if (headerRight == value) { headerRight = ReadTipConfig.none; ReadTipConfig.tipHeaderRight = ReadTipConfig.none }
+        if (footerLeft == value) { footerLeft = ReadTipConfig.none; ReadTipConfig.tipFooterLeft = ReadTipConfig.none }
+        if (footerMiddle == value) { footerMiddle = ReadTipConfig.none; ReadTipConfig.tipFooterMiddle = ReadTipConfig.none }
+        if (footerRight == value) { footerRight = ReadTipConfig.none; ReadTipConfig.tipFooterRight = ReadTipConfig.none }
     }
-    fun chooseTip(
-        title: String,
-        onAssign: (Int) -> Unit
-    ) {
+    fun chooseTip(title: String, onAssign: (Int) -> Unit) {
         onShowSelector(title, tipNames) { index ->
             val value = tipValues.getOrElse(index) { ReadTipConfig.none }
             clearRepeat(value)
@@ -220,55 +201,38 @@ private fun TipConfigContent(
     ReaderBottomSheetFrame(maxHeightFraction = 0.72f) { _, palette ->
         val miuixPalette = style.toMiuixPalette()
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ReaderSheetHeader(
                 title = stringResource(R.string.information),
                 palette = palette
             )
-            LegadoMiuixSection(
-                title = stringResource(R.string.body_title),
-                palette = miuixPalette,
-                cornerRadius = style.actionRadius
-            ) {
+            // 标题设置
+            ReaderSectionCard(palette = palette, style = style, title = stringResource(R.string.body_title)) {
                 AppDialogSliderGrid(
                     items = listOf(
                         AppDialogSliderItem(
                             title = stringResource(R.string.title_font_size),
                             value = titleSize,
                             range = 0..20,
-                            onValueChange = {
-                                titleSize = it
-                                ReadBookConfig.titleSize = it
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-                            }
+                            onValueChange = { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                         ),
                         AppDialogSliderItem(
                             title = stringResource(R.string.title_margin_top),
                             value = titleTopSpacing,
                             range = 0..100,
-                            onValueChange = {
-                                titleTopSpacing = it
-                                ReadBookConfig.titleTopSpacing = it
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-                            }
+                            onValueChange = { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                         ),
                         AppDialogSliderItem(
                             title = stringResource(R.string.title_margin_bottom),
                             value = titleBottomSpacing,
                             range = 0..100,
-                            onValueChange = {
-                                titleBottomSpacing = it
-                                ReadBookConfig.titleBottomSpacing = it
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-                            }
+                            onValueChange = { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                         )
                     )
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -290,121 +254,72 @@ private fun TipConfigContent(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 TipAdvancedActionRow(
                     style = style,
                     enabled = titleMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED,
                     onClick = onShowAdvancedTitleConfig
                 )
             }
-
+            // 页眉
             TipPlacementSection(
                 title = stringResource(R.string.header),
                 showLabel = headerModes[headerMode].orEmpty(),
                 leftLabel = tipName(headerLeft),
                 middleLabel = tipName(headerMiddle),
                 rightLabel = tipName(headerRight),
+                palette = palette,
                 style = style,
                 onShowClick = {
                     val keys = headerModes.keys.toList()
-                    onShowSelector(
-                        context.getString(R.string.header),
-                        headerModes.values.toList()
-                    ) { index ->
+                    onShowSelector(context.getString(R.string.header), headerModes.values.toList()) { index ->
                         headerMode = keys.getOrElse(index) { 0 }
                         ReadTipConfig.headerMode = headerMode
                         postEvent(EventBus.UP_CONFIG, arrayListOf(2))
                     }
                 },
-                onLeftClick = {
-                    chooseTip(context.getString(R.string.left)) {
-                        headerLeft = it
-                        ReadTipConfig.tipHeaderLeft = it
-                    }
-                },
-                onMiddleClick = {
-                    chooseTip(context.getString(R.string.middle)) {
-                        headerMiddle = it
-                        ReadTipConfig.tipHeaderMiddle = it
-                    }
-                },
-                onRightClick = {
-                    chooseTip(context.getString(R.string.right)) {
-                        headerRight = it
-                        ReadTipConfig.tipHeaderRight = it
-                    }
-                }
+                onLeftClick = { chooseTip(context.getString(R.string.left)) { headerLeft = it; ReadTipConfig.tipHeaderLeft = it } },
+                onMiddleClick = { chooseTip(context.getString(R.string.middle)) { headerMiddle = it; ReadTipConfig.tipHeaderMiddle = it } },
+                onRightClick = { chooseTip(context.getString(R.string.right)) { headerRight = it; ReadTipConfig.tipHeaderRight = it } }
             )
-
+            // 页脚
             TipPlacementSection(
                 title = stringResource(R.string.footer),
                 showLabel = footerModes[footerMode].orEmpty(),
                 leftLabel = tipName(footerLeft),
                 middleLabel = tipName(footerMiddle),
                 rightLabel = tipName(footerRight),
+                palette = palette,
                 style = style,
                 onShowClick = {
                     val keys = footerModes.keys.toList()
-                    onShowSelector(
-                        context.getString(R.string.footer),
-                        footerModes.values.toList()
-                    ) { index ->
+                    onShowSelector(context.getString(R.string.footer), footerModes.values.toList()) { index ->
                         footerMode = keys.getOrElse(index) { 0 }
                         ReadTipConfig.footerMode = footerMode
                         postEvent(EventBus.UP_CONFIG, arrayListOf(2))
                     }
                 },
-                onLeftClick = {
-                    chooseTip(context.getString(R.string.left)) {
-                        footerLeft = it
-                        ReadTipConfig.tipFooterLeft = it
-                    }
-                },
-                onMiddleClick = {
-                    chooseTip(context.getString(R.string.middle)) {
-                        footerMiddle = it
-                        ReadTipConfig.tipFooterMiddle = it
-                    }
-                },
-                onRightClick = {
-                    chooseTip(context.getString(R.string.right)) {
-                        footerRight = it
-                        ReadTipConfig.tipFooterRight = it
-                    }
-                }
+                onLeftClick = { chooseTip(context.getString(R.string.left)) { footerLeft = it; ReadTipConfig.tipFooterLeft = it } },
+                onMiddleClick = { chooseTip(context.getString(R.string.middle)) { footerMiddle = it; ReadTipConfig.tipFooterMiddle = it } },
+                onRightClick = { chooseTip(context.getString(R.string.right)) { footerRight = it; ReadTipConfig.tipFooterRight = it } }
             )
-
+            // 颜色
             TipColorSection(
                 colorRefreshTick = colorRefreshTick,
+                palette = palette,
                 style = style,
                 onTipColorClick = {
-                    onShowSelector(
-                        context.getString(R.string.text_color),
-                        ReadTipConfig.tipColorNames
-                    ) { index ->
+                    onShowSelector(context.getString(R.string.text_color), ReadTipConfig.tipColorNames) { index ->
                         when (index) {
-                            0 -> {
-                                ReadTipConfig.tipColor = 0
-                                onColorChanged()
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                            }
-
+                            0 -> { ReadTipConfig.tipColor = 0; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
                             1 -> onShowTipColorPicker()
                         }
                     }
                 },
                 onDividerColorClick = {
-                    onShowSelector(
-                        context.getString(R.string.tip_divider_color),
-                        ReadTipConfig.tipDividerColorNames
-                    ) { index ->
+                    onShowSelector(context.getString(R.string.tip_divider_color), ReadTipConfig.tipDividerColorNames) { index ->
                         when (index) {
-                            0, 1 -> {
-                                ReadTipConfig.tipDividerColor = index - 1
-                                onColorChanged()
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                            }
-
+                            0, 1 -> { ReadTipConfig.tipDividerColor = index - 1; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
                             2 -> onShowTipDividerColorPicker()
                         }
                     }
@@ -455,32 +370,29 @@ private fun TipPlacementSection(
     leftLabel: String,
     middleLabel: String,
     rightLabel: String,
+    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onShowClick: () -> Unit,
     onLeftClick: () -> Unit,
     onMiddleClick: () -> Unit,
     onRightClick: () -> Unit
 ) {
-    val palette = style.toMiuixPalette()
-    LegadoMiuixSection(
-        title = title,
-        palette = palette,
-        cornerRadius = style.actionRadius
-    ) {
+    ReaderSectionCard(palette = palette, style = style, title = title) {
         TipValueRow(
             title = stringResource(R.string.show_hide),
             value = showLabel,
+            palette = palette,
             style = style,
             onClick = onShowClick
         )
-        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             TipCompactValue(
                 title = stringResource(R.string.left),
                 value = leftLabel,
+                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onLeftClick
@@ -488,6 +400,7 @@ private fun TipPlacementSection(
             TipCompactValue(
                 title = stringResource(R.string.middle),
                 value = middleLabel,
+                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onMiddleClick
@@ -495,6 +408,7 @@ private fun TipPlacementSection(
             TipCompactValue(
                 title = stringResource(R.string.right),
                 value = rightLabel,
+                palette = palette,
                 style = style,
                 modifier = Modifier.weight(1f),
                 onClick = onRightClick
@@ -506,28 +420,25 @@ private fun TipPlacementSection(
 @Composable
 private fun TipColorSection(
     colorRefreshTick: Int,
+    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onTipColorClick: () -> Unit,
     onDividerColorClick: () -> Unit
 ) {
-    val palette = style.toMiuixPalette()
     val tipColorLabel = remember(colorRefreshTick) { tipColorText() }
     val dividerColorLabel = remember(colorRefreshTick) { tipDividerColorText() }
-    LegadoMiuixSection(
-        title = stringResource(R.string.header_footer),
-        palette = palette,
-        cornerRadius = style.actionRadius
-    ) {
+    ReaderSectionCard(palette = palette, style = style, title = stringResource(R.string.header_footer)) {
         TipValueRow(
             title = stringResource(R.string.text_color),
             value = tipColorLabel,
+            palette = palette,
             style = style,
             onClick = onTipColorClick
         )
-        Spacer(modifier = Modifier.height(6.dp))
         TipValueRow(
             title = stringResource(R.string.tip_divider_color),
             value = dividerColorLabel,
+            palette = palette,
             style = style,
             onClick = onDividerColorClick
         )
@@ -538,24 +449,28 @@ private fun TipColorSection(
 private fun TipValueRow(
     title: String,
     value: String,
+    palette: ReaderComposePalette,
     style: AppDialogStyle,
     onClick: () -> Unit
 ) {
-    val palette = style.toMiuixPalette()
-    LegadoMiuixCard(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.actionRadius,
-        insidePadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
+        shape = RoundedCornerShape(style.actionRadius),
+        color = palette.panelStrong,
+        contentColor = palette.text,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = title,
-                color = style.primaryText,
-                fontSize = 14.sp,
+                color = palette.text,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -577,34 +492,41 @@ private fun TipValueRow(
 private fun TipCompactValue(
     title: String,
     value: String,
+    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    LegadoMiuixCard(
+    Surface(
         modifier = modifier
-            .height(58.dp)
+            .height(52.dp)
             .clickable(onClick = onClick),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.actionRadius,
-        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+        shape = RoundedCornerShape(style.actionRadius),
+        color = palette.panelStrong,
+        contentColor = palette.text,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Text(
-            text = title,
-            color = style.secondaryText,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = value,
-            color = style.primaryText,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = title,
+                color = palette.secondaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = value,
+                color = palette.text,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

@@ -527,8 +527,10 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
 
     private fun showBgTextConfig(index: Int): Boolean {
         changeBgTextConfig(index)
-        dismissAllowingStateLoss()
-        view?.post { callBack?.showBgTextConfig() }
+        view?.post {
+            dismissAllowingStateLoss()
+            callBack?.showBgTextConfig()
+        }
         return true
     }
 
