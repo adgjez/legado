@@ -98,13 +98,11 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .heightIn(max = 480.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ReaderSheetHeader(
                     title = stringResource(R.string.interface_setting),
-                    subtitle = stringResource(R.string.padding),
                     palette = palette
                 )
                 StyleLibrarySection(style = style, palette = palette)
@@ -123,72 +121,46 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         val context = LocalContext.current
         var textBold by rememberSaveable { mutableIntStateOf(ReadBookConfig.textBold) }
         var chineseMode by rememberSaveable { mutableIntStateOf(AppConfig.chineseConverterType) }
-        val fontWeightOptions = stringArrayResource(R.array.text_font_weight).mapIndexed { index, label ->
-            ReaderOption(index.toString(), label)
-        }
-        val chineseOptions = stringArrayResource(R.array.chinese_mode).mapIndexed { index, label ->
-            ReaderOption(index.toString(), label)
-        }
-        ReaderSectionCard(
-            palette = palette,
-            style = style,
-            title = stringResource(R.string.text_font_weight_converter)
+        val weightLabels = stringArrayResource(R.array.text_font_weight)
+        val chineseLabels = stringArrayResource(R.array.chinese_mode)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = palette.panel,
+            contentColor = palette.text,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                ReaderSegmentedOptions(
-                    options = fontWeightOptions,
-                    selectedValue = textBold.toString(),
+                ReaderTextAction(
+                    text = weightLabels.getOrElse(textBold) { "" },
                     palette = palette,
                     style = style,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
-                    if (ReadBookConfig.textBold != value) {
-                        ReadBookConfig.textBold = value
-                        textBold = value
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        textBold = (textBold + 1) % weightLabels.size
+                        ReadBookConfig.textBold = textBold
                         postEvent(EventBus.UP_CONFIG, arrayListOf(8, 9, 6))
                     }
-                }
-                ReaderSegmentedOptions(
-                    options = chineseOptions,
-                    selectedValue = chineseMode.toString(),
-                    palette = palette,
-                    style = style,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
-                    if (AppConfig.chineseConverterType != value) {
-                        AppConfig.chineseConverterType = value
-                        chineseMode = value
-                        ChineseUtils.unLoad(*TransType.entries.toTypedArray())
-                        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+                )
                 ReaderTextAction(
                     text = stringResource(R.string.text_font),
                     palette = palette,
                     style = style,
                     modifier = Modifier.weight(1f),
-                    onClick = {
-                        showDialogFragment<FontSelectDialog>()
-                    }
+                    onClick = { showDialogFragment<FontSelectDialog>() }
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.text_indent),
                     palette = palette,
                     style = style,
                     modifier = Modifier.weight(1f),
-                    onClick = {
-                        showTextIndentDialog()
-                    }
+                    onClick = { showTextIndentDialog() }
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.padding),
@@ -198,6 +170,18 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     onClick = {
                         dismissAllowingStateLoss()
                         callBack?.showPaddingConfig()
+                    }
+                )
+                ReaderTextAction(
+                    text = chineseLabels.getOrElse(chineseMode) { "" },
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        chineseMode = (chineseMode + 1) % chineseLabels.size
+                        AppConfig.chineseConverterType = chineseMode
+                        ChineseUtils.unLoad(*TransType.entries.toTypedArray())
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
                     }
                 )
                 ReaderTextAction(
@@ -227,7 +211,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         ReaderSectionCard(
             palette = palette,
             style = style,
-            title = stringResource(R.string.text_size)
+            title = null
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -372,7 +356,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         ReaderSectionCard(
             palette = palette,
             style = style,
-            title = stringResource(R.string.page_anim)
+            title = null
         ) {
             ReaderSegmentedOptions(
                 options = pageAnimOptions(),
@@ -415,7 +399,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         ReaderSectionCard(
             palette = palette,
             style = style,
-            title = stringResource(R.string.background)
+            title = null
         ) {
             Row(
                 modifier = Modifier
