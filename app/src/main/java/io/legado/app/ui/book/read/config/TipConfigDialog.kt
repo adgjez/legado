@@ -521,40 +521,31 @@ private fun TipCompactValue(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = modifier
             .height(44.dp)
             .clip(RoundedCornerShape(style.actionRadius))
             .background(style.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 5.dp),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = title,
-                modifier = Modifier.fillMaxWidth(),
-                color = style.secondaryText,
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = value,
-                modifier = Modifier.fillMaxWidth(),
-                color = style.primaryText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = title,
+            color = style.secondaryText,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            color = style.primaryText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

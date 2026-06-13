@@ -223,21 +223,20 @@ fun ReaderTextAction(
 ) {
     val bgColor = if (selected) style.accent.copy(alpha = 0.18f) else style.fieldSurface
     val textColor = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f)
-    Box(
+    Row(
         modifier = modifier
             .height(38.dp)
             .clip(RoundedCornerShape(style.actionRadius))
             .background(bgColor)
             .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = text,
-            modifier = Modifier.fillMaxWidth(),
             color = textColor,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -314,22 +313,21 @@ fun ReaderSegmentedOptions(
                 val selected = option.value == selectedValue
                 val bgColor = if (selected) style.accent else style.fieldSurface
                 val textColor = if (selected) Color.White else style.primaryText
-                Box(
+                Row(
                     modifier = Modifier
                         .heightIn(min = 30.dp)
                         .clip(RoundedCornerShape(cornerRadius))
                         .background(bgColor)
                         .clickable { onSelected(option.value) }
                         .padding(horizontal = hPad, vertical = vPad),
-                    contentAlignment = Alignment.Center
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = option.label,
-                        modifier = Modifier.fillMaxWidth(),
                         color = textColor,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -345,7 +343,7 @@ fun ReaderSegmentedOptions(
                 val selected = option.value == selectedValue
                 val bgColor = if (selected) style.accent else style.fieldSurface
                 val textColor = if (selected) Color.White else style.primaryText
-                Box(
+                Row(
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 30.dp)
@@ -353,15 +351,14 @@ fun ReaderSegmentedOptions(
                         .background(bgColor)
                         .clickable { onSelected(option.value) }
                         .padding(horizontal = hPad, vertical = vPad),
-                    contentAlignment = Alignment.Center
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = option.label,
-                        modifier = Modifier.fillMaxWidth(),
                         color = textColor,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
