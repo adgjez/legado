@@ -107,10 +107,10 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     subtitle = stringResource(R.string.padding),
                     palette = palette
                 )
-                TextToolsSection(style = style, palette = palette)
+                StyleLibrarySection(style = style, palette = palette)
                 TextMetricSection(style = style, palette = palette)
                 PageAnimSection(style = style, palette = palette)
-                StyleLibrarySection(style = style, palette = palette)
+                TextToolsSection(style = style, palette = palette)
             }
         }
     }
@@ -371,7 +371,8 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 options = pageAnimOptions(),
                 selectedValue = selectedAnim.toString(),
                 palette = palette,
-                style = style
+                style = style,
+                scrollable = true
             ) { value ->
                 val anim = value.toIntOrNull() ?: return@ReaderSegmentedOptions
                 if (selectedAnim != anim) {

@@ -7,6 +7,7 @@ import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -424,35 +426,70 @@ fun ReaderSegmentedOptions(
     palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
+    scrollable: Boolean = false,
     onSelected: (String) -> Unit
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        options.forEach { option ->
-            val selected = option.value == selectedValue
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 34.dp)
-                    .clickable { onSelected(option.value) },
-                shape = RoundedCornerShape(style.actionRadius),
-                color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
-                contentColor = if (selected) palette.accent else palette.text,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
-            ) {
-                Text(
-                    text = option.label,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                    color = if (selected) palette.accent else palette.text,
-                    fontSize = 12.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+    if (scrollable) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            options.forEach { option ->
+                val selected = option.value == selectedValue
+                Surface(
+                    modifier = Modifier
+                        .heightIn(min = 34.dp)
+                        .clickable { onSelected(option.value) },
+                    shape = RoundedCornerShape(style.actionRadius),
+                    color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
+                    contentColor = if (selected) palette.accent else palette.text,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Text(
+                        text = option.label,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        color = if (selected) palette.accent else palette.text,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            options.forEach { option ->
+                val selected = option.value == selectedValue
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 34.dp)
+                        .clickable { onSelected(option.value) },
+                    shape = RoundedCornerShape(style.actionRadius),
+                    color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
+                    contentColor = if (selected) palette.accent else palette.text,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    Text(
+                        text = option.label,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                        color = if (selected) palette.accent else palette.text,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
