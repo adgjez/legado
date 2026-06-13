@@ -58,7 +58,9 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.font.FontSelectDialog
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.dpToPx
@@ -220,58 +222,136 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             style = style,
             title = stringResource(R.string.text_size)
         ) {
-            ReaderSliderRow(
-                title = stringResource(R.string.text_size),
-                value = textSize,
-                valueText = (textSize + 5).toString(),
-                range = 0..45,
-                palette = palette,
-                style = style,
-                onValueChange = {
-                    textSize = it
-                    ReadBookConfig.textSize = it + 5
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    MetricSliderTile(
+                        label = stringResource(R.string.text_size),
+                        value = textSize,
+                        valueText = (textSize + 5).toString(),
+                        range = 0..45,
+                        style = style,
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = {
+                            textSize = it
+                            ReadBookConfig.textSize = it + 5
+                            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                        }
+                    )
+                    MetricSliderTile(
+                        label = stringResource(R.string.text_letter_spacing),
+                        value = letterSpacing,
+                        valueText = ((letterSpacing - 50) / 100f).toString(),
+                        range = 0..100,
+                        style = style,
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = {
+                            letterSpacing = it
+                            ReadBookConfig.letterSpacing = (it - 50) / 100f
+                            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                        }
+                    )
                 }
-            )
-            ReaderSliderRow(
-                title = stringResource(R.string.text_letter_spacing),
-                value = letterSpacing,
-                valueText = ((letterSpacing - 50) / 100f).toString(),
-                range = 0..100,
-                palette = palette,
-                style = style,
-                onValueChange = {
-                    letterSpacing = it
-                    ReadBookConfig.letterSpacing = (it - 50) / 100f
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    MetricSliderTile(
+                        label = stringResource(R.string.line_size),
+                        value = lineSpacing,
+                        valueText = ((lineSpacing - 10) / 10f).toString(),
+                        range = 0..20,
+                        style = style,
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = {
+                            lineSpacing = it
+                            ReadBookConfig.lineSpacingExtra = it
+                            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                        }
+                    )
+                    MetricSliderTile(
+                        label = stringResource(R.string.paragraph_size),
+                        value = paragraphSpacing,
+                        valueText = (paragraphSpacing / 10f).toString(),
+                        range = 0..20,
+                        style = style,
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                        onValueChange = {
+                            paragraphSpacing = it
+                            ReadBookConfig.paragraphSpacing = it
+                            postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+                        }
+                    )
                 }
-            )
-            ReaderSliderRow(
-                title = stringResource(R.string.line_size),
-                value = lineSpacing,
-                valueText = ((lineSpacing - 10) / 10f).toString(),
-                range = 0..20,
-                palette = palette,
-                style = style,
-                onValueChange = {
-                    lineSpacing = it
-                    ReadBookConfig.lineSpacingExtra = it
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
+            }
+        }
+    }
+
+    @Composable
+    private fun MetricSliderTile(
+        label: String,
+        value: Int,
+        valueText: String,
+        range: IntRange,
+        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        palette: ReaderComposePalette,
+        modifier: Modifier = Modifier,
+        onValueChange: (Int) -> Unit
+    ) {
+        Surface(
+            modifier = modifier.heightIn(min = 58.dp),
+            shape = RoundedCornerShape(style.actionRadius),
+            color = palette.panel,
+            contentColor = palette.text,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 7.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        color = palette.text,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = valueText,
+                        color = palette.accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
                 }
-            )
-            ReaderSliderRow(
-                title = stringResource(R.string.paragraph_size),
-                value = paragraphSpacing,
-                valueText = (paragraphSpacing / 10f).toString(),
-                range = 0..20,
-                palette = palette,
-                style = style,
-                onValueChange = {
-                    paragraphSpacing = it
-                    ReadBookConfig.paragraphSpacing = it
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
-                }
-            )
+                AppThemedStepperSlider(
+                    value = value.coerceIn(range),
+                    range = range,
+                    onValueChange = { onValueChange(it.coerceIn(range)) },
+                    palette = style.toMiuixPalette(),
+                    trackHeight = 34.dp,
+                    thumbSize = 26.dp,
+                    endpointWidth = 30.dp
+                )
+            }
         }
     }
 
