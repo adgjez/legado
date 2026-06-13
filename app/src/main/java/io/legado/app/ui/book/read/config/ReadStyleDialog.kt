@@ -134,17 +134,38 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             style = style,
             title = stringResource(R.string.text_font_weight_converter)
         ) {
-            ReaderSegmentedOptions(
-                options = fontWeightOptions,
-                selectedValue = textBold.toString(),
-                palette = palette,
-                style = style
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
-                if (ReadBookConfig.textBold != value) {
-                    ReadBookConfig.textBold = value
-                    textBold = value
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(8, 9, 6))
+                ReaderSegmentedOptions(
+                    options = fontWeightOptions,
+                    selectedValue = textBold.toString(),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
+                    if (ReadBookConfig.textBold != value) {
+                        ReadBookConfig.textBold = value
+                        textBold = value
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(8, 9, 6))
+                    }
+                }
+                ReaderSegmentedOptions(
+                    options = chineseOptions,
+                    selectedValue = chineseMode.toString(),
+                    palette = palette,
+                    style = style,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
+                    if (AppConfig.chineseConverterType != value) {
+                        AppConfig.chineseConverterType = value
+                        chineseMode = value
+                        ChineseUtils.unLoad(*TransType.entries.toTypedArray())
+                        postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                    }
                 }
             }
             Row(
@@ -188,20 +209,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
                     }
                 )
-            }
-            ReaderSegmentedOptions(
-                options = chineseOptions,
-                selectedValue = chineseMode.toString(),
-                palette = palette,
-                style = style
-            ) {
-                val value = it.toIntOrNull() ?: return@ReaderSegmentedOptions
-                if (AppConfig.chineseConverterType != value) {
-                    AppConfig.chineseConverterType = value
-                    chineseMode = value
-                    ChineseUtils.unLoad(*TransType.entries.toTypedArray())
-                    postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-                }
             }
         }
     }
