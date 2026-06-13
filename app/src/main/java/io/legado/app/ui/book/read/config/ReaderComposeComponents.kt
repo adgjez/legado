@@ -4,7 +4,6 @@ import android.content.DialogInterface
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -19,35 +18,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
-import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
@@ -55,7 +44,6 @@ import io.legado.app.ui.widget.compose.LegadoMiuixSwitch
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
-import io.legado.app.utils.ColorUtils
 
 abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() {
 
@@ -105,49 +93,14 @@ abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() 
     }
 }
 
-@Immutable
-data class ReaderComposePalette(
-    val surface: Color,
-    val panel: Color,
-    val panelStrong: Color,
-    val stroke: Color,
-    val text: Color,
-    val secondaryText: Color,
-    val accent: Color
-)
-
-@Composable
-fun rememberReaderComposePalette(
-    baseColor: Int = LocalContext.current.bottomBackground,
-    alphaPercent: Int? = null
-): ReaderComposePalette {
-    val context = LocalContext.current
-    val resolvedAlpha = alphaPercent?.coerceIn(0, 100)
-    val palette = remember(context, baseColor, resolvedAlpha, AppConfig.isNightTheme) {
-        val raw = ReaderSheetStyle.resolve(context, baseColor)
-        val alpha = resolvedAlpha?.let { it / 100f } ?: 1f
-        ReaderComposePalette(
-            surface = Color(ColorUtils.withAlpha(raw.surface, alpha)),
-            panel = Color(ColorUtils.withAlpha(raw.panel, alpha)),
-            panelStrong = Color(ColorUtils.withAlpha(raw.panelStrong, alpha)),
-            stroke = Color(raw.stroke),
-            text = Color(raw.textColor),
-            secondaryText = Color(raw.secondaryTextColor),
-            accent = Color(raw.accentColor)
-        )
-    }
-    return palette
-}
-
 @Composable
 fun ReaderBottomSheetFrame(
     modifier: Modifier = Modifier,
     maxHeightFraction: Float = 0.72f,
     contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-    content: @Composable (AppDialogStyle, ReaderComposePalette) -> Unit
+    content: @Composable (AppDialogStyle) -> Unit
 ) {
     val style = rememberAppDialogStyle()
-    val palette = rememberReaderComposePalette()
     val maxHeight = (LocalConfiguration.current.screenHeightDp * maxHeightFraction)
         .toInt()
         .coerceAtLeast(280)
@@ -161,10 +114,10 @@ fun ReaderBottomSheetFrame(
                 .fillMaxWidth()
                 .heightIn(max = maxHeight)
                 .navigationBarsPadding()
-                .border(1.dp, palette.stroke, shape),
+                .border(1.dp, style.stroke, shape),
             shape = shape,
-            color = palette.surface,
-            contentColor = palette.text,
+            color = style.surface,
+            contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -174,7 +127,7 @@ fun ReaderBottomSheetFrame(
                     .padding(contentPadding),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                content(style, palette)
+                content(style)
             }
         }
     }
@@ -183,7 +136,7 @@ fun ReaderBottomSheetFrame(
 @Composable
 fun ReaderSheetHeader(
     title: String,
-    palette: ReaderComposePalette,
+    style: AppDialogStyle,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     trailing: (@Composable () -> Unit)? = null
@@ -195,7 +148,7 @@ fun ReaderSheetHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = palette.text,
+                color = style.primaryText,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -204,7 +157,7 @@ fun ReaderSheetHeader(
             subtitle?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    color = palette.secondaryText,
+                    color = style.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -221,7 +174,6 @@ fun ReaderSheetHeader(
 
 @Composable
 fun ReaderSectionCard(
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     title: String? = null,
@@ -231,8 +183,8 @@ fun ReaderSectionCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(style.actionRadius),
-        color = palette.panel,
-        contentColor = palette.text,
+        color = style.fieldSurface,
+        contentColor = style.primaryText,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
@@ -245,7 +197,7 @@ fun ReaderSectionCard(
             title?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    color = palette.accent,
+                    color = style.accent,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -258,38 +210,8 @@ fun ReaderSectionCard(
 }
 
 @Composable
-fun ReaderIconAction(
-    iconRes: Int,
-    contentDescription: String?,
-    palette: ReaderComposePalette,
-    style: AppDialogStyle,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    selected: Boolean = false,
-    onClick: () -> Unit
-) {
-    val bg = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong
-    Box(
-        modifier = modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(style.actionRadius))
-            .background(bg)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = contentDescription,
-            tint = if (enabled) palette.text else palette.secondaryText.copy(alpha = 0.55f),
-            modifier = Modifier.size(21.dp)
-        )
-    }
-}
-
-@Composable
 fun ReaderTextAction(
     text: String,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
@@ -301,8 +223,8 @@ fun ReaderTextAction(
             .height(38.dp)
             .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(style.actionRadius),
-        color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
-        contentColor = if (enabled) palette.text else palette.secondaryText.copy(alpha = 0.55f),
+        color = if (selected) style.accent.copy(alpha = 0.18f) else style.fieldSurface,
+        contentColor = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
@@ -312,7 +234,7 @@ fun ReaderTextAction(
         ) {
             Text(
                 text = text,
-                color = if (enabled) palette.text else palette.secondaryText.copy(alpha = 0.55f),
+                color = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -323,59 +245,9 @@ fun ReaderTextAction(
 }
 
 @Composable
-fun ReaderSliderRow(
-    title: String,
-    value: Int,
-    range: IntRange,
-    palette: ReaderComposePalette,
-    style: AppDialogStyle,
-    modifier: Modifier = Modifier,
-    valueText: String = value.toString(),
-    enabled: Boolean = true,
-    onValueChange: (Int) -> Unit,
-    onValueChangeFinished: (() -> Unit)? = null
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                color = if (enabled) palette.text else palette.secondaryText.copy(alpha = 0.55f),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = valueText,
-                color = if (enabled) palette.accent else palette.secondaryText.copy(alpha = 0.55f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
-        }
-        AppThemedStepperSlider(
-            value = value.coerceIn(range),
-            range = range,
-            onValueChange = { onValueChange(it.coerceIn(range)) },
-            palette = style.toMiuixPalette(),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = enabled,
-            onValueChangeFinished = onValueChangeFinished
-        )
-    }
-}
-
-@Composable
 fun ReaderSwitchRow(
     title: String,
     checked: Boolean,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     summary: String? = null,
@@ -385,7 +257,6 @@ fun ReaderSwitchRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(style.actionRadius))
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -393,7 +264,7 @@ fun ReaderSwitchRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = if (enabled) palette.text else palette.secondaryText.copy(alpha = 0.55f),
+                color = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f),
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -401,7 +272,7 @@ fun ReaderSwitchRow(
             summary?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    color = palette.secondaryText,
+                    color = style.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -423,7 +294,6 @@ fun ReaderSwitchRow(
 fun ReaderSegmentedOptions(
     options: List<ReaderOption>,
     selectedValue: String,
-    palette: ReaderComposePalette,
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     scrollable: Boolean = false,
@@ -447,15 +317,15 @@ fun ReaderSegmentedOptions(
                         .heightIn(min = 30.dp)
                         .clickable { onSelected(option.value) },
                     shape = RoundedCornerShape(cornerRadius),
-                    color = if (selected) palette.accent else palette.panelStrong,
-                    contentColor = if (selected) Color.White else palette.text,
+                    color = if (selected) style.accent else style.fieldSurface,
+                    contentColor = if (selected) Color.White else style.primaryText,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
                     Text(
                         text = option.label,
                         modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
-                        color = if (selected) Color.White else palette.text,
+                        color = if (selected) Color.White else style.primaryText,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         textAlign = TextAlign.Center,
@@ -478,15 +348,15 @@ fun ReaderSegmentedOptions(
                         .heightIn(min = 30.dp)
                         .clickable { onSelected(option.value) },
                     shape = RoundedCornerShape(cornerRadius),
-                    color = if (selected) palette.accent else palette.panelStrong,
-                    contentColor = if (selected) Color.White else palette.text,
+                    color = if (selected) style.accent else style.fieldSurface,
+                    contentColor = if (selected) Color.White else style.primaryText,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
                     Text(
                         text = option.label,
                         modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
-                        color = if (selected) Color.White else palette.text,
+                        color = if (selected) Color.White else style.primaryText,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         textAlign = TextAlign.Center,

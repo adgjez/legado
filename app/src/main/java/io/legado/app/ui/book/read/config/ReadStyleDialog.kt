@@ -60,6 +60,7 @@ import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.font.FontSelectDialog
+import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
 import io.legado.app.ui.widget.compose.toMiuixPalette
@@ -96,40 +97,32 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
 
     @Composable
     private fun ReadStyleContent() {
-        ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style, palette ->
+        ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 460.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StyleLibrarySection(style = style, palette = palette)
-                TextMetricSection(style = style, palette = palette)
-                AnimAndToolsSection(style = style, palette = palette)
+                StyleLibrarySection(style = style)
+                TextMetricSection(style = style)
+                AnimAndToolsSection(style = style)
             }
         }
     }
 
     @Composable
-    private fun AnimAndToolsSection(
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
-        palette: ReaderComposePalette
-    ) {
+    private fun AnimAndToolsSection(style: AppDialogStyle) {
         var selectedAnim by rememberSaveable { mutableIntStateOf(ReadBook.pageAnim()) }
         var shareLayout by rememberSaveable { mutableIntStateOf(if (ReadBookConfig.shareLayout) 1 else 0) }
         var textBold by rememberSaveable { mutableIntStateOf(ReadBookConfig.textBold) }
         var chineseMode by rememberSaveable { mutableIntStateOf(AppConfig.chineseConverterType) }
         val weightLabels = stringArrayResource(R.array.text_font_weight)
         val chineseLabels = stringArrayResource(R.array.chinese_mode)
-        ReaderSectionCard(
-            palette = palette,
-            style = style,
-            title = null
-        ) {
+        ReaderSectionCard(style = style, title = null) {
             ReaderSegmentedOptions(
                 options = pageAnimOptions(),
                 selectedValue = selectedAnim.toString(),
-                palette = palette,
                 style = style,
                 scrollable = true,
                 pillStyle = true
@@ -151,7 +144,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             ) {
                 ReaderTextAction(
                     text = weightLabels.getOrElse(textBold) { "" },
-                    palette = palette,
                     style = style,
                     onClick = {
                         textBold = (textBold + 1) % weightLabels.size
@@ -161,19 +153,16 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.text_font),
-                    palette = palette,
                     style = style,
                     onClick = { showDialogFragment<FontSelectDialog>() }
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.text_indent),
-                    palette = palette,
                     style = style,
                     onClick = { showTextIndentDialog() }
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.padding),
-                    palette = palette,
                     style = style,
                     onClick = {
                         dismissAllowingStateLoss()
@@ -182,7 +171,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 )
                 ReaderTextAction(
                     text = chineseLabels.getOrElse(chineseMode) { "" },
-                    palette = palette,
                     style = style,
                     onClick = {
                         chineseMode = (chineseMode + 1) % chineseLabels.size
@@ -193,7 +181,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 )
                 ReaderTextAction(
                     text = stringResource(R.string.information),
-                    palette = palette,
                     style = style,
                     onClick = {
                         TipConfigDialog().show(childFragmentManager, "tipConfigDialog")
@@ -203,7 +190,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             ReaderSwitchRow(
                 title = stringResource(R.string.share_layout),
                 checked = shareLayout == 1,
-                palette = palette,
                 style = style
             ) { checked ->
                 shareLayout = if (checked) 1 else 0
@@ -214,21 +200,14 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
     }
 
     @Composable
-    private fun TextMetricSection(
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
-        palette: ReaderComposePalette
-    ) {
+    private fun TextMetricSection(style: AppDialogStyle) {
         var textSize by rememberSaveable { mutableIntStateOf(ReadBookConfig.textSize - 5) }
         var letterSpacing by rememberSaveable {
             mutableIntStateOf((ReadBookConfig.letterSpacing * 100).toInt() + 50)
         }
         var lineSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.lineSpacingExtra) }
         var paragraphSpacing by rememberSaveable { mutableIntStateOf(ReadBookConfig.paragraphSpacing) }
-        ReaderSectionCard(
-            palette = palette,
-            style = style,
-            title = null
-        ) {
+        ReaderSectionCard(style = style, title = null) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
@@ -243,7 +222,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         valueText = (textSize + 5).toString(),
                         range = 0..45,
                         style = style,
-                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onValueChange = {
                             textSize = it
@@ -257,7 +235,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         valueText = ((letterSpacing - 50) / 100f).toString(),
                         range = 0..100,
                         style = style,
-                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onValueChange = {
                             letterSpacing = it
@@ -276,7 +253,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         valueText = ((lineSpacing - 10) / 10f).toString(),
                         range = 0..20,
                         style = style,
-                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onValueChange = {
                             lineSpacing = it
@@ -290,7 +266,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         valueText = (paragraphSpacing / 10f).toString(),
                         range = 0..20,
                         style = style,
-                        palette = palette,
                         modifier = Modifier.weight(1f),
                         onValueChange = {
                             paragraphSpacing = it
@@ -309,16 +284,15 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
         value: Int,
         valueText: String,
         range: IntRange,
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
-        palette: ReaderComposePalette,
+        style: AppDialogStyle,
         modifier: Modifier = Modifier,
         onValueChange: (Int) -> Unit
     ) {
         Surface(
             modifier = modifier.heightIn(min = 58.dp),
             shape = RoundedCornerShape(style.actionRadius),
-            color = palette.panel,
-            contentColor = palette.text,
+            color = style.fieldSurface,
+            contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -335,7 +309,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     Text(
                         text = label,
                         modifier = Modifier.weight(1f),
-                        color = palette.text,
+                        color = style.primaryText,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -343,7 +317,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     )
                     Text(
                         text = valueText,
-                        color = palette.accent,
+                        color = style.accent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1
@@ -364,18 +338,11 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
 
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    private fun StyleLibrarySection(
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
-        palette: ReaderComposePalette
-    ) {
+    private fun StyleLibrarySection(style: AppDialogStyle) {
         var selectedIndex by rememberSaveable { mutableIntStateOf(ReadBookConfig.styleSelect) }
         var version by rememberSaveable { mutableIntStateOf(0) }
         val configs = remember(version) { ReadBookConfig.configList.toList() }
-        ReaderSectionCard(
-            palette = palette,
-            style = style,
-            title = null
-        ) {
+        ReaderSectionCard(style = style, title = null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -387,7 +354,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     StylePreviewItem(
                         config = config,
                         selected = selectedIndex == index,
-                        palette = palette,
                         style = style,
                         onClick = {
                             changeBgTextConfig(index)
@@ -399,10 +365,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                         }
                     )
                 }
-                AddStyleItem(
-                    palette = palette,
-                    style = style
-                ) {
+                AddStyleItem(style = style) {
                     ReadBookConfig.configList.add(ReadBookConfig.Config())
                     showBgTextConfig(ReadBookConfig.configList.lastIndex)
                 }
@@ -415,8 +378,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
     private fun StylePreviewItem(
         config: ReadBookConfig.Config,
         selected: Boolean,
-        palette: ReaderComposePalette,
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        style: AppDialogStyle,
         onClick: () -> Unit,
         onLongClick: () -> Unit
     ) {
@@ -456,7 +418,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
             }
             Text(
                 text = config.name.ifBlank { stringResource(R.string.text) },
-                color = if (selected) palette.accent else palette.secondaryText,
+                color = if (selected) style.accent else style.secondaryText,
                 fontSize = 11.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
@@ -468,8 +430,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
 
     @Composable
     private fun AddStyleItem(
-        palette: ReaderComposePalette,
-        style: io.legado.app.ui.widget.compose.AppDialogStyle,
+        style: AppDialogStyle,
         onClick: () -> Unit
     ) {
         Column(
@@ -483,8 +444,8 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     .size(48.dp)
                     .clickable(onClick = onClick),
                 shape = CircleShape,
-                color = palette.panelStrong,
-                contentColor = palette.text,
+                color = style.fieldSurface,
+                contentColor = style.primaryText,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
             ) {
@@ -492,14 +453,14 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     Icon(
                         painter = painterResource(R.drawable.ic_add),
                         contentDescription = stringResource(R.string.add),
-                        tint = palette.text,
+                        tint = style.primaryText,
                         modifier = Modifier.size(22.dp)
                     )
                 }
             }
             Text(
                 text = stringResource(R.string.add),
-                color = palette.secondaryText,
+                color = style.secondaryText,
                 fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

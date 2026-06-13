@@ -86,7 +86,7 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
     @Composable
     private fun ParagraphRuleQuickContent() {
         var enabledIds by remember { mutableStateOf(initialEnabledIds) }
-        ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style, palette ->
+        ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style ->
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -95,18 +95,16 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
             ) {
                 ReaderSheetHeader(
                     title = stringResource(R.string.paragraph_rule),
-                    palette = palette,
+                    style = style,
                     trailing = {
                         ReaderTextAction(
                             text = stringResource(R.string.paragraph_rule_manage),
-                            palette = palette,
                             style = style,
                             onClick = ::openManage
                         )
                     }
                 )
                 ReaderSectionCard(
-                    palette = palette,
                     style = style,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
@@ -124,7 +122,6 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
                             ParagraphRuleRow(
                                 rule = rule,
                                 checked = checked,
-                                palette = palette,
                                 style = style,
                                 onCheckedChange = { next ->
                                     enabledIds = if (next) {
@@ -147,7 +144,6 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
     private fun ParagraphRuleRow(
         rule: ParagraphRule,
         checked: Boolean,
-        palette: ReaderComposePalette,
         style: AppDialogStyle,
         onCheckedChange: (Boolean) -> Unit,
         onLogin: () -> Unit
@@ -158,9 +154,8 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
                 .fillMaxWidth()
                 .clickable { onCheckedChange(!checked) },
             shape = RoundedCornerShape(style.actionRadius),
-            color = if (checked) palette.accent.copy(alpha = 0.14f)
-            else palette.panelStrong,
-            contentColor = palette.text,
+            color = if (checked) style.accent.copy(alpha = 0.14f) else style.fieldSurface,
+            contentColor = style.primaryText,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp
         ) {
@@ -170,7 +165,7 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
             ) {
                 Text(
                     text = rule.displayName(),
-                    color = if (checked) palette.accent else palette.text,
+                    color = if (checked) style.accent else style.primaryText,
                     fontSize = 14.sp,
                     fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
@@ -184,8 +179,8 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
                             .heightIn(min = 30.dp)
                             .clickable(onClick = onLogin),
                         shape = RoundedCornerShape(style.actionRadius),
-                        color = palette.panel,
-                        contentColor = palette.accent,
+                        color = style.fieldSurface,
+                        contentColor = style.accent,
                         tonalElevation = 0.dp,
                         shadowElevation = 0.dp
                     ) {
@@ -195,7 +190,7 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
                         ) {
                             Text(
                                 text = stringResource(R.string.login),
-                                color = palette.accent,
+                                color = style.accent,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1
