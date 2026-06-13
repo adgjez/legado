@@ -214,16 +214,13 @@ private fun TipConfigContent(
         color = style.surface,
         contentColor = style.primaryText,
         cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+        insidePadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
     ) {
         val palette = rememberReaderComposePalette()
         val miuixPalette = style.toMiuixPalette()
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             // 标题设置
             ReaderSectionCard(palette = palette, style = style, title = null) {
@@ -259,23 +256,21 @@ private fun TipConfigContent(
                             selected = titleModeToUiIndex(titleMode) == index,
                             palette = miuixPalette,
                             onClick = {
-                                titleMode = uiIndexToTitleMode(index)
-                                ReadBookConfig.titleMode = titleMode
+                                val newMode = uiIndexToTitleMode(index)
+                                titleMode = newMode
+                                ReadBookConfig.titleMode = newMode
                                 postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                                if (newMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED) {
+                                    onShowAdvancedTitleConfig()
+                                }
                             },
                             modifier = Modifier.weight(1f),
-                            minHeight = 36.dp,
+                            minHeight = 32.dp,
                             compact = true,
                             showSelectedMark = false
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                TipAdvancedActionRow(
-                    style = style,
-                    enabled = titleMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED,
-                    onClick = onShowAdvancedTitleConfig
-                )
             }
             // 页眉
             TipPlacementSection(
@@ -523,13 +518,13 @@ private fun TipValueRow(
         shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = title,
                 color = palette.text,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -538,7 +533,7 @@ private fun TipValueRow(
             Text(
                 text = value,
                 color = palette.accent,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -558,7 +553,7 @@ private fun TipCompactValue(
 ) {
     Surface(
         modifier = modifier
-            .height(44.dp)
+            .height(38.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(style.actionRadius),
         color = palette.panelStrong,
@@ -567,7 +562,7 @@ private fun TipCompactValue(
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text(
