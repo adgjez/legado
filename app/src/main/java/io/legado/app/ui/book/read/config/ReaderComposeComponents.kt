@@ -304,7 +304,7 @@ fun ReaderSegmentedOptions(
     pillStyle: Boolean = false,
     onSelected: (String) -> Unit
 ) {
-    val cornerRadius = if (pillStyle) 16.dp else style.actionRadius
+    val cornerRadius = style.actionRadius
     val hPad = if (pillStyle) 12.dp else if (scrollable) 12.dp else 8.dp
     val vPad = if (pillStyle) 6.dp else 8.dp
     if (scrollable) {
