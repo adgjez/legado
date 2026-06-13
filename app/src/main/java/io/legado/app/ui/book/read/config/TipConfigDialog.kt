@@ -531,11 +531,13 @@ private fun TipCompactValue(
         contentAlignment = Alignment.Center
     ) {
         Column(
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = title,
+                modifier = Modifier.fillMaxWidth(),
                 color = style.secondaryText,
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
@@ -544,6 +546,7 @@ private fun TipCompactValue(
             )
             Text(
                 text = value,
+                modifier = Modifier.fillMaxWidth(),
                 color = style.primaryText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,

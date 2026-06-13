@@ -233,6 +233,7 @@ fun ReaderTextAction(
     ) {
         Text(
             text = text,
+            modifier = Modifier.fillMaxWidth(),
             color = textColor,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
@@ -324,9 +325,11 @@ fun ReaderSegmentedOptions(
                 ) {
                     Text(
                         text = option.label,
+                        modifier = Modifier.fillMaxWidth(),
                         color = textColor,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -354,6 +357,7 @@ fun ReaderSegmentedOptions(
                 ) {
                     Text(
                         text = option.label,
+                        modifier = Modifier.fillMaxWidth(),
                         color = textColor,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
