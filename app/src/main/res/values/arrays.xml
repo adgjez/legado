@@ -136,8 +136,8 @@
 
 	<string-array name="chinese_mode">
 		<item>Off</item>
-		<item>Traditional to Simplified</item>
-		<item>Simplified to Traditional</item>
+		<item>Simplified</item>
+		<item>Traditional</item>
 	</string-array>
 
 	<string-array name="system_typefaces">

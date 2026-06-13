@@ -61,8 +61,8 @@
 
     <string-array name="chinese_mode">
         <item>关闭</item>
-        <item>繁体转简体</item>
-        <item>简体转繁体</item>
+        <item>简体</item>
+        <item>繁体</item>
     </string-array>
 
     <string-array name="system_typefaces">

@@ -104,9 +104,9 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     .heightIn(max = 460.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StyleLibrarySection(style = style)
                 TextMetricSection(style = style)
                 AnimAndToolsSection(style = style)
+                StyleLibrarySection(style = style)
             }
         }
     }

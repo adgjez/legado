@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -229,7 +230,9 @@ fun ReaderTextAction(
         shadowElevation = 0.dp
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 13.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -237,6 +240,7 @@ fun ReaderTextAction(
                 color = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -322,16 +326,17 @@ fun ReaderSegmentedOptions(
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
-                    Text(
-                        text = option.label,
-                        modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
-                        color = if (selected) Color.White else style.primaryText,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = option.label,
+                            modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
+                            color = if (selected) Color.White else style.primaryText,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -353,10 +358,14 @@ fun ReaderSegmentedOptions(
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
-                    Text(
-                        text = option.label,
-                        modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
-                        color = if (selected) Color.White else style.primaryText,
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = option.label,
+                            modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
+                            color = if (selected) Color.White else style.primaryText,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         textAlign = TextAlign.Center,
@@ -367,6 +376,8 @@ fun ReaderSegmentedOptions(
             }
         }
     }
+}
+
 }
 
 data class ReaderOption(
