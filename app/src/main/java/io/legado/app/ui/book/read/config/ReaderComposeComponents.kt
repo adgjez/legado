@@ -225,6 +225,7 @@ fun ReaderTextAction(
     val textColor = if (enabled) style.primaryText else style.secondaryText.copy(alpha = 0.55f)
     Row(
         modifier = modifier
+            .fillMaxWidth()
             .height(38.dp)
             .clip(RoundedCornerShape(style.actionRadius))
             .background(bgColor)
@@ -315,6 +316,7 @@ fun ReaderSegmentedOptions(
                 val textColor = if (selected) Color.White else style.primaryText
                 Row(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .heightIn(min = 30.dp)
                         .clip(RoundedCornerShape(cornerRadius))
                         .background(bgColor)
@@ -346,6 +348,7 @@ fun ReaderSegmentedOptions(
                 Row(
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxWidth()
                         .heightIn(min = 30.dp)
                         .clip(RoundedCornerShape(cornerRadius))
                         .background(bgColor)

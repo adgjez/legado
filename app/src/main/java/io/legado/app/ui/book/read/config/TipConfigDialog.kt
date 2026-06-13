@@ -523,6 +523,7 @@ private fun TipCompactValue(
 ) {
     Column(
         modifier = modifier
+            .fillMaxWidth()
             .height(44.dp)
             .clip(RoundedCornerShape(style.actionRadius))
             .background(style.surface)
