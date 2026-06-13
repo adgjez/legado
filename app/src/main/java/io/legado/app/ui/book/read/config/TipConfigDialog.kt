@@ -4,8 +4,10 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -476,18 +479,17 @@ private fun TipValueRow(
     style: AppDialogStyle,
     onClick: () -> Unit
 ) {
-    Surface(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = style.surface,
-        contentColor = style.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+            .clip(RoundedCornerShape(style.actionRadius))
+            .background(style.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        contentAlignment = Alignment.CenterStart
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -519,22 +521,18 @@ private fun TipCompactValue(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Surface(
+    Box(
         modifier = modifier
             .height(44.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = style.surface,
-        contentColor = style.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+            .clip(RoundedCornerShape(style.actionRadius))
+            .background(style.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = title,
