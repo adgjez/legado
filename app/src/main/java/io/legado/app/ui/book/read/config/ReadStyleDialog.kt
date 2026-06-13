@@ -131,7 +131,8 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                 selectedValue = selectedAnim.toString(),
                 palette = palette,
                 style = style,
-                scrollable = true
+                scrollable = true,
+                pillStyle = true
             ) { value ->
                 val anim = value.toIntOrNull() ?: return@ReaderSegmentedOptions
                 if (selectedAnim != anim) {

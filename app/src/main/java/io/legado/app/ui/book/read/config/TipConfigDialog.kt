@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,9 +44,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.help.config.AdvancedTitleConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
-import io.legado.app.ui.widget.compose.AppDialogSliderGrid
-import io.legado.app.ui.widget.compose.AppDialogSliderItem
 import io.legado.app.ui.widget.compose.AppDialogStyle
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
@@ -227,28 +227,27 @@ private fun TipConfigContent(
         ) {
             // 标题设置
             ReaderSectionCard(palette = palette, style = style, title = null) {
-                AppDialogSliderGrid(
-                    items = listOf(
-                        AppDialogSliderItem(
-                            title = stringResource(R.string.title_font_size),
-                            value = titleSize,
-                            range = 0..20,
-                            onValueChange = { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                        ),
-                        AppDialogSliderItem(
-                            title = stringResource(R.string.title_margin_top),
-                            value = titleTopSpacing,
-                            range = 0..100,
-                            onValueChange = { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                        ),
-                        AppDialogSliderItem(
-                            title = stringResource(R.string.title_margin_bottom),
-                            value = titleBottomSpacing,
-                            range = 0..100,
-                            onValueChange = { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                        )
-                    )
-                )
+                TipCompactSlider(
+                    label = stringResource(R.string.title_font_size),
+                    value = titleSize,
+                    range = 0..20,
+                    palette = palette,
+                    style = style
+                ) { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
+                TipCompactSlider(
+                    label = stringResource(R.string.title_margin_top),
+                    value = titleTopSpacing,
+                    range = 0..100,
+                    palette = palette,
+                    style = style
+                ) { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
+                TipCompactSlider(
+                    label = stringResource(R.string.title_margin_bottom),
+                    value = titleBottomSpacing,
+                    range = 0..100,
+                    palette = palette,
+                    style = style
+                ) { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -343,6 +342,49 @@ private fun TipConfigContent(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun TipCompactSlider(
+    label: String,
+    value: Int,
+    range: IntRange,
+    palette: ReaderComposePalette,
+    style: AppDialogStyle,
+    onValueChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = palette.text,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(56.dp)
+        )
+        Text(
+            text = value.toString(),
+            color = palette.accent,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier.width(32.dp)
+        )
+        AppThemedStepperSlider(
+            value = value.coerceIn(range),
+            range = range,
+            onValueChange = { onValueChange(it.coerceIn(range)) },
+            palette = style.toMiuixPalette(),
+            trackHeight = 28.dp,
+            thumbSize = 22.dp,
+            endpointWidth = 24.dp,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 

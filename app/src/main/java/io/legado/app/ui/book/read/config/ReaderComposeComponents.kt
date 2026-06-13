@@ -427,31 +427,35 @@ fun ReaderSegmentedOptions(
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     scrollable: Boolean = false,
+    pillStyle: Boolean = false,
     onSelected: (String) -> Unit
 ) {
+    val cornerRadius = if (pillStyle) 16.dp else style.actionRadius
+    val hPad = if (pillStyle) 12.dp else if (scrollable) 12.dp else 8.dp
+    val vPad = if (pillStyle) 6.dp else 8.dp
     if (scrollable) {
         Row(
             modifier = modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             options.forEach { option ->
                 val selected = option.value == selectedValue
                 Surface(
                     modifier = Modifier
-                        .heightIn(min = 34.dp)
+                        .heightIn(min = 30.dp)
                         .clickable { onSelected(option.value) },
-                    shape = RoundedCornerShape(style.actionRadius),
-                    color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
-                    contentColor = if (selected) palette.accent else palette.text,
+                    shape = RoundedCornerShape(cornerRadius),
+                    color = if (selected) palette.accent else palette.panelStrong,
+                    contentColor = if (selected) Color.White else palette.text,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
                     Text(
                         text = option.label,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        color = if (selected) palette.accent else palette.text,
+                        modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
+                        color = if (selected) Color.White else palette.text,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         textAlign = TextAlign.Center,
@@ -464,25 +468,25 @@ fun ReaderSegmentedOptions(
     } else {
         Row(
             modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             options.forEach { option ->
                 val selected = option.value == selectedValue
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 34.dp)
+                        .heightIn(min = 30.dp)
                         .clickable { onSelected(option.value) },
-                    shape = RoundedCornerShape(style.actionRadius),
-                    color = if (selected) palette.accent.copy(alpha = 0.18f) else palette.panelStrong,
-                    contentColor = if (selected) palette.accent else palette.text,
+                    shape = RoundedCornerShape(cornerRadius),
+                    color = if (selected) palette.accent else palette.panelStrong,
+                    contentColor = if (selected) Color.White else palette.text,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp
                 ) {
                     Text(
                         text = option.label,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                        color = if (selected) palette.accent else palette.text,
+                        modifier = Modifier.padding(horizontal = hPad, vertical = vPad),
+                        color = if (selected) Color.White else palette.text,
                         fontSize = 12.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                         textAlign = TextAlign.Center,
