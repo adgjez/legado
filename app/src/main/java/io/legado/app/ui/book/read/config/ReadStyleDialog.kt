@@ -103,10 +103,6 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     .heightIn(max = 460.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ReaderSheetHeader(
-                    title = stringResource(R.string.interface_setting),
-                    palette = palette
-                )
                 StyleLibrarySection(style = style, palette = palette)
                 TextMetricSection(style = style, palette = palette)
                 AnimAndToolsSection(style = style, palette = palette)

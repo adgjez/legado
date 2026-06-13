@@ -210,23 +210,23 @@ private fun TipConfigContent(
     LegadoMiuixCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         color = style.surface,
         contentColor = style.primaryText,
         cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
     ) {
         val palette = rememberReaderComposePalette()
         val miuixPalette = style.toMiuixPalette()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 560.dp)
+                .heightIn(max = 520.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // 标题设置
-            ReaderSectionCard(palette = palette, style = style, title = stringResource(R.string.body_title)) {
+            ReaderSectionCard(palette = palette, style = style, title = null) {
                 AppDialogSliderGrid(
                     items = listOf(
                         AppDialogSliderItem(
@@ -249,10 +249,10 @@ private fun TipConfigContent(
                         )
                     )
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     titleModeOptions.forEachIndexed { index, label ->
                         LegadoMiuixChoiceRow(
@@ -271,7 +271,7 @@ private fun TipConfigContent(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 TipAdvancedActionRow(
                     style = style,
                     enabled = titleMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED,
@@ -360,7 +360,7 @@ private fun TipAdvancedActionRow(
         color = style.surface,
         contentColor = style.primaryText.copy(alpha = alpha),
         cornerRadius = style.actionRadius,
-        insidePadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp)
+        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp)
     ) {
         Text(
             text = stringResource(R.string.advanced_title_dialog_title),
@@ -394,7 +394,7 @@ private fun TipPlacementSection(
     onMiddleClick: () -> Unit,
     onRightClick: () -> Unit
 ) {
-    ReaderSectionCard(palette = palette, style = style, title = title) {
+    ReaderSectionCard(palette = palette, style = style, title = null) {
         TipValueRow(
             title = stringResource(R.string.show_hide),
             value = showLabel,
@@ -444,7 +444,7 @@ private fun TipColorSection(
 ) {
     val tipColorLabel = remember(colorRefreshTick) { tipColorText() }
     val dividerColorLabel = remember(colorRefreshTick) { tipDividerColorText() }
-    ReaderSectionCard(palette = palette, style = style, title = stringResource(R.string.header_footer)) {
+    ReaderSectionCard(palette = palette, style = style, title = null) {
         TipValueRow(
             title = stringResource(R.string.text_color),
             value = tipColorLabel,
@@ -481,13 +481,13 @@ private fun TipValueRow(
         shadowElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = title,
                 color = palette.text,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -496,7 +496,7 @@ private fun TipValueRow(
             Text(
                 text = value,
                 color = palette.accent,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -516,7 +516,7 @@ private fun TipCompactValue(
 ) {
     Surface(
         modifier = modifier
-            .height(52.dp)
+            .height(44.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(style.actionRadius),
         color = palette.panelStrong,
@@ -525,20 +525,20 @@ private fun TipCompactValue(
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             Text(
                 text = title,
                 color = palette.secondaryText,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = value,
                 color = palette.text,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
