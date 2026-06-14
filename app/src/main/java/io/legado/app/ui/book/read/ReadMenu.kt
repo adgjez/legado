@@ -463,7 +463,7 @@ class ReadMenu @JvmOverloads constructor(
             color = style.surface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+            shadowElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier

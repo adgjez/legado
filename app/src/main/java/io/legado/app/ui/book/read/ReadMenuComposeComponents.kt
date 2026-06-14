@@ -128,45 +128,45 @@ fun ReadMenuTitleBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            // 换源按钮（文字）
+            // 换源图标
             if (!isLocalBook) {
-                Text(
-                    text = "换源",
-                    color = style.primaryText,
-                    fontSize = 13.sp,
+                Icon(
+                    painter = painterResource(R.drawable.ic_exchange),
+                    contentDescription = "换源",
+                    tint = style.primaryText,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(style.actionRadius))
+                        .size(22.dp)
                         .combinedClickable(
                             onClick = onChangeSourceClick,
                             onLongClick = onChangeSourceLongClick
                         )
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
-            // 刷新按钮（文字）
-            Text(
-                text = "刷新",
-                color = style.primaryText,
-                fontSize = 13.sp,
+            // 刷新图标
+            Icon(
+                painter = painterResource(R.drawable.ic_refresh_black_24dp),
+                contentDescription = "刷新",
+                tint = style.primaryText,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(style.actionRadius))
+                    .size(22.dp)
                     .combinedClickable(
                         onClick = onRefreshClick,
                         onLongClick = onRefreshLongClick
                     )
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
             )
-            // 缓存按钮（文字）
+            Spacer(modifier = Modifier.width(6.dp))
+            // 缓存图标
             if (!isLocalBook) {
-                Text(
-                    text = "缓存",
-                    color = style.primaryText,
-                    fontSize = 13.sp,
+                Icon(
+                    painter = painterResource(R.drawable.ic_download_line),
+                    contentDescription = "缓存",
+                    tint = style.primaryText,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(style.actionRadius))
+                        .size(22.dp)
                         .clickable(onClick = onCacheClick)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
             }
             // 三点菜单（overflow menu）- 使用 ModernActionPopup
             var anchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
@@ -413,29 +413,20 @@ fun ReadMenuSeekBarRow(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 上一章
-        Box(
+        // 上一章图标
+        Icon(
+            painter = painterResource(R.drawable.ic_skip_previous),
+            contentDescription = "上一章",
+            tint = if (canGoPrev) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
-                .height(36.dp)
-                .clip(RoundedCornerShape(style.actionRadius))
-                .background(style.fieldSurface)
+                .size(24.dp)
                 .clickable(enabled = canGoPrev, onClick = onPrevClick)
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.previous_chapter),
-                color = if (canGoPrev) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
-                fontSize = 13.sp,
-                maxLines = 1
-            )
-        }
+        )
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        // 进度滑块（AppThemedStepperSlider）
+        // 进度滑块
         var localProgress by remember { mutableIntStateOf(seekProgress) }
-        // 同步外部值变化
         LaunchedEffect(seekProgress) { localProgress = seekProgress }
         AppThemedStepperSlider(
             value = localProgress,
@@ -449,25 +440,17 @@ fun ReadMenuSeekBarRow(
             endpointWidth = 24.dp
         )
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        // 下一章
-        Box(
+        // 下一章图标
+        Icon(
+            painter = painterResource(R.drawable.ic_skip_next),
+            contentDescription = "下一章",
+            tint = if (canGoNext) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
-                .height(36.dp)
-                .clip(RoundedCornerShape(style.actionRadius))
-                .background(style.fieldSurface)
+                .size(24.dp)
                 .clickable(enabled = canGoNext, onClick = onNextClick)
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.next_chapter),
-                color = if (canGoNext) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
-                fontSize = 13.sp,
-                maxLines = 1
-            )
-        }
+        )
     }
 }
 
@@ -488,7 +471,15 @@ fun ReadMenuBrightnessRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.width(8.dp))
+            // 亮度图标
+            Icon(
+                painter = painterResource(R.drawable.ic_brightness),
+                contentDescription = "亮度",
+                tint = style.primaryText,
+                modifier = Modifier.size(20.dp)
+            )
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             // 亮度滑块
             var localBrightness by remember { mutableIntStateOf(brightness) }
