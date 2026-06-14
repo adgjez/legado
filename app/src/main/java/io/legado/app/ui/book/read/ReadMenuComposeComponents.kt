@@ -400,7 +400,9 @@ fun ReadMenuSeekBarRow(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 上一章图标
@@ -409,11 +411,11 @@ fun ReadMenuSeekBarRow(
             contentDescription = "上一章",
             tint = if (canGoPrev) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
-                .size(24.dp)
+                .size(26.dp)
                 .clickable(enabled = canGoPrev, onClick = onPrevClick)
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // 进度滑块
         var localProgress by remember { mutableIntStateOf(seekProgress) }
@@ -430,7 +432,7 @@ fun ReadMenuSeekBarRow(
             endpointWidth = 24.dp
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // 下一章图标
         Icon(
@@ -438,7 +440,7 @@ fun ReadMenuSeekBarRow(
             contentDescription = "下一章",
             tint = if (canGoNext) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
-                .size(24.dp)
+                .size(26.dp)
                 .clickable(enabled = canGoNext, onClick = onNextClick)
         )
     }
@@ -457,7 +459,9 @@ fun ReadMenuBrightnessRow(
 ) {
     if (!showBrightnessView) return
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // 自动按钮（左侧图标）
@@ -466,13 +470,13 @@ fun ReadMenuBrightnessRow(
             contentDescription = "自动亮度",
             tint = if (isAuto) style.accent else style.secondaryText,
             modifier = Modifier
-                .size(22.dp)
+                .size(26.dp)
                 .clickable(onClick = onAutoClick)
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
-        // 亮度滑块（填满剩余空间）
+        // 亮度滑块
         var localBrightness by remember { mutableIntStateOf(brightness) }
         LaunchedEffect(brightness) { localBrightness = brightness }
         AppThemedStepperSlider(
@@ -490,6 +494,9 @@ fun ReadMenuBrightnessRow(
             thumbSize = 22.dp,
             endpointWidth = 24.dp
         )
+
+        // 右侧占位（和进度条的下一章图标等宽）
+        Spacer(modifier = Modifier.width(36.dp))
     }
 }
 

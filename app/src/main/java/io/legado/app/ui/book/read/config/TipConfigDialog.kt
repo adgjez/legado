@@ -65,6 +65,8 @@ class TipConfigDialog : ComposeDialogFragment() {
         const val TIP_DIVIDER_COLOR = 7898
     }
 
+    override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
+
     override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
     override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
 
