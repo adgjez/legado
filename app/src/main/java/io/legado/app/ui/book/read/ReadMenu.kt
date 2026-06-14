@@ -316,12 +316,16 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（半透明黑色背景）
-            // 不使用 clickable，避免消费子组件触摸事件（SeekBar 等）
+            // 遮罩层（半透明黑色背景，点击关闭）
+            // 使用 interactionSource=null 避免消费子组件触摸事件
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
+                    .clickable(
+                        interactionSource = null,
+                        indication = null
+                    ) { runMenuOut() }
             )
 
             // 顶栏（带状态栏 padding）
