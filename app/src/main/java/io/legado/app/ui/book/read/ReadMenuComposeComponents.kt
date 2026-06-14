@@ -52,6 +52,8 @@ import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppDialogStyle
+import io.legado.app.ui.widget.compose.AppThemedStepperSlider
+import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.dpToPx
 
 private const val MENU_BUTTONS_PER_PAGE = 4
@@ -526,68 +528,52 @@ fun ReadMenuBrightnessRow(
     modifier: Modifier = Modifier
 ) {
     if (!showBrightnessView) return
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(R.string.brightness),
-            color = style.primaryText,
-            fontSize = 12.sp,
-            maxLines = 1
-        )
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        // 自动按钮
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(style.actionRadius))
-                .background(style.fieldSurface)
-                .clickable(onClick = onAutoClick),
-            contentAlignment = Alignment.Center
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_brightness_auto),
-                contentDescription = stringResource(R.string.brightness),
-                tint = if (isAuto) style.accent else style.secondaryText.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp)
+            // 动态亮度图标
+            DynamicBrightnessIcon(
+                brightness = brightness,
+                style = style
             )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 亮度滑块（AppThemedStepperSlider）
+            AppThemedStepperSlider(
+                value = brightness,
+                range = 0..255,
+                onValueChange = { onBrightnessChange(it) },
+                onValueChangeFinished = { onBrightnessStop(brightness) },
+                palette = style.toMiuixPalette(),
+                enabled = !isAuto,
+                modifier = Modifier.weight(1f),
+                trackHeight = 28.dp,
+                thumbSize = 22.dp,
+                endpointWidth = 24.dp
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // 自动按钮
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(style.actionRadius))
+                    .background(style.fieldSurface)
+                    .clickable(onClick = onAutoClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_brightness_auto),
+                    contentDescription = stringResource(R.string.brightness),
+                    tint = if (isAuto) style.accent else style.secondaryText.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        // 亮度 SeekBar
-        AndroidView(
-            factory = { context ->
-                android.widget.SeekBar(context).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        26.dpToPx()
-                    )
-                    max = 255
-                    progress = brightness
-                    isEnabled = !isAuto
-                    setOnSeekBarChangeListener(object : io.legado.app.ui.widget.seekbar.SeekBarChangeListener {
-                        override fun onStartTrackingTouch(seekBar: android.widget.SeekBar) {}
-                        override fun onProgressChanged(seekBar: android.widget.SeekBar, progress: Int, fromUser: Boolean) {
-                            if (fromUser) onBrightnessChange(progress)
-                        }
-                        override fun onStopTrackingTouch(seekBar: android.widget.SeekBar) {
-                            onBrightnessStop(seekBar.progress)
-                        }
-                    })
-                }
-            },
-            update = { seekBar ->
-                if (seekBar.progress != brightness) seekBar.progress = brightness
-                seekBar.isEnabled = !isAuto
-            },
-            modifier = Modifier
-                .weight(1f)
-                .height(26.dp)
-        )
     }
 }
 
@@ -871,4 +857,23 @@ private fun buildOverflowActions(
     actions.add(ModernActionPopup.Action(title = "日志", invoke = onLogClick))
     actions.add(ModernActionPopup.Action(title = "帮助", invoke = onHelpClick))
     return actions
+}
+
+/**
+ * 动态亮度图标，根据亮度值改变透明度
+ * brightness: 0 = 暗, 255 = 亮
+ */
+@Composable
+fun DynamicBrightnessIcon(
+    brightness: Int,
+    style: AppDialogStyle,
+    modifier: Modifier = Modifier
+) {
+    val alpha = (0.4f + (brightness / 255f) * 0.6f).coerceIn(0.4f, 1f)
+    Icon(
+        painter = painterResource(R.drawable.ic_brightness),
+        contentDescription = "亮度",
+        tint = style.primaryText.copy(alpha = alpha),
+        modifier = modifier.size(20.dp)
+    )
 }
