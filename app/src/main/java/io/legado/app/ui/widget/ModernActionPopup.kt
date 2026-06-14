@@ -1,5 +1,6 @@
 package io.legado.app.ui.widget
 
+import android.content.Context
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -216,6 +217,185 @@ object ModernActionPopup {
             }
         }
         return show(anchor, actions, previousPopup, maxHeightRatio, bottomGapDp)
+    }
+
+    /**
+     * 多态重载：通过 Compose 坐标显示弹出菜单，不需要 View 锚点
+     * @param context 上下文
+     * @param anchorLeft 锚点左边界（相对于 host 的像素坐标）
+     * @param anchorTop 锚点上边界
+     * @param anchorRight 锚点右边界
+     * @param anchorBottom 锚点下边界
+     * @param actions 菜单项列表
+     */
+    fun show(
+        context: Context,
+        anchorLeft: Int,
+        anchorTop: Int,
+        anchorRight: Int,
+        anchorBottom: Int,
+        actions: List<Action>,
+        previousPopup: Handle? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8
+    ): Handle? {
+        if (actions.isEmpty()) return previousPopup
+        val host = (context as? android.app.Activity)
+            ?.window?.decorView as? ViewGroup
+            ?: return previousPopup
+        val snapshot = calculateAnchorSnapshotFromCoords(
+            anchorLeft, anchorTop, anchorRight, anchorBottom,
+            host, actions, maxHeightRatio, bottomGapDp
+        )
+        previousPopup?.dismiss()
+        val visibleState = mutableStateOf(false)
+        var handle: Handle? = null
+        val overlay = ComposeView(context).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    handle?.dismiss()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        val hostDetachListener = object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = Unit
+            override fun onViewDetachedFromWindow(v: View) {
+                handle?.dismiss()
+            }
+        }
+        host.addOnAttachStateChangeListener(hostDetachListener)
+        val backCallback = (context as? androidx.activity.ComponentActivity)?.let { activity ->
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handle?.dismiss()
+                }
+            }.also { activity.onBackPressedDispatcher.addCallback(it) }
+        }
+        // 创建一个不可见的锚点 View 用于生命周期管理
+        val dummyAnchor = View(context)
+        handle = Handle(
+            visibleState = visibleState,
+            overlay = overlay,
+            host = host,
+            backCallback = backCallback,
+            anchor = dummyAnchor,
+            anchorDetachListener = object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) = Unit
+                override fun onViewDetachedFromWindow(v: View) = Unit
+            },
+            hostDetachListener = hostDetachListener
+        )
+        overlay.setContent {
+            ModernActionPopupOverlay(
+                snapshot = snapshot,
+                actions = actions,
+                visible = visibleState.value,
+                onDismiss = handle::dismiss
+            )
+        }
+        host.addView(
+            overlay,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay.requestFocus()
+        overlay.post {
+            visibleState.value = true
+        }
+        return handle
+    }
+
+    /**
+     * 多态重载：通过 Compose 坐标显示菜单（从菜单资源）
+     */
+    fun showFromMenu(
+        context: Context,
+        anchorLeft: Int,
+        anchorTop: Int,
+        anchorRight: Int,
+        anchorBottom: Int,
+        @MenuRes menuRes: Int,
+        previousPopup: Handle? = null,
+        maxHeightRatio: Float = 0.62f,
+        bottomGapDp: Int = 8,
+        prepare: (Menu.() -> Unit)? = null,
+        onClick: (MenuItem) -> Boolean
+    ): Handle? {
+        val popupMenu = PopupMenu(context, null)
+        popupMenu.inflate(menuRes)
+        prepare?.invoke(popupMenu.menu)
+        val actions = mutableListOf<Action>()
+        for (index in 0 until popupMenu.menu.size()) {
+            val item = popupMenu.menu.getItem(index)
+            if (item.isVisible) {
+                actions.add(
+                    Action(
+                        title = item.title.toString(),
+                        checked = item.isChecked,
+                        enabled = item.isEnabled
+                    ) {
+                        onClick(item)
+                    }
+                )
+            }
+        }
+        return show(context, anchorLeft, anchorTop, anchorRight, anchorBottom, actions, previousPopup, maxHeightRatio, bottomGapDp)
+    }
+
+    private fun calculateAnchorSnapshotFromCoords(
+        anchorLeft: Int,
+        anchorTop: Int,
+        anchorRight: Int,
+        anchorBottom: Int,
+        host: ViewGroup,
+        actions: List<Action>,
+        maxHeightRatio: Float,
+        bottomGapDp: Int
+    ): AnchorSnapshot {
+        val gap = 8.dpToPx()
+        val bottomGap = bottomGapDp.dpToPx()
+        val hostWidth = host.width.takeIf { it > 0 } ?: host.rootView.width
+        val hostHeight = host.height.takeIf { it > 0 } ?: host.rootView.height
+        val belowSpace = hostHeight - anchorBottom - gap - bottomGap
+        val aboveSpace = anchorTop - gap
+        val usableHeight = (hostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
+        val minimumHeight = minOf(72.dpToPx(), usableHeight).coerceAtLeast(1)
+        val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
+            minOf(48.dpToPx(), usableHeight).coerceAtLeast(1),
+            usableHeight
+        )
+        val ratio = maxHeightRatio.coerceIn(0.35f, 0.9f)
+        val ratioHeight = (usableHeight * ratio).toInt().coerceAtLeast(minimumHeight)
+        val maxHeight = minOf(anchorSpace, ratioHeight)
+            .coerceAtLeast(minimumHeight)
+            .coerceAtMost(usableHeight)
+        val maxWidth = (hostWidth - gap * 2).coerceAtLeast(1)
+        val fallbackWidth = estimatePanelWidthPx(actions, maxWidth)
+        val rowHeight = ROW_HEIGHT_DP.dpToPx()
+        val fallbackHeight = minOf(
+            maxHeight,
+            (actions.size * rowHeight + 12.dpToPx()).coerceAtLeast(minimumHeight)
+        )
+        return AnchorSnapshot(
+            anchorLeft = anchorLeft,
+            anchorTop = anchorTop,
+            anchorRight = anchorRight,
+            anchorBottom = anchorBottom,
+            hostWidth = hostWidth,
+            hostHeight = hostHeight,
+            maxWidthPx = maxWidth,
+            maxHeightPx = maxHeight,
+            fallbackWidthPx = fallbackWidth,
+            fallbackHeightPx = fallbackHeight
+        )
     }
 
     @Composable
