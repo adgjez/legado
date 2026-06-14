@@ -27,7 +27,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -467,11 +469,14 @@ fun ReadMenuSeekBarRow(
         Spacer(modifier = Modifier.width(10.dp))
 
         // 进度滑块（AppThemedStepperSlider）
+        var localProgress by remember { mutableIntStateOf(seekProgress) }
+        // 同步外部值变化
+        LaunchedEffect(seekProgress) { localProgress = seekProgress }
         AppThemedStepperSlider(
-            value = seekProgress,
+            value = localProgress,
             range = 0..seekMax.coerceAtLeast(1),
-            onValueChange = { /* 拖拽中不处理 */ },
-            onValueChangeFinished = { onSeekStop(seekProgress) },
+            onValueChange = { localProgress = it },
+            onValueChangeFinished = { onSeekStop(localProgress) },
             palette = style.toMiuixPalette(),
             modifier = Modifier.weight(1f),
             trackHeight = 28.dp,
@@ -521,11 +526,16 @@ fun ReadMenuBrightnessRow(
             Spacer(modifier = Modifier.width(8.dp))
 
             // 亮度滑块
+            var localBrightness by remember { mutableIntStateOf(brightness) }
+            LaunchedEffect(brightness) { localBrightness = brightness }
             AppThemedStepperSlider(
-                value = brightness,
+                value = localBrightness,
                 range = 0..255,
-                onValueChange = { onBrightnessChange(it) },
-                onValueChangeFinished = { onBrightnessStop(brightness) },
+                onValueChange = {
+                    localBrightness = it
+                    onBrightnessChange(it)
+                },
+                onValueChangeFinished = { onBrightnessStop(localBrightness) },
                 palette = style.toMiuixPalette(),
                 enabled = !isAuto,
                 modifier = Modifier.weight(1f),
