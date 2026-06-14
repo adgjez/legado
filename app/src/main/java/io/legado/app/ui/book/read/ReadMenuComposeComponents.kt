@@ -464,37 +464,22 @@ fun ReadMenuSeekBarRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
-        // SeekBar
-        AndroidView(
-            factory = { context ->
-                android.widget.SeekBar(context).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        26.dpToPx()
-                    )
-                    setOnSeekBarChangeListener(object : io.legado.app.ui.widget.seekbar.SeekBarChangeListener {
-                        override fun onStartTrackingTouch(seekBar: android.widget.SeekBar) {
-                            onSeekStart()
-                        }
-                        override fun onProgressChanged(seekBar: android.widget.SeekBar, progress: Int, fromUser: Boolean) {}
-                        override fun onStopTrackingTouch(seekBar: android.widget.SeekBar) {
-                            onSeekStop(seekBar.progress)
-                        }
-                    })
-                }
-            },
-            update = { seekBar ->
-                if (seekBar.max != seekMax) seekBar.max = seekMax
-                if (seekBar.progress != seekProgress) seekBar.progress = seekProgress
-            },
-            modifier = Modifier
-                .weight(1f)
-                .height(26.dp)
+        // 进度滑块（AppThemedStepperSlider）
+        AppThemedStepperSlider(
+            value = seekProgress,
+            range = 0..seekMax.coerceAtLeast(1),
+            onValueChange = { /* 拖拽中不处理 */ },
+            onValueChangeFinished = { onSeekStop(seekProgress) },
+            palette = style.toMiuixPalette(),
+            modifier = Modifier.weight(1f),
+            trackHeight = 28.dp,
+            thumbSize = 22.dp,
+            endpointWidth = 24.dp
         )
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // 下一章
         Box(
