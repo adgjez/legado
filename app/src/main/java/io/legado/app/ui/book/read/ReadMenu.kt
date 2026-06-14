@@ -20,9 +20,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -309,17 +315,18 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层
+            // 遮罩层（半透明黑色背景，点击关闭）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Transparent)
+                    .background(Color.Black.copy(alpha = 0.3f))
                     .clickable { runMenuOut() }
             )
 
-            // 顶栏
+            // 顶栏（带状态栏 padding）
             AnimatedVisibility(
                 visible = isTopBarVisible,
+                modifier = Modifier.align(Alignment.TopCenter),
                 enter = slideInVertically(
                     initialOffsetY = { -it },
                     animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
@@ -329,30 +336,40 @@ class ReadMenu @JvmOverloads constructor(
                     animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
                 )
             ) {
-                ReadMenuTopBar(
-                    bookName = currentBookName,
-                    chapterName = currentChapterName,
-                    isLocalBook = ReadBook.isLocalBook,
-                    sourceName = ReadBook.bookSource?.bookSourceName,
-                    showCustomButton = ReadBook.bookSource?.customButton == true,
-                    showCloudIcon = showCloudIcon,
-                    cloudState = cloudState,
-                    style = style,
-                    onBookClick = { callBack.openBookInfoActivity() },
-                    onSourceClick = { showSourcePopup() },
-                    onCustomButtonClick = { handleCustomButtonClick() },
-                    onCustomButtonLongClick = { handleCustomButtonLongClick() },
-                    onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
-                    onCloudLongClick = {
-                        if (io.legado.app.BuildConfig.DEBUG) {
-                            callBack.showLibraryCloudDebug()
-                        } else {
-                            callBack.showLibraryCloudChapters(refresh = true)
-                        }
-                        true
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // 状态栏占位
+                    Spacer(
+                        modifier = Modifier.height(
+                            WindowInsets.statusBars
+                                .asPaddingValues()
+                                .calculateTopPadding()
+                        )
+                    )
+                    ReadMenuTopBar(
+                        bookName = currentBookName,
+                        chapterName = currentChapterName,
+                        isLocalBook = ReadBook.isLocalBook,
+                        sourceName = ReadBook.bookSource?.bookSourceName,
+                        showCustomButton = ReadBook.bookSource?.customButton == true,
+                        showCloudIcon = showCloudIcon,
+                        cloudState = cloudState,
+                        style = style,
+                        onBookClick = { callBack.openBookInfoActivity() },
+                        onSourceClick = { showSourcePopup() },
+                        onCustomButtonClick = { handleCustomButtonClick() },
+                        onCustomButtonLongClick = { handleCustomButtonLongClick() },
+                        onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
+                        onCloudLongClick = {
+                            if (io.legado.app.BuildConfig.DEBUG) {
+                                callBack.showLibraryCloudDebug()
+                            } else {
+                                callBack.showLibraryCloudChapters(refresh = true)
+                            }
+                            true
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             // 底部菜单
@@ -573,9 +590,9 @@ class ReadMenu @JvmOverloads constructor(
 
     // region Source popup
     private fun showSourcePopup() {
-        val sourceAction = composeView?.findViewWithTag<android.view.View>("tv_source_action") ?: return
+        val anchor = composeView ?: return
         modernMenuPopup = ModernActionPopup.showFromMenu(
-            sourceAction,
+            anchor,
             R.menu.book_read_source,
             modernMenuPopup,
             prepare = {
