@@ -289,6 +289,8 @@ class ReadMenu @JvmOverloads constructor(
     // endregion
 
     init {
+        // 设置 FrameLayout 背景透明，避免退出时闪白屏
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
         composeView = ComposeView(context).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent { ReadMenuContent() }
@@ -314,12 +316,12 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（半透明黑色背景，点击关闭）
+            // 遮罩层（半透明黑色背景）
+            // 不使用 clickable，避免消费子组件触摸事件（SeekBar 等）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
-                    .clickable { runMenuOut() }
             )
 
             // 顶栏（带状态栏 padding）
