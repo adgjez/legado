@@ -44,6 +44,7 @@ class MoreConfigDialog : BasePrefDialogFragment() {
             val attr = attributes
             attr.dimAmount = 0.0f
             attr.gravity = Gravity.BOTTOM
+            attr.windowAnimations = R.style.AnimDialogBottom
             attributes = attr
             val sheetHeight = minOf(
                 (resources.displayMetrics.heightPixels * 0.68f).toInt(),
