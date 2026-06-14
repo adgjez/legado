@@ -316,19 +316,15 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（半透明黑色背景，点击关闭）
-            // 使用 interactionSource=null 避免消费子组件触摸事件
+            // 遮罩层（半透明黑色背景）
+            // 不使用 clickable，避免消费子组件触摸事件（SeekBar 等）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
-                    .clickable(
-                        interactionSource = null,
-                        indication = null
-                    ) { runMenuOut() }
             )
 
-            // 顶栏（带状态栏 padding）
+            // 顶栏（带状态栏 padding，点击顶栏外区域关闭菜单）
             AnimatedVisibility(
                 visible = isTopBarVisible,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -341,7 +337,11 @@ class ReadMenu @JvmOverloads constructor(
                     animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
                 )
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { runMenuOut() }
+                ) {
                     // 状态栏占位
                     Spacer(
                         modifier = Modifier.height(
@@ -419,6 +419,7 @@ class ReadMenu @JvmOverloads constructor(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { /* 底部面板点击不关闭菜单 */ }
                 .onGloballyPositioned { coordinates ->
                     val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
                     val size = coordinates.size
