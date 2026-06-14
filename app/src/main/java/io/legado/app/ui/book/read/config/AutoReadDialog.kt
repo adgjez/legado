@@ -55,7 +55,6 @@ import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixPalette
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.utils.ColorUtils
 
 class AutoReadDialog : ComposeDialogFragment() {
 
@@ -155,24 +154,20 @@ private fun AutoReadContent(
     onOpenSetting: () -> Unit,
     onSpeedCommitted: () -> Unit
 ) {
-    val context = LocalContext.current
-    val sheetPalette = remember { ReaderSheetStyle.resolve(context) }
-    val isLight = ColorUtils.isColorLight(sheetPalette.surface)
-    val surface = Color(sheetPalette.surface)
-    val panel = Color(sheetPalette.panel)
-    val panelStrong = Color(sheetPalette.panelStrong)
-    val textColor = Color(sheetPalette.textColor)
-    val secondaryTextColor = Color(sheetPalette.secondaryTextColor)
-    val accent = Color(sheetPalette.accentColor)
     val dialogStyle = rememberAppDialogStyle()
     val sliderPalette = LegadoMiuixPalette(
-        accent = accent,
-        surface = surface,
-        surfaceVariant = panel,
-        primaryText = textColor,
-        secondaryText = secondaryTextColor,
+        accent = dialogStyle.accent,
+        surface = dialogStyle.surface,
+        surfaceVariant = dialogStyle.fieldSurface,
+        primaryText = dialogStyle.primaryText,
+        secondaryText = dialogStyle.secondaryText,
         danger = dialogStyle.danger
     )
+    val surface = dialogStyle.surface
+    val panel = dialogStyle.fieldSurface
+    val textColor = dialogStyle.primaryText
+    val secondaryTextColor = dialogStyle.secondaryText
+    val accent = dialogStyle.accent
     var mode by remember { mutableIntStateOf(ReadBookConfig.autoReadMode) }
     var speed by remember {
         mutableIntStateOf(ReadBookConfig.autoReadSpeed.coerceIn(1, 120))
@@ -281,7 +276,7 @@ private fun AutoReadContent(
                         iconRes = R.drawable.ic_toc,
                         text = stringResource(R.string.chapter_list),
                         textColor = textColor,
-                        panelColor = if (isLight) panel else panelStrong,
+                        panelColor = panel,
                         actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenChapterList
@@ -290,7 +285,7 @@ private fun AutoReadContent(
                         iconRes = R.drawable.ic_menu,
                         text = stringResource(R.string.main_menu),
                         textColor = textColor,
-                        panelColor = if (isLight) panel else panelStrong,
+                        panelColor = panel,
                         actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onShowMenu
@@ -299,7 +294,7 @@ private fun AutoReadContent(
                         iconRes = R.drawable.ic_auto_page_stop,
                         text = stringResource(R.string.stop),
                         textColor = textColor,
-                        panelColor = if (isLight) panelStrong else panel,
+                        panelColor = panel,
                         actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onStopAutoPage
@@ -308,7 +303,7 @@ private fun AutoReadContent(
                         iconRes = R.drawable.ic_settings,
                         text = stringResource(R.string.setting),
                         textColor = textColor,
-                        panelColor = if (isLight) panel else panelStrong,
+                        panelColor = panel,
                         actionRadius = dialogStyle.actionRadius,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenSetting
@@ -362,26 +357,19 @@ private fun AutoReadAction(
 ) {
     Column(
         modifier = modifier
-            .height(58.dp)
+            .height(50.dp)
             .clip(RoundedCornerShape(actionRadius))
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 5.dp),
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Surface(
-            color = panelColor,
-            shape = RoundedCornerShape(actionRadius)
-        ) {
-            Icon(
-                painter = painterResource(id = iconRes),
-                contentDescription = text,
-                tint = textColor,
-                modifier = Modifier
-                    .size(30.dp)
-                    .padding(6.dp)
-            )
-        }
+        Icon(
+            painter = painterResource(id = iconRes),
+            contentDescription = text,
+            tint = textColor,
+            modifier = Modifier.size(22.dp)
+        )
         Spacer(modifier = Modifier.height(3.dp))
         Text(
             text = text,
