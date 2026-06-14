@@ -260,7 +260,6 @@ class ReadMenu @JvmOverloads constructor(
     private var confirmSkipToChapter: Boolean = false
     private var isMenuOutAnimating = false
     private var onMenuOutEnd: (() -> Unit)? = null
-    private var modernMenuPopup: ModernActionPopup.Handle? = null
     private var contentObserver: ContentObserver? = null
 
     private val immersiveMenu: Boolean
@@ -353,9 +352,15 @@ class ReadMenu @JvmOverloads constructor(
                         showCustomButton = ReadBook.bookSource?.customButton == true,
                         showCloudIcon = showCloudIcon,
                         cloudState = cloudState,
+                        hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
+                        hasVipChapter = ReadBook.curTextChapter?.isVip == true
+                                && ReadBook.curTextChapter?.isPay != true,
                         style = style,
                         onBookClick = { callBack.openBookInfoActivity() },
-                        onSourceClick = { showSourcePopup() },
+                        onLoginClick = { callBack.showLogin() },
+                        onPayClick = { callBack.payAction() },
+                        onEditSourceClick = { callBack.openSourceEditActivity() },
+                        onDisableSourceClick = { callBack.disableSource() },
                         onCustomButtonClick = { handleCustomButtonClick() },
                         onCustomButtonLongClick = { handleCustomButtonLongClick() },
                         onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
@@ -588,31 +593,7 @@ class ReadMenu @JvmOverloads constructor(
     }
     // endregion
 
-    // region Source popup
-    private fun showSourcePopup() {
-        val anchor = composeView ?: return
-        modernMenuPopup = ModernActionPopup.showFromMenu(
-            anchor,
-            R.menu.book_read_source,
-            modernMenuPopup,
-            prepare = {
-                findItem(R.id.menu_login).isVisible =
-                    !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
-                findItem(R.id.menu_chapter_pay).isVisible =
-                    !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
-                            && ReadBook.curTextChapter?.isVip == true
-                            && ReadBook.curTextChapter?.isPay != true
-            }
-        ) {
-            when (it.itemId) {
-                R.id.menu_login -> callBack.showLogin()
-                R.id.menu_chapter_pay -> callBack.payAction()
-                R.id.menu_edit_source -> callBack.openSourceEditActivity()
-                R.id.menu_disable_source -> callBack.disableSource()
-            }
-            true
-        }
-    }
+    // region Source popup (handled by ReadMenuTopBar DropdownMenu)
     // endregion
 
     // region Custom button

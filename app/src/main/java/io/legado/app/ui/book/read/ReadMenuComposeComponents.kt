@@ -20,16 +20,21 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,15 +62,22 @@ fun ReadMenuTopBar(
     showCustomButton: Boolean,
     showCloudIcon: Boolean,
     cloudState: LibraryCloudState,
+    hasLogin: Boolean,
+    hasVipChapter: Boolean,
     style: AppDialogStyle,
     onBookClick: () -> Unit,
-    onSourceClick: () -> Unit,
+    onLoginClick: () -> Unit,
+    onPayClick: () -> Unit,
+    onEditSourceClick: () -> Unit,
+    onDisableSourceClick: () -> Unit,
     onCustomButtonClick: () -> Unit,
     onCustomButtonLongClick: () -> Unit,
     onCloudClick: () -> Unit,
     onCloudLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showSourceMenu by remember { mutableStateOf(false) }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = style.surface,
@@ -79,7 +91,7 @@ fun ReadMenuTopBar(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 书名
+            // 书名 + 章节
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -159,24 +171,63 @@ fun ReadMenuTopBar(
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // 书源操作
+            // 书源操作（带弹出菜单）
             if (!isLocalBook) {
-                Box(
-                    modifier = Modifier
-                        .height(34.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
-                        .clickable(onClick = onSourceClick)
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = sourceName ?: stringResource(R.string.book_source),
-                        color = style.primaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(style.actionRadius))
+                            .background(style.fieldSurface)
+                            .clickable { showSourceMenu = true }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = sourceName ?: stringResource(R.string.book_source),
+                            color = style.primaryText,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showSourceMenu,
+                        onDismissRequest = { showSourceMenu = false }
+                    ) {
+                        if (hasLogin) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.login)) },
+                                onClick = {
+                                    showSourceMenu = false
+                                    onLoginClick()
+                                }
+                            )
+                        }
+                        if (hasLogin && hasVipChapter) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.chapter_pay)) },
+                                onClick = {
+                                    showSourceMenu = false
+                                    onPayClick()
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.edit_source)) },
+                            onClick = {
+                                showSourceMenu = false
+                                onEditSourceClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.disable_source)) },
+                            onClick = {
+                                showSourceMenu = false
+                                onDisableSourceClick()
+                            }
+                        )
+                    }
                 }
             }
         }
