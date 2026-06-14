@@ -69,8 +69,18 @@ fun ReadMenuTitleBar(
     onEditContentClick: () -> Unit,
     onPageAnimClick: () -> Unit,
     onMenuEditClick: () -> Unit,
+    onGetProgressClick: () -> Unit,
+    onCoverProgressClick: () -> Unit,
+    onReverseContentClick: () -> Unit,
     onSimulatedReadingClick: () -> Unit,
+    onChangeReplaceRuleClick: () -> Unit,
+    onSameTitleRemovedClick: () -> Unit,
+    onReSegmentClick: () -> Unit,
+    onImageStyleClick: () -> Unit,
     onUpdateTocClick: () -> Unit,
+    onParagraphRuleClick: () -> Unit,
+    onEffectiveReplacesClick: () -> Unit,
+    onLogClick: () -> Unit,
     onHelpClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -194,52 +204,75 @@ fun ReadMenuTitleBar(
                 ) {
                     DropdownMenuItem(
                         text = { Text("添加书签") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onAddBookmarkClick()
-                        }
+                        onClick = { showOverflowMenu = false; onAddBookmarkClick() }
                     )
                     DropdownMenuItem(
                         text = { Text("编辑内容") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onEditContentClick()
-                        }
+                        onClick = { showOverflowMenu = false; onEditContentClick() }
                     )
                     DropdownMenuItem(
                         text = { Text("翻页动画") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onPageAnimClick()
-                        }
+                        onClick = { showOverflowMenu = false; onPageAnimClick() }
                     )
                     DropdownMenuItem(
                         text = { Text("菜单编辑") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onMenuEditClick()
-                        }
+                        onClick = { showOverflowMenu = false; onMenuEditClick() }
+                    )
+                    if (!isLocalBook) {
+                        DropdownMenuItem(
+                            text = { Text("拉取云端进度") },
+                            onClick = { showOverflowMenu = false; onGetProgressClick() }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("覆盖云端进度") },
+                            onClick = { showOverflowMenu = false; onCoverProgressClick() }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("反转内容") },
+                        onClick = { showOverflowMenu = false; onReverseContentClick() }
                     )
                     DropdownMenuItem(
-                        text = { Text("模拟阅读") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onSimulatedReadingClick()
-                        }
+                        text = { Text("模拟追读") },
+                        onClick = { showOverflowMenu = false; onSimulatedReadingClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("替换简化") },
+                        onClick = { showOverflowMenu = false; onChangeReplaceRuleClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("移除重复标题") },
+                        onClick = { showOverflowMenu = false; onSameTitleRemovedClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("重新分段") },
+                        onClick = { showOverflowMenu = false; onReSegmentClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("图片样式") },
+                        onClick = { showOverflowMenu = false; onImageStyleClick() }
                     )
                     DropdownMenuItem(
                         text = { Text("更新目录") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onUpdateTocClick()
-                        }
+                        onClick = { showOverflowMenu = false; onUpdateTocClick() }
+                    )
+                    if (!isEpub) {
+                        DropdownMenuItem(
+                            text = { Text("段落规则") },
+                            onClick = { showOverflowMenu = false; onParagraphRuleClick() }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("起效的替换") },
+                        onClick = { showOverflowMenu = false; onEffectiveReplacesClick() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("日志") },
+                        onClick = { showOverflowMenu = false; onLogClick() }
                     )
                     DropdownMenuItem(
                         text = { Text("帮助") },
-                        onClick = {
-                            showOverflowMenu = false
-                            onHelpClick()
-                        }
+                        onClick = { showOverflowMenu = false; onHelpClick() }
                     )
                 }
             }

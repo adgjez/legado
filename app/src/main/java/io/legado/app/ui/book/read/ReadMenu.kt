@@ -367,7 +367,7 @@ class ReadMenu @JvmOverloads constructor(
                         bookName = currentBookName,
                         style = style,
                         isLocalBook = ReadBook.isLocalBook,
-                        isEpub = ReadBook.book?.isEpub == true,
+                        isEpub = callBack.isEpubCoreBook(),
                         onBookClick = { callBack.openBookInfoActivity() },
                         onChangeSourceClick = { callBack.changeSource() },
                         onChangeSourceLongClick = { callBack.changeSourceSingle() },
@@ -378,8 +378,18 @@ class ReadMenu @JvmOverloads constructor(
                         onEditContentClick = { callBack.editContent() },
                         onPageAnimClick = { callBack.showPageAnim() },
                         onMenuEditClick = { callBack.editMenu() },
-                        onSimulatedReadingClick = { callBack.showSimulatedReading() },
+                        onGetProgressClick = { callBack.showGetProgress() },
+                        onCoverProgressClick = { callBack.showCoverProgress() },
+                        onReverseContentClick = { callBack.reverseContent() },
+                        onSimulatedReadingClick = { (activity as? BaseReadBookActivity)?.showSimulatedReading() },
+                        onChangeReplaceRuleClick = { callBack.changeReplaceRuleState() },
+                        onSameTitleRemovedClick = { callBack.showSameTitleRemoved() },
+                        onReSegmentClick = { callBack.showReSegment() },
+                        onImageStyleClick = { callBack.showImageStyle() },
                         onUpdateTocClick = { callBack.updateToc() },
+                        onParagraphRuleClick = { callBack.showParagraphRuleManage() },
+                        onEffectiveReplacesClick = { callBack.showEffectiveReplaces() },
+                        onLogClick = { callBack.showLog() },
                         onHelpClick = { callBack.showHelp() },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -753,16 +763,25 @@ class ReadMenu @JvmOverloads constructor(
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit
-        fun refreshContent() = Unit
-        fun changeSource() = Unit
-        fun changeSourceSingle() = Unit
-        fun showRefreshOptions() = Unit
-        fun showCacheDialog() = Unit
+        fun refreshContent()
+        fun changeSource()
+        fun changeSourceSingle()
+        fun showRefreshOptions()
+        fun showCacheDialog()
         fun addBookmark()
-        fun editContent() = Unit
-        fun showPageAnim() = Unit
-        fun editMenu() = Unit
-        fun showSimulatedReading()
-        fun updateToc() = Unit
+        fun editContent()
+        fun showPageAnim()
+        fun editMenu()
+        fun updateToc()
+        fun reverseContent()
+        fun changeReplaceRuleState()
+        fun showReSegment()
+        fun showSameTitleRemoved()
+        fun showImageStyle()
+        fun showParagraphRuleManage()
+        fun showEffectiveReplaces()
+        fun showLog()
+        fun showGetProgress()
+        fun showCoverProgress()
     }
 }

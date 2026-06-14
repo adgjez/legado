@@ -4389,6 +4389,151 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    override fun refreshContent() {
+        if (ReadBook.bookSource == null) {
+            upContent()
+        } else {
+            ReadBook.book?.let {
+                ReadBook.curTextChapter = null
+                binding.readView.upContent()
+                viewModel.refreshContentDur(it)
+            }
+        }
+    }
+
+    override fun changeSource() {
+        binding.readMenu.runMenuOut()
+        ReadBook.book?.let {
+            showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
+        }
+    }
+
+    override fun changeSourceSingle() {
+        lifecycleScope.launch {
+            val book = ReadBook.book ?: return@launch
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex) ?: return@launch
+            binding.readMenu.runMenuOut()
+            showDialogFragment(
+                ChangeChapterSourceDialog(book.name, book.author, chapter.index, chapter.title)
+            )
+        }
+    }
+
+    override fun showRefreshOptions() {
+        // 长按刷新 - 暂时刷新全部
+        ReadBook.book?.let { refreshContentAll(it) }
+    }
+
+    override fun showCacheDialog() {
+        showDownloadDialog()
+    }
+
+    override fun editContent() {
+        showDialogFragment(ContentEditDialog())
+    }
+
+    override fun showPageAnim() {
+        showPageAnimConfig {
+            binding.readView.upPageAnim()
+            ReadBook.relayoutCurrentContent("page-anim")
+        }
+    }
+
+    override fun editMenu() {
+        startActivity<ReadMenuButtonManageActivity>()
+    }
+
+    override fun updateToc() {
+        ReadBook.book?.let {
+            if (it.isEpub) {
+                BookHelp.clearCache(it)
+                EpubFile.clear()
+            }
+            if (it.isMobi) {
+                MobiFile.clear()
+            }
+            loadChapterList(it)
+        }
+    }
+
+    override fun reverseContent() {
+        ReadBook.book?.let {
+            viewModel.reverseContent(it)
+        }
+    }
+
+    override fun showReSegment() {
+        ReadBook.book?.let {
+            it.setReSegment(!it.getReSegment())
+            ReadBook.saveRead(fullUpdate = true)
+            ReadBook.reloadCurrentContent("re-segment")
+        }
+    }
+
+    override fun showSameTitleRemoved() {
+        ReadBook.book?.let {
+            val contentProcessor = ContentProcessor.get(it)
+            val textChapter = ReadBook.curTextChapter
+            if (textChapter != null
+                && !textChapter.sameTitleRemoved
+                && !BookHelp.getChapterCacheFileNames(it, textChapter.chapter, "nr")
+                    .any(contentProcessor.removeSameTitleCache::contains)
+            ) {
+                toastOnUi("未找到可移除的重复标题")
+            }
+        }
+        viewModel.reverseRemoveSameTitle()
+    }
+
+    override fun showImageStyle() {
+        val imgStyles = arrayListOf(
+            Book.imgStyleDefault,
+            Book.imgStyleFull,
+            Book.imgStyleText,
+            Book.imgStyleSingle
+        )
+        selector(R.string.image_style, imgStyles) { _, index ->
+            val imageStyle = imgStyles[index]
+            ReadBook.book?.setImageStyle(imageStyle)
+            if (imageStyle == Book.imgStyleSingle) {
+                ReadBook.book?.setPageAnim(0)
+                binding.readView.upPageAnim()
+            }
+            ReadBook.saveRead(fullUpdate = true)
+            ReadBook.reloadCurrentContent("image-style")
+        }
+    }
+
+    override fun showParagraphRuleManage() {
+        ReadBook.book?.let {
+            startActivity<ParagraphRuleManageActivity> {
+                putExtra("bookUrl", it.bookUrl)
+            }
+        }
+    }
+
+    override fun showEffectiveReplaces() {
+        showDialogFragment<EffectiveReplacesDialog>()
+    }
+
+    override fun showLog() {
+        showDialogFragment<AppLogDialog>()
+    }
+
+    override fun showGetProgress() {
+        ReadBook.book?.let {
+            viewModel.syncBookProgress(it) { progress ->
+                sureSyncProgress(progress)
+            }
+        }
+    }
+
+    override fun showCoverProgress() {
+        ReadBook.book?.let {
+            ReadBook.uploadProgress(true) { toastOnUi(R.string.upload_book_success) }
+        }
+    }
+
     private fun startBackupJob() {
         backupJob?.cancel()
         backupJob = lifecycleScope.launch(IO) {
