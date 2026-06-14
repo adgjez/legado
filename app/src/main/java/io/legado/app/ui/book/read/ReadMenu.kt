@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,8 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.titleTypeface
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.ReadBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.browser.WebViewActivity
@@ -321,7 +324,13 @@ class ReadMenu @JvmOverloads constructor(
         @Suppress("UNUSED_VARIABLE")
         val recomposeKey = colorTick
         val style = rememberReadMenuStyle()
+        val bodyFontFamily = androidx.compose.ui.text.font.FontFamily(context.uiTypeface())
+        val titleFontFamily = androidx.compose.ui.text.font.FontFamily(context.titleTypeface())
 
+        CompositionLocalProvider(
+            androidx.compose.material3.LocalTextStyle provides
+                androidx.compose.material3.LocalTextStyle.current.copy(fontFamily = bodyFontFamily)
+        ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // 点击空白区域关闭菜单（只响应 tap，不干扰拖拽）
             Box(
@@ -440,6 +449,7 @@ class ReadMenu @JvmOverloads constructor(
                 ReadMenuBottomPanel(style = style)
             }
         }
+        } // CompositionLocalProvider
     }
 
     @Composable

@@ -105,7 +105,7 @@ fun ReadMenuTitleBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onBookClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 返回按钮
@@ -117,12 +117,12 @@ fun ReadMenuTitleBar(
                     .size(22.dp)
                     .clickable { onBookClick() }
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             // 书名
             Text(
                 text = bookName ?: "",
                 color = style.primaryText,
-                fontSize = 17.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -267,7 +267,7 @@ fun ReadMenuActionBar(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 章节信息
+            // 章节信息（只显示章节名，不显示URL）
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -277,20 +277,10 @@ fun ReadMenuActionBar(
                     Text(
                         text = it,
                         color = style.primaryText,
-                        fontSize = 15.sp,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
-                    )
-                }
-                chapterUrl?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        text = it,
-                        color = style.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
@@ -470,15 +460,14 @@ fun ReadMenuBrightnessRow(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 自动按钮（左侧）
-        Text(
-            text = "自动",
-            color = if (isAuto) style.accent else style.secondaryText,
-            fontSize = 12.sp,
+        // 自动按钮（左侧图标）
+        Icon(
+            painter = painterResource(R.drawable.ic_brightness_auto),
+            contentDescription = "自动亮度",
+            tint = if (isAuto) style.accent else style.secondaryText,
             modifier = Modifier
-                .clip(RoundedCornerShape(style.actionRadius))
+                .size(22.dp)
                 .clickable(onClick = onAutoClick)
-                .padding(horizontal = 8.dp, vertical = 4.dp)
         )
 
         Spacer(modifier = Modifier.width(8.dp))
