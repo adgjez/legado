@@ -327,12 +327,6 @@ class ReadMenu @JvmOverloads constructor(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
             )
-            // 空白区域点击关闭（顶栏和底部菜单之间的区域）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable { runMenuOut() }
-            )
 
             // 顶栏（带状态栏 padding，点击顶栏外区域关闭菜单）
             AnimatedVisibility(
