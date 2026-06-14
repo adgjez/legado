@@ -338,11 +338,11 @@ class ReadMenu @JvmOverloads constructor(
                 modifier = Modifier.align(Alignment.TopCenter),
                 enter = slideInVertically(
                     initialOffsetY = { -it },
-                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
+                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(150)
                 ),
                 exit = slideOutVertically(
                     targetOffsetY = { -it },
-                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
+                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(150)
                 )
             ) {
                 val statusBarHeight = WindowInsets.statusBars
@@ -430,11 +430,11 @@ class ReadMenu @JvmOverloads constructor(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(
                     initialOffsetY = { it },
-                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
+                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(150)
                 ),
                 exit = slideOutVertically(
                     targetOffsetY = { it },
-                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
+                    animationSpec = if (AppConfig.isEInkMode) snap() else tween(150)
                 )
             ) {
                 ReadMenuBottomPanel(style = style)

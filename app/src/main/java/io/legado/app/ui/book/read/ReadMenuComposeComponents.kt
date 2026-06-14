@@ -466,59 +466,41 @@ fun ReadMenuBrightnessRow(
     modifier: Modifier = Modifier
 ) {
     if (!showBrightnessView) return
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 亮度图标
-            Icon(
-                painter = painterResource(R.drawable.ic_brightness),
-                contentDescription = "亮度",
-                tint = style.primaryText,
-                modifier = Modifier.size(20.dp)
-            )
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // 自动按钮（左侧）
+        Text(
+            text = "自动",
+            color = if (isAuto) style.accent else style.secondaryText,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(style.actionRadius))
+                .clickable(onClick = onAutoClick)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
 
-            Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-            // 亮度滑块
-            var localBrightness by remember { mutableIntStateOf(brightness) }
-            LaunchedEffect(brightness) { localBrightness = brightness }
-            AppThemedStepperSlider(
-                value = localBrightness,
-                range = 0..255,
-                onValueChange = {
-                    localBrightness = it
-                    onBrightnessChange(it)
-                },
-                onValueChangeFinished = { onBrightnessStop(localBrightness) },
-                palette = style.toMiuixPalette(),
-                enabled = !isAuto,
-                modifier = Modifier.weight(1f),
-                trackHeight = 28.dp,
-                thumbSize = 22.dp,
-                endpointWidth = 24.dp
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 自动按钮
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(style.actionRadius))
-                    .background(style.fieldSurface)
-                    .clickable(onClick = onAutoClick),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_brightness_auto),
-                    contentDescription = stringResource(R.string.brightness),
-                    tint = if (isAuto) style.accent else style.secondaryText.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
+        // 亮度滑块（填满剩余空间）
+        var localBrightness by remember { mutableIntStateOf(brightness) }
+        LaunchedEffect(brightness) { localBrightness = brightness }
+        AppThemedStepperSlider(
+            value = localBrightness,
+            range = 0..255,
+            onValueChange = {
+                localBrightness = it
+                onBrightnessChange(it)
+            },
+            onValueChangeFinished = { onBrightnessStop(localBrightness) },
+            palette = style.toMiuixPalette(),
+            enabled = !isAuto,
+            modifier = Modifier.weight(1f),
+            trackHeight = 28.dp,
+            thumbSize = 22.dp,
+            endpointWidth = 24.dp
+        )
     }
 }
 
