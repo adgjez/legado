@@ -33,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -501,6 +503,7 @@ fun ReadMenuSeekBarRow(
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReadMenuBrightnessRow(
     brightness: Int,
@@ -518,26 +521,25 @@ fun ReadMenuBrightnessRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 动态亮度图标
-            DynamicBrightnessIcon(
-                brightness = brightness,
-                style = style
-            )
-
             Spacer(modifier = Modifier.width(8.dp))
 
-            // 亮度滑块（AppThemedStepperSlider）
-            AppThemedStepperSlider(
-                value = brightness,
-                range = 0..255,
-                onValueChange = { onBrightnessChange(it) },
+            // 亮度滑块（Compose Slider + 月亮 thumb）
+            androidx.compose.material3.Slider(
+                value = brightness / 255f,
+                onValueChange = { onBrightnessChange((it * 255).toInt()) },
                 onValueChangeFinished = { onBrightnessStop(brightness) },
-                palette = style.toMiuixPalette(),
                 enabled = !isAuto,
                 modifier = Modifier.weight(1f),
-                trackHeight = 28.dp,
-                thumbSize = 22.dp,
-                endpointWidth = 24.dp
+                thumb = {
+                    MoonThumb(fraction = brightness / 255f)
+                },
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    activeTrackColor = style.accent,
+                    inactiveTrackColor = style.fieldSurface,
+                    thumbColor = Color.Transparent,
+                    disabledActiveTrackColor = style.accent.copy(alpha = 0.3f),
+                    disabledInactiveTrackColor = style.fieldSurface.copy(alpha = 0.5f)
+                )
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -845,20 +847,29 @@ private fun buildOverflowActions(
 }
 
 /**
- * 动态亮度图标，根据亮度值改变透明度
- * brightness: 0 = 暗, 255 = 亮
+ * 动态月亮 thumb，用 drawBehind 绘制
+ * fraction: 0.0 = 月牙, 0.5 = 半月, 1.0 = 满月
  */
 @Composable
-fun DynamicBrightnessIcon(
-    brightness: Int,
-    style: AppDialogStyle,
+fun MoonThumb(
+    fraction: Float,
     modifier: Modifier = Modifier
 ) {
-    val alpha = (0.4f + (brightness / 255f) * 0.6f).coerceIn(0.4f, 1f)
-    Icon(
-        painter = painterResource(R.drawable.ic_brightness),
-        contentDescription = "亮度",
-        tint = style.primaryText.copy(alpha = alpha),
-        modifier = modifier.size(20.dp)
+    val f = fraction.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .size(26.dp)
+            .drawBehind {
+                val radius = size.minDimension / 2f
+                val moonColor = Color(0xFF3A3A3A)
+                val brightColor = Color(0xFFFFD54F)
+                drawCircle(color = moonColor, radius = radius)
+                val offsetX = (1f - f) * radius * 1.6f
+                drawCircle(
+                    color = brightColor,
+                    radius = radius * 0.82f,
+                    center = Offset(center.x + offsetX, center.y)
+                )
+            }
     )
 }

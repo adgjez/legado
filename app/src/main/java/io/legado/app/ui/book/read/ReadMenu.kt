@@ -321,19 +321,17 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（半透明黑色背景，点击关闭）
-            // 使用 pointerInput 检测点击，不消费触摸事件（SeekBar 等不受影响）
+            // 遮罩层（纯背景，无手势处理）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown()
-                            waitForUpOrCancellation()
-                            runMenuOut()
-                        }
-                    }
+            )
+            // 空白区域点击关闭（顶栏和底部菜单之间的区域）
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable { runMenuOut() }
             )
 
             // 顶栏（带状态栏 padding，点击顶栏外区域关闭菜单）
