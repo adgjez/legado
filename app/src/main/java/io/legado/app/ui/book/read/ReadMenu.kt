@@ -321,14 +321,7 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（纯背景，无手势处理）
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.3f))
-            )
-
-            // 顶栏（带状态栏 padding，点击顶栏外区域关闭菜单）
+            // 顶栏（带状态栏 padding）
             AnimatedVisibility(
                 visible = isTopBarVisible,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -342,9 +335,7 @@ class ReadMenu @JvmOverloads constructor(
                 )
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { runMenuOut() }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     // 状态栏占位
                     Spacer(
