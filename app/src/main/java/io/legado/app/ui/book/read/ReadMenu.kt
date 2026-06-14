@@ -147,6 +147,7 @@ class ReadMenu @JvmOverloads constructor(
 
     fun runMenuIn(anim: Boolean = !AppConfig.isEInkMode) {
         callBack.onMenuShow()
+        this.visibility = VISIBLE
         callBack.upSystemUiVisibility()
         isTopBarVisible = true
         isBottomMenuVisible = true
@@ -164,6 +165,7 @@ class ReadMenu @JvmOverloads constructor(
         isBottomMenuVisible = false
         // 延迟清理状态（等待动画结束）
         postDelayed({
+            this.visibility = INVISIBLE
             canShowMenu = false
             isMenuOutAnimating = false
             onMenuOutEnd?.invoke()
