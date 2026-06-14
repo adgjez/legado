@@ -412,7 +412,12 @@ fun ReadMenuSeekBarRow(
             tint = if (canGoPrev) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
                 .size(26.dp)
-                .clickable(enabled = canGoPrev, onClick = onPrevClick)
+                .clickable(
+                    interactionSource = null,
+                    indication = null,
+                    enabled = canGoPrev,
+                    onClick = onPrevClick
+                )
         )
 
         Spacer(modifier = Modifier.width(10.dp))
@@ -441,7 +446,12 @@ fun ReadMenuSeekBarRow(
             tint = if (canGoNext) style.primaryText else style.secondaryText.copy(alpha = 0.5f),
             modifier = Modifier
                 .size(26.dp)
-                .clickable(enabled = canGoNext, onClick = onNextClick)
+                .clickable(
+                    interactionSource = null,
+                    indication = null,
+                    enabled = canGoNext,
+                    onClick = onNextClick
+                )
         )
     }
 }
@@ -471,7 +481,11 @@ fun ReadMenuBrightnessRow(
             tint = if (isAuto) style.accent else style.secondaryText,
             modifier = Modifier
                 .size(26.dp)
-                .clickable(onClick = onAutoClick)
+                .clickable(
+                    interactionSource = null,
+                    indication = null,
+                    onClick = onAutoClick
+                )
         )
 
         Spacer(modifier = Modifier.width(10.dp))
@@ -530,9 +544,6 @@ fun ReadMenuButtonGrid(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-        }
-        if (hasFirstRow && hasSecondRow) {
-            ReadMenuDivider(style = style)
         }
         if (hasSecondRow) {
             ReadMenuButtonRow(
@@ -627,9 +638,10 @@ private fun ReadMenuButton(
 
     Column(
         modifier = modifier
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { onLongClick() }
+            .clickable(
+                interactionSource = null,
+                indication = null,
+                onClick = onClick
             )
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
