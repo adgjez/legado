@@ -17,6 +17,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -316,12 +320,19 @@ class ReadMenu @JvmOverloads constructor(
         val style = rememberReadMenuStyle()
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩层（半透明黑色背景）
-            // 不使用 clickable，避免消费子组件触摸事件（SeekBar 等）
+            // 遮罩层（半透明黑色背景，点击关闭）
+            // 使用 pointerInput 检测点击，不消费触摸事件（SeekBar 等不受影响）
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.3f))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown()
+                            waitForUpOrCancellation()
+                            runMenuOut()
+                        }
+                    }
             )
 
             // 顶栏（带状态栏 padding，点击顶栏外区域关闭菜单）
