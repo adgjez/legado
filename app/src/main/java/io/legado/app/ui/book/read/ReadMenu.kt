@@ -358,6 +358,7 @@ class ReadMenu @JvmOverloads constructor(
             // 底部菜单
             AnimatedVisibility(
                 visible = isBottomMenuVisible,
+                modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(
                     initialOffsetY = { it },
                     animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
