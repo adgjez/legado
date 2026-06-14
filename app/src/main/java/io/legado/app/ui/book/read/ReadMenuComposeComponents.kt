@@ -54,9 +54,50 @@ import io.legado.app.utils.dpToPx
 private const val MENU_BUTTONS_PER_PAGE = 4
 
 @Composable
-fun ReadMenuTopBar(
+fun ReadMenuTitleBar(
     bookName: String?,
+    style: AppDialogStyle,
+    onBookClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = style.surface,
+        contentColor = style.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onBookClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_back),
+                contentDescription = null,
+                tint = style.primaryText,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = bookName ?: "",
+                color = style.primaryText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+fun ReadMenuActionBar(
     chapterName: String?,
+    chapterUrl: String?,
     isLocalBook: Boolean,
     sourceName: String?,
     showCustomButton: Boolean,
@@ -65,7 +106,8 @@ fun ReadMenuTopBar(
     hasLogin: Boolean,
     hasVipChapter: Boolean,
     style: AppDialogStyle,
-    onBookClick: () -> Unit,
+    onChapterClick: () -> Unit,
+    onChapterLongClick: () -> Unit,
     onLoginClick: () -> Unit,
     onPayClick: () -> Unit,
     onEditSourceClick: () -> Unit,
@@ -91,30 +133,30 @@ fun ReadMenuTopBar(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 书名 + 章节
+            // 章节信息
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(onClick = onBookClick)
+                    .clickable(onClick = onChapterClick)
             ) {
-                bookName?.takeIf { it.isNotBlank() }?.let {
+                chapterName?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         color = style.primaryText,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                chapterName?.takeIf { it.isNotBlank() }?.let {
+                chapterUrl?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         color = style.secondaryText,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }

@@ -344,9 +344,17 @@ class ReadMenu @JvmOverloads constructor(
                                 .calculateTopPadding()
                         )
                     )
-                    ReadMenuTopBar(
+                    // Toolbar（书名 + 返回按钮）
+                    ReadMenuTitleBar(
                         bookName = currentBookName,
+                        style = style,
+                        onBookClick = { callBack.openBookInfoActivity() },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    // 操作栏（章节信息 + 操作按钮）
+                    ReadMenuActionBar(
                         chapterName = currentChapterName,
+                        chapterUrl = currentChapterUrl,
                         isLocalBook = ReadBook.isLocalBook,
                         sourceName = ReadBook.bookSource?.bookSourceName,
                         showCustomButton = ReadBook.bookSource?.customButton == true,
@@ -356,7 +364,8 @@ class ReadMenu @JvmOverloads constructor(
                         hasVipChapter = ReadBook.curTextChapter?.isVip == true
                                 && ReadBook.curTextChapter?.isPay != true,
                         style = style,
-                        onBookClick = { callBack.openBookInfoActivity() },
+                        onChapterClick = { handleChapterClick() },
+                        onChapterLongClick = { handleChapterLongClick() },
                         onLoginClick = { callBack.showLogin() },
                         onPayClick = { callBack.payAction() },
                         onEditSourceClick = { callBack.openSourceEditActivity() },
@@ -594,6 +603,33 @@ class ReadMenu @JvmOverloads constructor(
     // endregion
 
     // region Source popup (handled by ReadMenuTopBar DropdownMenu)
+    // endregion
+
+    // region Chapter click
+    private fun handleChapterClick() {
+        if (ReadBook.isLocalBook) return
+        val url = currentChapterUrl?.trim().orEmpty().takeIf { it.isNotBlank() } ?: return
+        Coroutine.async {
+            context.startActivity<WebViewActivity> {
+                val bookSource = ReadBook.bookSource
+                putExtra("title", currentChapterName)
+                putExtra("url", url)
+                putExtra("sourceOrigin", bookSource?.bookSourceUrl)
+                putExtra("sourceName", bookSource?.bookSourceName)
+                putExtra("sourceType", bookSource?.getSourceType())
+            }
+        }
+    }
+
+    private fun handleChapterLongClick() {
+        if (ReadBook.isLocalBook) return
+        val url = currentChapterUrl?.trim().orEmpty().takeIf { it.isNotBlank() } ?: return
+        context.alert(R.string.open_fun) {
+            setMessage(R.string.use_browser_open)
+            okButton { context.openUrl(url) }
+            noButton()
+        }
+    }
     // endregion
 
     // region Custom button
