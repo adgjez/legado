@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -48,6 +50,7 @@ import io.legado.app.R
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
+import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.utils.dpToPx
 
@@ -84,7 +87,8 @@ fun ReadMenuTitleBar(
     onHelpClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showOverflowMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var popupHandle by remember { mutableStateOf<ModernActionPopup.Handle?>(null) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -181,100 +185,61 @@ fun ReadMenuTitleBar(
                 }
                 Spacer(modifier = Modifier.width(4.dp))
             }
-            // 三点菜单（overflow menu）
-            Box {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
-                        .clickable { showOverflowMenu = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
-                        contentDescription = "更多选项",
-                        tint = style.primaryText,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                DropdownMenu(
-                    expanded = showOverflowMenu,
-                    onDismissRequest = { showOverflowMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("添加书签") },
-                        onClick = { showOverflowMenu = false; onAddBookmarkClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("编辑内容") },
-                        onClick = { showOverflowMenu = false; onEditContentClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("翻页动画") },
-                        onClick = { showOverflowMenu = false; onPageAnimClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("菜单编辑") },
-                        onClick = { showOverflowMenu = false; onMenuEditClick() }
-                    )
-                    if (!isLocalBook) {
-                        DropdownMenuItem(
-                            text = { Text("拉取云端进度") },
-                            onClick = { showOverflowMenu = false; onGetProgressClick() }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("覆盖云端进度") },
-                            onClick = { showOverflowMenu = false; onCoverProgressClick() }
+            // 三点菜单（overflow menu）- 使用 ModernActionPopup
+            var anchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(style.actionRadius))
+                    .background(style.fieldSurface)
+                    .onGloballyPositioned { coordinates ->
+                        val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
+                        val size = coordinates.size
+                        anchorBounds = androidx.compose.ui.geometry.Rect(
+                            pos.x, pos.y,
+                            pos.x + size.width, pos.y + size.height
                         )
                     }
-                    DropdownMenuItem(
-                        text = { Text("反转内容") },
-                        onClick = { showOverflowMenu = false; onReverseContentClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("模拟追读") },
-                        onClick = { showOverflowMenu = false; onSimulatedReadingClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("替换净化") },
-                        onClick = { showOverflowMenu = false; onChangeReplaceRuleClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("移除重复标题") },
-                        onClick = { showOverflowMenu = false; onSameTitleRemovedClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("重新分段") },
-                        onClick = { showOverflowMenu = false; onReSegmentClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("图片样式") },
-                        onClick = { showOverflowMenu = false; onImageStyleClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("更新目录") },
-                        onClick = { showOverflowMenu = false; onUpdateTocClick() }
-                    )
-                    if (!isEpub) {
-                        DropdownMenuItem(
-                            text = { Text("段落规则") },
-                            onClick = { showOverflowMenu = false; onParagraphRuleClick() }
+                    .clickable {
+                        val actions = buildOverflowActions(
+                            isLocalBook = isLocalBook,
+                            isEpub = isEpub,
+                            onAddBookmarkClick = onAddBookmarkClick,
+                            onEditContentClick = onEditContentClick,
+                            onPageAnimClick = onPageAnimClick,
+                            onMenuEditClick = onMenuEditClick,
+                            onGetProgressClick = onGetProgressClick,
+                            onCoverProgressClick = onCoverProgressClick,
+                            onReverseContentClick = onReverseContentClick,
+                            onSimulatedReadingClick = onSimulatedReadingClick,
+                            onChangeReplaceRuleClick = onChangeReplaceRuleClick,
+                            onSameTitleRemovedClick = onSameTitleRemovedClick,
+                            onReSegmentClick = onReSegmentClick,
+                            onImageStyleClick = onImageStyleClick,
+                            onUpdateTocClick = onUpdateTocClick,
+                            onParagraphRuleClick = onParagraphRuleClick,
+                            onEffectiveReplacesClick = onEffectiveReplacesClick,
+                            onLogClick = onLogClick,
+                            onHelpClick = onHelpClick
                         )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("起效的替换") },
-                        onClick = { showOverflowMenu = false; onEffectiveReplacesClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("日志") },
-                        onClick = { showOverflowMenu = false; onLogClick() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("帮助") },
-                        onClick = { showOverflowMenu = false; onHelpClick() }
-                    )
-                }
+                        popupHandle = ModernActionPopup.show(
+                            context,
+                            anchorBounds.left.toInt(),
+                            anchorBounds.top.toInt(),
+                            anchorBounds.right.toInt(),
+                            anchorBounds.bottom.toInt(),
+                            actions,
+                            popupHandle
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = "更多选项",
+                    tint = style.primaryText,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -860,4 +825,50 @@ private fun readMenuButtonIconRes(
         ReadMenuButtonConfig.Builtin.CHARACTERS -> R.drawable.ic_bottom_person
         else -> R.drawable.ic_custom
     }
+}
+
+private fun buildOverflowActions(
+    isLocalBook: Boolean,
+    isEpub: Boolean,
+    onAddBookmarkClick: () -> Unit,
+    onEditContentClick: () -> Unit,
+    onPageAnimClick: () -> Unit,
+    onMenuEditClick: () -> Unit,
+    onGetProgressClick: () -> Unit,
+    onCoverProgressClick: () -> Unit,
+    onReverseContentClick: () -> Unit,
+    onSimulatedReadingClick: () -> Unit,
+    onChangeReplaceRuleClick: () -> Unit,
+    onSameTitleRemovedClick: () -> Unit,
+    onReSegmentClick: () -> Unit,
+    onImageStyleClick: () -> Unit,
+    onUpdateTocClick: () -> Unit,
+    onParagraphRuleClick: () -> Unit,
+    onEffectiveReplacesClick: () -> Unit,
+    onLogClick: () -> Unit,
+    onHelpClick: () -> Unit
+): List<ModernActionPopup.Action> {
+    val actions = mutableListOf<ModernActionPopup.Action>()
+    actions.add(ModernActionPopup.Action(title = "添加书签", invoke = onAddBookmarkClick))
+    actions.add(ModernActionPopup.Action(title = "编辑内容", invoke = onEditContentClick))
+    actions.add(ModernActionPopup.Action(title = "翻页动画", invoke = onPageAnimClick))
+    actions.add(ModernActionPopup.Action(title = "菜单编辑", invoke = onMenuEditClick))
+    if (!isLocalBook) {
+        actions.add(ModernActionPopup.Action(title = "拉取云端进度", invoke = onGetProgressClick))
+        actions.add(ModernActionPopup.Action(title = "覆盖云端进度", invoke = onCoverProgressClick))
+    }
+    actions.add(ModernActionPopup.Action(title = "反转内容", invoke = onReverseContentClick))
+    actions.add(ModernActionPopup.Action(title = "模拟追读", invoke = onSimulatedReadingClick))
+    actions.add(ModernActionPopup.Action(title = "替换净化", invoke = onChangeReplaceRuleClick))
+    actions.add(ModernActionPopup.Action(title = "移除重复标题", invoke = onSameTitleRemovedClick))
+    actions.add(ModernActionPopup.Action(title = "重新分段", invoke = onReSegmentClick))
+    actions.add(ModernActionPopup.Action(title = "图片样式", invoke = onImageStyleClick))
+    actions.add(ModernActionPopup.Action(title = "更新目录", invoke = onUpdateTocClick))
+    if (!isEpub) {
+        actions.add(ModernActionPopup.Action(title = "段落规则", invoke = onParagraphRuleClick))
+    }
+    actions.add(ModernActionPopup.Action(title = "起效的替换", invoke = onEffectiveReplacesClick))
+    actions.add(ModernActionPopup.Action(title = "日志", invoke = onLogClick))
+    actions.add(ModernActionPopup.Action(title = "帮助", invoke = onHelpClick))
+    return actions
 }
