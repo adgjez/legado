@@ -237,7 +237,7 @@ fun ReadMenuTitleBar(
                         onClick = { showOverflowMenu = false; onSimulatedReadingClick() }
                     )
                     DropdownMenuItem(
-                        text = { Text("替换简化") },
+                        text = { Text("替换净化") },
                         onClick = { showOverflowMenu = false; onChangeReplaceRuleClick() }
                     )
                     DropdownMenuItem(
