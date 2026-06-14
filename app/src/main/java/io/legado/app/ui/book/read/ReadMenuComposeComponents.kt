@@ -51,6 +51,7 @@ import android.graphics.PorterDuff
 import io.legado.app.R
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.help.book.library.LibraryCloudState
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.read.ReadMenuButtonConfig
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppDialogStyle
@@ -89,6 +90,7 @@ fun ReadMenuTitleBar(
     onEffectiveReplacesClick: () -> Unit,
     onLogClick: () -> Unit,
     onHelpClick: () -> Unit,
+    onToggleImmersiveClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -203,7 +205,8 @@ fun ReadMenuTitleBar(
                             onParagraphRuleClick = onParagraphRuleClick,
                             onEffectiveReplacesClick = onEffectiveReplacesClick,
                             onLogClick = onLogClick,
-                            onHelpClick = onHelpClick
+                            onHelpClick = onHelpClick,
+                            onToggleImmersiveClick = onToggleImmersiveClick
                         )
                         popupHandle = ModernActionPopup.show(
                             context,
@@ -767,9 +770,15 @@ private fun buildOverflowActions(
     onParagraphRuleClick: () -> Unit,
     onEffectiveReplacesClick: () -> Unit,
     onLogClick: () -> Unit,
-    onHelpClick: () -> Unit
+    onHelpClick: () -> Unit,
+    onToggleImmersiveClick: () -> Unit
 ): List<ModernActionPopup.Action> {
+    val isImmersive = AppConfig.readMenuImmersive
     val actions = mutableListOf<ModernActionPopup.Action>()
+    actions.add(ModernActionPopup.Action(
+        title = if (isImmersive) "关闭沉浸模式" else "开启沉浸模式",
+        invoke = onToggleImmersiveClick
+    ))
     actions.add(ModernActionPopup.Action(title = "添加书签", invoke = onAddBookmarkClick))
     actions.add(ModernActionPopup.Action(title = "编辑内容", invoke = onEditContentClick))
     actions.add(ModernActionPopup.Action(title = "翻页动画", invoke = onPageAnimClick))

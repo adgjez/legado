@@ -396,6 +396,7 @@ class ReadMenu @JvmOverloads constructor(
                         onEffectiveReplacesClick = { callBack.showEffectiveReplaces() },
                         onLogClick = { callBack.showLog() },
                         onHelpClick = { callBack.showHelp() },
+                        onToggleImmersiveClick = { callBack.toggleImmersive() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     // 操作栏（章节信息 + 操作按钮）
@@ -473,7 +474,7 @@ class ReadMenu @JvmOverloads constructor(
             color = style.surface,
             contentColor = style.primaryText,
             tonalElevation = 0.dp,
-            shadowElevation = 8.dp
+            shadowElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier
@@ -787,5 +788,6 @@ class ReadMenu @JvmOverloads constructor(
         fun showLog()
         fun showGetProgress()
         fun showCoverProgress()
+        fun toggleImmersive()
     }
 }
