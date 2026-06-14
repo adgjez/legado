@@ -431,7 +431,6 @@ class ReadMenu @JvmOverloads constructor(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { /* 底部面板点击不关闭菜单 */ }
                 .onGloballyPositioned { coordinates ->
                     val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
                     val size = coordinates.size
