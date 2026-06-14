@@ -296,11 +296,11 @@ fun ReadMenuSeekBarRow(
         // 上一章
         Box(
             modifier = Modifier
-                .height(38.dp)
+                .height(36.dp)
                 .clip(RoundedCornerShape(style.actionRadius))
                 .background(style.fieldSurface)
                 .clickable(enabled = canGoPrev, onClick = onPrevClick)
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -311,7 +311,7 @@ fun ReadMenuSeekBarRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         // SeekBar
         AndroidView(
@@ -319,7 +319,7 @@ fun ReadMenuSeekBarRow(
                 android.widget.SeekBar(context).apply {
                     layoutParams = android.view.ViewGroup.LayoutParams(
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        28.dpToPx()
+                        26.dpToPx()
                     )
                     setOnSeekBarChangeListener(object : io.legado.app.ui.widget.seekbar.SeekBarChangeListener {
                         override fun onStartTrackingTouch(seekBar: android.widget.SeekBar) {
@@ -338,19 +338,19 @@ fun ReadMenuSeekBarRow(
             },
             modifier = Modifier
                 .weight(1f)
-                .height(28.dp)
+                .height(26.dp)
         )
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
         // 下一章
         Box(
             modifier = Modifier
-                .height(38.dp)
+                .height(36.dp)
                 .clip(RoundedCornerShape(style.actionRadius))
                 .background(style.fieldSurface)
                 .clickable(enabled = canGoNext, onClick = onNextClick)
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -386,12 +386,12 @@ fun ReadMenuBrightnessRow(
             maxLines = 1
         )
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // 自动按钮
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(36.dp)
                 .clip(RoundedCornerShape(style.actionRadius))
                 .background(style.fieldSurface)
                 .clickable(onClick = onAutoClick),
@@ -401,11 +401,11 @@ fun ReadMenuBrightnessRow(
                 painter = painterResource(R.drawable.ic_brightness_auto),
                 contentDescription = stringResource(R.string.brightness),
                 tint = if (isAuto) style.accent else style.secondaryText.copy(alpha = 0.5f),
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
         // 亮度 SeekBar
         AndroidView(
@@ -413,7 +413,7 @@ fun ReadMenuBrightnessRow(
                 android.widget.SeekBar(context).apply {
                     layoutParams = android.view.ViewGroup.LayoutParams(
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        28.dpToPx()
+                        26.dpToPx()
                     )
                     max = 255
                     progress = brightness
@@ -435,7 +435,7 @@ fun ReadMenuBrightnessRow(
             },
             modifier = Modifier
                 .weight(1f)
-                .height(28.dp)
+                .height(26.dp)
         )
     }
 }
@@ -571,13 +571,13 @@ private fun ReadMenuButton(
                 onClick = onClick,
                 onLongClick = { onLongClick() }
             )
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         AndroidView(
             factory = { context ->
                 AppCompatImageView(context).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(24.dpToPx(), 24.dpToPx())
+                    layoutParams = android.view.ViewGroup.LayoutParams(22.dpToPx(), 22.dpToPx())
                     scaleType = ImageView.ScaleType.CENTER_INSIDE
                     setImageDrawable(
                         ReadMenuButtonIconHelper.drawable(context, ref, iconRes, customIconPath)
@@ -591,17 +591,17 @@ private fun ReadMenuButton(
                 )
                 imageView.setColorFilter(style.primaryText.toArgb(), PorterDuff.Mode.SRC_IN)
             },
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(22.dp)
         )
         Text(
             text = title,
             color = style.primaryText,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier
-                .padding(top = 6.dp)
+                .padding(top = 4.dp)
                 .fillMaxWidth()
         )
     }
@@ -615,8 +615,8 @@ fun ReadMenuDivider(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(1.dp)
-            .background(style.stroke)
+            .height(0.5.dp)
+            .background(style.stroke.copy(alpha = 0.3f))
     )
 }
 
