@@ -345,16 +345,18 @@ class ReadMenu @JvmOverloads constructor(
                     animationSpec = if (AppConfig.isEInkMode) snap() else tween(300)
                 )
             ) {
+                val statusBarHeight = WindowInsets.statusBars
+                    .asPaddingValues()
+                    .calculateTopPadding()
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // 状态栏占位
+                    // 状态栏占位（带背景色，衔接顶栏）
                     Spacer(
-                        modifier = Modifier.height(
-                            WindowInsets.statusBars
-                                .asPaddingValues()
-                                .calculateTopPadding()
-                        )
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(statusBarHeight)
+                            .background(style.surface)
                     )
                     // Toolbar（书名 + 换源/刷新/缓存 + 三点菜单）
                     ReadMenuTitleBar(
@@ -466,8 +468,8 @@ class ReadMenu @JvmOverloads constructor(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // SeekBar 区域
                 ReadMenuSeekBarRow(
@@ -520,7 +522,6 @@ class ReadMenu @JvmOverloads constructor(
 
                 // 亮度区
                 if (showBrightness) {
-                    ReadMenuDivider(style = style)
                     ReadMenuBrightnessRow(
                         brightness = AppConfig.readBrightness,
                         isAuto = brightnessAuto,
@@ -537,7 +538,6 @@ class ReadMenu @JvmOverloads constructor(
 
                 // 按钮区
                 if (hasButtons) {
-                    ReadMenuDivider(style = style)
                     ReadMenuButtonGrid(
                         firstRow = layout.firstRow,
                         secondRow = layout.secondRow,

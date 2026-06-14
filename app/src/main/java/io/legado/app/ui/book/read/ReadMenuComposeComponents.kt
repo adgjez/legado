@@ -128,66 +128,45 @@ fun ReadMenuTitleBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            // 换源按钮
+            // 换源按钮（文字）
             if (!isLocalBook) {
-                Box(
+                Text(
+                    text = "换源",
+                    color = style.primaryText,
+                    fontSize = 13.sp,
                     modifier = Modifier
-                        .size(34.dp)
                         .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
                         .combinedClickable(
                             onClick = onChangeSourceClick,
                             onLongClick = onChangeSourceLongClick
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_exchange),
-                        contentDescription = "换源",
-                        tint = style.primaryText,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
-            // 刷新按钮
-            Box(
+            // 刷新按钮（文字）
+            Text(
+                text = "刷新",
+                color = style.primaryText,
+                fontSize = 13.sp,
                 modifier = Modifier
-                    .size(34.dp)
                     .clip(RoundedCornerShape(style.actionRadius))
-                    .background(style.fieldSurface)
                     .combinedClickable(
                         onClick = onRefreshClick,
                         onLongClick = onRefreshLongClick
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_refresh_black_24dp),
-                    contentDescription = "刷新",
-                    tint = style.primaryText,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            // 缓存按钮
-            if (!isLocalBook) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
-                        .clickable(onClick = onCacheClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_download_line),
-                        contentDescription = "缓存",
-                        tint = style.primaryText,
-                        modifier = Modifier.size(18.dp)
                     )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+            // 缓存按钮（文字）
+            if (!isLocalBook) {
+                Text(
+                    text = "缓存",
+                    color = style.primaryText,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(style.actionRadius))
+                        .clickable(onClick = onCacheClick)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
             // 三点菜单（overflow menu）- 使用 ModernActionPopup
             var anchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
@@ -316,7 +295,7 @@ fun ReadMenuActionBar(
                 }
             }
 
-            // 云端图标
+            // 云端图标（无背景）
             if (showCloudIcon) {
                 val cloudAlpha = when (cloudState) {
                     LibraryCloudState.READY -> 1f
@@ -324,47 +303,33 @@ fun ReadMenuActionBar(
                     LibraryCloudState.DISABLED -> 0.35f
                     else -> 0.6f
                 }
-                Box(
+                Icon(
+                    painter = painterResource(R.drawable.ic_outline_cloud_24),
+                    contentDescription = null,
+                    tint = style.primaryText.copy(alpha = cloudAlpha),
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
+                        .size(22.dp)
                         .combinedClickable(
                             onClick = onCloudClick,
                             onLongClick = onCloudLongClick
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_outline_cloud_24),
-                        contentDescription = null,
-                        tint = style.primaryText.copy(alpha = cloudAlpha),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        )
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // 自定义按钮
+            // 自定义按钮（无背景）
             if (showCustomButton) {
-                Box(
+                Icon(
+                    painter = painterResource(R.drawable.ic_custom),
+                    contentDescription = null,
+                    tint = style.accent,
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(style.actionRadius))
-                        .background(style.fieldSurface)
+                        .size(22.dp)
                         .combinedClickable(
                             onClick = onCustomButtonClick,
                             onLongClick = onCustomButtonLongClick
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_custom),
-                        contentDescription = null,
-                        tint = style.accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        )
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
