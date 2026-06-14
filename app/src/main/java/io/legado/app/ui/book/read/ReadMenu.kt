@@ -350,11 +350,12 @@ class ReadMenu @JvmOverloads constructor(
                                 .calculateTopPadding()
                         )
                     )
-                    // Toolbar（书名 + 返回按钮）
+                    // Toolbar（书名 + 返回按钮 + 三点菜单）
                     ReadMenuTitleBar(
                         bookName = currentBookName,
                         style = style,
                         onBookClick = { callBack.openBookInfoActivity() },
+                        onRefreshCacheClick = { callBack.refreshContent() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     // 操作栏（章节信息 + 操作按钮）
@@ -728,5 +729,6 @@ class ReadMenu @JvmOverloads constructor(
         fun runCustomReadMenuButton(id: Long) = Unit
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit
+        fun refreshContent() = Unit
     }
 }

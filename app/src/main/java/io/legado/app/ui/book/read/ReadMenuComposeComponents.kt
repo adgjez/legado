@@ -58,8 +58,11 @@ fun ReadMenuTitleBar(
     bookName: String?,
     style: AppDialogStyle,
     onBookClick: () -> Unit,
+    onRefreshCacheClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = style.surface,
@@ -90,6 +93,36 @@ fun ReadMenuTitleBar(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            // 三点菜单（overflow menu）
+            Box {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = "更多选项",
+                    tint = style.primaryText,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clickable { showOverflowMenu = true }
+                )
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("换源") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onBookClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("刷新缓存") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onRefreshCacheClick()
+                        }
+                    )
+                }
+            }
         }
     }
 }
