@@ -55,6 +55,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadMenuCustomButton
 import io.legado.app.help.book.library.LibraryCloudState
+import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
@@ -361,12 +362,25 @@ class ReadMenu @JvmOverloads constructor(
                                 .calculateTopPadding()
                         )
                     )
-                    // Toolbar（书名 + 返回按钮 + 三点菜单）
+                    // Toolbar（书名 + 换源/刷新/缓存 + 三点菜单）
                     ReadMenuTitleBar(
                         bookName = currentBookName,
                         style = style,
+                        isLocalBook = ReadBook.isLocalBook,
+                        isEpub = ReadBook.book?.isEpub == true,
                         onBookClick = { callBack.openBookInfoActivity() },
-                        onRefreshCacheClick = { callBack.refreshContent() },
+                        onChangeSourceClick = { callBack.changeSource() },
+                        onChangeSourceLongClick = { callBack.changeSourceSingle() },
+                        onRefreshClick = { callBack.refreshContent() },
+                        onRefreshLongClick = { callBack.showRefreshOptions() },
+                        onCacheClick = { callBack.showCacheDialog() },
+                        onAddBookmarkClick = { callBack.addBookmark() },
+                        onEditContentClick = { callBack.editContent() },
+                        onPageAnimClick = { callBack.showPageAnim() },
+                        onMenuEditClick = { callBack.editMenu() },
+                        onSimulatedReadingClick = { callBack.showSimulatedReading() },
+                        onUpdateTocClick = { callBack.updateToc() },
+                        onHelpClick = { callBack.showHelp() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     // 操作栏（章节信息 + 操作按钮）
@@ -740,5 +754,15 @@ class ReadMenu @JvmOverloads constructor(
         fun editCustomReadMenuButton(id: Long) = Unit
         fun loginCustomReadMenuButton(id: Long) = Unit
         fun refreshContent() = Unit
+        fun changeSource() = Unit
+        fun changeSourceSingle() = Unit
+        fun showRefreshOptions() = Unit
+        fun showCacheDialog() = Unit
+        fun addBookmark()
+        fun editContent() = Unit
+        fun showPageAnim() = Unit
+        fun editMenu() = Unit
+        fun showSimulatedReading()
+        fun updateToc() = Unit
     }
 }

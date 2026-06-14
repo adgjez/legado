@@ -57,8 +57,21 @@ private const val MENU_BUTTONS_PER_PAGE = 4
 fun ReadMenuTitleBar(
     bookName: String?,
     style: AppDialogStyle,
+    isLocalBook: Boolean,
+    isEpub: Boolean,
     onBookClick: () -> Unit,
-    onRefreshCacheClick: () -> Unit,
+    onChangeSourceClick: () -> Unit,
+    onChangeSourceLongClick: () -> Unit,
+    onRefreshClick: () -> Unit,
+    onRefreshLongClick: () -> Unit,
+    onCacheClick: () -> Unit,
+    onAddBookmarkClick: () -> Unit,
+    onEditContentClick: () -> Unit,
+    onPageAnimClick: () -> Unit,
+    onMenuEditClick: () -> Unit,
+    onSimulatedReadingClick: () -> Unit,
+    onUpdateTocClick: () -> Unit,
+    onHelpClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -74,51 +87,158 @@ fun ReadMenuTitleBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onBookClick)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 返回按钮
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_back),
                 contentDescription = null,
                 tint = style.primaryText,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier
+                    .size(22.dp)
+                    .clickable { onBookClick() }
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            // 书名
             Text(
                 text = bookName ?: "",
                 color = style.primaryText,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            // 换源按钮
+            if (!isLocalBook) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(style.actionRadius))
+                        .background(style.fieldSurface)
+                        .combinedClickable(
+                            onClick = onChangeSourceClick,
+                            onLongClick = onChangeSourceLongClick
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_exchange),
+                        contentDescription = "换源",
+                        tint = style.primaryText,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            // 刷新按钮
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(style.actionRadius))
+                    .background(style.fieldSurface)
+                    .combinedClickable(
+                        onClick = onRefreshClick,
+                        onLongClick = onRefreshLongClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_refresh_black_24dp),
+                    contentDescription = "刷新",
+                    tint = style.primaryText,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            // 缓存按钮
+            if (!isLocalBook) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(style.actionRadius))
+                        .background(style.fieldSurface)
+                        .clickable(onClick = onCacheClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_download_line),
+                        contentDescription = "缓存",
+                        tint = style.primaryText,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             // 三点菜单（overflow menu）
             Box {
-                Icon(
-                    painter = painterResource(R.drawable.ic_more_vert),
-                    contentDescription = "更多选项",
-                    tint = style.primaryText,
+                Box(
                     modifier = Modifier
-                        .size(22.dp)
-                        .clickable { showOverflowMenu = true }
-                )
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(style.actionRadius))
+                        .background(style.fieldSurface)
+                        .clickable { showOverflowMenu = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_more_vert),
+                        contentDescription = "更多选项",
+                        tint = style.primaryText,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 DropdownMenu(
                     expanded = showOverflowMenu,
                     onDismissRequest = { showOverflowMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("换源") },
+                        text = { Text("添加书签") },
                         onClick = {
                             showOverflowMenu = false
-                            onBookClick()
+                            onAddBookmarkClick()
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("刷新缓存") },
+                        text = { Text("编辑内容") },
                         onClick = {
                             showOverflowMenu = false
-                            onRefreshCacheClick()
+                            onEditContentClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("翻页动画") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onPageAnimClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("菜单编辑") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onMenuEditClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("模拟阅读") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onSimulatedReadingClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("更新目录") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onUpdateTocClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("帮助") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onHelpClick()
                         }
                     )
                 }
