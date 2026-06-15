@@ -82,7 +82,18 @@ data class BookshelfListPalette(
 @Immutable
 data class BookshelfListRenderConfig(
     val palette: BookshelfListPalette,
-    val panelImage: Drawable?
+    val immersivePalette: BookshelfListPalette,
+    val panelImage: Drawable?,
+    val classicMinHeight: Dp = 98.dp,
+    val classicCompactMinHeight: Dp = 72.dp,
+    val roundedMinHeight: Dp = 126.dp,
+    val roundedCompactMinHeight: Dp = 88.dp,
+    val immersiveHeight: Dp = 138.dp,
+    val immersiveCompactHeight: Dp = 108.dp,
+    val classicCoverWidth: Dp = 66.dp,
+    val classicCompactCoverWidth: Dp = 48.dp,
+    val cardCoverWidth: Dp = 72.dp,
+    val cardCompactCoverWidth: Dp = 54.dp
 )
 
 @Composable
@@ -139,6 +150,11 @@ fun rememberBookshelfListRenderConfig(): BookshelfListRenderConfig {
     return remember(palette, panelImage) {
         BookshelfListRenderConfig(
             palette = palette,
+            immersivePalette = palette.copy(
+                primaryText = Color.White,
+                secondaryText = Color.White.copy(alpha = 0.78f),
+                accent = Color.White
+            ),
             panelImage = panelImage
         )
     }
@@ -172,7 +188,7 @@ fun BookshelfListItem(
         BookshelfListItemStyle.CoverImmersive -> BookshelfImmersiveListItem(
             item = item,
             compact = compact,
-            palette = renderConfig.palette,
+            renderConfig = renderConfig,
             modifier = modifier,
             fragment = fragment,
             lifecycle = lifecycle,
@@ -183,7 +199,7 @@ fun BookshelfListItem(
         else -> BookshelfClassicListItem(
             item = item,
             compact = compact,
-            palette = renderConfig.palette,
+            renderConfig = renderConfig,
             modifier = modifier,
             fragment = fragment,
             lifecycle = lifecycle,
@@ -198,17 +214,18 @@ fun BookshelfListItem(
 private fun BookshelfClassicListItem(
     item: BookshelfItemUi,
     compact: Boolean,
-    palette: BookshelfListPalette,
+    renderConfig: BookshelfListRenderConfig,
     modifier: Modifier,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
+    val palette = renderConfig.palette
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = if (compact) 72.dp else 98.dp)
+            .heightIn(min = if (compact) renderConfig.classicCompactMinHeight else renderConfig.classicMinHeight)
             .clip(RoundedCornerShape(2.dp))
             .combinedClickable(
                 onClick = { onClick(item) },
@@ -219,7 +236,7 @@ private fun BookshelfClassicListItem(
     ) {
         BookshelfListCover(
             item = item,
-            width = if (compact) 48.dp else 66.dp,
+            width = if (compact) renderConfig.classicCompactCoverWidth else renderConfig.classicCoverWidth,
             cornerRadius = 2.dp,
             fragment = fragment,
             lifecycle = lifecycle
@@ -259,7 +276,7 @@ private fun BookshelfRoundedCardListItem(
                 borderColor = palette.borderColor,
                 radiusPx = palette.panelRadiusPx
             )
-            .heightIn(min = if (compact) 88.dp else 126.dp)
+            .heightIn(min = if (compact) renderConfig.roundedCompactMinHeight else renderConfig.roundedMinHeight)
             .combinedClickable(
                 onClick = { onClick(item) },
                 onLongClick = { onLongClick(item) }
@@ -272,7 +289,7 @@ private fun BookshelfRoundedCardListItem(
     ) {
         BookshelfListCover(
             item = item,
-            width = if (compact) 54.dp else 72.dp,
+            width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
             cornerRadius = palette.actionRadius,
             fragment = fragment,
             lifecycle = lifecycle
@@ -295,24 +312,19 @@ private fun BookshelfRoundedCardListItem(
 private fun BookshelfImmersiveListItem(
     item: BookshelfItemUi,
     compact: Boolean,
-    palette: BookshelfListPalette,
+    renderConfig: BookshelfListRenderConfig,
     modifier: Modifier,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
-    val immersivePalette = remember(palette) {
-        palette.copy(
-            primaryText = Color.White,
-            secondaryText = Color.White.copy(alpha = 0.78f),
-            accent = Color.White
-        )
-    }
+    val palette = renderConfig.palette
+    val immersivePalette = renderConfig.immersivePalette
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 108.dp else 138.dp)
+            .height(if (compact) renderConfig.immersiveCompactHeight else renderConfig.immersiveHeight)
             .clip(RoundedCornerShape(palette.panelRadius))
             .then(
                 palette.borderColor?.let {
@@ -352,7 +364,7 @@ private fun BookshelfImmersiveListItem(
         ) {
             BookshelfListCover(
                 item = item,
-                width = if (compact) 54.dp else 72.dp,
+                width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
                 cornerRadius = palette.actionRadius,
                 fragment = fragment,
                 lifecycle = lifecycle
