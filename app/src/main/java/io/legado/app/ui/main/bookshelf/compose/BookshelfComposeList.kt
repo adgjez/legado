@@ -234,10 +234,11 @@ private fun BookshelfClassicListItem(
             .padding(horizontal = 8.dp, vertical = if (compact) 4.dp else 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        BookshelfListCover(
+        BookshelfCoverBlock(
             item = item,
             width = if (compact) renderConfig.classicCompactCoverWidth else renderConfig.classicCoverWidth,
             cornerRadius = 2.dp,
+            palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -287,10 +288,11 @@ private fun BookshelfRoundedCardListItem(
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        BookshelfListCover(
+        BookshelfCoverBlock(
             item = item,
             width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
             cornerRadius = palette.actionRadius,
+            palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -362,10 +364,11 @@ private fun BookshelfImmersiveListItem(
                 .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BookshelfListCover(
+            BookshelfCoverBlock(
                 item = item,
                 width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
                 cornerRadius = palette.actionRadius,
+                palette = immersivePalette,
                 fragment = fragment,
                 lifecycle = lifecycle
             )
@@ -384,6 +387,77 @@ private fun BookshelfImmersiveListItem(
             )
         }
     }
+}
+
+@Composable
+private fun BookshelfCoverBlock(
+    item: BookshelfItemUi,
+    width: Dp,
+    cornerRadius: Dp,
+    palette: BookshelfListPalette,
+    fragment: Fragment?,
+    lifecycle: Lifecycle?,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.width(width)) {
+        BookshelfListCover(
+            item = item,
+            width = width,
+            cornerRadius = cornerRadius,
+            fragment = fragment,
+            lifecycle = lifecycle
+        )
+        BookshelfCoverBadge(
+            item = item,
+            palette = palette,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+        )
+    }
+}
+
+@Composable
+private fun BookshelfCoverBadge(
+    item: BookshelfItemUi,
+    palette: BookshelfListPalette,
+    modifier: Modifier = Modifier
+) {
+    if (item !is BookshelfBookItemUi) return
+    if (item.isUpdating) {
+        Box(
+            modifier = modifier
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.52f))
+                .padding(3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = Color.White
+            )
+        }
+        return
+    }
+    if (!AppConfig.showUnread || item.unreadCount <= 0) return
+    val badgeColor = if (item.hasNewChapter) {
+        palette.accent
+    } else {
+        Color.Black.copy(alpha = 0.58f)
+    }
+    Text(
+        text = item.unreadCount.coerceAtMost(999).toString(),
+        modifier = modifier
+            .clip(CircleShape)
+            .background(badgeColor)
+            .widthIn(min = 22.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        color = Color.White,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1
+    )
 }
 
 @Composable
@@ -618,31 +692,6 @@ private fun BookshelfListStatus(
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.Center
     ) {
-        if (item.isUpdating) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                strokeWidth = 2.dp,
-                color = palette.accent
-            )
-        } else if (AppConfig.showUnread && item.unreadCount > 0) {
-            val badgeColor = if (item.hasNewChapter) {
-                palette.accent
-            } else {
-                Color.Black.copy(alpha = 0.55f)
-            }
-            Text(
-                text = item.unreadCount.coerceAtMost(999).toString(),
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(badgeColor)
-                    .widthIn(min = 22.dp)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                color = Color.White,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
-        }
         item.lastUpdateText?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
