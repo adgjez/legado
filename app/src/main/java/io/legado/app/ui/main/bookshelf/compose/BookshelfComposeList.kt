@@ -31,6 +31,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -258,7 +259,7 @@ private fun BookshelfRoundedCardListItem(
                 borderColor = palette.borderColor,
                 radiusPx = palette.panelRadiusPx
             )
-            .heightIn(min = if (compact) 78.dp else 112.dp)
+            .heightIn(min = if (compact) 88.dp else 126.dp)
             .combinedClickable(
                 onClick = { onClick(item) },
                 onLongClick = { onLongClick(item) }
@@ -271,7 +272,7 @@ private fun BookshelfRoundedCardListItem(
     ) {
         BookshelfListCover(
             item = item,
-            width = if (compact) 48.dp else 60.dp,
+            width = if (compact) 54.dp else 72.dp,
             cornerRadius = palette.actionRadius,
             fragment = fragment,
             lifecycle = lifecycle
@@ -301,10 +302,17 @@ private fun BookshelfImmersiveListItem(
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
+    val immersivePalette = remember(palette) {
+        palette.copy(
+            primaryText = Color.White,
+            secondaryText = Color.White.copy(alpha = 0.78f),
+            accent = Color.White
+        )
+    }
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 96.dp else 124.dp)
+            .height(if (compact) 108.dp else 138.dp)
             .clip(RoundedCornerShape(palette.panelRadius))
             .then(
                 palette.borderColor?.let {
@@ -322,43 +330,45 @@ private fun BookshelfImmersiveListItem(
     ) {
         BookshelfListCover(
             item = item,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(if (compact) 10.dp else 14.dp),
             fillWidth = true,
             width = 1.dp,
-            cornerRadius = palette.panelRadius,
+            cornerRadius = 0.dp,
             fragment = fragment,
             lifecycle = lifecycle
         )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.42f))
+                .background(Color.Black.copy(alpha = 0.5f))
         )
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.Bottom
+                .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            BookshelfListCover(
+                item = item,
+                width = if (compact) 54.dp else 72.dp,
+                cornerRadius = palette.actionRadius,
+                fragment = fragment,
+                lifecycle = lifecycle
+            )
+            Spacer(modifier = Modifier.width(12.dp))
             BookshelfListTextContent(
                 item = item,
                 compact = compact,
-                palette = palette.copy(
-                    primaryText = Color.White,
-                    secondaryText = Color.White.copy(alpha = 0.78f),
-                    accent = Color.White
-                ),
+                palette = immersivePalette,
                 modifier = Modifier.weight(1f),
                 showIntro = true,
                 showTags = true
             )
             BookshelfListStatus(
                 item = item,
-                palette = palette.copy(
-                    primaryText = Color.White,
-                    secondaryText = Color.White.copy(alpha = 0.78f),
-                    accent = Color.White
-                )
+                palette = immersivePalette
             )
         }
     }
