@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,6 +59,7 @@ import io.legado.app.ui.widget.compose.toMiuixPalette
 import io.legado.app.utils.dpToPx
 
 private const val MENU_BUTTONS_PER_PAGE = 4
+private val READ_MENU_BUTTON_MIN_HEIGHT = 52.dp
 
 @Composable
 fun ReadMenuTitleBar(
@@ -635,10 +637,10 @@ private fun ReadMenuButton(
 
     Column(
         modifier = modifier
-            .clickable(
-                interactionSource = null,
-                indication = null,
-                onClick = onClick
+            .heightIn(min = READ_MENU_BUTTON_MIN_HEIGHT)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { onLongClick() }
             )
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
