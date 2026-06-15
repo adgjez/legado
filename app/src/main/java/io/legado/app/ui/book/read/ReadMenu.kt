@@ -97,12 +97,13 @@ class ReadMenu @JvmOverloads constructor(
 
     fun reset() {
         updateColorConfig()
-        composeView?.setContent { ReadMenuContent() }
+        updateButtonLayout()
+        upBookView()
+        upSeekBar()
     }
 
     fun refreshMenuColorFilter() {
         updateColorConfig()
-        composeView?.setContent { ReadMenuContent() }
     }
 
     fun upBrightnessState() {
@@ -322,8 +323,7 @@ class ReadMenu @JvmOverloads constructor(
     // region Compose content
     @Composable
     private fun ReadMenuContent() {
-        @Suppress("UNUSED_VARIABLE")
-        val recomposeKey = colorTick
+        colorTick
         val style = rememberReadMenuStyle()
         val bodyFontFamily = androidx.compose.ui.text.font.FontFamily(context.uiTypeface())
         val titleFontFamily = androidx.compose.ui.text.font.FontFamily(context.titleTypeface())
