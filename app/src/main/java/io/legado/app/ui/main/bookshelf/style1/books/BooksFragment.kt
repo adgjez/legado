@@ -5,6 +5,24 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.core.view.isGone
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -29,6 +47,11 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.ui.main.MainViewModel
+import io.legado.app.ui.main.bookshelf.compose.BookshelfBookItemUi
+import io.legado.app.ui.main.bookshelf.compose.BookshelfItemUi
+import io.legado.app.ui.main.bookshelf.compose.BookshelfListItem
+import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
+import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
@@ -95,8 +118,14 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
     private var itemCount = 0
     private var totalRows = 0
-    private var topOverlaySpace = 0
-    private var topOverlayEnabled = false
+    private var topOverlaySpace by mutableStateOf(0)
+    private var topOverlayEnabled by mutableStateOf(false)
+    private val useComposeList get() = bookshelfLayout < 2
+    private data class ComposeListScrollPosition(val index: Int, val offset: Int)
+    private var composeItems by mutableStateOf<List<BookshelfItemUi>>(emptyList())
+    private var composeCanScrollBackward by mutableStateOf(false)
+    private var composeScrollToTopTick by mutableStateOf(0)
+    private var composeScrollPosition: ComposeListScrollPosition? = null
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         arguments?.let {
@@ -117,10 +146,20 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.rvBookshelf.applyMainBottomBarPadding()
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
+        binding.refreshLayout.setOnChildScrollUpCallback { _, _ ->
+            if (useComposeList) composeCanScrollBackward else binding.rvBookshelf.canScrollVertically(-1)
+        }
         applyTopOverlaySpace()
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
-            activityViewModel.upToc(booksAdapter.getItems(), onlyUpdateRead)
+            activityViewModel.upToc(getBooks(), onlyUpdateRead)
+        }
+        binding.rvBookshelf.isGone = useComposeList
+        binding.composeBookshelf.isGone = !useComposeList
+        if (useComposeList) {
+            initComposeBookshelf()
+            startLastUpdateTimeJob()
+            return
         }
         if (bookshelfLayout >= 2) {
             binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout)
@@ -200,6 +239,85 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startLastUpdateTimeJob()
     }
 
+    private fun initComposeBookshelf() {
+        binding.composeBookshelf.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeBookshelf.setContent {
+            BookshelfListContent()
+        }
+    }
+
+    @Composable
+    private fun BookshelfListContent() {
+        val listState = rememberLazyListState(
+            initialFirstVisibleItemIndex = composeScrollPosition?.index ?: 0,
+            initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
+        )
+        val canScrollBackward by remember {
+            derivedStateOf { listState.canScrollBackward }
+        }
+        val marginDp = with(LocalDensity.current) { bookshelfMargin.toDp() }
+        val topExtraDp = with(LocalDensity.current) {
+            val topExtra = if (topOverlayEnabled) {
+                topOverlaySpace + resources.getDimensionPixelSize(R.dimen.bookshelf_top_overlay_gap)
+            } else {
+                resources.getDimensionPixelSize(R.dimen.bookshelf_content_margin_top)
+            }
+            topExtra.toDp()
+        }
+        val bottomBarPadding = with(LocalDensity.current) {
+            resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
+        }
+        DisposableEffect(Unit) {
+            onDispose {
+                composeScrollPosition = ComposeListScrollPosition(
+                    index = listState.firstVisibleItemIndex,
+                    offset = listState.firstVisibleItemScrollOffset
+                )
+            }
+        }
+        LaunchedEffect(canScrollBackward) {
+            composeCanScrollBackward = canScrollBackward
+        }
+        LaunchedEffect(composeScrollToTopTick) {
+            if (composeScrollToTopTick > 0) {
+                if (AppConfig.isEInkMode) {
+                    listState.scrollToItem(0)
+                } else {
+                    listState.animateScrollToItem(0)
+                }
+            }
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 8.dp,
+                top = topExtraDp + marginDp,
+                end = 8.dp,
+                bottom = marginDp + bottomBarPadding + 12.dp
+            )
+        ) {
+            items(
+                items = composeItems,
+                key = { it.key },
+                contentType = { it.contentType }
+            ) { item ->
+                BookshelfListItem(
+                    item = item,
+                    listLayout = bookshelfLayout,
+                    cardStyle = AppConfig.bookshelfListItemStyle,
+                    modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
+                    fragment = this@BooksFragment,
+                    lifecycle = viewLifecycleOwner.lifecycle,
+                    onClick = ::onComposeItemClick,
+                    onLongClick = ::onComposeItemLongClick
+                )
+            }
+        }
+    }
+
     fun setTopOverlaySpace(space: Int, overlay: Boolean) {
         topOverlaySpace = space
         topOverlayEnabled = overlay
@@ -210,6 +328,25 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun applyTopOverlaySpace() {
         if (view == null) return
+        if (useComposeList) {
+            binding.rvBookshelf.clipToPadding = true
+            binding.rvBookshelf.setPadding(
+                binding.rvBookshelf.paddingLeft,
+                0,
+                binding.rvBookshelf.paddingRight,
+                binding.rvBookshelf.paddingBottom
+            )
+            if (topOverlayEnabled) {
+                binding.refreshLayout.setProgressViewOffset(
+                    true,
+                    (topOverlaySpace - 28.dpToPx()).coerceAtLeast(0),
+                    topOverlaySpace + 56.dpToPx()
+                )
+            } else {
+                binding.refreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
+            }
+            return
+        }
         val topGap = if (topOverlayEnabled) {
             resources.getDimensionPixelSize(R.dimen.bookshelf_top_overlay_gap)
         } else {
@@ -235,6 +372,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     private fun upFastScrollerBar() {
+        if (useComposeList) {
+            binding.rvBookshelf.setFastScrollEnabled(false)
+            return
+        }
         val showBookshelfFastScroller = AppConfig.showBookshelfFastScroller
         binding.rvBookshelf.setFastScrollEnabled(showBookshelfFastScroller)
         if (showBookshelfFastScroller) {
@@ -315,7 +456,11 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
                 binding.tvEmptyMsg.isGone = itemCount > 0
                 binding.refreshLayout.isEnabled = enableRefresh && itemCount > 0
-                booksAdapter.setItems(list)
+                if (useComposeList) {
+                    updateComposeItems(list)
+                } else {
+                    booksAdapter.setItems(list)
+                }
                 delay(100)
             }
         }
@@ -323,13 +468,17 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
 
     private fun startLastUpdateTimeJob() {
         upLastUpdateTimeJob?.cancel()
-        if (!AppConfig.showLastUpdateTime || bookshelfLayout >= 2) {
+        if (!AppConfig.showLastUpdateTime || (!useComposeList && bookshelfLayout >= 2)) {
             return
         }
         upLastUpdateTimeJob = viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (isActive) {
-                    booksAdapter.upLastUpdateTime()
+                    if (useComposeList) {
+                        updateComposeItems(getBooks())
+                    } else {
+                        booksAdapter.upLastUpdateTime()
+                    }
                     delay(30 * 1000)
                 }
             }
@@ -337,6 +486,9 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooks(): List<Book> {
+        if (useComposeList) {
+            return composeItems.mapNotNull { (it as? BookshelfBookItemUi)?.book }
+        }
         return booksAdapter.getItems()
     }
 
@@ -345,6 +497,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun gotoTop() {
+        if (useComposeList) {
+            composeScrollToTopTick++
+            return
+        }
         if (AppConfig.isEInkMode) {
             binding.rvBookshelf.scrollToPosition(0)
         } else {
@@ -353,11 +509,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     }
 
     fun getBooksCount(): Int {
+        if (useComposeList) {
+            return composeItems.size
+        }
         return booksAdapter.itemCount
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        if (useComposeList) {
+            composeItems = emptyList()
+            composeCanScrollBackward = false
+            return
+        }
         /**
          * 将 RecyclerView 中的视图全部回收到 RecycledViewPool 中
          */
@@ -377,14 +541,47 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         return activityViewModel.isUpdate(bookUrl)
     }
 
+    private fun updateComposeItems(list: List<Book>) {
+        composeItems = buildBookshelfItems(
+            groups = emptyList(),
+            books = list,
+            isRootGroup = false,
+            isUpdating = ::isUpdate
+        )
+    }
+
+    private fun onComposeItemClick(item: BookshelfItemUi) {
+        (item as? BookshelfBookItemUi)?.book?.let(::open)
+    }
+
+    private fun onComposeItemLongClick(item: BookshelfItemUi) {
+        (item as? BookshelfBookItemUi)?.book?.let(::openBookInfo)
+    }
+
+    private fun updateComposeItemUpdating(bookUrl: String) {
+        composeItems = updateBookshelfItemUpdating(
+            items = composeItems,
+            bookUrl = bookUrl,
+            isUpdating = ::isUpdate
+        )
+    }
+
     @SuppressLint("NotifyDataSetChanged")
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.UP_BOOKSHELF) {
-            booksAdapter.notification(it)
+            if (useComposeList) {
+                updateComposeItemUpdating(it)
+            } else {
+                booksAdapter.notification(it)
+            }
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            booksAdapter.notifyDataSetChanged()
+            if (useComposeList) {
+                updateComposeItems(getBooks())
+            } else {
+                booksAdapter.notifyDataSetChanged()
+            }
             startLastUpdateTimeJob()
             upFastScrollerBar()
         }
