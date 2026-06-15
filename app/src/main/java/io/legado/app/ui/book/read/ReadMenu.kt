@@ -370,65 +370,72 @@ class ReadMenu @JvmOverloads constructor(
                     )
                     // Toolbar（书名 + 换源/刷新/缓存 + 三点菜单）
                     ReadMenuTitleBar(
-                        bookName = currentBookName,
+                        state = ReadMenuTitleBarState(
+                            bookName = currentBookName,
+                            isLocalBook = ReadBook.isLocalBook,
+                            isEpub = callBack.isEpubCoreBook()
+                        ),
+                        actions = ReadMenuTitleBarActions(
+                            onBookClick = { callBack.openBookInfoActivity() },
+                            onChangeSourceClick = { callBack.changeSource() },
+                            onChangeSourceLongClick = { callBack.changeSourceSingle() },
+                            onRefreshClick = { callBack.refreshContent() },
+                            onRefreshLongClick = { callBack.showRefreshOptions() },
+                            onCacheClick = { callBack.showCacheDialog() },
+                            onAddBookmarkClick = { callBack.addBookmark() },
+                            onEditContentClick = { callBack.editContent() },
+                            onPageAnimClick = { callBack.showPageAnim() },
+                            onMenuEditClick = { callBack.editMenu() },
+                            onGetProgressClick = { callBack.showGetProgress() },
+                            onCoverProgressClick = { callBack.showCoverProgress() },
+                            onReverseContentClick = { callBack.reverseContent() },
+                            onSimulatedReadingClick = { (activity as? BaseReadBookActivity)?.showSimulatedReading() },
+                            onChangeReplaceRuleClick = { callBack.changeReplaceRuleState() },
+                            onSameTitleRemovedClick = { callBack.showSameTitleRemoved() },
+                            onReSegmentClick = { callBack.showReSegment() },
+                            onImageStyleClick = { callBack.showImageStyle() },
+                            onUpdateTocClick = { callBack.updateToc() },
+                            onParagraphRuleClick = { callBack.showParagraphRuleManage() },
+                            onEffectiveReplacesClick = { callBack.showEffectiveReplaces() },
+                            onLogClick = { callBack.showLog() },
+                            onHelpClick = { callBack.showHelp() }
+                        ),
                         style = style,
-                        isLocalBook = ReadBook.isLocalBook,
-                        isEpub = callBack.isEpubCoreBook(),
-                        onBookClick = { callBack.openBookInfoActivity() },
-                        onChangeSourceClick = { callBack.changeSource() },
-                        onChangeSourceLongClick = { callBack.changeSourceSingle() },
-                        onRefreshClick = { callBack.refreshContent() },
-                        onRefreshLongClick = { callBack.showRefreshOptions() },
-                        onCacheClick = { callBack.showCacheDialog() },
-                        onAddBookmarkClick = { callBack.addBookmark() },
-                        onEditContentClick = { callBack.editContent() },
-                        onPageAnimClick = { callBack.showPageAnim() },
-                        onMenuEditClick = { callBack.editMenu() },
-                        onGetProgressClick = { callBack.showGetProgress() },
-                        onCoverProgressClick = { callBack.showCoverProgress() },
-                        onReverseContentClick = { callBack.reverseContent() },
-                        onSimulatedReadingClick = { (activity as? BaseReadBookActivity)?.showSimulatedReading() },
-                        onChangeReplaceRuleClick = { callBack.changeReplaceRuleState() },
-                        onSameTitleRemovedClick = { callBack.showSameTitleRemoved() },
-                        onReSegmentClick = { callBack.showReSegment() },
-                        onImageStyleClick = { callBack.showImageStyle() },
-                        onUpdateTocClick = { callBack.updateToc() },
-                        onParagraphRuleClick = { callBack.showParagraphRuleManage() },
-                        onEffectiveReplacesClick = { callBack.showEffectiveReplaces() },
-                        onLogClick = { callBack.showLog() },
-                        onHelpClick = { callBack.showHelp() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     // 操作栏（章节信息 + 操作按钮）
                     ReadMenuActionBar(
-                        chapterName = currentChapterName,
-                        chapterUrl = currentChapterUrl,
-                        isLocalBook = ReadBook.isLocalBook,
-                        sourceName = ReadBook.bookSource?.bookSourceName,
-                        showCustomButton = ReadBook.bookSource?.customButton == true,
-                        showCloudIcon = showCloudIcon,
-                        cloudState = cloudState,
-                        hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
-                        hasVipChapter = ReadBook.curTextChapter?.isVip == true
-                                && ReadBook.curTextChapter?.isPay != true,
-                        style = style,
-                        onChapterClick = { handleChapterClick() },
-                        onChapterLongClick = { handleChapterLongClick() },
-                        onLoginClick = { callBack.showLogin() },
-                        onPayClick = { callBack.payAction() },
-                        onEditSourceClick = { callBack.openSourceEditActivity() },
-                        onDisableSourceClick = { callBack.disableSource() },
-                        onCustomButtonClick = { handleCustomButtonClick() },
-                        onCustomButtonLongClick = { handleCustomButtonLongClick() },
-                        onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
-                        onCloudLongClick = {
-                            if (io.legado.app.BuildConfig.DEBUG) {
-                                callBack.showLibraryCloudDebug()
-                            } else {
-                                callBack.showLibraryCloudChapters(refresh = true)
+                        state = ReadMenuActionBarState(
+                            chapterName = currentChapterName,
+                            isLocalBook = ReadBook.isLocalBook,
+                            sourceName = ReadBook.bookSource?.bookSourceName,
+                            showCustomButton = ReadBook.bookSource?.customButton == true,
+                            showCloudIcon = showCloudIcon,
+                            cloudState = cloudState,
+                            hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
+                            hasVipChapter = ReadBook.curTextChapter?.isVip == true
+                                    && ReadBook.curTextChapter?.isPay != true
+                        ),
+                        actions = ReadMenuActionBarActions(
+                            onChapterClick = { handleChapterClick() },
+                            onChapterLongClick = { handleChapterLongClick() },
+                            onLoginClick = { callBack.showLogin() },
+                            onPayClick = { callBack.payAction() },
+                            onEditSourceClick = { callBack.openSourceEditActivity() },
+                            onDisableSourceClick = { callBack.disableSource() },
+                            onCustomButtonClick = { handleCustomButtonClick() },
+                            onCustomButtonLongClick = { handleCustomButtonLongClick() },
+                            onCloudClick = { callBack.showLibraryCloudChapters(refresh = false) },
+                            onCloudLongClick = {
+                                if (io.legado.app.BuildConfig.DEBUG) {
+                                    callBack.showLibraryCloudDebug()
+                                } else {
+                                    callBack.showLibraryCloudChapters(refresh = true)
+                                }
+                                true
                             }
-                            true
-                        },
+                        ),
+                        style = style,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

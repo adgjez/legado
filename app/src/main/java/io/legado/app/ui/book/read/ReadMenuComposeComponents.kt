@@ -61,35 +61,67 @@ import io.legado.app.utils.dpToPx
 private const val MENU_BUTTONS_PER_PAGE = 4
 private val READ_MENU_BUTTON_MIN_HEIGHT = 52.dp
 
+data class ReadMenuTitleBarState(
+    val bookName: String?,
+    val isLocalBook: Boolean,
+    val isEpub: Boolean
+)
+
+data class ReadMenuTitleBarActions(
+    val onBookClick: () -> Unit,
+    val onChangeSourceClick: () -> Unit,
+    val onChangeSourceLongClick: () -> Unit,
+    val onRefreshClick: () -> Unit,
+    val onRefreshLongClick: () -> Unit,
+    val onCacheClick: () -> Unit,
+    val onAddBookmarkClick: () -> Unit,
+    val onEditContentClick: () -> Unit,
+    val onPageAnimClick: () -> Unit,
+    val onMenuEditClick: () -> Unit,
+    val onGetProgressClick: () -> Unit,
+    val onCoverProgressClick: () -> Unit,
+    val onReverseContentClick: () -> Unit,
+    val onSimulatedReadingClick: () -> Unit,
+    val onChangeReplaceRuleClick: () -> Unit,
+    val onSameTitleRemovedClick: () -> Unit,
+    val onReSegmentClick: () -> Unit,
+    val onImageStyleClick: () -> Unit,
+    val onUpdateTocClick: () -> Unit,
+    val onParagraphRuleClick: () -> Unit,
+    val onEffectiveReplacesClick: () -> Unit,
+    val onLogClick: () -> Unit,
+    val onHelpClick: () -> Unit
+)
+
+data class ReadMenuActionBarState(
+    val chapterName: String?,
+    val isLocalBook: Boolean,
+    val sourceName: String?,
+    val showCustomButton: Boolean,
+    val showCloudIcon: Boolean,
+    val cloudState: LibraryCloudState,
+    val hasLogin: Boolean,
+    val hasVipChapter: Boolean
+)
+
+data class ReadMenuActionBarActions(
+    val onChapterClick: () -> Unit,
+    val onChapterLongClick: () -> Unit,
+    val onLoginClick: () -> Unit,
+    val onPayClick: () -> Unit,
+    val onEditSourceClick: () -> Unit,
+    val onDisableSourceClick: () -> Unit,
+    val onCustomButtonClick: () -> Unit,
+    val onCustomButtonLongClick: () -> Unit,
+    val onCloudClick: () -> Unit,
+    val onCloudLongClick: () -> Unit
+)
+
 @Composable
 fun ReadMenuTitleBar(
-    bookName: String?,
+    state: ReadMenuTitleBarState,
+    actions: ReadMenuTitleBarActions,
     style: AppDialogStyle,
-    isLocalBook: Boolean,
-    isEpub: Boolean,
-    onBookClick: () -> Unit,
-    onChangeSourceClick: () -> Unit,
-    onChangeSourceLongClick: () -> Unit,
-    onRefreshClick: () -> Unit,
-    onRefreshLongClick: () -> Unit,
-    onCacheClick: () -> Unit,
-    onAddBookmarkClick: () -> Unit,
-    onEditContentClick: () -> Unit,
-    onPageAnimClick: () -> Unit,
-    onMenuEditClick: () -> Unit,
-    onGetProgressClick: () -> Unit,
-    onCoverProgressClick: () -> Unit,
-    onReverseContentClick: () -> Unit,
-    onSimulatedReadingClick: () -> Unit,
-    onChangeReplaceRuleClick: () -> Unit,
-    onSameTitleRemovedClick: () -> Unit,
-    onReSegmentClick: () -> Unit,
-    onImageStyleClick: () -> Unit,
-    onUpdateTocClick: () -> Unit,
-    onParagraphRuleClick: () -> Unit,
-    onEffectiveReplacesClick: () -> Unit,
-    onLogClick: () -> Unit,
-    onHelpClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -105,7 +137,7 @@ fun ReadMenuTitleBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onBookClick)
+                .clickable(onClick = actions.onBookClick)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -116,12 +148,12 @@ fun ReadMenuTitleBar(
                 tint = style.primaryText,
                 modifier = Modifier
                     .size(22.dp)
-                    .clickable { onBookClick() }
+                    .clickable { actions.onBookClick() }
             )
             Spacer(modifier = Modifier.width(10.dp))
             // 书名
             Text(
-                text = bookName ?: "",
+                text = state.bookName ?: "",
                 color = style.primaryText,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -130,7 +162,7 @@ fun ReadMenuTitleBar(
                 modifier = Modifier.weight(1f)
             )
             // 换源图标
-            if (!isLocalBook) {
+            if (!state.isLocalBook) {
                 Icon(
                     painter = painterResource(R.drawable.ic_exchange),
                     contentDescription = "换源",
@@ -138,8 +170,8 @@ fun ReadMenuTitleBar(
                     modifier = Modifier
                         .size(22.dp)
                         .combinedClickable(
-                            onClick = onChangeSourceClick,
-                            onLongClick = onChangeSourceLongClick
+                            onClick = actions.onChangeSourceClick,
+                            onLongClick = actions.onChangeSourceLongClick
                         )
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -152,20 +184,20 @@ fun ReadMenuTitleBar(
                 modifier = Modifier
                     .size(22.dp)
                     .combinedClickable(
-                        onClick = onRefreshClick,
-                        onLongClick = onRefreshLongClick
+                        onClick = actions.onRefreshClick,
+                        onLongClick = actions.onRefreshLongClick
                     )
             )
             Spacer(modifier = Modifier.width(6.dp))
             // 缓存图标
-            if (!isLocalBook) {
+            if (!state.isLocalBook) {
                 Icon(
                     painter = painterResource(R.drawable.ic_download_line),
                     contentDescription = "缓存",
                     tint = style.primaryText,
                     modifier = Modifier
                         .size(22.dp)
-                        .clickable(onClick = onCacheClick)
+                        .clickable(onClick = actions.onCacheClick)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
@@ -185,26 +217,26 @@ fun ReadMenuTitleBar(
                         )
                     }
                     .clickable {
-                        val actions = buildOverflowActions(
-                            isLocalBook = isLocalBook,
-                            isEpub = isEpub,
-                            onAddBookmarkClick = onAddBookmarkClick,
-                            onEditContentClick = onEditContentClick,
-                            onPageAnimClick = onPageAnimClick,
-                            onMenuEditClick = onMenuEditClick,
-                            onGetProgressClick = onGetProgressClick,
-                            onCoverProgressClick = onCoverProgressClick,
-                            onReverseContentClick = onReverseContentClick,
-                            onSimulatedReadingClick = onSimulatedReadingClick,
-                            onChangeReplaceRuleClick = onChangeReplaceRuleClick,
-                            onSameTitleRemovedClick = onSameTitleRemovedClick,
-                            onReSegmentClick = onReSegmentClick,
-                            onImageStyleClick = onImageStyleClick,
-                            onUpdateTocClick = onUpdateTocClick,
-                            onParagraphRuleClick = onParagraphRuleClick,
-                            onEffectiveReplacesClick = onEffectiveReplacesClick,
-                            onLogClick = onLogClick,
-                            onHelpClick = onHelpClick
+                        val overflowActions = buildOverflowActions(
+                            isLocalBook = state.isLocalBook,
+                            isEpub = state.isEpub,
+                            onAddBookmarkClick = actions.onAddBookmarkClick,
+                            onEditContentClick = actions.onEditContentClick,
+                            onPageAnimClick = actions.onPageAnimClick,
+                            onMenuEditClick = actions.onMenuEditClick,
+                            onGetProgressClick = actions.onGetProgressClick,
+                            onCoverProgressClick = actions.onCoverProgressClick,
+                            onReverseContentClick = actions.onReverseContentClick,
+                            onSimulatedReadingClick = actions.onSimulatedReadingClick,
+                            onChangeReplaceRuleClick = actions.onChangeReplaceRuleClick,
+                            onSameTitleRemovedClick = actions.onSameTitleRemovedClick,
+                            onReSegmentClick = actions.onReSegmentClick,
+                            onImageStyleClick = actions.onImageStyleClick,
+                            onUpdateTocClick = actions.onUpdateTocClick,
+                            onParagraphRuleClick = actions.onParagraphRuleClick,
+                            onEffectiveReplacesClick = actions.onEffectiveReplacesClick,
+                            onLogClick = actions.onLogClick,
+                            onHelpClick = actions.onHelpClick
                         )
                         popupHandle = ModernActionPopup.show(
                             context,
@@ -212,7 +244,7 @@ fun ReadMenuTitleBar(
                             anchorBounds.top.toInt(),
                             anchorBounds.right.toInt(),
                             anchorBounds.bottom.toInt(),
-                            actions,
+                            overflowActions,
                             popupHandle
                         )
                     },
@@ -231,26 +263,9 @@ fun ReadMenuTitleBar(
 
 @Composable
 fun ReadMenuActionBar(
-    chapterName: String?,
-    chapterUrl: String?,
-    isLocalBook: Boolean,
-    sourceName: String?,
-    showCustomButton: Boolean,
-    showCloudIcon: Boolean,
-    cloudState: LibraryCloudState,
-    hasLogin: Boolean,
-    hasVipChapter: Boolean,
+    state: ReadMenuActionBarState,
+    actions: ReadMenuActionBarActions,
     style: AppDialogStyle,
-    onChapterClick: () -> Unit,
-    onChapterLongClick: () -> Unit,
-    onLoginClick: () -> Unit,
-    onPayClick: () -> Unit,
-    onEditSourceClick: () -> Unit,
-    onDisableSourceClick: () -> Unit,
-    onCustomButtonClick: () -> Unit,
-    onCustomButtonLongClick: () -> Unit,
-    onCloudClick: () -> Unit,
-    onCloudLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -279,9 +294,9 @@ fun ReadMenuActionBar(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(onClick = onChapterClick)
+                    .clickable(onClick = actions.onChapterClick)
             ) {
-                chapterName?.takeIf { it.isNotBlank() }?.let {
+                state.chapterName?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
                         color = style.primaryText,
@@ -294,12 +309,11 @@ fun ReadMenuActionBar(
             }
 
             // 云端图标（无背景）
-            if (showCloudIcon) {
-                val cloudAlpha = when (cloudState) {
+            if (state.showCloudIcon) {
+                val cloudAlpha = when (state.cloudState) {
                     LibraryCloudState.READY -> 1f
                     LibraryCloudState.ERROR -> 0.9f
                     LibraryCloudState.DISABLED -> 0.35f
-                    else -> 0.6f
                 }
                 Icon(
                     painter = painterResource(R.drawable.ic_outline_cloud_24),
@@ -308,15 +322,15 @@ fun ReadMenuActionBar(
                     modifier = Modifier
                         .size(22.dp)
                         .combinedClickable(
-                            onClick = onCloudClick,
-                            onLongClick = onCloudLongClick
+                            onClick = actions.onCloudClick,
+                            onLongClick = actions.onCloudLongClick
                         )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
             // 自定义按钮（无背景）
-            if (showCustomButton) {
+            if (state.showCustomButton) {
                 Icon(
                     painter = painterResource(R.drawable.ic_custom),
                     contentDescription = null,
@@ -324,15 +338,15 @@ fun ReadMenuActionBar(
                     modifier = Modifier
                         .size(22.dp)
                         .combinedClickable(
-                            onClick = onCustomButtonClick,
-                            onLongClick = onCustomButtonLongClick
+                            onClick = actions.onCustomButtonClick,
+                            onLongClick = actions.onCustomButtonLongClick
                         )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
             // 书源操作（带弹出菜单）
-            if (!isLocalBook) {
+            if (!state.isLocalBook) {
                 Box(
                     modifier = Modifier
                         .height(34.dp)
@@ -349,15 +363,15 @@ fun ReadMenuActionBar(
                             )
                         }
                         .clickable {
-                            val actions = buildList {
-                                if (hasLogin) {
-                                    add(ModernActionPopup.Action(title = loginTitle, invoke = onLoginClick))
+                            val menuActions = buildList {
+                                if (state.hasLogin) {
+                                    add(ModernActionPopup.Action(title = loginTitle, invoke = actions.onLoginClick))
                                 }
-                                if (hasLogin && hasVipChapter) {
-                                    add(ModernActionPopup.Action(title = chapterPayTitle, invoke = onPayClick))
+                                if (state.hasLogin && state.hasVipChapter) {
+                                    add(ModernActionPopup.Action(title = chapterPayTitle, invoke = actions.onPayClick))
                                 }
-                                add(ModernActionPopup.Action(title = editSourceTitle, invoke = onEditSourceClick))
-                                add(ModernActionPopup.Action(title = disableSourceTitle, invoke = onDisableSourceClick))
+                                add(ModernActionPopup.Action(title = editSourceTitle, invoke = actions.onEditSourceClick))
+                                add(ModernActionPopup.Action(title = disableSourceTitle, invoke = actions.onDisableSourceClick))
                             }
                             sourcePopupHandle = ModernActionPopup.show(
                                 context,
@@ -365,7 +379,7 @@ fun ReadMenuActionBar(
                                 sourceAnchorBounds.top.toInt(),
                                 sourceAnchorBounds.right.toInt(),
                                 sourceAnchorBounds.bottom.toInt(),
-                                actions,
+                                menuActions,
                                 sourcePopupHandle
                             )
                         }
@@ -373,7 +387,7 @@ fun ReadMenuActionBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = sourceName ?: bookSourceTitle,
+                        text = state.sourceName ?: bookSourceTitle,
                         color = style.primaryText,
                         fontSize = 12.sp,
                         maxLines = 1,
