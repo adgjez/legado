@@ -244,6 +244,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         var bookshelfLayout = AppConfig.bookshelfLayout
         var bookshelfSort = AppConfig.bookshelfSort
         var showBookname = AppConfig.showBookname
+        var listItemStyle = AppConfig.bookshelfListItemStyle
         if (bookshelfLayout !in 0..6) {
             bookshelfLayout = 0
             AppConfig.bookshelfLayout = 0
@@ -256,6 +257,10 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             showBookname = 0
             AppConfig.showBookname = 0
         }
+        if (listItemStyle !in 0..2) {
+            listItemStyle = 0
+            AppConfig.bookshelfListItemStyle = 0
+        }
         showDialogFragment(
             BookshelfConfigDialog.create(
                 initialValues = BookshelfConfigValues(
@@ -267,6 +272,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
                     layout = bookshelfLayout,
                     sort = bookshelfSort,
                     showBookname = showBookname,
+                    listItemStyle = listItemStyle,
                     margin = AppConfig.bookshelfMargin
                 ),
                 onApply = { values ->
@@ -293,6 +299,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         val layout = values.layout.coerceIn(0, 6)
         val sort = values.sort.coerceIn(0, 5)
         val showBookname = values.showBookname.coerceIn(0, 2)
+        val listItemStyle = values.listItemStyle.coerceIn(0, 2)
         val margin = values.margin.coerceIn(0, 60)
         if (AppConfig.bookGroupStyle != groupStyle) {
             AppConfig.bookGroupStyle = groupStyle
@@ -305,6 +312,10 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         if (AppConfig.bookshelfMargin != margin) {
             AppConfig.bookshelfMargin = margin
             recreate = true
+        }
+        if (AppConfig.bookshelfListItemStyle != listItemStyle) {
+            AppConfig.bookshelfListItemStyle = listItemStyle
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
         }
         if (AppConfig.showUnread != values.showUnread) {
             AppConfig.showUnread = values.showUnread

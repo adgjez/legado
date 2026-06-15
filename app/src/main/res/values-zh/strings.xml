@@ -2141,4 +2141,8 @@ bookUrl：%7$s
     <string name="book_info_style_immersive_hint">沉浸详情页使用固定 Compose 布局，组件编辑只作用于经典详情页。</string>
     <string name="book_info_style_immersive_title">沉浸封面详情页</string>
     <string name="book_info_style_immersive_desc">以封面背景、紧凑操作、简介、目录预览和图片库组成现代详情页。需要自定义组件顺序时可切回经典详情页。</string>
+    <string name="bookshelf_list_style">列表卡片样式</string>
+    <string name="bookshelf_list_style_classic">经典列表</string>
+    <string name="bookshelf_list_style_rounded_card">圆角卡片</string>
+    <string name="bookshelf_list_style_cover_immersive">封面沉浸</string>
 </resources>

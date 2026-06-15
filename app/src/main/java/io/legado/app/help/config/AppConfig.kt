@@ -218,6 +218,12 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefInt(PreferKey.bookshelfMargin, value)
         }
 
+    var bookshelfListItemStyle: Int
+        get() = appCtx.getPrefInt(PreferKey.bookshelfListItemStyle, 0)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.bookshelfListItemStyle, value)
+        }
+
     var showUnread: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showUnread, true)
         set(value) {

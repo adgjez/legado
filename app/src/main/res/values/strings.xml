@@ -2270,4 +2270,8 @@ Selected text or question:
     <string name="s3_secret_key">Secret Key</string>
     <string name="s3_session_token">Session Token</string>
     <string name="s3_path_style">Path style</string>
+    <string name="bookshelf_list_style">List card style</string>
+    <string name="bookshelf_list_style_classic">Classic list</string>
+    <string name="bookshelf_list_style_rounded_card">Rounded card</string>
+    <string name="bookshelf_list_style_cover_immersive">Cover immersive</string>
 </resources>
