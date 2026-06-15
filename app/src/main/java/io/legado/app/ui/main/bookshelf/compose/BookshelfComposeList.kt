@@ -93,7 +93,10 @@ data class BookshelfListRenderConfig(
     val classicCoverWidth: Dp = 78.dp,
     val classicCompactCoverWidth: Dp = 58.dp,
     val cardCoverWidth: Dp = 94.dp,
-    val cardCompactCoverWidth: Dp = 68.dp
+    val cardCompactCoverWidth: Dp = 68.dp,
+    val immersiveBlur: Dp = 6.dp,
+    val immersiveCompactBlur: Dp = 4.dp,
+    val immersiveScrimAlpha: Float = 0.38f
 )
 
 @Composable
@@ -249,7 +252,8 @@ private fun BookshelfClassicListItem(
             palette = palette,
             modifier = Modifier.weight(1f),
             showIntro = false,
-            showTags = false
+            showTags = false,
+            introMaxLines = 1
         )
         BookshelfListStatus(item = item, palette = palette)
     }
@@ -303,7 +307,8 @@ private fun BookshelfRoundedCardListItem(
             palette = palette,
             modifier = Modifier.weight(1f),
             showIntro = true,
-            showTags = true
+            showTags = true,
+            introMaxLines = if (compact) 1 else 2
         )
         BookshelfListStatus(item = item, palette = palette)
     }
@@ -346,7 +351,7 @@ private fun BookshelfImmersiveListItem(
             item = item,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(if (compact) 10.dp else 14.dp),
+                .blur(if (compact) renderConfig.immersiveCompactBlur else renderConfig.immersiveBlur),
             fillWidth = true,
             width = 1.dp,
             cornerRadius = 0.dp,
@@ -356,7 +361,7 @@ private fun BookshelfImmersiveListItem(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
+                .background(Color.Black.copy(alpha = renderConfig.immersiveScrimAlpha))
         )
         Row(
             modifier = Modifier
@@ -379,7 +384,8 @@ private fun BookshelfImmersiveListItem(
                 palette = immersivePalette,
                 modifier = Modifier.weight(1f),
                 showIntro = true,
-                showTags = true
+                showTags = true,
+                introMaxLines = 1
             )
             BookshelfListStatus(
                 item = item,
@@ -525,7 +531,8 @@ private fun BookshelfListTextContent(
     palette: BookshelfListPalette,
     modifier: Modifier = Modifier,
     showIntro: Boolean,
-    showTags: Boolean
+    showTags: Boolean,
+    introMaxLines: Int
 ) {
     Column(modifier = modifier) {
         Text(
@@ -544,7 +551,8 @@ private fun BookshelfListTextContent(
                 compact = compact,
                 palette = palette,
                 showIntro = showIntro,
-                showTags = showTags
+                showTags = showTags,
+                introMaxLines = introMaxLines
             )
 
             is BookshelfFolderItemUi -> Text(
@@ -565,7 +573,8 @@ private fun BookshelfBookMeta(
     compact: Boolean,
     palette: BookshelfListPalette,
     showIntro: Boolean,
-    showTags: Boolean
+    showTags: Boolean,
+    introMaxLines: Int
 ) {
     val book = item.book
     if (compact) {
@@ -603,7 +612,7 @@ private fun BookshelfBookMeta(
                 color = palette.secondaryText,
                 fontSize = 12.sp,
                 fontFamily = palette.bodyFontFamily,
-                maxLines = if (compact) 1 else 2,
+                maxLines = introMaxLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 4.dp)
             )
