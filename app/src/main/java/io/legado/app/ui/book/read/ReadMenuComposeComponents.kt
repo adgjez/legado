@@ -780,7 +780,13 @@ private fun buildOverflowActions(
     }
     actions.add(ModernActionPopup.Action(title = "反转内容", invoke = onReverseContentClick))
     actions.add(ModernActionPopup.Action(title = "模拟追读", invoke = onSimulatedReadingClick))
-    actions.add(ModernActionPopup.Action(title = "替换净化", invoke = onChangeReplaceRuleClick))
+    val isReplaceEnabled = io.legado.app.model.ReadBook.book?.getUseReplaceRule() == true
+    actions.add(ModernActionPopup.Action(
+        title = "替换净化",
+        checked = isReplaceEnabled,
+        persistent = true,
+        invoke = onChangeReplaceRuleClick
+    ))
     actions.add(ModernActionPopup.Action(title = "移除重复标题", invoke = onSameTitleRemovedClick))
     actions.add(ModernActionPopup.Action(title = "重新分段", invoke = onReSegmentClick))
     actions.add(ModernActionPopup.Action(title = "图片样式", invoke = onImageStyleClick))

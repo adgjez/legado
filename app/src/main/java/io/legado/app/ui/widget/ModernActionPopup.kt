@@ -25,6 +25,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +67,7 @@ object ModernActionPopup {
         val iconName: String? = null,
         val checked: Boolean = false,
         val enabled: Boolean = true,
+        val persistent: Boolean = false,  // true = 点击不关闭弹窗，就地更新状态
         val invoke: () -> Unit
     )
 
@@ -407,6 +411,8 @@ object ModernActionPopup {
     ) {
         val style = rememberAppDialogStyle()
         val palette = style.toMiuixPalette()
+        // 跟踪 persistent 项的 checked 状态
+        var checkedStates by remember { mutableStateOf(actions.map { it.checked }) }
         val density = LocalDensity.current
         val maxHeightDp = with(density) { snapshot.maxHeightPx.toDp() }
         var panelSize by remember { mutableStateOf(IntSize.Zero) }
@@ -465,18 +471,31 @@ object ModernActionPopup {
                         itemsIndexed(
                             items = actions,
                             key = { index, action -> "${action.title}#$index" }
-                        ) { _, action ->
+                        ) { index, action ->
+                            val isChecked = if (action.persistent) {
+                                checkedStates.getOrElse(index) { action.checked }
+                            } else {
+                                action.checked
+                            }
                             LegadoMiuixChoiceRow(
                                 text = action.title,
-                                selected = action.checked,
+                                selected = isChecked,
                                 palette = palette,
                                 onClick = {
-                                    onDismiss()
-                                    anchorPostAction(action.invoke)
+                                    if (action.persistent) {
+                                        // 不关闭弹窗，就地更新状态
+                                        checkedStates = checkedStates.toMutableList().apply {
+                                            set(index, !isChecked)
+                                        }
+                                        anchorPostAction(action.invoke)
+                                    } else {
+                                        onDismiss()
+                                        anchorPostAction(action.invoke)
+                                    }
                                 },
                                 minHeight = 42.dp,
                                 compact = true,
-                                showSelectedMark = true,
+                                showSelectedMark = action.persistent,
                                 enabled = action.enabled,
                                 description = action.description,
                                 leadingIconName = action.iconName
