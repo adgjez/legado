@@ -121,6 +121,11 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         }
     }
 
+    protected fun dismissBookshelfTransientUi() {
+        modernMenuPopup?.dismiss()
+        modernMenuPopup = null
+    }
+
     override fun onCompatOptionsItemSelected(item: MenuItem) {
         super.onCompatOptionsItemSelected(item)
         when (item.itemId) {
@@ -293,6 +298,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         previousShowBookname: Int,
         values: BookshelfConfigValues
     ) {
+        dismissBookshelfTransientUi()
         var notifyMain = false
         var refreshBookshelf = false
         var structureChanged = false
@@ -348,7 +354,9 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             structureChanged = true
         }
         if (structureChanged) {
-            postEvent(EventBus.BOOKSHELF_STRUCTURE_CHANGED, "")
+            view?.post {
+                postEvent(EventBus.BOOKSHELF_STRUCTURE_CHANGED, "")
+            }
         } else if (refreshBookshelf) {
             postEvent(EventBus.BOOKSHELF_REFRESH, "")
         } else if (notifyMain) {

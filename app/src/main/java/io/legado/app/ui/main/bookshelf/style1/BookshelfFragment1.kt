@@ -378,6 +378,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private fun rebuildBookshelfContent() {
         if (!isAdded) return
         val targetGroupId = groupId
+        dismissBookshelfTransientUi()
         groupMenuPopup?.dismiss()
         groupMenuPopup = null
         structureVersion++

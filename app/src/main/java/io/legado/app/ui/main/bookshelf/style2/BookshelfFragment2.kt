@@ -589,6 +589,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private fun rebuildBookshelfContent() {
         if (!isAdded) return
         val targetGroupId = groupId
+        dismissBookshelfTransientUi()
         bookshelfLayout = AppConfig.bookshelfLayout.coerceIn(0, 6)
         bookshelfMargin = AppConfig.bookshelfMargin
         composeListItemStyle = AppConfig.bookshelfListItemStyle
