@@ -71,6 +71,7 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.ui.book.read.config.ReaderSheetStyle
 import io.legado.app.model.ReadBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.browser.WebViewActivity
@@ -573,17 +574,14 @@ class ReadMenu @JvmOverloads constructor(
         } else {
             context.bottomBackground
         }
-        val isLight = ColorUtils.isColorLight(bgColor)
-        val textColor = if (immersiveMenu) {
-            ReadBookConfig.durConfig.curTextColor()
-        } else {
-            context.getPrimaryTextColor(isLight)
-        }
+        val palette = ReaderSheetStyle.resolve(context, bgColor)
         return base.copy(
-            surface = Color(bgColor),
-            fieldSurface = Color(bgColor).copy(alpha = if (isLight) 0.92f else 0.88f),
-            primaryText = Color(textColor),
-            secondaryText = Color(textColor).copy(alpha = 0.7f)
+            surface = Color(palette.surface),
+            fieldSurface = Color(palette.panel),
+            primaryText = Color(palette.textColor),
+            secondaryText = Color(palette.secondaryTextColor),
+            accent = Color(palette.accentColor),
+            stroke = Color(palette.stroke)
         )
     }
     // endregion
