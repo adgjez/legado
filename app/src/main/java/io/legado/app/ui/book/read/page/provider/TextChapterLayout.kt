@@ -898,9 +898,19 @@ class TextChapterLayout(
                         flushHtmlBuffer()
                         addEpubBlockSpacingBefore(node)
                     }
+                    val textBoxLayout = node.useHtmlTextBoxLayout()
                     if (node.isHtmlBlock() && node.hasEpubBlockBoxStyle() && !node.hasHtmlImage()) {
                         flushHtmlBuffer()
                         setTypeEpubBlockBox(imageStyle, book, node)
+                    } else if (textBoxLayout != null) {
+                        flushHtmlBuffer()
+                        setTypeHtmlText(
+                            imageStyle = imageStyle,
+                            book = book,
+                            htmlContent = node.outerHtml(),
+                            layoutStartOffset = textBoxLayout.startOffset,
+                            layoutWidth = textBoxLayout.width
+                        )
                     } else if (node.normalName() == "table") {
                         flushHtmlBuffer()
                         setTypeHtmlText(imageStyle, book, node.toReadableTableHtml())
@@ -1550,6 +1560,24 @@ class TextChapterLayout(
             "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main",
             "nav", "ol", "p", "pre", "section", "table", "tbody", "td", "tfoot", "th",
             "thead", "tr", "ul" -> true
+            else -> false
+        }
+    }
+
+    private fun Element.useHtmlTextBoxLayout(): UseHtmlTextBoxLayout? {
+        if (!isUseHtmlTextBoxCandidate() || hasHtmlImage() || hasEpubBlockBoxDescendant()) return null
+        return UseHtmlTextBoxLayoutResolver.resolve(
+            attributes = attributes().associate { attribute -> attribute.key to attribute.value },
+            style = attr("style"),
+            visibleWidth = visibleWidth,
+            emPx = contentPaintTextHeight
+        )
+    }
+
+    private fun Element.isUseHtmlTextBoxCandidate(): Boolean {
+        return when (normalName()) {
+            "article", "blockquote", "center", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+            "p", "section" -> true
             else -> false
         }
     }
