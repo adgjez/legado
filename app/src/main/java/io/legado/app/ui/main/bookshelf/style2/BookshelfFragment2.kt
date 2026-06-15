@@ -90,7 +90,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     private val binding by viewBinding(FragmentBookshelf2Binding::bind)
-    private val bookshelfLayout by lazy { AppConfig.bookshelfLayout }
+    private var bookshelfLayout by mutableIntStateOf(AppConfig.bookshelfLayout)
     private val booksAdapter: BaseBooksAdapter<*> by lazy {
         BooksAdapterList(requireContext(), this)
     }
@@ -100,7 +100,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     override var books: List<Book> = emptyList()
     private var enableRefresh = true
     override var onlyUpdateRead = false
-    private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
+    private var bookshelfMargin by mutableIntStateOf(AppConfig.bookshelfMargin)
     private var itemCount = 0
     private var totalRows = 0
     private val useComposeGrid get() = bookshelfLayout >= 2
@@ -560,12 +560,35 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             if (useComposeBookshelf) {
+                bookshelfMargin = AppConfig.bookshelfMargin
                 composeListItemStyle = AppConfig.bookshelfListItemStyle
                 updateComposeItems()
             } else {
                 booksAdapter.notifyDataSetChanged()
             }
         }
+        observeEvent<String>(EventBus.BOOKSHELF_STRUCTURE_CHANGED) {
+            rebuildBookshelfContent()
+        }
+    }
+
+    private fun rebuildBookshelfContent() {
+        if (!isAdded) return
+        val targetGroupId = groupId
+        bookshelfLayout = AppConfig.bookshelfLayout.coerceIn(0, 6)
+        bookshelfMargin = AppConfig.bookshelfMargin
+        composeListItemStyle = AppConfig.bookshelfListItemStyle
+        composeScrollPositions.clear()
+        composeItems = emptyList()
+        composeCanScrollBackward = false
+        composePendingScrollRestoreGroupId = targetGroupId
+        composeDataVersion = 0
+        composeGroupId = targetGroupId
+        binding.rvBookshelf.adapter = null
+        binding.rvBookshelf.isGone = useComposeBookshelf
+        binding.composeBookshelf.isGone = !useComposeBookshelf
+        binding.tvEmptyMsg.isGone = true
+        initBooksData()
     }
 
     private fun updateComposeItemUpdating(bookUrl: String) {
