@@ -1,8 +1,6 @@
 package io.legado.app.ui.book.read.config
 
 import android.content.DialogInterface
-import android.content.res.AssetManager
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
@@ -10,7 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import androidx.compose.foundation.Image
+import android.widget.ImageView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,11 +45,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
+import androidx.appcompat.widget.AppCompatImageView
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -67,6 +65,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.help.DefaultData
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.newCallResponseBody
@@ -619,10 +618,6 @@ class BgTextConfigDialog : BaseDialogFragment(0) {
 
     @Composable
     private fun PresetBackgroundTile(imageName: String, style: AppDialogStyle) {
-        val context = LocalContext.current
-        val bitmap = remember(imageName) {
-            decodePresetBackgroundPreview(context.assets, imageName)
-        }
         Surface(
             modifier = Modifier
                 .width(82.dp)
@@ -646,14 +641,10 @@ class BgTextConfigDialog : BaseDialogFragment(0) {
                         .clip(RoundedCornerShape(topStart = style.actionRadius, topEnd = style.actionRadius))
                         .background(style.surface)
                 ) {
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = imageName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    PresetBackgroundPreview(
+                        imageName = imageName,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
                 Text(
                     text = imageName.substringBeforeLast("."),
@@ -665,6 +656,23 @@ class BgTextConfigDialog : BaseDialogFragment(0) {
                 )
             }
         }
+    }
+
+    @Composable
+    private fun PresetBackgroundPreview(imageName: String, modifier: Modifier = Modifier) {
+        AndroidView(
+            modifier = modifier,
+            factory = { viewContext ->
+                AppCompatImageView(viewContext).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+            },
+            update = { imageView ->
+                ImageLoader.load(imageView.context, "file:///android_asset/bg/$imageName")
+                    .centerCrop()
+                    .into(imageView)
+            }
+        )
     }
 
     private fun editStyleName() {
@@ -728,32 +736,6 @@ class BgTextConfigDialog : BaseDialogFragment(0) {
         } else {
             Color(0xFF015A86)
         }
-    }
-
-    private fun decodePresetBackgroundPreview(assets: AssetManager, imageName: String) = runCatching {
-        val assetPath = "bg${File.separator}$imageName"
-        val bounds = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
-        assets.open(assetPath).use { input ->
-            BitmapFactory.decodeStream(input, null, bounds)
-        }
-        val sampleSize = calculatePreviewSampleSize(bounds.outWidth, bounds.outHeight, 164)
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-        }
-        assets.open(assetPath).use { input ->
-            BitmapFactory.decodeStream(input, null, options)
-        }
-    }.getOrNull()
-
-    private fun calculatePreviewSampleSize(width: Int, height: Int, targetSize: Int): Int {
-        if (width <= targetSize && height <= targetSize) return 1
-        var sampleSize = 1
-        while (width / (sampleSize * 2) >= targetSize && height / (sampleSize * 2) >= targetSize) {
-            sampleSize *= 2
-        }
-        return sampleSize
     }
 
     private fun postReadConfigChanged(vararg configKeys: Int) {
