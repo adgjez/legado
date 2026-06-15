@@ -113,6 +113,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         private set
     var bookSort = 0
         private set
+    var structureVersion = 0
     private var upLastUpdateTimeJob: Job? = null
     private var enableRefresh = true
     private var onlyUpdateRead = false

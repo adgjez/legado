@@ -62,6 +62,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private var currentGroupIndex = 0
     private var topOverlaySpace = 0
     private var topOverlayEnabled = false
+    private var structureVersion = 0
     override val groupId: Long get() = selectedGroup?.groupId ?: 0
 
     override val books: List<Book>
@@ -292,6 +293,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
 
     private fun showGroupSwitchMenu(anchor: View) {
         if (bookGroups.isEmpty()) return
+        groupMenuPopup?.dismiss()
         val selectedId = selectedGroup?.groupId
         val actions = bookGroups.mapIndexed { index, group ->
             val prefix = if (group.groupId == selectedId) "✓ " else ""
@@ -368,6 +370,30 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             renderBookTags(groupBooksCache[groupId].orEmpty())
         }
+        observeEvent<String>(EventBus.BOOKSHELF_STRUCTURE_CHANGED) {
+            rebuildBookshelfContent()
+        }
+    }
+
+    private fun rebuildBookshelfContent() {
+        if (!isAdded) return
+        val targetGroupId = groupId
+        groupMenuPopup?.dismiss()
+        groupMenuPopup = null
+        structureVersion++
+        fragmentMap.clear()
+        selectedBookTag = ""
+        binding.viewPagerBookshelf.post {
+            if (!isAdded) return@post
+            adapter.notifyDataSetChanged()
+            if (bookGroups.any { it.groupId == targetGroupId }) {
+                switchToGroupId(targetGroupId)
+            } else {
+                selectSavedGroup()
+            }
+            renderBookTags(groupBooksCache[groupId].orEmpty())
+            updateTopBarOverlay()
+        }
     }
 
     private inner class TabFragmentPageAdapter(fm: FragmentManager) :
@@ -383,6 +409,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
          */
         override fun getItemPosition(any: Any): Int {
             val fragment = any as BooksFragment
+            if (fragment.structureVersion != structureVersion) {
+                return POSITION_NONE
+            }
             val position = fragment.position
             val group = bookGroups.getOrNull(position)
             if (fragment.groupId != group?.groupId) {
@@ -417,6 +446,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 fragment = super.instantiateItem(container, position) as BooksFragment
             }
             fragmentMap[group.groupId] = fragment
+            fragment.structureVersion = structureVersion
             fragment.setTopOverlaySpace(topOverlaySpace, topOverlayEnabled)
             return fragment
         }
