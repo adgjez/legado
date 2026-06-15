@@ -18,7 +18,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -39,15 +38,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
@@ -332,6 +335,17 @@ class ReadMenu @JvmOverloads constructor(
                 androidx.compose.material3.LocalTextStyle.current.copy(fontFamily = bodyFontFamily)
         ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            // 背景遮罩（沉浸模式用封面模糊，否则半透明黑）
+            val isImmersive = AppConfig.readMenuImmersive
+            if (isImmersive) {
+                ImmersiveBackground()
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                )
+            }
             // 点击空白区域关闭菜单（只响应 tap，不干扰拖拽）
             Box(
                 modifier = Modifier
@@ -451,6 +465,46 @@ class ReadMenu @JvmOverloads constructor(
             }
         }
         } // CompositionLocalProvider
+    }
+
+    @Composable
+    private fun ImmersiveBackground() {
+        val context = LocalContext.current
+        val book = ReadBook.book
+        var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+        LaunchedEffect(book?.bookUrl) {
+            book?.let {
+                try {
+                    val coverPath = it.coverUrl
+                    if (!coverPath.isNullOrBlank()) {
+                        val loaded = io.legado.app.help.glide.ImageLoader
+                            .loadBitmap(context, coverPath)
+                            .transform(io.legado.app.help.glide.BlurTransformation(25))
+                            .submit()
+                            .get()
+                        bitmap = loaded
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        val bmp = bitmap
+        if (bmp != null) {
+            androidx.compose.foundation.Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alpha = 0.6f
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+            )
+        }
     }
 
     @Composable
