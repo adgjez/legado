@@ -565,7 +565,26 @@ class ReadMenu @JvmOverloads constructor(
 
     @Composable
     private fun rememberReadMenuStyle(): AppDialogStyle {
-        return rememberAppDialogStyle()
+        val base = rememberAppDialogStyle()
+        val bgColor = if (immersiveMenu) {
+            runCatching {
+                ReadBookConfig.durConfig.curBgStr().toColorInt()
+            }.getOrDefault(context.bottomBackground)
+        } else {
+            context.bottomBackground
+        }
+        val isLight = ColorUtils.isColorLight(bgColor)
+        val textColor = if (immersiveMenu) {
+            ReadBookConfig.durConfig.curTextColor()
+        } else {
+            context.getPrimaryTextColor(isLight)
+        }
+        return base.copy(
+            surface = Color(bgColor),
+            fieldSurface = Color(bgColor).copy(alpha = if (isLight) 0.92f else 0.88f),
+            primaryText = Color(textColor),
+            secondaryText = Color(textColor).copy(alpha = 0.7f)
+        )
     }
     // endregion
 

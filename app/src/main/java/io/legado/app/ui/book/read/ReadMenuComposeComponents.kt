@@ -787,8 +787,20 @@ private fun buildOverflowActions(
         persistent = true,
         invoke = onChangeReplaceRuleClick
     ))
-    actions.add(ModernActionPopup.Action(title = "移除重复标题", invoke = onSameTitleRemovedClick))
-    actions.add(ModernActionPopup.Action(title = "重新分段", invoke = onReSegmentClick))
+    val isSameTitleRemoved = io.legado.app.model.ReadBook.curTextChapter?.sameTitleRemoved == true
+    actions.add(ModernActionPopup.Action(
+        title = "移除重复标题",
+        checked = isSameTitleRemoved,
+        persistent = true,
+        invoke = onSameTitleRemovedClick
+    ))
+    val isReSegment = io.legado.app.model.ReadBook.book?.getReSegment() == true
+    actions.add(ModernActionPopup.Action(
+        title = "重新分段",
+        checked = isReSegment,
+        persistent = true,
+        invoke = onReSegmentClick
+    ))
     actions.add(ModernActionPopup.Action(title = "图片样式", invoke = onImageStyleClick))
     actions.add(ModernActionPopup.Action(title = "更新目录", invoke = onUpdateTocClick))
     if (!isEpub) {

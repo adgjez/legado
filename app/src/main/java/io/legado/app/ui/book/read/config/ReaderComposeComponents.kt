@@ -116,8 +116,7 @@ fun ReaderBottomSheetFrame(
             modifier = modifier
                 .fillMaxWidth()
                 .heightIn(max = maxHeight)
-                .navigationBarsPadding()
-                .border(1.dp, style.stroke, shape),
+                .navigationBarsPadding(),
             shape = shape,
             color = style.surface,
             contentColor = style.primaryText,
