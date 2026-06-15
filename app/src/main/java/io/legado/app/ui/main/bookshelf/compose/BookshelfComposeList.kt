@@ -84,16 +84,16 @@ data class BookshelfListRenderConfig(
     val palette: BookshelfListPalette,
     val immersivePalette: BookshelfListPalette,
     val panelImage: Drawable?,
-    val classicMinHeight: Dp = 98.dp,
-    val classicCompactMinHeight: Dp = 72.dp,
-    val roundedMinHeight: Dp = 126.dp,
-    val roundedCompactMinHeight: Dp = 88.dp,
-    val immersiveHeight: Dp = 138.dp,
-    val immersiveCompactHeight: Dp = 108.dp,
-    val classicCoverWidth: Dp = 66.dp,
-    val classicCompactCoverWidth: Dp = 48.dp,
-    val cardCoverWidth: Dp = 72.dp,
-    val cardCompactCoverWidth: Dp = 54.dp
+    val classicMinHeight: Dp = 112.dp,
+    val classicCompactMinHeight: Dp = 82.dp,
+    val roundedMinHeight: Dp = 154.dp,
+    val roundedCompactMinHeight: Dp = 112.dp,
+    val immersiveHeight: Dp = 158.dp,
+    val immersiveCompactHeight: Dp = 118.dp,
+    val classicCoverWidth: Dp = 78.dp,
+    val classicCompactCoverWidth: Dp = 58.dp,
+    val cardCoverWidth: Dp = 94.dp,
+    val cardCompactCoverWidth: Dp = 68.dp
 )
 
 @Composable
