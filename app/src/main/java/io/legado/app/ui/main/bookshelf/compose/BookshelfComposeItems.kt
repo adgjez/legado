@@ -79,7 +79,9 @@ fun buildBookshelfItems(
             unreadCount = book.getUnreadChapterNum(),
             hasNewChapter = book.lastCheckCount > 0,
             intro = book.cleanBookshelfIntro(),
-            tags = BookTagHelper.parse(book.customTag).take(4),
+            tags = (BookTagHelper.parse(book.customTag) + BookTagHelper.parse(book.kind))
+                .distinctBy { it.lowercase() }
+                .take(4),
             lastUpdateText = if (AppConfig.showLastUpdateTime && !book.isLocal) {
                 book.latestChapterTime.toTimeAgo()
             } else {
@@ -293,9 +295,16 @@ private fun String.looksLikeRuleIntroPlaceholder(): Boolean {
     return value.equals("useweb", ignoreCase = true) ||
         value.equals("usehtml", ignoreCase = true) ||
         value.equals("md", ignoreCase = true) ||
+        value.length < 12 ||
         value.startsWith("@") ||
         value.startsWith("//") ||
+        value.startsWith("http://", ignoreCase = true) ||
+        value.startsWith("https://", ignoreCase = true) ||
         value.startsWith("{{") ||
+        value.startsWith("function", ignoreCase = true) ||
+        value.contains("@js:", ignoreCase = true) ||
+        value.contains("document.", ignoreCase = true) ||
+        value.contains("querySelector", ignoreCase = true) ||
         value.contains("{{") ||
         value.contains("}}")
 }

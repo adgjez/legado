@@ -239,6 +239,7 @@ private fun BookshelfRoundedCardListItem(
                 borderColor = palette.borderColor,
                 radiusPx = palette.panelRadiusPx
             )
+            .heightIn(min = if (compact) 78.dp else 112.dp)
             .combinedClickable(
                 onClick = { onClick(item) },
                 onLongClick = { onLongClick(item) }
@@ -286,6 +287,15 @@ private fun BookshelfImmersiveListItem(
             .fillMaxWidth()
             .height(if (compact) 96.dp else 124.dp)
             .clip(RoundedCornerShape(palette.panelRadius))
+            .then(
+                palette.borderColor?.let {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = Color(it),
+                        shape = RoundedCornerShape(palette.panelRadius)
+                    )
+                } ?: Modifier
+            )
             .combinedClickable(
                 onClick = { onClick(item) },
                 onLongClick = { onLongClick(item) }
@@ -316,7 +326,8 @@ private fun BookshelfImmersiveListItem(
                 compact = compact,
                 palette = palette.copy(
                     primaryText = Color.White,
-                    secondaryText = Color.White.copy(alpha = 0.78f)
+                    secondaryText = Color.White.copy(alpha = 0.78f),
+                    accent = Color.White
                 ),
                 modifier = Modifier.weight(1f),
                 showIntro = true,
@@ -326,7 +337,8 @@ private fun BookshelfImmersiveListItem(
                 item = item,
                 palette = palette.copy(
                     primaryText = Color.White,
-                    secondaryText = Color.White.copy(alpha = 0.78f)
+                    secondaryText = Color.White.copy(alpha = 0.78f),
+                    accent = Color.White
                 )
             )
         }
