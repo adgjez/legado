@@ -239,7 +239,7 @@ private fun BookshelfClassicListItem(
     ) {
         BookshelfCoverBlock(
             item = item,
-            width = if (compact) renderConfig.classicCompactCoverWidth else renderConfig.classicCoverWidth,
+            width = renderConfig.classicCoverWidth(compact),
             cornerRadius = 2.dp,
             palette = palette,
             fragment = fragment,
@@ -294,7 +294,7 @@ private fun BookshelfRoundedCardListItem(
     ) {
         BookshelfCoverBlock(
             item = item,
-            width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
+            width = renderConfig.cardCoverWidth(compact),
             cornerRadius = palette.actionRadius,
             palette = palette,
             fragment = fragment,
@@ -371,7 +371,7 @@ private fun BookshelfImmersiveListItem(
         ) {
             BookshelfCoverBlock(
                 item = item,
-                width = if (compact) renderConfig.cardCompactCoverWidth else renderConfig.cardCoverWidth,
+                width = renderConfig.cardCoverWidth(compact),
                 cornerRadius = palette.actionRadius,
                 palette = immersivePalette,
                 fragment = fragment,
@@ -393,6 +393,14 @@ private fun BookshelfImmersiveListItem(
             )
         }
     }
+}
+
+private fun BookshelfListRenderConfig.classicCoverWidth(compact: Boolean): Dp {
+    return if (compact) classicCompactCoverWidth else classicCoverWidth
+}
+
+private fun BookshelfListRenderConfig.cardCoverWidth(compact: Boolean): Dp {
+    return if (compact) cardCompactCoverWidth else cardCoverWidth
 }
 
 @Composable
