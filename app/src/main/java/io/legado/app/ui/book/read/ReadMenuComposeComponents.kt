@@ -366,7 +366,7 @@ fun ReadMenuActionBar(
                                 if (state.hasLogin) {
                                     add(ModernActionPopup.Action(title = loginTitle, invoke = actions.onLoginClick))
                                 }
-                                if (state.hasLogin && state.hasVipChapter) {
+                                if (state.hasVipChapter) {
                                     add(ModernActionPopup.Action(title = chapterPayTitle, invoke = actions.onPayClick))
                                 }
                                 add(ModernActionPopup.Action(title = editSourceTitle, invoke = actions.onEditSourceClick))
