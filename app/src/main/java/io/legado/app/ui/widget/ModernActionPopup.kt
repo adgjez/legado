@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -498,7 +499,8 @@ object ModernActionPopup {
                                 showSelectedMark = action.persistent,
                                 enabled = action.enabled,
                                 description = action.description,
-                                leadingIconName = action.iconName
+                                leadingIconName = action.iconName,
+                                textAlign = TextAlign.Start
                             )
                         }
                     }

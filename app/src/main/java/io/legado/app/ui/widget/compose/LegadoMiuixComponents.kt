@@ -598,7 +598,8 @@ fun LegadoMiuixChoiceRow(
     compact: Boolean = false,
     showSelectedMark: Boolean = true,
     enabled: Boolean = true,
-    leadingIconName: String? = null
+    leadingIconName: String? = null,
+    textAlign: TextAlign = TextAlign.Center
 ) {
     val actionRadius = palette.actionRadius ?: LocalContext.current.composeActionRadius()
     val contentAlpha = if (enabled) 1f else 0.42f
@@ -631,12 +632,17 @@ fun LegadoMiuixChoiceRow(
             }
             Column(
                 modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = when (textAlign) {
+                    TextAlign.Start, TextAlign.Left -> Alignment.Start
+                    TextAlign.End, TextAlign.Right -> Alignment.End
+                    else -> Alignment.CenterHorizontally
+                }
             ) {
                 Text(
                     text = text,
                     color = if (selected) selectedColor else primaryColor,
-                    textAlign = TextAlign.Center,
+                    textAlign = textAlign,
+                    modifier = Modifier.fillMaxWidth(),
                     fontSize = if (compact) 13.sp else 14.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 2,
