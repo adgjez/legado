@@ -414,7 +414,9 @@ class ReadMenu @JvmOverloads constructor(
                             showCloudIcon = showCloudIcon,
                             cloudState = cloudState,
                             hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
-                            hasVipChapter = canPayCurrentChapter()
+                            hasVipChapter = !ReadBook.bookSource?.loginUrl.isNullOrEmpty()
+                                    && ReadBook.curTextChapter?.isVip == true
+                                    && ReadBook.curTextChapter?.isPay != true
                         ),
                         actions = ReadMenuActionBarActions(
                             onChapterClick = { handleChapterClick() },
@@ -749,16 +751,6 @@ class ReadMenu @JvmOverloads constructor(
         return candidates.asSequence()
             .mapNotNull { it?.trim() }
             .firstOrNull { it.isNotBlank() }
-    }
-
-    private fun canPayCurrentChapter(): Boolean {
-        val book = ReadBook.book ?: return false
-        if (book.isLocal) return false
-        val source = ReadBook.bookSource ?: return false
-        if (source.getContentRule().payAction.isNullOrBlank()) return false
-        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
-            ?: return false
-        return chapter.isVip && !chapter.isPay
     }
     // endregion
 
