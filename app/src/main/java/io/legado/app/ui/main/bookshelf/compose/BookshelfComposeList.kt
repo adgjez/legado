@@ -1,7 +1,6 @@
 package io.legado.app.ui.main.bookshelf.compose
 
 import android.graphics.drawable.Drawable
-import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,7 +42,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
@@ -56,7 +54,6 @@ import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
-import io.legado.app.ui.widget.image.CoverImageView
 
 object BookshelfListItemStyle {
     const val Classic = 0
@@ -484,52 +481,15 @@ private fun BookshelfListCover(
     modifier: Modifier = Modifier,
     fillWidth: Boolean = false
 ) {
-    AndroidView(
+    BookshelfComposeCover(
+        item = item,
         modifier = modifier
             .then(if (fillWidth) Modifier else Modifier.width(width).aspectRatio(0.72f))
             .clip(RoundedCornerShape(cornerRadius)),
-        factory = { context ->
-            CoverImageView(context).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-        },
-        update = { coverView ->
-            val loadKey = item.coverLoadKey()
-            if (coverView.tag != loadKey) {
-                coverView.tag = loadKey
-                when (item) {
-                    is BookshelfBookItemUi -> coverView.loadThumb(item.book, false, fragment, lifecycle)
-                    is BookshelfFolderItemUi -> coverView.load(
-                        path = item.group.cover,
-                        name = item.group.groupName,
-                        loadOnlyWifi = false,
-                        fragment = fragment,
-                        lifecycle = lifecycle,
-                        preferThumb = true
-                    )
-                }
-            }
-        }
+        fragment = fragment,
+        lifecycle = lifecycle,
+        fillBounds = true
     )
-}
-
-private fun BookshelfItemUi.coverLoadKey(): String {
-    return when (this) {
-        is BookshelfBookItemUi -> listOf(
-            "book",
-            book.bookUrl,
-            book.getDisplayCover(),
-            book.name,
-            book.author
-        ).joinToString("|")
-
-        is BookshelfFolderItemUi -> listOf(
-            "folder",
-            group.groupId.toString(),
-            group.cover.orEmpty(),
-            group.groupName
-        ).joinToString("|")
-    }
 }
 
 @Composable

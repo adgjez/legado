@@ -1,6 +1,5 @@
 package io.legado.app.ui.main.bookshelf.compose
 
-import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.data.entities.Book
@@ -38,7 +36,6 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
-import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.toTimeAgo
 
 sealed interface BookshelfItemUi {
@@ -199,26 +196,11 @@ private fun BookshelfCover(
     fragment: Fragment?,
     lifecycle: Lifecycle?
 ) {
-    AndroidView(
+    BookshelfComposeCover(
+        item = item,
         modifier = modifier,
-        factory = { context ->
-            CoverImageView(context).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-        },
-        update = { coverView ->
-            when (item) {
-                is BookshelfBookItemUi -> coverView.loadThumb(item.book, false, fragment, lifecycle)
-                is BookshelfFolderItemUi -> coverView.load(
-                    path = item.group.cover,
-                    name = item.group.groupName,
-                    loadOnlyWifi = false,
-                    fragment = fragment,
-                    lifecycle = lifecycle,
-                    preferThumb = true
-                )
-            }
-        }
+        fragment = fragment,
+        lifecycle = lifecycle
     )
 }
 
