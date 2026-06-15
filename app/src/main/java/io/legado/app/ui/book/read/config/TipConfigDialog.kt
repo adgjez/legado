@@ -11,17 +11,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -35,10 +33,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.verticalScroll
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
 import io.legado.app.R
 import io.legado.app.constant.EventBus
@@ -48,34 +46,22 @@ import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
 import io.legado.app.ui.widget.compose.ComposeActionListDialog
-import io.legado.app.ui.widget.compose.ComposeDialogFragment
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
-import io.legado.app.utils.setLayout
 import io.legado.app.utils.hexString
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 
-class TipConfigDialog : ComposeDialogFragment() {
+class TipConfigDialog : ReaderBottomSheetComposeDialogFragment() {
 
     companion object {
         const val TIP_COLOR = 7897
         const val TIP_DIVIDER_COLOR = 7898
     }
 
-    override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
-
-    override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
-    override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
+    override val maxSheetHeightFraction: Float = 0.76f
 
     private var colorRefreshTick by mutableIntStateOf(0)
-
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -91,10 +77,7 @@ class TipConfigDialog : ComposeDialogFragment() {
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                val style = rememberAppDialogStyle()
-                CompositionLocalProvider(
-                    LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
-                ) {
+                ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style ->
                     TipConfigContent(
                         style = style,
                         colorRefreshTick = colorRefreshTick,
@@ -210,127 +193,120 @@ private fun TipConfigContent(
         }
     }
 
-    LegadoMiuixCard(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        color = style.surface,
-        contentColor = style.primaryText,
-        cornerRadius = style.panelRadius,
-        insidePadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+            .heightIn(max = 560.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(ReaderSheetDefaults.SectionGap)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // 标题设置
-            TipSection(style = style) {
-                TipCompactSlider(
-                    label = stringResource(R.string.title_font_size),
-                    value = titleSize,
-                    range = 0..20,
-                    style = style
-                ) { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                TipCompactSlider(
-                    label = stringResource(R.string.title_margin_top),
-                    value = titleTopSpacing,
-                    range = 0..100,
-                    style = style
-                ) { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                TipCompactSlider(
-                    label = stringResource(R.string.title_margin_bottom),
-                    value = titleBottomSpacing,
-                    range = 0..100,
-                    style = style
-                ) { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    titleModeOptions.forEachIndexed { index, label ->
-                        LegadoMiuixChoiceRow(
-                            text = label,
-                            selected = titleModeToUiIndex(titleMode) == index,
-                            palette = miuixPalette,
-                            onClick = {
-                                val newMode = uiIndexToTitleMode(index)
-                                titleMode = newMode
-                                ReadBookConfig.titleMode = newMode
-                                postEvent(EventBus.UP_CONFIG, arrayListOf(5))
-                                if (newMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED) {
-                                    onShowAdvancedTitleConfig()
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            minHeight = 32.dp,
-                            compact = true,
-                            showSelectedMark = false
-                        )
+        // 标题设置
+        TipSection(style = style) {
+            TipCompactSlider(
+                label = stringResource(R.string.title_font_size),
+                value = titleSize,
+                range = 0..20,
+                style = style
+            ) { titleSize = it; ReadBookConfig.titleSize = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
+            TipCompactSlider(
+                label = stringResource(R.string.title_margin_top),
+                value = titleTopSpacing,
+                range = 0..100,
+                style = style
+            ) { titleTopSpacing = it; ReadBookConfig.titleTopSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
+            TipCompactSlider(
+                label = stringResource(R.string.title_margin_bottom),
+                value = titleBottomSpacing,
+                range = 0..100,
+                style = style
+            ) { titleBottomSpacing = it; ReadBookConfig.titleBottomSpacing = it; postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5)) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                titleModeOptions.forEachIndexed { index, label ->
+                    LegadoMiuixChoiceRow(
+                        text = label,
+                        selected = titleModeToUiIndex(titleMode) == index,
+                        palette = miuixPalette,
+                        onClick = {
+                            val newMode = uiIndexToTitleMode(index)
+                            titleMode = newMode
+                            ReadBookConfig.titleMode = newMode
+                            postEvent(EventBus.UP_CONFIG, arrayListOf(5))
+                            if (newMode == AdvancedTitleConfig.TITLE_MODE_ADVANCED) {
+                                onShowAdvancedTitleConfig()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        minHeight = 32.dp,
+                        compact = true,
+                        showSelectedMark = false
+                    )
+                }
+            }
+        }
+        // 页眉
+        TipPlacementSection(
+            title = stringResource(R.string.header),
+            showLabel = headerModes[headerMode].orEmpty(),
+            leftLabel = tipName(headerLeft),
+            middleLabel = tipName(headerMiddle),
+            rightLabel = tipName(headerRight),
+            style = style,
+            onShowClick = {
+                val keys = headerModes.keys.toList()
+                onShowSelector(context.getString(R.string.header), headerModes.values.toList()) { index ->
+                    headerMode = keys.getOrElse(index) { 0 }
+                    ReadTipConfig.headerMode = headerMode
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(2))
+                }
+            },
+            onLeftClick = { chooseTip(context.getString(R.string.left)) { headerLeft = it; ReadTipConfig.tipHeaderLeft = it } },
+            onMiddleClick = { chooseTip(context.getString(R.string.middle)) { headerMiddle = it; ReadTipConfig.tipHeaderMiddle = it } },
+            onRightClick = { chooseTip(context.getString(R.string.right)) { headerRight = it; ReadTipConfig.tipHeaderRight = it } }
+        )
+        // 页脚
+        TipPlacementSection(
+            title = stringResource(R.string.footer),
+            showLabel = footerModes[footerMode].orEmpty(),
+            leftLabel = tipName(footerLeft),
+            middleLabel = tipName(footerMiddle),
+            rightLabel = tipName(footerRight),
+            style = style,
+            onShowClick = {
+                val keys = footerModes.keys.toList()
+                onShowSelector(context.getString(R.string.footer), footerModes.values.toList()) { index ->
+                    footerMode = keys.getOrElse(index) { 0 }
+                    ReadTipConfig.footerMode = footerMode
+                    postEvent(EventBus.UP_CONFIG, arrayListOf(2))
+                }
+            },
+            onLeftClick = { chooseTip(context.getString(R.string.left)) { footerLeft = it; ReadTipConfig.tipFooterLeft = it } },
+            onMiddleClick = { chooseTip(context.getString(R.string.middle)) { footerMiddle = it; ReadTipConfig.tipFooterMiddle = it } },
+            onRightClick = { chooseTip(context.getString(R.string.right)) { footerRight = it; ReadTipConfig.tipFooterRight = it } }
+        )
+        // 颜色
+        TipColorSection(
+            colorRefreshTick = colorRefreshTick,
+            style = style,
+            onTipColorClick = {
+                onShowSelector(context.getString(R.string.text_color), ReadTipConfig.tipColorNames) { index ->
+                    when (index) {
+                        0 -> { ReadTipConfig.tipColor = 0; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
+                        1 -> onShowTipColorPicker()
+                    }
+                }
+            },
+            onDividerColorClick = {
+                onShowSelector(context.getString(R.string.tip_divider_color), ReadTipConfig.tipDividerColorNames) { index ->
+                    when (index) {
+                        0, 1 -> { ReadTipConfig.tipDividerColor = index - 1; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
+                        2 -> onShowTipDividerColorPicker()
                     }
                 }
             }
-            // 页眉
-            TipPlacementSection(
-                title = stringResource(R.string.header),
-                showLabel = headerModes[headerMode].orEmpty(),
-                leftLabel = tipName(headerLeft),
-                middleLabel = tipName(headerMiddle),
-                rightLabel = tipName(headerRight),
-                style = style,
-                onShowClick = {
-                    val keys = headerModes.keys.toList()
-                    onShowSelector(context.getString(R.string.header), headerModes.values.toList()) { index ->
-                        headerMode = keys.getOrElse(index) { 0 }
-                        ReadTipConfig.headerMode = headerMode
-                        postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                    }
-                },
-                onLeftClick = { chooseTip(context.getString(R.string.left)) { headerLeft = it; ReadTipConfig.tipHeaderLeft = it } },
-                onMiddleClick = { chooseTip(context.getString(R.string.middle)) { headerMiddle = it; ReadTipConfig.tipHeaderMiddle = it } },
-                onRightClick = { chooseTip(context.getString(R.string.right)) { headerRight = it; ReadTipConfig.tipHeaderRight = it } }
-            )
-            // 页脚
-            TipPlacementSection(
-                title = stringResource(R.string.footer),
-                showLabel = footerModes[footerMode].orEmpty(),
-                leftLabel = tipName(footerLeft),
-                middleLabel = tipName(footerMiddle),
-                rightLabel = tipName(footerRight),
-                style = style,
-                onShowClick = {
-                    val keys = footerModes.keys.toList()
-                    onShowSelector(context.getString(R.string.footer), footerModes.values.toList()) { index ->
-                        footerMode = keys.getOrElse(index) { 0 }
-                        ReadTipConfig.footerMode = footerMode
-                        postEvent(EventBus.UP_CONFIG, arrayListOf(2))
-                    }
-                },
-                onLeftClick = { chooseTip(context.getString(R.string.left)) { footerLeft = it; ReadTipConfig.tipFooterLeft = it } },
-                onMiddleClick = { chooseTip(context.getString(R.string.middle)) { footerMiddle = it; ReadTipConfig.tipFooterMiddle = it } },
-                onRightClick = { chooseTip(context.getString(R.string.right)) { footerRight = it; ReadTipConfig.tipFooterRight = it } }
-            )
-            // 颜色
-            TipColorSection(
-                colorRefreshTick = colorRefreshTick,
-                style = style,
-                onTipColorClick = {
-                    onShowSelector(context.getString(R.string.text_color), ReadTipConfig.tipColorNames) { index ->
-                        when (index) {
-                            0 -> { ReadTipConfig.tipColor = 0; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
-                            1 -> onShowTipColorPicker()
-                        }
-                    }
-                },
-                onDividerColorClick = {
-                    onShowSelector(context.getString(R.string.tip_divider_color), ReadTipConfig.tipDividerColorNames) { index ->
-                        when (index) {
-                            0, 1 -> { ReadTipConfig.tipDividerColor = index - 1; onColorChanged(); postEvent(EventBus.UP_CONFIG, arrayListOf(2)) }
-                            2 -> onShowTipDividerColorPicker()
-                        }
-                    }
-                }
-            )
-        }
+        )
     }
 }
 
@@ -339,22 +315,11 @@ private fun TipSection(
     style: AppDialogStyle,
     content: @Composable () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(style.actionRadius),
-        color = style.fieldSurface,
-        contentColor = style.primaryText,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+    ReaderSectionCard(
+        style = style,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            content()
-        }
+        content()
     }
 }
 
