@@ -2444,11 +2444,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         set(value) {
             appCtx.putPrefInt(PreferKey.readMenuAlpha, value.coerceIn(35, 100))
         }
-    var readMenuImmersive: Boolean
-        get() = appCtx.getPrefBoolean(PreferKey.readMenuImmersive, false)
-        set(value) {
-            appCtx.putPrefBoolean(PreferKey.readMenuImmersive, value)
-        }
 
     var sourceEditMaxLine: Int
         get() {

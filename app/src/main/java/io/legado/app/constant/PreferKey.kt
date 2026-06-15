@@ -360,7 +360,6 @@ object PreferKey {
     const val showReadTitleAddition = "showReadTitleAddition"
     const val readBarStyleFollowPage = "readBarStyleFollowPage"
     const val readMenuAlpha = "readMenuAlpha"
-    const val readMenuImmersive = "readMenuImmersive"
     const val readMenuButtonLayout = "readMenuButtonLayout"
     const val contentSelectSpeakMod = "contentReadAloudMod"
     const val editFontScale = "editFontScale"

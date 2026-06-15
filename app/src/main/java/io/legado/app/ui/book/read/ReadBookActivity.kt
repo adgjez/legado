@@ -4534,11 +4534,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    override fun toggleImmersive() {
-        AppConfig.readMenuImmersive = !AppConfig.readMenuImmersive
-        binding.readMenu.reset()
-    }
-
     private fun startBackupJob() {
         backupJob?.cancel()
         backupJob = lifecycleScope.launch(IO) {
