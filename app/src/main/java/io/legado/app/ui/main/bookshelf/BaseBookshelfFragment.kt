@@ -294,7 +294,8 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         values: BookshelfConfigValues
     ) {
         var notifyMain = false
-        var recreate = false
+        var refreshBookshelf = false
+        var structureChanged = false
         val groupStyle = values.groupStyle.coerceIn(0, 1)
         val layout = values.layout.coerceIn(0, 6)
         val sort = values.sort.coerceIn(0, 5)
@@ -307,23 +308,23 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         }
         if (previousShowBookname != showBookname) {
             AppConfig.showBookname = showBookname
-            recreate = true
+            structureChanged = true
         }
         if (AppConfig.bookshelfMargin != margin) {
             AppConfig.bookshelfMargin = margin
-            recreate = true
+            refreshBookshelf = true
         }
         if (AppConfig.bookshelfListItemStyle != listItemStyle) {
             AppConfig.bookshelfListItemStyle = listItemStyle
-            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            refreshBookshelf = true
         }
         if (AppConfig.showUnread != values.showUnread) {
             AppConfig.showUnread = values.showUnread
-            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            refreshBookshelf = true
         }
         if (AppConfig.showLastUpdateTime != values.showLastUpdateTime) {
             AppConfig.showLastUpdateTime = values.showLastUpdateTime
-            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            refreshBookshelf = true
         }
         if (AppConfig.showWaitUpCount != values.showWaitUpCount) {
             AppConfig.showWaitUpCount = values.showWaitUpCount
@@ -331,7 +332,7 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
         }
         if (AppConfig.showBookshelfFastScroller != values.showFastScroller) {
             AppConfig.showBookshelfFastScroller = values.showFastScroller
-            postEvent(EventBus.BOOKSHELF_REFRESH, "")
+            refreshBookshelf = true
         }
         if (previousSort != sort) {
             AppConfig.bookshelfSort = sort
@@ -344,10 +345,12 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             } else {
                 activityViewModel.booksListRecycledViewPool.clear()
             }
-            recreate = true
+            structureChanged = true
         }
-        if (recreate) {
-            postEvent(EventBus.RECREATE, "")
+        if (structureChanged) {
+            postEvent(EventBus.BOOKSHELF_STRUCTURE_CHANGED, "")
+        } else if (refreshBookshelf) {
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
         } else if (notifyMain) {
             postEvent(EventBus.NOTIFY_MAIN, false)
         }
