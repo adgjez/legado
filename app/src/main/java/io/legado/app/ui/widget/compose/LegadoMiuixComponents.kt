@@ -5,6 +5,7 @@ import android.widget.ImageView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -655,15 +656,21 @@ fun LegadoMiuixChoiceRow(
             if (showSelectedMark) {
                 Spacer(modifier = Modifier.width(10.dp))
                 Box(
-                    modifier = Modifier.width(18.dp),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .then(
+                            if (selected) Modifier.background(selectedColor)
+                            else Modifier.border(1.5.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selected) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(selectedColor)
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
                         )
                     }
                 }
