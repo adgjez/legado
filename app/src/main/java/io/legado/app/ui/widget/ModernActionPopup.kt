@@ -19,20 +19,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.graphics.TransformOrigin
@@ -49,7 +49,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
@@ -445,7 +444,7 @@ object ModernActionPopup {
             CompositionLocalProvider(
                 LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = style.bodyFontFamily)
             ) {
-                LegadoMiuixCard(
+                Surface(
                     modifier = Modifier
                         .offset { panelOffset }
                         .width(with(density) { snapshot.fallbackWidthPx.toDp() })
@@ -460,13 +459,16 @@ object ModernActionPopup {
                             translationY = (if (panelOffset.y >= snapshot.anchorBottom) -6f else 6f) *
                                 (1f - progress)
                         },
+                    shape = RoundedCornerShape(style.panelRadius),
                     color = style.surface,
                     contentColor = style.primaryText,
-                    cornerRadius = style.panelRadius,
-                    insidePadding = PaddingValues(6.dp)
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
                 ) {
                     LazyColumn(
-                        modifier = Modifier.heightIn(max = maxHeightDp),
+                        modifier = Modifier
+                            .heightIn(max = maxHeightDp)
+                            .padding(6.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         itemsIndexed(
