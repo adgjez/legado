@@ -54,6 +54,7 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfGridItem
 import io.legado.app.ui.main.bookshelf.compose.BookshelfItemUi
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItem
 import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
+import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.cnCompare
@@ -276,6 +277,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         val bottomBarPadding = with(LocalDensity.current) {
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
+        val renderConfig = rememberBookshelfListRenderConfig()
         DisposableEffect(currentGroupId) {
             onDispose {
                 composeScrollPositions[currentGroupId] = ComposeScrollPosition(
@@ -332,6 +334,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                     item = item,
                     listLayout = bookshelfLayout,
                     cardStyle = composeListItemStyle,
+                    renderConfig = renderConfig,
                     modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
                     fragment = this@BookshelfFragment2,
                     lifecycle = viewLifecycleOwner.lifecycle,

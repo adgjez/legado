@@ -1,5 +1,6 @@
 package io.legado.app.ui.main.bookshelf.compose
 
+import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -77,6 +78,12 @@ data class BookshelfListPalette(
     val bodyFontFamily: FontFamily
 )
 
+@Immutable
+data class BookshelfListRenderConfig(
+    val palette: BookshelfListPalette,
+    val panelImage: Drawable?
+)
+
 @Composable
 fun rememberBookshelfListPalette(): BookshelfListPalette {
     val context = LocalContext.current
@@ -122,23 +129,38 @@ fun rememberBookshelfListPalette(): BookshelfListPalette {
 }
 
 @Composable
+fun rememberBookshelfListRenderConfig(): BookshelfListRenderConfig {
+    val context = LocalContext.current
+    val palette = rememberBookshelfListPalette()
+    val panelImage = remember(context, palette.panelRadiusPx) {
+        UiCorner.panelImageDrawable(context, palette.panelRadiusPx)
+    }
+    return remember(palette, panelImage) {
+        BookshelfListRenderConfig(
+            palette = palette,
+            panelImage = panelImage
+        )
+    }
+}
+
+@Composable
 fun BookshelfListItem(
     item: BookshelfItemUi,
     listLayout: Int,
     cardStyle: Int,
+    renderConfig: BookshelfListRenderConfig,
     modifier: Modifier = Modifier,
     fragment: Fragment? = null,
     lifecycle: Lifecycle? = null,
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
-    val palette = rememberBookshelfListPalette()
     val compact = listLayout == 1
     when (cardStyle) {
         BookshelfListItemStyle.RoundedCard -> BookshelfRoundedCardListItem(
             item = item,
             compact = compact,
-            palette = palette,
+            renderConfig = renderConfig,
             modifier = modifier,
             fragment = fragment,
             lifecycle = lifecycle,
@@ -149,7 +171,7 @@ fun BookshelfListItem(
         BookshelfListItemStyle.CoverImmersive -> BookshelfImmersiveListItem(
             item = item,
             compact = compact,
-            palette = palette,
+            palette = renderConfig.palette,
             modifier = modifier,
             fragment = fragment,
             lifecycle = lifecycle,
@@ -160,7 +182,7 @@ fun BookshelfListItem(
         else -> BookshelfClassicListItem(
             item = item,
             compact = compact,
-            palette = palette,
+            palette = renderConfig.palette,
             modifier = modifier,
             fragment = fragment,
             lifecycle = lifecycle,
@@ -219,23 +241,20 @@ private fun BookshelfClassicListItem(
 private fun BookshelfRoundedCardListItem(
     item: BookshelfItemUi,
     compact: Boolean,
-    palette: BookshelfListPalette,
+    renderConfig: BookshelfListRenderConfig,
     modifier: Modifier,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     onClick: (BookshelfItemUi) -> Unit,
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
-    val context = LocalContext.current
-    val panelImage = remember(context, palette.panelRadiusPx) {
-        UiCorner.panelImageDrawable(context, palette.panelRadiusPx)
-    }
+    val palette = renderConfig.palette
     Row(
         modifier = modifier
             .fillMaxWidth()
             .appSettingPanelBackground(
                 normalColor = palette.rowColor,
-                panelImage = panelImage,
+                panelImage = renderConfig.panelImage,
                 borderColor = palette.borderColor,
                 radiusPx = palette.panelRadiusPx
             )
