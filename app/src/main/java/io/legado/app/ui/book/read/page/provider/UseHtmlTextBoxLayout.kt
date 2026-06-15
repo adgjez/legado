@@ -50,8 +50,8 @@ internal object UseHtmlTextBoxLayoutResolver {
             widthValue.isNotBlank() ||
             minWidthValue.isNotBlank() ||
             maxWidthValue.isNotBlank() ||
-            marginLeftValue.isNotBlank() ||
-            marginRightValue.isNotBlank()
+            marginLeftValue.isMeaningfulHorizontalMargin() ||
+            marginRightValue.isMeaningfulHorizontalMargin()
         if (!hasLayoutHint) return null
 
         val leftAuto = marginLeftValue.isAuto()
@@ -70,9 +70,10 @@ internal object UseHtmlTextBoxLayoutResolver {
         width = width.coerceIn(1, visibleWidth)
 
         val maxOffset = (visibleWidth - width).coerceAtLeast(0)
+        val hasConstrainedWidth = hasExplicitWidth || width < visibleWidth
         val offset = when {
-            leftAuto && rightAuto && hasExplicitWidth -> maxOffset / 2f
-            leftAuto && hasExplicitWidth -> (visibleWidth - width - (marginRight ?: 0)).toFloat()
+            leftAuto && rightAuto && hasConstrainedWidth -> maxOffset / 2f
+            leftAuto && hasConstrainedWidth -> (visibleWidth - width - (marginRight ?: 0)).toFloat()
             else -> (marginLeft ?: 0).toFloat()
         }.coerceIn(0f, maxOffset.toFloat())
 
@@ -105,6 +106,11 @@ internal object UseHtmlTextBoxLayoutResolver {
 
     private fun String?.isAuto(): Boolean {
         return this?.trim()?.lowercase(Locale.ROOT) == "auto"
+    }
+
+    private fun String.isMeaningfulHorizontalMargin(): Boolean {
+        val clean = trim().lowercase(Locale.ROOT)
+        return clean.isNotBlank() && clean != "0" && clean != "0px" && clean != "0em" && clean != "0rem"
     }
 
     private fun String?.toCssPx(baseWidth: Int, emPx: Float): Int? {

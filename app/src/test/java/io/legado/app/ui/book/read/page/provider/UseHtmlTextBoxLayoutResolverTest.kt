@@ -47,6 +47,19 @@ class UseHtmlTextBoxLayoutResolverTest {
     }
 
     @Test
+    fun maxWidthWithAutoMarginsCentersBox() {
+        val layout = resolve(style = "max-width:500px;margin-left:auto;margin-right:auto")
+
+        assertEquals(500, layout?.width)
+        assertEquals(250f, layout?.startOffset)
+    }
+
+    @Test
+    fun marginZeroAloneDoesNotEnableTextBox() {
+        assertNull(resolve(style = "margin:0"))
+    }
+
+    @Test
     fun oversizedWidthIsClampedToVisibleWidth() {
         val layout = resolve(style = "width:200%")
 

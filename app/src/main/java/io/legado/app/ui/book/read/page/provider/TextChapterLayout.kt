@@ -1565,7 +1565,14 @@ class TextChapterLayout(
     }
 
     private fun Element.useHtmlTextBoxLayout(): UseHtmlTextBoxLayout? {
-        if (!isUseHtmlTextBoxCandidate() || hasHtmlImage() || hasEpubBlockBoxDescendant()) return null
+        if (
+            !isUseHtmlTextBoxCandidate() ||
+            hasHtmlImage() ||
+            hasEpubBlockBoxDescendant() ||
+            hasComplexUseHtmlTextBoxDescendant()
+        ) {
+            return null
+        }
         return UseHtmlTextBoxLayoutResolver.resolve(
             attributes = attributes().associate { attribute -> attribute.key to attribute.value },
             style = attr("style"),
@@ -1579,6 +1586,15 @@ class TextChapterLayout(
             "article", "blockquote", "center", "div", "h1", "h2", "h3", "h4", "h5", "h6",
             "p", "section" -> true
             else -> false
+        }
+    }
+
+    private fun Element.hasComplexUseHtmlTextBoxDescendant(): Boolean {
+        return children().any { child ->
+            child.normalName() == "table" ||
+                child.normalName() in setOf("ul", "ol", "li", "dl", "dt", "dd") ||
+                child.isUseHtmlTextBoxCandidate() && child.isHtmlBlock() ||
+                child.hasComplexUseHtmlTextBoxDescendant()
         }
     }
 
