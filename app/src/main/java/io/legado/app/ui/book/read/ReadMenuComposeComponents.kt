@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,8 +20,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,10 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -252,7 +251,14 @@ fun ReadMenuActionBar(
     onCloudLongClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showSourceMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var sourcePopupHandle by remember { mutableStateOf<ModernActionPopup.Handle?>(null) }
+    var sourceAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val bookSourceTitle = stringResource(R.string.book_source)
+    val loginTitle = stringResource(R.string.login)
+    val chapterPayTitle = stringResource(R.string.chapter_pay)
+    val editSourceTitle = stringResource(R.string.edit_source)
+    val disableSourceTitle = stringResource(R.string.disable_source)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -325,61 +331,52 @@ fun ReadMenuActionBar(
 
             // 书源操作（带弹出菜单）
             if (!isLocalBook) {
-                Box {
-                    Box(
-                        modifier = Modifier
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(style.actionRadius))
-                            .background(style.fieldSurface)
-                            .clickable { showSourceMenu = true }
-                            .padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = sourceName ?: stringResource(R.string.book_source),
-                            color = style.primaryText,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showSourceMenu,
-                        onDismissRequest = { showSourceMenu = false }
-                    ) {
-                        if (hasLogin) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.login)) },
-                                onClick = {
-                                    showSourceMenu = false
-                                    onLoginClick()
-                                }
+                Box(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(style.actionRadius))
+                        .background(style.fieldSurface)
+                        .onGloballyPositioned { coordinates ->
+                            val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
+                            val size = coordinates.size
+                            sourceAnchorBounds = Rect(
+                                pos.x,
+                                pos.y,
+                                pos.x + size.width,
+                                pos.y + size.height
                             )
                         }
-                        if (hasLogin && hasVipChapter) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.chapter_pay)) },
-                                onClick = {
-                                    showSourceMenu = false
-                                    onPayClick()
+                        .clickable {
+                            val actions = buildList {
+                                if (hasLogin) {
+                                    add(ModernActionPopup.Action(title = loginTitle, invoke = onLoginClick))
                                 }
+                                if (hasLogin && hasVipChapter) {
+                                    add(ModernActionPopup.Action(title = chapterPayTitle, invoke = onPayClick))
+                                }
+                                add(ModernActionPopup.Action(title = editSourceTitle, invoke = onEditSourceClick))
+                                add(ModernActionPopup.Action(title = disableSourceTitle, invoke = onDisableSourceClick))
+                            }
+                            sourcePopupHandle = ModernActionPopup.show(
+                                context,
+                                sourceAnchorBounds.left.toInt(),
+                                sourceAnchorBounds.top.toInt(),
+                                sourceAnchorBounds.right.toInt(),
+                                sourceAnchorBounds.bottom.toInt(),
+                                actions,
+                                sourcePopupHandle
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.edit_source)) },
-                            onClick = {
-                                showSourceMenu = false
-                                onEditSourceClick()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.disable_source)) },
-                            onClick = {
-                                showSourceMenu = false
-                                onDisableSourceClick()
-                            }
-                        )
-                    }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = sourceName ?: bookSourceTitle,
+                        color = style.primaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
