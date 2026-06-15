@@ -3,12 +3,10 @@ package io.legado.app.ui.book.read.config
 import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.os.Bundle
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.FrameLayout
 import io.legado.app.R
 import io.legado.app.base.BasePrefDialogFragment
@@ -37,21 +35,12 @@ class MoreConfigDialog : BasePrefDialogFragment() {
 
     override fun onStart() {
         super.onStart()
-        dialog?.window?.run {
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            setBackgroundDrawableResource(android.R.color.transparent)
-            decorView.setPadding(0, 0, 0, 0)
-            val attr = attributes
-            attr.dimAmount = 0.0f
-            attr.gravity = Gravity.BOTTOM
-            attr.windowAnimations = R.style.AnimDialogBottom
-            attributes = attr
-            val sheetHeight = minOf(
+        dialog?.window?.applyReaderBottomSheetWindow(
+            height = minOf(
                 (resources.displayMetrics.heightPixels * 0.68f).toInt(),
                 520.dpToPx()
             ).coerceAtLeast(360.dpToPx())
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, sheetHeight)
-        }
+        )
     }
 
     override fun onCreateView(
