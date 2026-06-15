@@ -33,6 +33,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
@@ -69,7 +70,7 @@ fun buildBookshelfItems(
     val bookItems = books.map { book ->
         BookshelfBookItemUi(
             book = book,
-            isUpdating = isUpdating(book.bookUrl),
+            isUpdating = !book.isLocal && isUpdating(book.bookUrl),
             unreadCount = book.getUnreadChapterNum(),
             hasNewChapter = book.lastCheckCount > 0
         )
@@ -78,6 +79,28 @@ fun buildBookshelfItems(
         return bookItems
     }
     return groups.map(::BookshelfFolderItemUi) + bookItems
+}
+
+fun updateBookshelfItemUpdating(
+    items: List<BookshelfItemUi>,
+    bookUrl: String,
+    isUpdating: (String) -> Boolean
+): List<BookshelfItemUi> {
+    var changed = false
+    val updatedItems = items.map { item ->
+        if (item is BookshelfBookItemUi && item.book.bookUrl == bookUrl) {
+            val nextUpdating = !item.book.isLocal && isUpdating(bookUrl)
+            if (nextUpdating != item.isUpdating) {
+                changed = true
+                item.copy(isUpdating = nextUpdating)
+            } else {
+                item
+            }
+        } else {
+            item
+        }
+    }
+    return if (changed) updatedItems else items
 }
 
 @OptIn(ExperimentalFoundationApi::class)
