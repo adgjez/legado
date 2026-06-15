@@ -207,7 +207,6 @@ fun ReadMenuTitleBar(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(RoundedCornerShape(style.actionRadius))
-                    .background(style.fieldSurface)
                     .onGloballyPositioned { coordinates ->
                         val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
                         val size = coordinates.size
