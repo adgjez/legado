@@ -33,11 +33,13 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.ui.widget.image.CoverImageView
+import io.legado.app.utils.toTimeAgo
 
 sealed interface BookshelfItemUi {
     val key: String
@@ -55,7 +57,10 @@ data class BookshelfBookItemUi(
     val book: Book,
     val isUpdating: Boolean,
     val unreadCount: Int,
-    val hasNewChapter: Boolean
+    val hasNewChapter: Boolean,
+    val intro: String?,
+    val tags: List<String>,
+    val lastUpdateText: String?
 ) : BookshelfItemUi {
     override val key: String = "book:${book.bookUrl}"
     override val contentType: String = "book"
@@ -72,7 +77,14 @@ fun buildBookshelfItems(
             book = book,
             isUpdating = !book.isLocal && isUpdating(book.bookUrl),
             unreadCount = book.getUnreadChapterNum(),
-            hasNewChapter = book.lastCheckCount > 0
+            hasNewChapter = book.lastCheckCount > 0,
+            intro = book.cleanBookshelfIntro(),
+            tags = BookTagHelper.parse(book.customTag).take(4),
+            lastUpdateText = if (AppConfig.showLastUpdateTime && !book.isLocal) {
+                book.latestChapterTime.toTimeAgo()
+            } else {
+                null
+            }
         )
     }
     if (!isRootGroup) {
@@ -257,3 +269,33 @@ private val BookshelfItemUi.displayName: String
         is BookshelfBookItemUi -> book.name
         is BookshelfFolderItemUi -> group.groupName
     }
+
+private fun Book.cleanBookshelfIntro(): String? {
+    val rawIntro = getDisplayIntro()?.trim().orEmpty()
+    if (rawIntro.isBlank()) return null
+    val normalized = rawIntro
+        .replace(Regex("(?is)<br\\s*/?>"), "\n")
+        .replace(Regex("(?is)</?(useweb|usehtml|md)>"), "\n")
+        .replace(Regex("(?is)<script.*?</script>"), " ")
+        .replace(Regex("(?is)<style.*?</style>"), " ")
+        .replace(Regex("(?is)<[^>]+>"), " ")
+    val candidates = normalized
+        .split(Regex("[\\r\\n]+"))
+        .map { it.replace(Regex("\\s+"), " ").trim() }
+        .filter { it.isNotBlank() && !it.looksLikeRuleIntroPlaceholder() }
+    return candidates
+        .maxByOrNull { it.length }
+        ?.take(180)
+}
+
+private fun String.looksLikeRuleIntroPlaceholder(): Boolean {
+    val value = trim()
+    return value.equals("useweb", ignoreCase = true) ||
+        value.equals("usehtml", ignoreCase = true) ||
+        value.equals("md", ignoreCase = true) ||
+        value.startsWith("@") ||
+        value.startsWith("//") ||
+        value.startsWith("{{") ||
+        value.contains("{{") ||
+        value.contains("}}")
+}
