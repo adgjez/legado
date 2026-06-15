@@ -5,10 +5,25 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.SearchView
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.core.view.isGone
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -26,6 +41,11 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.info.BookInfoNavigator
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.ui.main.bookshelf.compose.BookshelfBookItemUi
+import io.legado.app.ui.main.bookshelf.compose.BookshelfFolderItemUi
+import io.legado.app.ui.main.bookshelf.compose.BookshelfGridItem
+import io.legado.app.ui.main.bookshelf.compose.BookshelfItemUi
+import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.dpToPx
@@ -62,11 +82,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private val binding by viewBinding(FragmentBookshelf2Binding::bind)
     private val bookshelfLayout by lazy { AppConfig.bookshelfLayout }
     private val booksAdapter: BaseBooksAdapter<*> by lazy {
-        if (bookshelfLayout >= 2) {
-            BooksAdapterGrid(requireContext(), this)
-        } else {
-            BooksAdapterList(requireContext(), this)
-        }
+        BooksAdapterList(requireContext(), this)
     }
     private var bookGroups: List<BookGroup> = emptyList()
     private var booksFlowJob: Job? = null
@@ -77,11 +93,15 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private val bookshelfMargin by lazy { AppConfig.bookshelfMargin }
     private var itemCount = 0
     private var totalRows = 0
+    private val useComposeGrid get() = bookshelfLayout >= 2
+    private var composeItems by mutableStateOf<List<BookshelfItemUi>>(emptyList())
+    private var composeScrollToTopTick by mutableStateOf(0)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
         installModernBookshelfOverflow(binding.titleBar.toolbar)
         initRecyclerView()
+        initComposeBookshelf()
         initBookGroupData()
         initBooksData()
     }
@@ -96,40 +116,26 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             binding.refreshLayout.isRefreshing = false
             activityViewModel.upToc(books, onlyUpdateRead)
         }
-        if (bookshelfLayout >= 2) {
-            binding.rvBookshelf.layoutManager = GridLayoutManager(context, bookshelfLayout)
-        } else {
+        binding.rvBookshelf.isGone = useComposeGrid
+        binding.composeBookshelf.isGone = !useComposeGrid
+        if (!useComposeGrid) {
             binding.rvBookshelf.layoutManager = LinearLayoutManager(context)
+            binding.rvBookshelf.adapter = booksAdapter
         }
-        binding.rvBookshelf.adapter = booksAdapter
-        /**
-         * 采用 layoutManager?.onRestoreInstanceState(layoutState)
-         * 恢复滚动位置
-         * **/
-        binding.rvBookshelf.itemAnimator =  null
-        binding.rvBookshelf.addItemDecoration( object : RecyclerView.ItemDecoration() {
-            override fun getItemOffsets(
-                outRect: Rect,
-                view: View,
-                parent: RecyclerView,
-                state: RecyclerView.State
-            ) {
-                val position = parent.getChildAdapterPosition(view)
-                if (bookshelfLayout >= 2) {
-                    val spanCount = bookshelfLayout
-                    val rowIndex = position / spanCount
-                    when (rowIndex) {
-                        0 -> { //第一行加额外上边距
-                            outRect.set(bookshelfMargin, bookshelfMargin + 24, bookshelfMargin, bookshelfMargin)
-                        }
-                        totalRows - 1 -> { //最后一行加额外下边距
-                            outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
-                        }
-                        else -> {
-                            outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
-                        }
-                    }
-                } else {
+        if (!useComposeGrid) {
+            /**
+             * 采用 layoutManager?.onRestoreInstanceState(layoutState)
+             * 恢复滚动位置
+             * **/
+            binding.rvBookshelf.itemAnimator =  null
+            binding.rvBookshelf.addItemDecoration( object : RecyclerView.ItemDecoration() {
+                override fun getItemOffsets(
+                    outRect: Rect,
+                    view: View,
+                    parent: RecyclerView,
+                    state: RecyclerView.State
+                ) {
+                    val position = parent.getChildAdapterPosition(view)
                     when (position) {
                         0 -> {
                             outRect.set(0, bookshelfMargin + 24, 0, bookshelfMargin)
@@ -142,17 +148,77 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                         }
                     }
                 }
+            })
+        }
+    }
+
+    private fun initComposeBookshelf() {
+        if (!useComposeGrid) return
+        binding.composeBookshelf.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeBookshelf.setContent {
+            BookshelfGridContent()
+        }
+    }
+
+    @Composable
+    private fun BookshelfGridContent() {
+        val gridState = rememberLazyGridState()
+        val marginDp = with(LocalDensity.current) { bookshelfMargin.toDp() }
+        val bottomBarPadding = with(LocalDensity.current) {
+            resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
+        }
+        LaunchedEffect(composeScrollToTopTick) {
+            if (composeScrollToTopTick > 0) {
+                if (AppConfig.isEInkMode) {
+                    gridState.scrollToItem(0)
+                } else {
+                    gridState.animateScrollToItem(0)
+                }
             }
-        })
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(bookshelfLayout),
+            state = gridState,
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+            contentPadding = PaddingValues(
+                start = 8.dp,
+                top = marginDp + 24.dp,
+                end = 8.dp,
+                bottom = marginDp + bottomBarPadding + 12.dp
+            )
+        ) {
+            items(
+                items = composeItems,
+                key = { it.key },
+                contentType = { it.contentType }
+            ) { item ->
+                BookshelfGridItem(
+                    item = item,
+                    modifier = Modifier,
+                    fragment = this@BookshelfFragment2,
+                    lifecycle = viewLifecycleOwner.lifecycle,
+                    onClick = ::onComposeItemClick,
+                    onLongClick = ::onComposeItemLongClick
+                )
+            }
+        }
     }
 
     override fun upGroup(data: List<BookGroup>) {
         if (data != bookGroups) {
             bookGroups = data
-            booksAdapter.updateItems(groupId)
+            if (useComposeGrid) {
+                updateComposeItems()
+            } else {
+                booksAdapter.updateItems(groupId)
+            }
             itemCount = getItemCount()
             val spanCount = bookshelfLayout
-            if (spanCount >= 2) {
+            if (!useComposeGrid && spanCount >= 2) {
                 totalRows = if (itemCount % spanCount == 0) itemCount / spanCount else itemCount / spanCount + 1
             }
             binding.tvEmptyMsg.isGone = itemCount > 0
@@ -214,10 +280,14 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 AppLog.put("书架更新出错", it)
             }.conflate().flowOn(Dispatchers.Default).collect { list ->
                 books = list
-                booksAdapter.updateItems(groupId)
+                if (useComposeGrid) {
+                    updateComposeItems()
+                } else {
+                    booksAdapter.updateItems(groupId)
+                }
                 itemCount = getItemCount()
                 val spanCount = bookshelfLayout
-                if (spanCount >= 2) {
+                if (!useComposeGrid && spanCount >= 2) {
                     totalRows = if (itemCount % spanCount == 0) itemCount / spanCount else itemCount / spanCount + 1
                 }
                 binding.tvEmptyMsg.isGone = itemCount > 0
@@ -251,6 +321,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     }
 
     override fun gotoTop() {
+        if (useComposeGrid) {
+            composeScrollToTopTick++
+            return
+        }
         if (AppConfig.isEInkMode) {
             binding.rvBookshelf.scrollToPosition(0)
         } else {
@@ -281,6 +355,32 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         return activityViewModel.isUpdate(bookUrl)
     }
 
+    private fun updateComposeItems() {
+        composeItems = buildBookshelfItems(
+            groups = bookGroups,
+            books = books,
+            isRootGroup = groupId == BookGroup.IdRoot,
+            isUpdating = ::isUpdate
+        )
+    }
+
+    private fun onComposeItemClick(item: BookshelfItemUi) {
+        when (item) {
+            is BookshelfBookItemUi -> startActivityForBook(item.book)
+            is BookshelfFolderItemUi -> {
+                groupId = item.group.groupId
+                initBooksData()
+            }
+        }
+    }
+
+    private fun onComposeItemLongClick(item: BookshelfItemUi) {
+        when (item) {
+            is BookshelfBookItemUi -> BookInfoNavigator.open(requireContext(), item.book)
+            is BookshelfFolderItemUi -> showDialogFragment(GroupEditDialog(item.group))
+        }
+    }
+
     fun getItemCount(): Int {
         return if (groupId == BookGroup.IdRoot) {
             bookGroups.size + books.size
@@ -300,10 +400,18 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     override fun observeLiveBus() {
         super.observeLiveBus()
         observeEvent<String>(EventBus.UP_BOOKSHELF) {
-            booksAdapter.notification(it)
+            if (useComposeGrid) {
+                updateComposeItems()
+            } else {
+                booksAdapter.notification(it)
+            }
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-            booksAdapter.notifyDataSetChanged()
+            if (useComposeGrid) {
+                updateComposeItems()
+            } else {
+                booksAdapter.notifyDataSetChanged()
+            }
         }
     }
 }
