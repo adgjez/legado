@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -112,6 +113,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
     private var composeCanScrollBackward by mutableStateOf(false)
     private var composePendingScrollRestoreGroupId by mutableStateOf<Long?>(null)
     private var composeScrollToTopTick by mutableStateOf(0)
+    private var composeListItemStyle by mutableIntStateOf(AppConfig.bookshelfListItemStyle)
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
@@ -329,7 +331,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
                 BookshelfListItem(
                     item = item,
                     listLayout = bookshelfLayout,
-                    cardStyle = AppConfig.bookshelfListItemStyle,
+                    cardStyle = composeListItemStyle,
                     modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
                     fragment = this@BookshelfFragment2,
                     lifecycle = viewLifecycleOwner.lifecycle,
@@ -554,6 +556,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
         observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
             if (useComposeBookshelf) {
+                composeListItemStyle = AppConfig.bookshelfListItemStyle
                 updateComposeItems()
             } else {
                 booksAdapter.notifyDataSetChanged()
