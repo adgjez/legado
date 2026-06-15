@@ -131,9 +131,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         binding.rvBookshelf.applyMainBottomBarPadding()
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.refreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
-        binding.refreshLayout.setOnChildScrollUpCallback { _, _ ->
-            if (useComposeBookshelf) composeCanScrollBackward else binding.rvBookshelf.canScrollVertically(-1)
-        }
+        bindRefreshScrollCallback()
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
             activityViewModel.upToc(books, onlyUpdateRead)
@@ -174,6 +172,16 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
     }
 
+    private fun bindRefreshScrollCallback() {
+        binding.refreshLayout.setOnChildScrollUpCallback { _, _ ->
+            if (useComposeBookshelf) {
+                composeCanScrollBackward
+            } else {
+                binding.rvBookshelf.canScrollVertically(-1)
+            }
+        }
+    }
+
     private fun initComposeBookshelf() {
         if (!useComposeBookshelf) return
         binding.composeBookshelf.setViewCompositionStrategy(
@@ -194,7 +202,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         val currentGroupId = composeGroupId
         val pendingScrollRestoreGroupId = composePendingScrollRestoreGroupId
         val canScrollBackward by remember {
-            derivedStateOf { gridState.canScrollBackward }
+            derivedStateOf {
+                gridState.firstVisibleItemIndex > 0 ||
+                        gridState.firstVisibleItemScrollOffset > 0
+            }
         }
         val marginDp = with(LocalDensity.current) { bookshelfMargin.toDp() }
         val bottomBarPadding = with(LocalDensity.current) {
@@ -271,7 +282,10 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         val currentGroupId = composeGroupId
         val pendingScrollRestoreGroupId = composePendingScrollRestoreGroupId
         val canScrollBackward by remember {
-            derivedStateOf { listState.canScrollBackward }
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 ||
+                        listState.firstVisibleItemScrollOffset > 0
+            }
         }
         val marginDp = with(LocalDensity.current) { bookshelfMargin.toDp() }
         val bottomBarPadding = with(LocalDensity.current) {
@@ -587,6 +601,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         binding.rvBookshelf.adapter = null
         binding.rvBookshelf.isGone = useComposeBookshelf
         binding.composeBookshelf.isGone = !useComposeBookshelf
+        bindRefreshScrollCallback()
         binding.tvEmptyMsg.isGone = true
         initBooksData()
     }

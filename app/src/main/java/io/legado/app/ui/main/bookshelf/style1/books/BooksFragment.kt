@@ -150,9 +150,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.rvBookshelf.applyMainBottomBarPadding()
         upFastScrollerBar()
         binding.refreshLayout.setColorSchemeColors(accentColor)
-        binding.refreshLayout.setOnChildScrollUpCallback { _, _ ->
-            if (useComposeList) composeCanScrollBackward else binding.rvBookshelf.canScrollVertically(-1)
-        }
+        bindRefreshScrollCallback()
         applyTopOverlaySpace()
         binding.refreshLayout.setOnRefreshListener {
             binding.refreshLayout.isRefreshing = false
@@ -243,6 +241,16 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         startLastUpdateTimeJob()
     }
 
+    private fun bindRefreshScrollCallback() {
+        binding.refreshLayout.setOnChildScrollUpCallback { _, _ ->
+            if (useComposeList) {
+                composeCanScrollBackward
+            } else {
+                binding.rvBookshelf.canScrollVertically(-1)
+            }
+        }
+    }
+
     private fun initComposeBookshelf() {
         binding.composeBookshelf.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
@@ -259,7 +267,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             initialFirstVisibleItemScrollOffset = composeScrollPosition?.offset ?: 0
         )
         val canScrollBackward by remember {
-            derivedStateOf { listState.canScrollBackward }
+            derivedStateOf {
+                listState.firstVisibleItemIndex > 0 ||
+                        listState.firstVisibleItemScrollOffset > 0
+            }
         }
         val marginDp = with(LocalDensity.current) { bookshelfMargin.toDp() }
         val topExtraDp = with(LocalDensity.current) {
