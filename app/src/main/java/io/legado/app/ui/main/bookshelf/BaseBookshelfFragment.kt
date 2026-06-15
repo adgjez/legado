@@ -353,7 +353,9 @@ abstract class BaseBookshelfFragment(layoutId: Int) : VMBaseFragment<BookshelfVi
             }
             structureChanged = true
         }
-        if (structureChanged) {
+        if (notifyMain) {
+            postEvent(EventBus.NOTIFY_MAIN, false)
+        } else if (structureChanged) {
             view?.post {
                 postEvent(EventBus.BOOKSHELF_STRUCTURE_CHANGED, "")
             }
