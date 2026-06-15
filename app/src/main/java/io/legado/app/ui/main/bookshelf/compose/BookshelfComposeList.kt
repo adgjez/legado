@@ -384,19 +384,42 @@ private fun BookshelfListCover(
             }
         },
         update = { coverView ->
-            when (item) {
-                is BookshelfBookItemUi -> coverView.loadThumb(item.book, false, fragment, lifecycle)
-                is BookshelfFolderItemUi -> coverView.load(
-                    path = item.group.cover,
-                    name = item.group.groupName,
-                    loadOnlyWifi = false,
-                    fragment = fragment,
-                    lifecycle = lifecycle,
-                    preferThumb = true
-                )
+            val loadKey = item.coverLoadKey()
+            if (coverView.tag != loadKey) {
+                coverView.tag = loadKey
+                when (item) {
+                    is BookshelfBookItemUi -> coverView.loadThumb(item.book, false, fragment, lifecycle)
+                    is BookshelfFolderItemUi -> coverView.load(
+                        path = item.group.cover,
+                        name = item.group.groupName,
+                        loadOnlyWifi = false,
+                        fragment = fragment,
+                        lifecycle = lifecycle,
+                        preferThumb = true
+                    )
+                }
             }
         }
     )
+}
+
+private fun BookshelfItemUi.coverLoadKey(): String {
+    return when (this) {
+        is BookshelfBookItemUi -> listOf(
+            "book",
+            book.bookUrl,
+            book.getDisplayCover(),
+            book.name,
+            book.author
+        ).joinToString("|")
+
+        is BookshelfFolderItemUi -> listOf(
+            "folder",
+            group.groupId.toString(),
+            group.cover.orEmpty(),
+            group.groupName
+        ).joinToString("|")
+    }
 }
 
 @Composable
