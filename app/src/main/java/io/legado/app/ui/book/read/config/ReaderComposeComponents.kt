@@ -48,13 +48,21 @@ import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
 
+object ReaderSheetDefaults {
+    val MaxHeightFraction = 0.72f
+    val ContentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+    val SectionPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp)
+    val SectionGap = 8.dp
+    val ActionHeight = 38.dp
+}
+
 abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() {
 
     override val dialogGravity: Int = Gravity.BOTTOM
     override val dialogWindowAnimations: Int = R.style.AnimDialogBottom
     override val dialogWidth: Int = ViewGroup.LayoutParams.MATCH_PARENT
     override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
-    protected open val maxSheetHeightFraction: Float = 0.72f
+    protected open val maxSheetHeightFraction: Float = ReaderSheetDefaults.MaxHeightFraction
 
     private var bottomDialogRegistered = false
 
@@ -99,8 +107,8 @@ abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() 
 @Composable
 fun ReaderBottomSheetFrame(
     modifier: Modifier = Modifier,
-    maxHeightFraction: Float = 0.72f,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+    maxHeightFraction: Float = ReaderSheetDefaults.MaxHeightFraction,
+    contentPadding: PaddingValues = ReaderSheetDefaults.ContentPadding,
     content: @Composable (AppDialogStyle) -> Unit
 ) {
     val style = rememberAppDialogStyle()
@@ -179,7 +187,7 @@ fun ReaderSectionCard(
     style: AppDialogStyle,
     modifier: Modifier = Modifier,
     title: String? = null,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 9.dp),
+    contentPadding: PaddingValues = ReaderSheetDefaults.SectionPadding,
     content: @Composable () -> Unit
 ) {
     Surface(
@@ -194,7 +202,7 @@ fun ReaderSectionCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(contentPadding),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(ReaderSheetDefaults.SectionGap)
         ) {
             title?.takeIf { it.isNotBlank() }?.let {
                 Text(
@@ -225,7 +233,7 @@ fun ReaderTextAction(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(38.dp)
+            .height(ReaderSheetDefaults.ActionHeight)
             .clip(RoundedCornerShape(style.actionRadius))
             .background(bgColor)
             .clickable(enabled = enabled, onClick = onClick),
