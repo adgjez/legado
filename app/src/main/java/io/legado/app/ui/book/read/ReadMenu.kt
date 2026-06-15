@@ -57,6 +57,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReadMenuCustomButton
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.library.LibraryCloudState
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfig
@@ -413,8 +414,7 @@ class ReadMenu @JvmOverloads constructor(
                             showCloudIcon = showCloudIcon,
                             cloudState = cloudState,
                             hasLogin = !ReadBook.bookSource?.loginUrl.isNullOrEmpty(),
-                            hasVipChapter = ReadBook.curTextChapter?.isVip == true
-                                    && ReadBook.curTextChapter?.isPay != true
+                            hasVipChapter = canPayCurrentChapter()
                         ),
                         actions = ReadMenuActionBarActions(
                             onChapterClick = { handleChapterClick() },
@@ -749,6 +749,16 @@ class ReadMenu @JvmOverloads constructor(
         return candidates.asSequence()
             .mapNotNull { it?.trim() }
             .firstOrNull { it.isNotBlank() }
+    }
+
+    private fun canPayCurrentChapter(): Boolean {
+        val book = ReadBook.book ?: return false
+        if (book.isLocal) return false
+        val source = ReadBook.bookSource ?: return false
+        if (source.getContentRule().payAction.isNullOrBlank()) return false
+        val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+            ?: return false
+        return chapter.isVip && !chapter.isPay
     }
     // endregion
 
