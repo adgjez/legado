@@ -70,8 +70,11 @@ fun buildBookshelfItems(
     groups: List<BookGroup>,
     books: List<Book>,
     isRootGroup: Boolean,
+    groupId: Long,
     isUpdating: (String) -> Boolean
 ): List<BookshelfItemUi> {
+    val configuredTags = AppConfig.bookshelfGroupTags[groupId].orEmpty()
+    val hiddenTags = AppConfig.bookshelfHiddenTags[groupId].orEmpty()
     val bookItems = books.map { book ->
         BookshelfBookItemUi(
             book = book,
@@ -79,8 +82,7 @@ fun buildBookshelfItems(
             unreadCount = book.getUnreadChapterNum(),
             hasNewChapter = book.lastCheckCount > 0,
             intro = book.cleanBookshelfIntro(),
-            tags = (BookTagHelper.parse(book.customTag) + BookTagHelper.parse(book.kind))
-                .distinctBy { it.lowercase() }
+            tags = book.displayUserTags(configuredTags, hiddenTags)
                 .take(4),
             lastUpdateText = if (AppConfig.showLastUpdateTime && !book.isLocal) {
                 book.latestChapterTime.toTimeAgo()
@@ -93,6 +95,19 @@ fun buildBookshelfItems(
         return bookItems
     }
     return groups.map(::BookshelfFolderItemUi) + bookItems
+}
+
+private fun Book.displayUserTags(
+    configuredTags: List<String>,
+    hiddenTags: Set<String>
+): List<String> {
+    val userTags = BookTagHelper.parse(customTag)
+    val visibleConfiguredTags = configuredTags
+        .filterNot { configured -> hiddenTags.any { it.equals(configured, ignoreCase = true) } }
+    val candidateTags = visibleConfiguredTags.ifEmpty { userTags }
+    return candidateTags.filter { candidate ->
+        userTags.any { it.equals(candidate, ignoreCase = true) }
+    }.distinctBy { it.lowercase() }
 }
 
 fun updateBookshelfItemUpdating(

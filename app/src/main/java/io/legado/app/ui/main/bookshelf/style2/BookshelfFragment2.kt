@@ -495,6 +495,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             groups = bookGroups,
             books = books,
             isRootGroup = groupId == BookGroup.IdRoot,
+            groupId = groupId,
             isUpdating = ::isUpdate
         )
         composeDataVersion++

@@ -551,6 +551,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             groups = emptyList(),
             books = list,
             isRootGroup = false,
+            groupId = groupId,
             isUpdating = ::isUpdate
         )
     }
