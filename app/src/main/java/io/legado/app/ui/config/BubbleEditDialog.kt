@@ -63,6 +63,7 @@ class BubbleEditDialog : ComposeDialogFragment() {
 
     /** Called when the user confirms the edit. Receives the name and current editing config. */
     private var onSaved: ((name: String, config: BubblePackageManager.Config) -> Unit)? = null
+    private var onNameChanged: ((String) -> Unit)? = null
     /** Called when the user taps the SVG template row. */
     private var onOpenSvgEditor: (() -> Unit)? = null
     /** Called when the user taps the size scale row. */
@@ -99,10 +100,14 @@ class BubbleEditDialog : ComposeDialogFragment() {
                     dayEmphasis = dayEmphasis,
                     nightNormal = nightNormal,
                     nightEmphasis = nightEmphasis,
+                    onNameChanged = { name ->
+                        onNameChanged?.invoke(name)
+                    },
                     onDismiss = { dismissAllowingStateLoss() },
                     onSave = { name ->
                         dismissAllowingStateLoss()
-                        onSaved?.invoke(name, editingConfigSnapshot())
+                        val config = editingConfigSnapshot().copy(name = name)
+                        onSaved?.invoke(name, config)
                     },
                     onOpenSizeScalePicker = {
                         dismissAllowingStateLoss()
@@ -152,6 +157,7 @@ class BubbleEditDialog : ComposeDialogFragment() {
             config: BubblePackageManager.Config,
             isAdd: Boolean,
             onSaved: (name: String, config: BubblePackageManager.Config) -> Unit,
+            onNameChanged: (String) -> Unit,
             onOpenSizeScalePicker: () -> Unit,
             onOpenSvgEditor: () -> Unit,
             onPickColor: (dialogId: Int, currentColor: Int) -> Unit
@@ -172,6 +178,7 @@ class BubbleEditDialog : ComposeDialogFragment() {
                     putString(ARG_NIGHT_EMPHASIS, config.nightEmphasisColor)
                 }
                 this.onSaved = onSaved
+                this.onNameChanged = onNameChanged
                 this.onOpenSizeScalePicker = onOpenSizeScalePicker
                 this.onOpenSvgEditor = onOpenSvgEditor
                 this.onPickColor = onPickColor
@@ -194,6 +201,7 @@ private fun BubbleEditContent(
     dayEmphasis: String?,
     nightNormal: String?,
     nightEmphasis: String?,
+    onNameChanged: (String) -> Unit,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
     onOpenSizeScalePicker: () -> Unit,
@@ -215,7 +223,10 @@ private fun BubbleEditContent(
                 // Name field
                 AppDialogEditField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = {
+                        name = it
+                        onNameChanged(it)
+                    },
                     label = "名称",
                     style = style
                 )

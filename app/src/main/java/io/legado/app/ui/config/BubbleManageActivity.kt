@@ -342,6 +342,9 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         BubblePackageManager.addOrUpdate(next, entry)
                     }
                 },
+                onNameChanged = { name ->
+                    editingConfig = editingConfig?.copy(name = name)
+                },
                 onOpenSizeScalePicker = {
                     showSizeScalePicker()
                 },
