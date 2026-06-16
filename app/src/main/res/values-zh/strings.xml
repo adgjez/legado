@@ -2013,7 +2013,7 @@ bookUrl：%7$s
     <string name="top_bar_name_exists">顶栏名称已存在</string>
     <string name="top_bar_config_missing">缺少顶栏配置</string>
     <string name="top_bar_style">顶栏样式</string>
-    <string name="top_bar_style_default">默认</string>
+    <string name="top_bar_style_default">默认顶栏</string>
     <string name="top_bar_style_regular">常规顶栏</string>
     <string name="top_bar_corner_scale">顶栏圆角倍率</string>
     <string name="top_bar_background_color">顶栏背景色</string>

@@ -2091,8 +2091,8 @@ Selected text or question:
     <string name="top_bar_name_exists">Top bar name already exists</string>
     <string name="top_bar_config_missing">Top bar config missing</string>
     <string name="top_bar_style">Top bar style</string>
-    <string name="top_bar_style_default">Default</string>
-    <string name="top_bar_style_regular">Regular</string>
+    <string name="top_bar_style_default">Default top bar</string>
+    <string name="top_bar_style_regular">Regular top bar</string>
     <string name="top_bar_corner_scale">Top bar corner scale</string>
     <string name="top_bar_background_color">Top bar background color</string>
     <string name="top_bar_tag_bar_color">Tag bar background</string>
