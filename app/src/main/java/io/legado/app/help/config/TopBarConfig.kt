@@ -53,6 +53,10 @@ object TopBarConfig {
         var tagSelectedColor: Int? = null,
         var tagSelectedAlpha: Int = 100,
         var wallpaperPath: String? = null,
+        var wallpaperCropLeft: Float? = null,
+        var wallpaperCropTop: Float? = null,
+        var wallpaperCropRight: Float? = null,
+        var wallpaperCropBottom: Float? = null,
         var wallpaperAlpha: Int = 100,
         var backgroundColor: Int? = null,
         var cornerScale: Float? = null,
@@ -445,8 +449,31 @@ object TopBarConfig {
         config.tagSelectedAlpha = config.tagSelectedAlpha.coerceIn(0, 100)
         config.wallpaperAlpha = config.wallpaperAlpha.coerceIn(0, 100)
         config.wallpaperPath = config.wallpaperPath?.takeIf { it.isNotBlank() }
+        normalizeWallpaperCrop(config)
         config.cornerScale = config.cornerScale?.coerceIn(0f, 3f)
         return config
+    }
+
+    private fun normalizeWallpaperCrop(config: Config) {
+        val left = config.wallpaperCropLeft?.coerceIn(0f, 1f)
+        val top = config.wallpaperCropTop?.coerceIn(0f, 1f)
+        val right = config.wallpaperCropRight?.coerceIn(0f, 1f)
+        val bottom = config.wallpaperCropBottom?.coerceIn(0f, 1f)
+        if (
+            config.wallpaperPath.isNullOrBlank() ||
+            left == null || top == null || right == null || bottom == null ||
+            right <= left || bottom <= top
+        ) {
+            config.wallpaperCropLeft = null
+            config.wallpaperCropTop = null
+            config.wallpaperCropRight = null
+            config.wallpaperCropBottom = null
+            return
+        }
+        config.wallpaperCropLeft = left
+        config.wallpaperCropTop = top
+        config.wallpaperCropRight = right
+        config.wallpaperCropBottom = bottom
     }
 
     private fun normalizeWallpaperPath(path: String?, dir: File): String? {
