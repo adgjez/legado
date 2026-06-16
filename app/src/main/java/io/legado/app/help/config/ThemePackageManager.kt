@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import android.content.Context
 import android.net.Uri
+import android.util.Base64
 import androidx.annotation.Keep
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.R
@@ -25,6 +26,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import splitties.init.appCtx
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -46,6 +48,11 @@ object ThemePackageManager {
     private const val builtinNightDirName = "builtin_night"
     private const val builtinDayName = "\u5185\u7f6e\u65e5\u95f4\u4e3b\u9898"
     private const val builtinNightName = "\u5185\u7f6e\u591c\u95f4\u4e3b\u9898"
+    private val imageMagic = listOf(
+        byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47) to ".png",
+        byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) to ".jpg",
+        byteArrayOf(0x52, 0x49, 0x46, 0x46) to ".webp"
+    )
 
     val rootDir: File
         get() = appCtx.externalFiles.getFile("themePackages")
@@ -136,17 +143,15 @@ object ThemePackageManager {
 
     suspend fun importZip(zipFile: File): Entry = withContext(IO) {
         val pkg = peekPackage(zipFile)
-        if (themeExists(pkg.isNightTheme, pkg.name)) {
-            throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
-        }
         importZipInternal(zipFile, 0L)
     }
 
     suspend fun importPackage(file: File): List<Entry> = withContext(IO) {
-        if (isRedThemePackage(file)) {
-            importRed(file)
-        } else {
-            listOf(importZip(file))
+        when (detectRedPackageFormat(file)) {
+            RedPackageFormat.RED04_ZIP,
+            RedPackageFormat.RED_GZIP_JSON,
+            RedPackageFormat.RAW_GZIP_JSON -> importRed(file)
+            null -> listOf(importZip(file))
         }
     }
 
@@ -165,6 +170,7 @@ object ThemePackageManager {
     suspend fun deleteLocal(entry: Entry) = withContext(IO) {
         if (entry.source == Source.BUILTIN) return@withContext
         entry.localDir?.let { FileUtils.delete(it, deleteRootDir = true) }
+        removeThemeConfig(entry.packageInfo.isNightTheme, entry.packageInfo.name, entry.dirName)
     }
 
     suspend fun deleteRemote(entry: Entry, containerId: String? = null, scope: String? = null) = withContext(IO) {
@@ -337,6 +343,30 @@ object ThemePackageManager {
         return Entry(pkg, Source.LOCAL, localDir = dir)
     }
 
+    private fun saveConfigReplacingLocal(config: ThemeConfig.Config): Entry {
+        val normalizedName = config.themeName.trim()
+            .ifBlank { builtinName(config.isNightTheme) }
+        val dirName = normalizedName.normalizeFileName()
+        val dir = localDir(config.isNightTheme, dirName)
+        if (dir.exists()) {
+            FileUtils.delete(dir, deleteRootDir = true)
+        }
+        removeThemeConfig(config.isNightTheme, normalizedName, dirName)
+        return saveConfig(config.copy(themeName = normalizedName))
+    }
+
+    private fun removeThemeConfig(isNightTheme: Boolean, themeName: String, dirName: String) {
+        val normalizedName = themeName.trim()
+        val normalizedDirName = dirName.ifBlank { normalizedName.normalizeFileName() }
+        val removed = ThemeConfig.configList.removeAll { config ->
+            config.isNightTheme == isNightTheme &&
+                (config.themeName == normalizedName || config.themeName.normalizeFileName() == normalizedDirName)
+        }
+        if (removed) {
+            ThemeConfig.save()
+        }
+    }
+
     private fun loadLocal(isNightTheme: Boolean): List<Entry> {
         val typeDir = typeDir(isNightTheme)
         return typeDir.listFiles()
@@ -488,49 +518,63 @@ object ThemePackageManager {
         }
     }
 
-    private fun isRedThemePackage(file: File): Boolean {
-        if (!file.isFile || file.length() < 5) return false
-        return file.inputStream().use { input ->
-            input.read() == 'R'.code && input.read() == 'E'.code && input.read() == 'D'.code
+    private fun importRed(file: File): List<Entry> {
+        return when (detectRedPackageFormat(file)) {
+            RedPackageFormat.RED04_ZIP -> importRedZip(file)
+            RedPackageFormat.RED_GZIP_JSON,
+            RedPackageFormat.RAW_GZIP_JSON -> importRedGzip(file)
+            null -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         }
     }
 
-    private fun importRed(file: File): List<Entry> {
-        if (isRedZipThemePackage(file)) {
-            return importRedZip(file)
-        }
+    private fun importRedGzip(file: File): List<Entry> {
         val redPackage = readRedThemePackage(file)
         if (redPackage.type != "theme" || redPackage.data.isEmpty()) {
             throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         }
         val configs = redPackage.data.flatMap { item ->
             listOfNotNull(
-                item.light?.toThemeConfig(item.name, false),
-                item.dark?.toThemeConfig(item.name, true)
+                item.light
+                    ?.takeIf { it.hasMeaningfulThemeContent(item.lightBackgroundImage) }
+                    ?.toThemeConfig(item.name, false, item.lightBackgroundImage),
+                item.dark
+                    ?.takeIf { it.hasMeaningfulThemeContent(item.darkBackgroundImage) }
+                    ?.toThemeConfig(item.name, true, item.darkBackgroundImage)
             )
         }
         if (configs.isEmpty()) {
             throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         }
-        configs.forEach { config ->
-            if (themeExistsBlocking(config.isNightTheme, config.themeName)) {
-                throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
-            }
-        }
-        return configs.map(::saveConfig)
+        return configs.map(::saveConfigReplacingLocal)
     }
 
-    private fun isRedZipThemePackage(file: File): Boolean {
-        if (!file.isFile || file.length() < 8) return false
+    private fun detectRedPackageFormat(file: File): RedPackageFormat? {
+        if (!file.isFile || file.length() < 2) return null
         return file.inputStream().use { input ->
             val header = ByteArray(8)
-            input.read(header) == header.size &&
-                header[0] == 'R'.code.toByte() &&
-                header[1] == 'E'.code.toByte() &&
-                header[2] == 'D'.code.toByte() &&
-                header[3] == 4.toByte() &&
-                header[4] == 'P'.code.toByte() &&
-                header[5] == 'K'.code.toByte()
+            val size = input.read(header)
+            when {
+                size >= 6 &&
+                    header[0] == 'R'.code.toByte() &&
+                    header[1] == 'E'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[3] == 4.toByte() &&
+                    header[4] == 'P'.code.toByte() &&
+                    header[5] == 'K'.code.toByte() -> RedPackageFormat.RED04_ZIP
+
+                size >= 6 &&
+                    header[0] == 'R'.code.toByte() &&
+                    header[1] == 'E'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[4] == 0x1F.toByte() &&
+                    header[5] == 0x8B.toByte() -> RedPackageFormat.RED_GZIP_JSON
+
+                size >= 2 &&
+                    header[0] == 0x1F.toByte() &&
+                    header[1] == 0x8B.toByte() -> RedPackageFormat.RAW_GZIP_JSON
+
+                else -> null
+            }
         }
     }
 
@@ -563,13 +607,15 @@ object ThemePackageManager {
             val themeFile = File(unzipDir, packageFileName)
             val redTheme = GSON.fromJsonObject<RedThemeV4>(themeFile.readText()).getOrThrow()
             val entries = listOfNotNull(
-                redTheme.light?.toThemeConfig(redTheme.name, false, unzipDir),
-                redTheme.dark?.toThemeConfig(redTheme.name, true, unzipDir)
-            ).map { config ->
-                if (themeExistsBlocking(config.isNightTheme, config.themeName)) {
-                    throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
-                }
-                saveConfig(config)
+                redTheme.light
+                    ?.takeIf { it.hasMeaningfulThemeContent(File(unzipDir, "light/theme_bg.img").takeIf(File::isFile)?.absolutePath) }
+                    ?.toThemeConfig(redTheme.name, false, unzipDir),
+                redTheme.dark
+                    ?.takeIf { it.hasMeaningfulThemeContent(File(unzipDir, "dark/theme_bg.img").takeIf(File::isFile)?.absolutePath) }
+                    ?.toThemeConfig(redTheme.name, true, unzipDir)
+            ).map(::saveConfigReplacingLocal)
+            if (entries.isEmpty()) {
+                throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
             importRedNavigationPack(unzipDir, redTheme.light)
             importRedCoverGallery(unzipDir, redTheme.light)
@@ -585,19 +631,17 @@ object ThemePackageManager {
     }
 
     private fun RedThemeColors.toThemeConfig(name: String, isNightTheme: Boolean, root: File): ThemeConfig.Config {
-        val background = if (!isNightTheme && backgroundImage.isNotBlank()) {
-            File(root, "light/theme_bg.img")
-                .takeIf { it.isFile }
-                ?.absolutePath
-        } else {
-            null
-        }
+        val modeDir = if (isNightTheme) "dark" else "light"
+        val background = File(root, "$modeDir/theme_bg.img")
+            .takeIf { it.isFile }
+            ?.absolutePath
+        val panelBackground = resolveRedCardBackground(root)
         return toThemeConfig(name, isNightTheme).copy(
             backgroundImgPath = background,
-            panelBackgroundImgPath = background,
+            panelBackgroundImgPath = panelBackground,
             panelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP,
             panelBorderColor = borderColor.normalizeArgbColorOrNull(),
-            panelBorderAlpha = 100,
+            panelBorderAlpha = if (borderColor.isBlank()) null else 100,
             uiLayoutAlpha = cardColor.alphaPercentOrNull() ?: 100,
             dialogAlpha = 100
         )
@@ -710,16 +754,82 @@ object ThemePackageManager {
             ?.let { (it * 100f / 255f).toInt().coerceIn(0, 100) }
     }
 
+    private fun RedThemeColors.hasMeaningfulThemeContent(backgroundPayload: String? = null): Boolean {
+        return listOf(
+            primaryColor,
+            backgroundColor,
+            foregroundColor,
+            mutedForegroundColor,
+            cardColor,
+            cardForegroundColor,
+            mutedColor,
+            borderColor,
+            accentColor,
+            backgroundImage,
+            backgroundPayload.orEmpty(),
+            cardBackgroundImage,
+            coverGalleryId,
+            navbarPackId,
+            readerColorSchemaId,
+            searchFieldBackgroundColor,
+            tabBackgroundColor,
+            shelfColor
+        ).any { it.isNotBlank() } ||
+            cardShadow != null ||
+            cardBackgroundBlur != null ||
+            cardBorder ||
+            switchBorder ||
+            tabBorder ||
+            searchFieldBorder
+    }
+
+    private fun RedThemeColors.resolveRedCardBackground(root: File): String? {
+        val relativePath = cardBackgroundImage.takeIf { it.isNotBlank() } ?: return null
+        val direct = File(root, relativePath)
+        if (direct.isFile) return direct.absolutePath
+        val fileName = relativePath.substringAfterLast('/')
+        return root.walkTopDown().firstOrNull { it.isFile && it.name == fileName }?.absolutePath
+    }
+
+    private fun writeInlineRedImage(encoded: String, prefix: String, dir: File): String? {
+        if (encoded.isBlank()) return null
+        return runCatching {
+            val decoded = Base64.decode(encoded, Base64.DEFAULT)
+            val bytes = if (decoded.size >= 2 && decoded[0] == 0x1F.toByte() && decoded[1] == 0x8B.toByte()) {
+                GZIPInputStream(ByteArrayInputStream(decoded)).use { it.readBytes() }
+            } else {
+                decoded
+            }
+            val suffix = detectImageSuffix(bytes)
+            val target = dir.getFile("${prefix.normalizeFileName()}$suffix")
+            FileOutputStream(target).use { it.write(bytes) }
+            target.absolutePath
+        }.getOrNull()
+    }
+
+    private fun detectImageSuffix(bytes: ByteArray): String {
+        imageMagic.forEach { (magic, suffix) ->
+            if (bytes.size >= magic.size && magic.indices.all { bytes[it] == magic[it] }) {
+                return suffix
+            }
+        }
+        return ".img"
+    }
+
     private fun readRedThemePackage(file: File): RedThemePackage {
+        val format = detectRedPackageFormat(file)
         return runCatching {
             file.inputStream().use { input ->
-                val header = ByteArray(4)
-                if (input.read(header) != header.size ||
-                    header[0] != 'R'.code.toByte() ||
-                    header[1] != 'E'.code.toByte() ||
-                    header[2] != 'D'.code.toByte()
-                ) {
-                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                when (format) {
+                    RedPackageFormat.RED_GZIP_JSON -> {
+                        val header = ByteArray(4)
+                        if (input.read(header) != header.size) {
+                            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                        }
+                    }
+
+                    RedPackageFormat.RAW_GZIP_JSON -> Unit
+                    else -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
                 }
                 GZIPInputStream(input).bufferedReader(Charsets.UTF_8).use { reader ->
                     GSON.fromJsonObject<RedThemePackage>(reader.readText()).getOrThrow()
@@ -730,12 +840,21 @@ object ThemePackageManager {
         }
     }
 
-    private fun themeExistsBlocking(isNightTheme: Boolean, themeName: String): Boolean {
-        val normalizedDirName = themeName.trim().normalizeFileName()
-        return loadLocal(isNightTheme).any { it.dirName == normalizedDirName }
-    }
-
-    private fun RedThemeColors.toThemeConfig(name: String, isNightTheme: Boolean): ThemeConfig.Config {
+    private fun RedThemeColors.toThemeConfig(
+        name: String,
+        isNightTheme: Boolean,
+        inlineBackground: String? = null
+    ): ThemeConfig.Config {
+        val backgroundPath = inlineBackground?.let {
+            writeInlineRedImage(
+                encoded = it,
+                prefix = "${name}_${if (isNightTheme) "night" else "day"}_background",
+                dir = tempDir
+            )
+        }
+        val panelPath = cardBackgroundImage.takeIf { it.isNotBlank() }?.let {
+            resolveRedCardBackground(tempDir)
+        }
         return ThemeConfig.Config(
             themeName = name.trim().ifBlank { "RED Theme" },
             isNightTheme = isNightTheme,
@@ -746,10 +865,10 @@ object ThemePackageManager {
                 .ifBlank { mutedColor }
                 .normalizeArgbColor(default = if (isNightTheme) "#FF312E2B" else "#FFEEEBE3"),
             transparentNavBar = false,
-            backgroundImgPath = null,
+            backgroundImgPath = backgroundPath,
             backgroundImgBlur = 0,
             bookInfoBackgroundImgPath = null,
-            panelBackgroundImgPath = null,
+            panelBackgroundImgPath = panelPath,
             panelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP,
             panelBorderColor = borderColor.normalizeArgbColorOrNull(),
             panelBorderAlpha = if (cardBorder || switchBorder) 100 else 0,
@@ -1114,7 +1233,9 @@ object ThemePackageManager {
     private data class RedThemeItem(
         val name: String = "",
         val light: RedThemeColors? = null,
-        val dark: RedThemeColors? = null
+        val dark: RedThemeColors? = null,
+        val lightBackgroundImage: String = "",
+        val darkBackgroundImage: String = ""
     )
 
     @Keep
@@ -1125,21 +1246,32 @@ object ThemePackageManager {
         val mutedForegroundColor: String = "",
         val cardColor: String = "",
         val cardForegroundColor: String = "",
+        val cardBackgroundImage: String = "",
         val mutedColor: String = "",
         val borderColor: String = "",
         val accentColor: String = "",
         val backgroundImage: String = "",
+        val backgroundImageFit: String = "",
+        val backgroundImageOpacity: Float? = null,
         val coverGalleryId: String = "",
         val navbarPackId: String = "",
         val readerColorSchemaId: String = "",
         val cardShadow: Int? = null,
+        val cardBackgroundBlur: Float? = null,
         val cardBorder: Boolean = false,
+        val searchFieldBorder: Boolean = false,
         val searchFieldBackgroundColor: String = "",
         val switchBorder: Boolean = false,
         val tabBorder: Boolean = false,
         val tabBackgroundColor: String = "",
         val shelfColor: String = ""
     )
+
+    private enum class RedPackageFormat {
+        RED04_ZIP,
+        RED_GZIP_JSON,
+        RAW_GZIP_JSON
+    }
 
     enum class Source {
         BUILTIN,
