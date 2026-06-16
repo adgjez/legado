@@ -757,16 +757,20 @@ data class TextPage(
         val paint = PaintPool.obtain()
         epubDecorations.forEach { decoration ->
             val rect = RectF(decoration.left, decoration.top, decoration.right, decoration.bottom)
+            val radius = when {
+                decoration.clipTop || decoration.clipBottom -> 0f
+                else -> decoration.radius
+            }
             decoration.backgroundColor?.takeIf { it != Color.TRANSPARENT }?.let { color ->
                 paint.style = Paint.Style.FILL
                 paint.color = color
-                canvas.drawRoundRect(rect, decoration.radius, decoration.radius, paint)
+                canvas.drawRoundRect(rect, radius, radius, paint)
             }
             decoration.borderColor?.takeIf { it != Color.TRANSPARENT }?.let { color ->
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = decoration.borderWidth
                 paint.color = color
-                canvas.drawRoundRect(rect, decoration.radius, decoration.radius, paint)
+                canvas.drawRoundRect(rect, radius, radius, paint)
             }
         }
         PaintPool.recycle(paint)
@@ -1251,7 +1255,9 @@ data class TextPage(
         val backgroundColor: Int?,
         val borderColor: Int?,
         val borderWidth: Float,
-        val radius: Float
+        val radius: Float,
+        val clipTop: Boolean = false,
+        val clipBottom: Boolean = false
     )
 
     internal data class EpubEmbeddedBlock(

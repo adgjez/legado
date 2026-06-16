@@ -1071,7 +1071,9 @@ class TextChapterLayout(
             backgroundColor = style.backgroundColor,
             borderColor = style.borderColor,
             borderWidth = box?.borderWidth ?: style.borderWidth,
-            radius = box?.borderRadius ?: style.radius
+            radius = box?.borderRadius ?: style.radius,
+            clipTop = active != null && pageIndex != active.startPageIndex,
+            clipBottom = active != null && bottom >= viewHeight.toFloat()
         )
         active?.pageDecorations?.put(pageIndex, decoration)
         page.epubDecorations.add(decoration)
