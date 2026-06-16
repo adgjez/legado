@@ -903,7 +903,7 @@ class TextChapterLayout(
                     val textBoxLayout = node.useHtmlTextBoxLayout()
                     if (node.isHtmlBlock() && node.hasEpubBlockBoxStyle() && !node.hasHtmlImage()) {
                         flushHtmlBuffer()
-                        setTypeEpubBlockBox(imageStyle, book, node)
+                        setTypeEpubBlockBox(imageStyle, book, node, textBoxLayout)
                     } else if (textBoxLayout != null) {
                         flushHtmlBuffer()
                         setTypeHtmlText(
@@ -991,7 +991,8 @@ class TextChapterLayout(
     private suspend fun setTypeEpubBlockBox(
         imageStyle: String?,
         book: Book,
-        element: Element
+        element: Element,
+        textBoxLayout: UseHtmlTextBoxLayout? = null
     ) {
         val style = element.epubBlockDecorationStyle() ?: run {
             setTypeHtmlText(imageStyle, book, element.outerHtml())
@@ -999,12 +1000,25 @@ class TextChapterLayout(
         }
         val startPageIndex = textPages.size
         val startLineIndex = pendingTextPage.lines.size
-        val layoutOffset = style.marginLeft + style.borderWidth + style.paddingLeft
-        val layoutWidth = (visibleWidth - style.marginLeft - style.marginRight -
+        val containerStartOffset = textBoxLayout?.startOffset ?: style.marginLeft
+        val containerWidth = textBoxLayout?.width?.toFloat()
+            ?: (visibleWidth - style.marginLeft - style.marginRight).coerceAtLeast(1f)
+        val containerEndOffset = (containerStartOffset + containerWidth).coerceIn(
+            containerStartOffset,
+            visibleWidth.toFloat()
+        )
+        val layoutOffset = containerStartOffset + style.borderWidth + style.paddingLeft
+        val layoutWidth = (containerEndOffset - containerStartOffset -
             style.paddingLeft - style.paddingRight - style.borderWidth * 2)
             .roundToInt()
-            .coerceAtLeast((visibleWidth * 0.45f).roundToInt())
-        activeEpubBlockDecoration = ActiveEpubBlockDecoration(style, startPageIndex, startLineIndex)
+            .coerceAtLeast(1)
+        activeEpubBlockDecoration = ActiveEpubBlockDecoration(
+            style = style,
+            startPageIndex = startPageIndex,
+            startLineIndex = startLineIndex,
+            left = paddingLeft + containerStartOffset,
+            right = paddingLeft + containerEndOffset
+        )
         try {
             setTypeHtmlText(
                 imageStyle = imageStyle,
@@ -1071,8 +1085,8 @@ class TextChapterLayout(
         val top = (targetLines.first().lineTop - style.paddingTop).coerceAtLeast(0f)
         val bottom = (targetLines.last().lineBottom + style.paddingBottom).coerceAtMost(viewHeight.toFloat())
         if (bottom <= top) return
-        val left = (paddingLeft + style.marginLeft).coerceAtLeast(0f)
-        val right = (paddingLeft + visibleWidth - style.marginRight).coerceAtMost(viewWidth.toFloat())
+        val left = active?.left ?: (paddingLeft + style.marginLeft).coerceAtLeast(0f)
+        val right = active?.right ?: (paddingLeft + visibleWidth - style.marginRight).coerceAtMost(viewWidth.toFloat())
         active?.pageDecorations?.remove(pageIndex)?.let { oldDecoration ->
             page.epubDecorations.remove(oldDecoration)
         }
@@ -1437,6 +1451,8 @@ class TextChapterLayout(
         val style: EpubBlockDecorationStyle,
         val startPageIndex: Int,
         val startLineIndex: Int,
+        val left: Float,
+        val right: Float,
         val pageDecorations: MutableMap<Int, TextPage.EpubDecoration> = linkedMapOf()
     )
 
