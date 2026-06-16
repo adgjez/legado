@@ -1000,65 +1000,27 @@ class TextChapterLayout(
         }
         val startPageIndex = textPages.size
         val startLineIndex = pendingTextPage.lines.size
-        val containerStartOffset = textBoxLayout?.startOffset ?: style.marginLeft
-        val containerWidth = textBoxLayout?.width?.toFloat()
-            ?: (visibleWidth - style.marginLeft - style.marginRight).coerceAtLeast(1f)
-        val containerEndOffset = (containerStartOffset + containerWidth).coerceIn(
-            containerStartOffset,
-            visibleWidth.toFloat()
-        )
-        val layoutOffset = containerStartOffset + style.borderWidth + style.paddingLeft
-        val layoutWidth = (containerEndOffset - containerStartOffset -
-            style.paddingLeft - style.paddingRight - style.borderWidth * 2)
-            .roundToInt()
-            .coerceAtLeast(1)
+        val box = style.resolveBox(element) ?: run {
+            setTypeHtmlText(imageStyle, book, element.outerHtml())
+            return
+        }
         activeEpubBlockDecoration = ActiveEpubBlockDecoration(
             style = style,
             startPageIndex = startPageIndex,
             startLineIndex = startLineIndex,
-            left = paddingLeft + containerStartOffset,
-            right = paddingLeft + containerEndOffset
+            box = box,
+            boxTop = paddingTop + durY
         )
         try {
             setTypeHtmlText(
                 imageStyle = imageStyle,
                 book = book,
                 htmlContent = element.outerHtml(),
-                layoutStartOffset = layoutOffset,
-                layoutWidth = layoutWidth
+                layoutStartOffset = box.contentStartOffset,
+                layoutWidth = box.contentWidth
             )
         } finally {
             activeEpubBlockDecoration = null
-        }
-    }
-
-    private fun addEpubBlockDecorations(
-        startPageIndex: Int,
-        startLineIndex: Int,
-        style: EpubBlockDecorationStyle
-    ) {
-        val lastPageIndex = textPages.size
-        for (pageIndex in startPageIndex..lastPageIndex) {
-            val page = if (pageIndex < textPages.size) textPages[pageIndex] else pendingTextPage
-            val fromLine = if (pageIndex == startPageIndex) startLineIndex else 0
-            val targetLines = page.lines.drop(fromLine)
-            if (targetLines.isEmpty()) continue
-            val top = (targetLines.first().lineTop - style.paddingTop).coerceAtLeast(0f)
-            val bottom = (targetLines.last().lineBottom + style.paddingBottom).coerceAtMost(viewHeight.toFloat())
-            if (bottom <= top) continue
-            page.epubDecorations.add(
-                TextPage.EpubDecoration(
-                    left = (paddingLeft + style.marginLeft).coerceAtLeast(0f),
-                    top = top,
-                    right = (paddingLeft + visibleWidth - style.marginRight).coerceAtMost(viewWidth.toFloat()),
-                    bottom = bottom,
-                    backgroundColor = style.backgroundColor,
-                    borderColor = style.borderColor,
-                    borderWidth = style.borderWidth,
-                    radius = style.radius
-                )
-            )
-            page.invalidate()
         }
     }
 
@@ -1082,11 +1044,22 @@ class TextChapterLayout(
         val fromLine = if (pageIndex == active?.startPageIndex) startLineIndex else 0
         val targetLines = page.lines.drop(fromLine)
         if (targetLines.isEmpty()) return
-        val top = (targetLines.first().lineTop - style.paddingTop).coerceAtLeast(0f)
-        val bottom = (targetLines.last().lineBottom + style.paddingBottom).coerceAtMost(viewHeight.toFloat())
+        val box = active?.box
+        val top = if (active != null && pageIndex == active.startPageIndex) {
+            active.boxTop
+        } else {
+            targetLines.first().lineTop
+        }.coerceAtLeast(0f)
+        val bottom = if (box != null) {
+            (targetLines.last().lineBottom + box.padding.bottom + box.borderWidth).coerceAtMost(viewHeight.toFloat())
+        } else {
+            targetLines.last().lineBottom.coerceAtMost(viewHeight.toFloat())
+        }
         if (bottom <= top) return
-        val left = active?.left ?: (paddingLeft + style.marginLeft).coerceAtLeast(0f)
-        val right = active?.right ?: (paddingLeft + visibleWidth - style.marginRight).coerceAtMost(viewWidth.toFloat())
+        val left = active?.let { paddingLeft + it.box.borderBoxStartOffset }
+            ?: paddingLeft.toFloat()
+        val right = active?.let { paddingLeft + it.box.borderBoxStartOffset + it.box.borderBoxWidth }
+            ?: (paddingLeft + visibleWidth).toFloat()
         active?.pageDecorations?.remove(pageIndex)?.let { oldDecoration ->
             page.epubDecorations.remove(oldDecoration)
         }
@@ -1097,8 +1070,8 @@ class TextChapterLayout(
             bottom = bottom,
             backgroundColor = style.backgroundColor,
             borderColor = style.borderColor,
-            borderWidth = style.borderWidth,
-            radius = style.radius
+            borderWidth = box?.borderWidth ?: style.borderWidth,
+            radius = box?.borderRadius ?: style.radius
         )
         active?.pageDecorations?.put(pageIndex, decoration)
         page.epubDecorations.add(decoration)
@@ -1318,6 +1291,19 @@ class TextChapterLayout(
         )
     }
 
+    private fun EpubBlockDecorationStyle.resolveBox(element: Element): UseHtmlBoxStyle? {
+        return UseHtmlTextBoxLayoutResolver.resolveBox(
+            attributes = element.attributes().associate { it.key to it.value },
+            style = element.attr("style"),
+            visibleWidth = visibleWidth,
+            emPx = contentPaintTextHeight,
+            backgroundColor = backgroundColor,
+            borderColor = borderColor,
+            borderWidth = borderWidth,
+            borderRadius = radius
+        )
+    }
+
     private fun String.toEpubBoxLengths(): List<String> {
         val parts = trim().split(' ', '\t', '\n')
             .map { it.trim() }
@@ -1451,8 +1437,8 @@ class TextChapterLayout(
         val style: EpubBlockDecorationStyle,
         val startPageIndex: Int,
         val startLineIndex: Int,
-        val left: Float,
-        val right: Float,
+        val box: UseHtmlBoxStyle,
+        val boxTop: Float,
         val pageDecorations: MutableMap<Int, TextPage.EpubDecoration> = linkedMapOf()
     )
 
