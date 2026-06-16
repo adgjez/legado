@@ -386,5 +386,31 @@ result = `<img src = "${url}">`;
 <button>点我@onclick:java.toast("Hello World")</button>
 </usehtml>
 ```
+> 书源正文也支持使用`<usehtml></usehtml>`包裹轻量HTML内容。阅读正文中的`usehtml`不是浏览器渲染, 会将HTML转换为阅读器可复制、可选择的正文行列。  
+> 当前正文`usehtml`支持常见富文本标签, 如`p`、`div`、`span`、`b`、`strong`、`i`、`em`、`u`、`s`、`font`、`a`、`br`、`img`、`table`等。  
+> 当前正文`usehtml`支持有限文本块布局: `width`、`min-width`、`max-width`、`margin-left`、`margin-right`、`text-align`。宽度支持数字、`px`、`%`、`em`、`rem`; 左右外边距支持`auto`。  
+```xml
+<usehtml>
+<p style="width:60%;text-align:left;">
+左对齐文本块
+</p>
+<p style="width:60%;margin-left:auto;margin-right:auto;text-align:center;">
+居中文本块
+</p>
+<p style="width:60%;margin-left:auto;text-align:right;">
+右对齐文本块
+</p>
+</usehtml>
+```
+> 也可以使用阅读专用属性明确启用文本块布局。  
+```xml
+<usehtml>
+<p data-legado-layout="text-box" data-legado-width="60%" style="margin-left:auto;margin-right:auto;text-align:center;">
+明确启用的居中文本块
+</p>
+</usehtml>
+```
+> 正文`usehtml`支持图片标签。图片`src`可以附加`style`、`width`、`click`等参数, 具体写法参考上方图片链接控制样式。  
+> 正文`usehtml`不支持完整CSS盒模型和浏览器复杂布局, 不支持`float`、`flex`、`grid`、`position:absolute`、脚本执行、内嵌视频播放等。复杂图文布局建议使用阅读器支持的图片样式或后续专用布局属性。  
 > 支持Markdown语法，需要用`<md></md>`包裹起来  
 > 支持使用浏览器渲染，需要用`<useweb></useweb>`包裹起来  
