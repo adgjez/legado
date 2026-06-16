@@ -140,6 +140,10 @@ object AppearanceKitManager {
         val next = kits.toMutableList()
         next[index] = next[index].copy(name = nextName, updatedAt = System.currentTimeMillis())
         saveIndex(next)
+        if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == kit.id) {
+            postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
+            postEvent(EventBus.RECREATE, "")
+        }
         true
     }
 
@@ -163,6 +167,7 @@ object AppearanceKitManager {
         saveIndex(kits.map { if (it.id == target.id) next else it })
         if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == target.id) {
             postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
+            postEvent(EventBus.RECREATE, "")
         }
         true
     }
