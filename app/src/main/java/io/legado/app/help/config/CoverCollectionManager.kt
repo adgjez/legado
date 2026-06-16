@@ -103,6 +103,13 @@ object CoverCollectionManager {
         loadIndex(isNight).firstOrNull { it.id == id }
     }
 
+    suspend fun selectedEntry(isNight: Boolean): Entry? = withContext(IO) {
+        val key = if (isNight) PreferKey.coverCollectionNight else PreferKey.coverCollectionDay
+        val id = appCtx.getPrefString(key)?.takeIf { it.isNotBlank() } ?: return@withContext null
+        val collection = loadIndex(isNight).firstOrNull { it.id == id } ?: return@withContext null
+        Entry(collection, Source.LOCAL, collectionDir(collection))
+    }
+
     fun cachedName(isNight: Boolean, id: String?): String? {
         if (id.isNullOrBlank()) return null
         val cache = if (isNight) nightCache else dayCache

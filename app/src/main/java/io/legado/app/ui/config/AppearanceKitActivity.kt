@@ -1,6 +1,7 @@
 package io.legado.app.ui.config
 
 import android.os.Bundle
+import android.net.Uri
 import android.view.View
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -38,14 +39,19 @@ import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.config.AppearanceKit
 import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.ui.book.cache.WebDavTaskType
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
+import java.io.FileOutputStream
 
 class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
 
@@ -55,6 +61,16 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private var kitsState by mutableStateOf<List<AppearanceKit>>(emptyList())
     private var currentKitIdState by mutableStateOf("")
+
+    private val importPackage = registerForActivityResult(HandleFileContract()) {
+        it.uri?.let(::importAppearanceKit)
+    }
+
+    private val exportPackage = registerForActivityResult(HandleFileContract()) {
+        if (it.uri != null) {
+            toastOnUi(R.string.export_success)
+        }
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = getString(R.string.appearance_kit_manage)
@@ -80,6 +96,9 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
                     kits = kitsState,
                     currentKitId = currentKitIdState,
                     onApply = ::applyKit,
+                    onImport = ::selectImportPackage,
+                    onExport = ::exportCurrentKit,
+                    onOpenSyncTasks = ::showSyncTasks,
                     onOpenTheme = { startActivity<ThemeManageActivity>() },
                     onOpenNavigation = { startActivity<NavigationBarManageActivity>() },
                     onOpenTopBar = { startActivity<TopBarManageActivity>() },
@@ -109,6 +128,62 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
             }
         }
     }
+
+    private fun selectImportPackage() {
+        importPackage.launch {
+            mode = HandleFileContract.FILE
+            title = getString(R.string.appearance_kit_import)
+            allowExtensions = arrayOf("red", "zip")
+        }
+    }
+
+    private fun importAppearanceKit(uri: Uri) {
+        lifecycleScope.launch {
+            runCatching {
+                val file = externalFiles.getFile("appearanceKitImports", "import_${System.currentTimeMillis()}.zip")
+                file.parentFile?.mkdirs()
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(file).use { output -> input.copyTo(output) }
+                } ?: throw IllegalArgumentException(getString(R.string.theme_zip_read_failed))
+                AppearanceKitManager.importPackage(file)
+            }.onSuccess { result ->
+                toastOnUi(getString(R.string.appearance_kit_imported, result.total))
+                refreshKits()
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun exportCurrentKit() {
+        lifecycleScope.launch {
+            runCatching {
+                AppearanceKitManager.exportCurrent(this@AppearanceKitActivity)
+            }.onSuccess { file ->
+                exportPackage.launch {
+                    mode = HandleFileContract.EXPORT
+                    showUploadUrl = false
+                    fileData = HandleFileContract.FileData(
+                        file.name.ifBlank { "appearance_kit.zip" },
+                        file,
+                        "application/zip"
+                    )
+                }
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun showSyncTasks() {
+        showPackageSyncTaskDialog(
+            setOf(
+                WebDavTaskType.THEME_PACKAGE_UPLOAD,
+                WebDavTaskType.TOP_BAR_PACKAGE_UPLOAD,
+                WebDavTaskType.NAVIGATION_BAR_PACKAGE_UPLOAD
+            )
+        )
+    }
 }
 
 @Composable
@@ -116,6 +191,9 @@ private fun AppearanceKitScreen(
     kits: List<AppearanceKit>,
     currentKitId: String,
     onApply: (AppearanceKit) -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
+    onOpenSyncTasks: () -> Unit,
     onOpenTheme: () -> Unit,
     onOpenNavigation: () -> Unit,
     onOpenTopBar: () -> Unit,
@@ -129,11 +207,19 @@ private fun AppearanceKitScreen(
     ) {
         item("kits") {
             KitSection(
-                title = "界面套件",
+                title = stringResourceCompat(R.string.appearance_kit_manage),
                 palette = palette,
                 rows = kits,
                 currentKitId = currentKitId,
                 onApply = onApply
+            )
+        }
+        item("actions") {
+            ActionSection(
+                palette = palette,
+                onImport = onImport,
+                onExport = onExport,
+                onOpenSyncTasks = onOpenSyncTasks
             )
         }
         item("advanced") {
@@ -146,6 +232,25 @@ private fun AppearanceKitScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ActionSection(
+    palette: AppSettingPalette,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
+    onOpenSyncTasks: () -> Unit
+) {
+    val rows = listOf(
+        Triple(stringResourceCompat(R.string.appearance_kit_import), stringResourceCompat(R.string.appearance_kit_import_summary), onImport),
+        Triple(stringResourceCompat(R.string.appearance_kit_export), stringResourceCompat(R.string.appearance_kit_export_summary), onExport),
+        Triple(stringResourceCompat(R.string.package_sync_task_title), stringResourceCompat(R.string.appearance_kit_sync_summary), onOpenSyncTasks)
+    )
+    PanelRows(
+        title = stringResourceCompat(R.string.appearance_kit_actions),
+        palette = palette,
+        rows = rows
+    )
 }
 
 @Composable
@@ -191,15 +296,28 @@ private fun AdvancedSection(
     onOpenTopBar: () -> Unit,
     onOpenCover: () -> Unit
 ) {
+    val rows = listOf(
+        Triple(stringResourceCompat(R.string.theme_manage_title), stringResourceCompat(R.string.theme_list_summary), onOpenTheme),
+        Triple(stringResourceCompat(R.string.navigation_bar_manage), stringResourceCompat(R.string.navigation_bar_manage_summary), onOpenNavigation),
+        Triple(stringResourceCompat(R.string.top_bar_manage), stringResourceCompat(R.string.top_bar_manage_summary), onOpenTopBar),
+        Triple(stringResourceCompat(R.string.cover_collection_manage), stringResourceCompat(R.string.appearance_kit_cover_summary), onOpenCover)
+    )
+    PanelRows(
+        title = stringResourceCompat(R.string.appearance_kit_advanced),
+        palette = palette,
+        rows = rows
+    )
+}
+
+@Composable
+private fun PanelRows(
+    title: String,
+    palette: AppSettingPalette,
+    rows: List<Triple<String, String, () -> Unit>>
+) {
     val context = LocalContext.current
     val radiusPx = palette.panelRadiusPx
     val panelImage = UiCorner.panelImageDrawable(context, radiusPx)
-    val rows = listOf(
-        Triple("界面管理", "管理日间、夜间界面颜色、背景、圆角和透明度", onOpenTheme),
-        Triple("底栏管理", "管理底栏图标、样式、侧栏和同步", onOpenNavigation),
-        Triple("顶栏管理", "管理顶栏样式、背景和同步", onOpenTopBar),
-        Triple("封面图集", "管理书籍封面图集资源", onOpenCover)
-    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -210,7 +328,7 @@ private fun AdvancedSection(
                 radiusPx = radiusPx
             )
     ) {
-        AppSettingSectionTitle(title = "高级管理", palette = palette)
+        AppSettingSectionTitle(title = title, palette = palette)
         rows.forEachIndexed { index, row ->
             ActionRow(
                 title = row.first,
@@ -222,6 +340,11 @@ private fun AdvancedSection(
             )
         }
     }
+}
+
+@Composable
+private fun stringResourceCompat(id: Int): String {
+    return androidx.compose.ui.res.stringResource(id)
 }
 
 @Composable

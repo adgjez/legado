@@ -617,9 +617,12 @@ object ThemePackageManager {
             if (entries.isEmpty()) {
                 throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
-            importRedNavigationPack(unzipDir, redTheme.light)
-            importRedCoverGallery(unzipDir, redTheme.light)
+            importRedNavigationPack(unzipDir, redTheme.light, false)
+            importRedNavigationPack(unzipDir, redTheme.dark, true)
+            importRedCoverGallery(unzipDir, redTheme.light, false)
+            importRedCoverGallery(unzipDir, redTheme.dark, true)
             copyRedReaderSchema(unzipDir, redTheme.light)
+            copyRedReaderSchema(unzipDir, redTheme.dark)
             entries
         } catch (e: Throwable) {
             if (e is IllegalArgumentException) throw e
@@ -647,8 +650,8 @@ object ThemePackageManager {
         )
     }
 
-    private fun importRedNavigationPack(root: File, light: RedThemeColors?) {
-        val packId = light?.navbarPackId?.takeIf { it.isNotBlank() } ?: return
+    private fun importRedNavigationPack(root: File, colors: RedThemeColors?, isNightTheme: Boolean) {
+        val packId = colors?.navbarPackId?.takeIf { it.isNotBlank() } ?: return
         val sourceDir = File(root, "navbar_pack/$packId").takeIf { it.isDirectory } ?: return
         val meta = File(sourceDir, "meta.json")
             .takeIf { it.isFile }
@@ -678,24 +681,28 @@ object ThemePackageManager {
             if (icons.isEmpty()) return
             val config = NavigationBarIconConfig.Config(
                 name = meta?.name?.ifBlank { null } ?: "RED Navigation",
-                isNightMode = false,
+                isNightMode = isNightTheme,
                 layoutMode = "floating",
                 effectMode = "glass",
-                opacity = light.cardColor.alphaPercentOrNull() ?: 72,
+                opacity = colors.cardColor.alphaPercentOrNull() ?: 72,
                 icons = icons
             )
             File(packageDir, "navigation.json").writeText(GSON.toJson(config))
             ZipUtils.zipFile(packageDir, zipFile)
             val entry = NavigationBarIconConfig.importZip(zipFile)
-            NavigationBarIconConfig.apply(entry)
+            if (isNightTheme == AppConfig.isNightTheme) {
+                NavigationBarIconConfig.apply(entry)
+            } else {
+                NavigationBarIconConfig.select(entry)
+            }
         } finally {
             zipFile.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)
         }
     }
 
-    private fun importRedCoverGallery(root: File, light: RedThemeColors?) {
-        val galleryId = light?.coverGalleryId?.takeIf { it.isNotBlank() } ?: return
+    private fun importRedCoverGallery(root: File, colors: RedThemeColors?, isNightTheme: Boolean) {
+        val galleryId = colors?.coverGalleryId?.takeIf { it.isNotBlank() } ?: return
         val sourceDir = File(root, "cover_gallery/$galleryId").takeIf { it.isDirectory } ?: return
         val meta = File(sourceDir, "meta.json")
             .takeIf { it.isFile }
@@ -721,16 +728,16 @@ object ThemePackageManager {
                 id = UUID.randomUUID().toString(),
                 name = meta?.name?.ifBlank { null } ?: "RED Cover Gallery",
                 dirName = (meta?.name?.ifBlank { null } ?: "RED Cover Gallery").normalizeFileName(),
-                isNight = false,
+                isNight = isNightTheme,
                 images = images,
                 updatedAt = System.currentTimeMillis()
             )
             File(packageDir, "collection.json").writeText(GSON.toJson(collection))
             ZipUtils.zipFile(packageDir, zipFile)
             val imported = kotlinx.coroutines.runBlocking {
-                CoverCollectionManager.importZip(appCtx, zipFile, false)
+                CoverCollectionManager.importZip(appCtx, zipFile, isNightTheme)
             }
-            CoverCollectionManager.setSelected(false, imported.id)
+            CoverCollectionManager.setSelected(isNightTheme, imported.id)
         } finally {
             zipFile.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)

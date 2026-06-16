@@ -914,7 +914,7 @@
     <string name="save_theme_config">保存主题配置</string>
     <string name="save_day_theme_summary">保存白天主题配置以供调用和分享</string>
     <string name="save_night_theme_summary">保存夜间主题配置以供调用和分享</string>
-    <string name="theme_list">主题管理</string>
+    <string name="theme_list">界面管理</string>
     <string name="theme_list_summary">管理本地和云端主题包</string>
     <string name="select_theme">切换默认主题</string>
     <string name="sort_by_lastUpdateTime">更新时间排序</string>
@@ -1618,7 +1618,7 @@
     <string name="book_variable_hint">书籍变量可在 JS 中通过 book.getVariable(&quot;custom&quot;) 获取</string>
     <string name="disable">禁用</string>
     <string name="delete_success">已删除</string>
-    <string name="theme_manage_title">主题管理</string>
+    <string name="theme_manage_title">界面管理</string>
     <string name="navigation_bar_manage">底栏管理</string>
     <string name="navigation_bar_manage_summary">管理底栏主题、图标、玻璃样式和不透明度。</string>
     <string name="navigation_bar_package_summary">点击底栏主题可应用、编辑、导出或同步。</string>
@@ -2154,5 +2154,14 @@ bookUrl：%7$s
     <string name="main_layout_preset_sidebar_summary">侧边栏 + 默认顶栏</string>
     <string name="appearance_kit_manage">界面套件</string>
     <string name="appearance_kit_summary">统一管理主题、顶栏、底栏和封面图集</string>
+    <string name="appearance_kit_actions">套件操作</string>
+    <string name="appearance_kit_import">导入套件</string>
+    <string name="appearance_kit_import_summary">支持 RED 主题包、主题 ZIP 和界面套件 ZIP</string>
+    <string name="appearance_kit_export">导出当前套件</string>
+    <string name="appearance_kit_export_summary">导出当前主题、顶栏、底栏和封面图集的组合包</string>
+    <string name="appearance_kit_imported">已导入 %d 个组件</string>
+    <string name="appearance_kit_sync_summary">查看主题、顶栏、底栏的云端同步任务</string>
+    <string name="appearance_kit_advanced">高级管理</string>
+    <string name="appearance_kit_cover_summary">管理书籍封面图集资源</string>
     <string name="theme_red_invalid">RED 主题包格式不正确</string>
 </resources>

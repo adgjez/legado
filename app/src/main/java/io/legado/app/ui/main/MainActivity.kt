@@ -175,6 +175,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         TabFragmentPageAdapter(supportFragmentManager)
     }
     private var onUpBooksBadgeView: BadgeView? = null
+    private val appearanceRefreshRunnable = Runnable {
+        refreshAppearanceKitNow()
+    }
     private val bottomBarCornerRadius by lazy {
         resources.getDimension(R.dimen.main_bottom_bar_corner_radius)
     }
@@ -1451,7 +1454,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
-    private fun refreshAppearanceKit() = binding.run {
+    private fun refreshAppearanceKit() = binding.root.run {
+        removeCallbacks(appearanceRefreshRunnable)
+        post(appearanceRefreshRunnable)
+    }
+
+    private fun refreshAppearanceKitNow() = binding.run {
         bottomNavigationConfigSignature = ""
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
         bottomNavigationView.menu.clear()
@@ -1464,12 +1472,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         refreshMainTopBars(root)
         updateAiFloatingBall()
         scheduleLiquidGlassWarmup()
-        root.post {
-            refreshMainTopBars(root)
-            applyBottomLayoutMode()
-            bottomNavigationView.doOnLayout {
-                updateBottomNavigationIndicator(animate = false)
-            }
+        bottomNavigationView.doOnLayout {
+            updateBottomNavigationIndicator(animate = false)
         }
     }
 
@@ -2101,6 +2105,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     override fun onDestroy() {
         ReadAloudAppCapsuleHost.detach(this)
         aiFloatingBall?.removeCallbacks(aiFloatingBallAttachRunnable)
+        binding.root.removeCallbacks(appearanceRefreshRunnable)
         clearLiquidGlassCallbacks()
         resetLiquidGlassBindingState()
         clearSideNavigationBackground()
@@ -2133,16 +2138,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         observeEvent<Boolean>(EventBus.NAVIGATION_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                refreshBottomNavigationConfig()
+                refreshAppearanceKit()
             }
         }
         observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) {
             if (it == AppConfig.isNightTheme) {
-                refreshMainTopBars(binding.root)
-                binding.root.post {
-                    refreshMainTopBars(binding.root)
-                    scheduleLiquidGlassSetup(delayMillis = 96L)
-                }
+                refreshAppearanceKit()
             }
         }
         observeEvent<Boolean>(EventBus.MAIN_APPEARANCE_KIT_CHANGED) {

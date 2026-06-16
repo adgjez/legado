@@ -2283,5 +2283,14 @@ Selected text or question:
     <string name="main_layout_preset_sidebar_summary">Sidebar navigation with default top bar</string>
     <string name="appearance_kit_manage">Interface kits</string>
     <string name="appearance_kit_summary">Manage themes, top bar, bottom bar, and cover galleries together</string>
+    <string name="appearance_kit_actions">Kit actions</string>
+    <string name="appearance_kit_import">Import kit</string>
+    <string name="appearance_kit_import_summary">Supports RED theme packages, theme ZIPs, and interface kit ZIPs</string>
+    <string name="appearance_kit_export">Export current kit</string>
+    <string name="appearance_kit_export_summary">Export current theme, top bar, bottom bar, and cover collection together</string>
+    <string name="appearance_kit_imported">Imported %d components</string>
+    <string name="appearance_kit_sync_summary">View cloud sync tasks for themes, top bars, and bottom bars</string>
+    <string name="appearance_kit_advanced">Advanced management</string>
+    <string name="appearance_kit_cover_summary">Manage book cover gallery resources</string>
     <string name="theme_red_invalid">Invalid RED theme package</string>
 </resources>

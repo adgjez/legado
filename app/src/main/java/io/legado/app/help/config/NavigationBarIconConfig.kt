@@ -211,8 +211,7 @@ object NavigationBarIconConfig {
 
     fun apply(entry: Entry) {
         val config = normalizeConfig(entry.config)
-        val key = if (config.isNightMode) activeNightKey else activeDayKey
-        appCtx.putPrefString(key, entry.dirName)
+        select(entry)
         AppConfig.bottomBarLayoutMode = config.layoutMode
         AppConfig.bottomBarSidebarGravity = config.sidebarGravity
         AppConfig.bottomBarEffectMode = config.effectMode
@@ -221,6 +220,11 @@ object NavigationBarIconConfig {
         if (config.layoutMode == "sidebar") {
             appCtx.putPrefBoolean(PreferKey.mergeDiscoveryRss, false)
         }
+    }
+
+    fun select(entry: Entry) {
+        val key = if (entry.config.isNightMode) activeNightKey else activeDayKey
+        appCtx.putPrefString(key, entry.dirName)
     }
 
     fun applyCurrentBottomConfig(isNight: Boolean) {

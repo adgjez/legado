@@ -23,9 +23,13 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             if (uri.isContentScheme() || uri.isFileScheme()) {
                 val fileDoc = FileDoc.fromUri(uri, false)
                 val fileName = fileDoc.name
+                if (fileName.endsWith(".red", ignoreCase = true)) {
+                    importRedThemeLiveData.postValue(fileDoc.uri)
+                    return@execute
+                }
                 if (fileName.matches(AppPattern.archiveFileRegex)) {
                     ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
-                        it.matches(bookFileRegex)
+                        it.matches(bookFileRegex) || it.endsWith(".red", ignoreCase = true)
                     }.forEach {
                         dispatch(FileDoc.fromFile(it))
                     }
