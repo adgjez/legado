@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +39,7 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.config.AppearanceKit
 import io.legado.app.help.config.AppearanceKitManager
+import io.legado.app.help.config.AppearanceKitType
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
@@ -46,6 +48,7 @@ import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -96,6 +99,7 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
                     kits = kitsState,
                     currentKitId = currentKitIdState,
                     onApply = ::applyKit,
+                    onDelete = ::confirmDeleteKit,
                     onImport = ::selectImportPackage,
                     onExport = ::exportCurrentKit,
                     onOpenSyncTasks = ::showSyncTasks,
@@ -123,6 +127,30 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onSuccess {
                 currentKitIdState = kit.id
                 toastOnUi(R.string.success)
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun confirmDeleteKit(kit: AppearanceKit) {
+        showComposeConfirmDialog(
+            title = getString(R.string.delete),
+            message = getString(R.string.appearance_kit_delete_confirm, kit.name),
+            positiveText = getString(R.string.delete),
+            negativeText = getString(R.string.cancel),
+            dangerPositive = true,
+            onPositive = { deleteKit(kit) }
+        )
+    }
+
+    private fun deleteKit(kit: AppearanceKit) {
+        lifecycleScope.launch {
+            runCatching {
+                AppearanceKitManager.deleteImportedTheme(this@AppearanceKitActivity, kit)
+            }.onSuccess { deleted ->
+                toastOnUi(if (deleted) R.string.delete_success else R.string.error)
+                refreshKits()
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: getString(R.string.error))
             }
@@ -191,6 +219,7 @@ private fun AppearanceKitScreen(
     kits: List<AppearanceKit>,
     currentKitId: String,
     onApply: (AppearanceKit) -> Unit,
+    onDelete: (AppearanceKit) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
     onOpenSyncTasks: () -> Unit,
@@ -211,7 +240,8 @@ private fun AppearanceKitScreen(
                 palette = palette,
                 rows = kits,
                 currentKitId = currentKitId,
-                onApply = onApply
+                onApply = onApply,
+                onDelete = onDelete
             )
         }
         item("actions") {
@@ -259,7 +289,8 @@ private fun KitSection(
     palette: AppSettingPalette,
     rows: List<AppearanceKit>,
     currentKitId: String,
-    onApply: (AppearanceKit) -> Unit
+    onApply: (AppearanceKit) -> Unit,
+    onDelete: (AppearanceKit) -> Unit
 ) {
     val context = LocalContext.current
     val radiusPx = palette.panelRadiusPx
@@ -280,9 +311,11 @@ private fun KitSection(
                 title = kit.name,
                 summary = kit.summary,
                 trailing = if (kit.id == currentKitId) "已应用" else "应用",
+                secondaryTrailing = if (kit.type == AppearanceKitType.IMPORTED_THEME) stringResourceCompat(R.string.delete) else "",
                 palette = palette,
                 isLast = index == rows.lastIndex,
-                onClick = { onApply(kit) }
+                onClick = { onApply(kit) },
+                onSecondaryClick = { onDelete(kit) }
             )
         }
     }
@@ -352,9 +385,11 @@ private fun ActionRow(
     title: String,
     summary: String,
     trailing: String,
+    secondaryTrailing: String = "",
     palette: AppSettingPalette,
     isLast: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSecondaryClick: (() -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -402,6 +437,20 @@ private fun ActionRow(
                 color = palette.accent,
                 fontSize = 14.sp,
                 maxLines = 1
+            )
+        }
+        if (secondaryTrailing.isNotBlank() && onSecondaryClick != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = secondaryTrailing,
+                color = palette.accent,
+                fontSize = 14.sp,
+                maxLines = 1,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onSecondaryClick
+                )
             )
         }
     }

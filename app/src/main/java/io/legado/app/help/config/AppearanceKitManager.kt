@@ -106,6 +106,23 @@ object AppearanceKitManager {
         postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
     }
 
+    suspend fun deleteImportedTheme(context: Context, kit: AppearanceKit): Boolean = withContext(IO) {
+        if (kit.type != AppearanceKitType.IMPORTED_THEME) return@withContext false
+        val themeName = kit.themeName?.takeIf { it.isNotBlank() } ?: return@withContext false
+        if (isThemeApplied(context, themeName)) {
+            throw IllegalArgumentException(context.getString(io.legado.app.R.string.theme_delete_applied_forbidden))
+        }
+        val entries = ThemePackageManager.loadLocalOnly(false)
+            .filter { it.source != ThemePackageManager.Source.BUILTIN && it.packageInfo.name == themeName } +
+            ThemePackageManager.loadLocalOnly(true)
+                .filter { it.source != ThemePackageManager.Source.BUILTIN && it.packageInfo.name == themeName }
+        entries.forEach { ThemePackageManager.deleteLocal(it) }
+        if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == kit.id) {
+            appCtx.putPrefString(PreferKey.currentAppearanceKitId, "")
+        }
+        entries.isNotEmpty()
+    }
+
     suspend fun importPackage(file: File): ImportResult = withContext(IO) {
         if (isAppearanceKitPackage(file)) {
             importAppearanceKit(file)
@@ -155,6 +172,12 @@ object AppearanceKitManager {
                 .firstOrNull { it.packageInfo.name == themeName }
             ?: return
         ThemePackageManager.apply(context, entry, switchNightMode = false)
+    }
+
+    private fun isThemeApplied(context: Context, themeName: String): Boolean {
+        val dayName = context.getPrefString(PreferKey.dThemeName).orEmpty()
+        val nightName = context.getPrefString(PreferKey.dNThemeName).orEmpty()
+        return dayName == themeName || nightName == themeName
     }
 
     private fun isAppearanceKitPackage(file: File): Boolean {

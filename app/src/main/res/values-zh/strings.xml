@@ -2152,16 +2152,17 @@ bookUrl：%7$s
     <string name="main_layout_preset_regular_summary">常规底栏 + 常规顶栏</string>
     <string name="main_layout_preset_sidebar">侧栏</string>
     <string name="main_layout_preset_sidebar_summary">侧边栏 + 默认顶栏</string>
-    <string name="appearance_kit_manage">界面套件</string>
+    <string name="appearance_kit_manage">应用主题</string>
     <string name="appearance_kit_summary">统一管理主题、顶栏、底栏和封面图集</string>
-    <string name="appearance_kit_actions">套件操作</string>
-    <string name="appearance_kit_import">导入套件</string>
-    <string name="appearance_kit_import_summary">支持 RED 主题包、主题 ZIP 和界面套件 ZIP</string>
-    <string name="appearance_kit_export">导出当前套件</string>
+    <string name="appearance_kit_actions">主题操作</string>
+    <string name="appearance_kit_import">导入应用主题</string>
+    <string name="appearance_kit_import_summary">支持 RED 主题包、主题 ZIP 和应用主题 ZIP</string>
+    <string name="appearance_kit_export">导出当前应用主题</string>
     <string name="appearance_kit_export_summary">导出当前主题、顶栏、底栏和封面图集的组合包</string>
     <string name="appearance_kit_imported">已导入 %d 个组件</string>
     <string name="appearance_kit_sync_summary">查看主题、顶栏、底栏的云端同步任务</string>
     <string name="appearance_kit_advanced">高级管理</string>
     <string name="appearance_kit_cover_summary">管理书籍封面图集资源</string>
+    <string name="appearance_kit_delete_confirm">删除应用主题“%s”？</string>
     <string name="theme_red_invalid">RED 主题包格式不正确</string>
 </resources>
