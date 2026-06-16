@@ -277,6 +277,7 @@ class TextChapterLayout(
             }
             for (text in titleLines) {
                 val srcList = LinkedList<String>()
+                val clickSrcList = LinkedList<String?>()
                 val clickList = LinkedList<String?>()
                 val titleImg = if (firstLine) {
                     firstLine = false
@@ -304,11 +305,13 @@ class TextChapterLayout(
                     when (style) {
                         "text" -> {
                             srcList.add(imageInfo.renderSrc)
+                            clickSrcList.add(titleImg)
                             clickList.add(click)
                             srcReplaceChar
                         }
                         "TEXT" -> {
                             srcList.add(imageInfo.renderSrc)
+                            clickSrcList.add(titleImg)
                             clickList.add(click)
                             reviewChar
                         }
@@ -333,6 +336,7 @@ class TextChapterLayout(
                     titlePaintFontMetrics,
                     imageStyle,
                     srcList = srcList,
+                    clickSrcList = clickSrcList,
                     clickList = clickList,
                     isTitle = true,
                     emptyContent = contents.isEmpty(),
@@ -385,6 +389,7 @@ class TextChapterLayout(
             if (isTextImageStyle) {
                 //图片样式为文字嵌入类型
                 val srcList = LinkedList<String>()
+                val clickSrcList = LinkedList<String?>()
                 val clickList = LinkedList<String?>()
                 sb.setLength(0)
                 val matcher = AppPattern.imgPattern.matcher(text)
@@ -392,6 +397,7 @@ class TextChapterLayout(
                     matcher.group(1)?.let { src ->
                         val imageInfo = parseImageInfo(src)
                         srcList.add(imageInfo.renderSrc)
+                        clickSrcList.add(src)
                         clickList.add(imageInfo.click)
                         matcher.appendReplacement(sb, srcReplaceStr)
                     }
@@ -407,6 +413,7 @@ class TextChapterLayout(
                     contentPaintFontMetrics,
                     imageStyle,
                     srcList = srcList,
+                    clickSrcList = clickSrcList,
                     clickList = clickList
                 )
             } else {
@@ -416,6 +423,7 @@ class TextChapterLayout(
                 }
                 var start = 0
                 val srcList = LinkedList<String>()
+                val clickSrcList = LinkedList<String?>()
                 val clickList = LinkedList<String?>()
                 sb.setLength(0)
                 var isFirstLine = true
@@ -445,11 +453,13 @@ class TextChapterLayout(
                             "TEXT" -> {
                                 sb.append(reviewChar)
                                 srcList.add(imageInfo.renderSrc)
+                                clickSrcList.add(imgSrc)
                                 clickList.add(click)
                             }
                             "text" -> {
                                 sb.append(srcReplaceChar)
                                 srcList.add(imageInfo.renderSrc)
+                                clickSrcList.add(imgSrc)
                                 clickList.add(click)
                             }
                             else -> {
@@ -465,6 +475,7 @@ class TextChapterLayout(
                                         "TEXT",
                                         isFirstLine = isFirstLine,
                                         srcList = srcList,
+                                        clickSrcList = clickSrcList,
                                         clickList = clickList
                                     )
                                     sb.setLength(0)
@@ -949,7 +960,7 @@ class TextChapterLayout(
             }
         }
 
-        val body = Jsoup.parseBodyFragment(htmlContent).body()
+        val body = Jsoup.parseBodyFragment(htmlContent.escapeUseHtmlParagraphBubbleSrc()).body()
         prepareEpubPageBackground(body, book)
         body.childNodes().forEach { node ->
             renderNode(node)
@@ -1570,6 +1581,85 @@ class TextChapterLayout(
         return normalName() == "img" && attr("src").trim().startsWith(PARAGRAPH_BUBBLE_PREFIX)
     }
 
+    private fun String.escapeUseHtmlParagraphBubbleSrc(): String {
+        if (!contains(PARAGRAPH_BUBBLE_PREFIX) || !contains("<img", ignoreCase = true)) return this
+        val output = StringBuilder(length)
+        var index = 0
+        while (index < length) {
+            val imgStart = indexOf("<img", index, ignoreCase = true)
+            if (imgStart < 0) {
+                output.append(this, index, length)
+                break
+            }
+            output.append(this, index, imgStart)
+            val tagEnd = indexOf('>', imgStart)
+            if (tagEnd < 0) {
+                output.append(this, imgStart, length)
+                break
+            }
+            output.append(escapeParagraphBubbleSrcInImgTag(substring(imgStart, tagEnd + 1)))
+            index = tagEnd + 1
+        }
+        return output.toString()
+    }
+
+    private fun escapeParagraphBubbleSrcInImgTag(tag: String): String {
+        val srcStart = tag.indexOf("src", ignoreCase = true)
+        if (srcStart < 0) return tag
+        var equalsIndex = tag.indexOf('=', srcStart + 3)
+        if (equalsIndex < 0) return tag
+        var valueStart = equalsIndex + 1
+        while (valueStart < tag.length && tag[valueStart].isWhitespace()) valueStart++
+        if (valueStart >= tag.length || tag[valueStart] != '"') return tag
+        val contentStart = valueStart + 1
+        if (!tag.regionMatches(contentStart, PARAGRAPH_BUBBLE_PREFIX, 0, PARAGRAPH_BUBBLE_PREFIX.length, ignoreCase = false)) {
+            return tag
+        }
+        val valueEnd = findParagraphBubbleSrcEnd(tag, contentStart) ?: return tag
+        val value = tag.substring(contentStart, valueEnd)
+        return buildString(tag.length + 16) {
+            append(tag, 0, contentStart)
+            append(value.replace("\"", "&quot;"))
+            append(tag, valueEnd, tag.length)
+        }
+    }
+
+    private fun findParagraphBubbleSrcEnd(tag: String, contentStart: Int): Int? {
+        val jsonStart = tag.indexOf('{', contentStart)
+        if (jsonStart < 0) {
+            return tag.indexOf('"', contentStart).takeIf { it >= 0 }
+        }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (i in jsonStart until tag.length) {
+            val ch = tag[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (ch == '\\' && inString) {
+                escaped = true
+                continue
+            }
+            if (ch == '"') {
+                inString = !inString
+                continue
+            }
+            if (inString) continue
+            when (ch) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return i + 1
+                    }
+                }
+            }
+        }
+        return tag.indexOf('"', contentStart).takeIf { it >= 0 }
+    }
+
     private fun Element.isHtmlBlock(): Boolean {
         return when (normalName()) {
             "address", "article", "aside", "blockquote", "body", "center", "dd", "details",
@@ -2107,6 +2197,7 @@ class TextChapterLayout(
         isVolumeTitle: Boolean = false,
         forceMiddleTitle: Boolean = false,
         srcList: LinkedList<String>? = null,
+        clickSrcList: LinkedList<String?>? = null,
         clickList: LinkedList<String?>?
     ) {
         breakAfterSingleImageIfNeed()
@@ -2169,7 +2260,7 @@ class TextChapterLayout(
                     //多行的第一行 非标题
                     addCharsToLineFirst(
                         book, absStartX, textLine, words, textPaint,
-                        desiredWidth, widths, srcList, clickList
+                        desiredWidth, widths, srcList, clickSrcList, clickList
                     )
                 }
                 layout.lineCount - 1 -> {
@@ -2186,7 +2277,7 @@ class TextChapterLayout(
                     }
                     addCharsToLineNatural(
                         book, absStartX, textLine, words,
-                        startX, !isTitle && lineIndex == 0, widths, srcList, clickList
+                        startX, !isTitle && lineIndex == 0, widths, srcList, clickSrcList, clickList
                     )
                 }
                 else -> {
@@ -2199,13 +2290,13 @@ class TextChapterLayout(
                         val startX = (visibleWidth - desiredWidth) / 2
                         addCharsToLineNatural(
                             book, absStartX, textLine, words,
-                            startX, false, widths, srcList, clickList
+                            startX, false, widths, srcList, clickSrcList, clickList
                         )
                     } else {
                         //中间行
                         addCharsToLineMiddle(
                             book, absStartX, textLine, words, textPaint,
-                            desiredWidth, 0f, widths, srcList, clickList
+                            desiredWidth, 0f, widths, srcList, clickSrcList, clickList
                         )
                     }
                 }
@@ -2262,13 +2353,14 @@ class TextChapterLayout(
         desiredWidth: Float,
         textWidths: List<Float>,
         srcList: LinkedList<String>?,
+        clickSrcList: LinkedList<String?>?,
         clickList: LinkedList<String?>?
     ) {
         var x = 0f
         if (!textFullJustify) {
             addCharsToLineNatural(
                 book, absStartX, textLine, words,
-                x, true, textWidths, srcList, clickList
+                x, true, textWidths, srcList, clickSrcList, clickList
             )
             return
         }
@@ -2291,7 +2383,7 @@ class TextChapterLayout(
             val textWidths1 = textWidths.subList(bodyIndent.length, textWidths.size)
             addCharsToLineMiddle(
                 book, absStartX, textLine, text1, textPaint,
-                desiredWidth, x, textWidths1, srcList, clickList
+                desiredWidth, x, textWidths1, srcList, clickSrcList, clickList
             )
         }
     }
@@ -2311,12 +2403,14 @@ class TextChapterLayout(
         startX: Float,
         textWidths: List<Float>,
         srcList: LinkedList<String>?,
+        clickSrcList: LinkedList<String?>?,
         clickList: LinkedList<String?>?
     ) {
         if (!textFullJustify) {
             addCharsToLineNatural(
                 book, absStartX, textLine, words,
                 startX, false, textWidths, srcList,
+                clickSrcList,
                 clickList
             )
             return
@@ -2339,6 +2433,7 @@ class TextChapterLayout(
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
+                    clickSrcList,
                     clickList
                 )
                 x = x1
@@ -2356,6 +2451,7 @@ class TextChapterLayout(
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
+                    clickSrcList,
                     clickList
                 )
                 x = x1
@@ -2376,6 +2472,7 @@ class TextChapterLayout(
         hasIndent: Boolean,
         textWidths: List<Float>,
         srcList: LinkedList<String>?,
+        clickSrcList: LinkedList<String?>?,
         clickList: LinkedList<String?>?
     ) {
         val indentLength = paragraphIndent.length
@@ -2385,7 +2482,7 @@ class TextChapterLayout(
             val char = words[index]
             val cw = textWidths[index]
             val x1 = x + cw
-            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, srcList, clickList)
+            addCharToLine(book, absStartX, textLine, char, x, x1, index + 1 == words.size, srcList, clickSrcList, clickList)
             x = x1
             if (hasIndent && index == indentLength - 1) {
                 textLine.indentWidth = x
@@ -2406,11 +2503,13 @@ class TextChapterLayout(
         xEnd: Float,
         isLineEnd: Boolean,
         srcList: LinkedList<String>?,
+        clickSrcList: LinkedList<String?>?,
         clickList: LinkedList<String?>?
     ) {
         val column = when {
             !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
                 val src = srcList.removeFirst()
+                val clickSrc = clickSrcList?.removeFirst()
                 val click = clickList?.removeFirst()
                 if (!ParagraphBubbleRenderer.isBubbleSrc(src)) {
                     ImageProvider.cacheImage(book, src, ReadBook.bookSource)
@@ -2419,7 +2518,8 @@ class TextChapterLayout(
                     start = absStartX + xStart,
                     end = absStartX + xEnd,
                     src = src,
-                    click = click
+                    click = click,
+                    clickSrc = clickSrc
                 )
             }
 //            isLineEnd && char == ChapterProvider.reviewChar -> {
