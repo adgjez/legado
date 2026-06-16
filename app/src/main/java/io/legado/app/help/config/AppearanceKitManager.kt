@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.Keep
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.model.BookCover
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
@@ -316,6 +317,8 @@ object AppearanceKitManager {
         CoverCollectionManager.setSelected(false, binding.dayCoverCollection?.dirName)
         CoverCollectionManager.setSelected(true, binding.nightCoverCollection?.dirName)
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+        ThemeConfig.applyTheme(context)
+        BookCover.upDefaultCover()
     }
 
     private suspend fun applyThemeRef(context: Context, isNight: Boolean, ref: ComponentRef?) {
