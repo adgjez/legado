@@ -56,7 +56,7 @@ class MainTopBarView @JvmOverloads constructor(
     private val filterToggleButton = actionButton(R.drawable.ic_expand_more, R.string.screen)
     private val titleSpacer = Space(context)
     private val titleRow = buildTitleRow()
-    private val surfaceLayout = FrameLayout(context)
+    private val surfaceLayout = ContentMeasuredFrameLayout(context)
     private val contentLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         clipChildren = true
@@ -517,4 +517,31 @@ class MainTopBarView @JvmOverloads constructor(
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()
+
+    private class ContentMeasuredFrameLayout(context: Context) : FrameLayout(context) {
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val background = getChildAt(0)
+            val content = getChildAt(1)
+            if (background == null || content == null) {
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                return
+            }
+            measureChildWithMargins(content, widthMeasureSpec, 0, heightMeasureSpec, 0)
+            val contentLp = content.layoutParams as MarginLayoutParams
+            val measuredWidth = resolveSize(
+                paddingLeft + paddingRight + content.measuredWidth +
+                    contentLp.leftMargin + contentLp.rightMargin,
+                widthMeasureSpec
+            )
+            val contentHeight = paddingTop + paddingBottom + content.measuredHeight +
+                contentLp.topMargin + contentLp.bottomMargin
+            val measuredHeight = resolveSize(contentHeight, heightMeasureSpec)
+            setMeasuredDimension(measuredWidth, measuredHeight)
+            background.measure(
+                View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
+            )
+        }
+    }
 }
