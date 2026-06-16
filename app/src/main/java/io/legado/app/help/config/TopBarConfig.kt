@@ -195,6 +195,14 @@ object TopBarConfig {
         return defaultEntry(context, isNight)
     }
 
+    fun regularEntryForKit(context: Context, isNight: Boolean): Entry {
+        return Entry(
+            defaultConfig(context, isNight).copy(style = STYLE_REGULAR),
+            Source.BUILTIN,
+            DEFAULT_DIR_NAME
+        )
+    }
+
     suspend fun restoreApplied(isNight: Boolean): Entry? {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) return defaultEntry(appCtx, isNight)

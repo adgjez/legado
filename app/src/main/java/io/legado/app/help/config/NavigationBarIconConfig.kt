@@ -247,6 +247,22 @@ object NavigationBarIconConfig {
         return defaultEntry(isNight)
     }
 
+    fun standardEntryForKit(isNight: Boolean): Entry {
+        return Entry(
+            Config(
+                name = defaultName(isNight),
+                isNightMode = isNight,
+                layoutMode = "standard",
+                sidebarGravity = "start",
+                effectMode = "solid",
+                opacity = 76,
+                updatedAt = 0L
+            ),
+            Source.BUILTIN,
+            DEFAULT_DIR_NAME
+        )
+    }
+
     suspend fun restoreApplied(isNight: Boolean): Entry? {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) {

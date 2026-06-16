@@ -254,9 +254,11 @@ object AppearanceKitManager {
     }
 
     private suspend fun applyBinding(context: Context, binding: KitBinding) {
-        binding.preset?.takeIf { it.isNotBlank() }?.let {
-            MainLayoutPresetConfig.apply(context, it, notify = false)
-        }
+        MainLayoutPresetConfig.apply(
+            context,
+            binding.preset?.takeIf { it.isNotBlank() } ?: MainLayoutPresetConfig.PRESET_REGULAR,
+            notify = false
+        )
         applyThemeRef(context, false, binding.dayTheme)
         applyThemeRef(context, true, binding.nightTheme)
         applyTopBarRef(false, binding.dayTopBar)
@@ -275,7 +277,7 @@ object AppearanceKitManager {
 
     private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?) {
         val entry = ref?.let { findTopBarEntry(isNight, it) }
-        TopBarConfig.apply(entry ?: TopBarConfig.defaultEntryForKit(appCtx, isNight))
+        TopBarConfig.apply(entry ?: TopBarConfig.regularEntryForKit(appCtx, isNight))
     }
 
     private suspend fun applyNavigationRef(isNight: Boolean, ref: ComponentRef?) {
@@ -283,7 +285,7 @@ object AppearanceKitManager {
         if (entry != null) {
             NavigationBarIconConfig.select(entry)
         } else {
-            NavigationBarIconConfig.select(NavigationBarIconConfig.defaultEntryForKit(isNight))
+            NavigationBarIconConfig.select(NavigationBarIconConfig.standardEntryForKit(isNight))
         }
     }
 
