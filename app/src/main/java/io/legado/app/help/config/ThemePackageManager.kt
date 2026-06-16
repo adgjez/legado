@@ -51,7 +51,9 @@ object ThemePackageManager {
     private val imageMagic = listOf(
         byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47) to ".png",
         byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) to ".jpg",
-        byteArrayOf(0x52, 0x49, 0x46, 0x46) to ".webp"
+        byteArrayOf(0x52, 0x49, 0x46, 0x46) to ".webp",
+        byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x37, 0x61) to ".gif",
+        byteArrayOf(0x47, 0x49, 0x46, 0x38, 0x39, 0x61) to ".gif"
     )
 
     val rootDir: File
@@ -932,7 +934,7 @@ object ThemePackageManager {
             panelBorderColor = borderColor.normalizeArgbColorOrNull(),
             panelBorderAlpha = if (cardBorder || switchBorder) 100 else 0,
             uiCornerScale = cardShadow?.let { (1f + it.coerceIn(0, 4) * 0.08f).coerceIn(0f, 3f) } ?: 1f,
-            uiLayoutAlpha = 100,
+            uiLayoutAlpha = cardColor.alphaPercentOrNull() ?: 100,
             dialogAlpha = 100,
             cardColor = cardColor.normalizeArgbColorOrNull(),
             mutedColor = mutedColor.normalizeArgbColorOrNull(),
