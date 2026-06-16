@@ -31,6 +31,10 @@ import androidx.activity.addCallback
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowInsetsCompat
@@ -178,6 +182,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val appearanceRefreshRunnable = Runnable {
         refreshAppearanceKitNow()
     }
+    private var mainBackgroundVersion by mutableIntStateOf(0)
     private val bottomBarCornerRadius by lazy {
         resources.getDimension(R.dimen.main_bottom_bar_corner_radius)
     }
@@ -252,6 +257,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        setupMainBackgroundLayer()
         upBottomMenu()
         initView()
         ReadAloudAppCapsuleHost.attachMain(this, binding.root)
@@ -498,6 +504,15 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         liquidGlassReady = false
     }
 
+    private fun setupMainBackgroundLayer() {
+        binding.liquidGlassSampleBackground.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.liquidGlassSampleBackground.setContent {
+            MainThemeBackgroundLayer(version = mainBackgroundVersion)
+        }
+    }
+
     private fun invalidateLiquidGlassSampleTarget() = binding.run {
         liquidGlassSampleBackground.invalidate()
         viewPagerMain.invalidate()
@@ -508,20 +523,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun syncLiquidGlassSampleBackground() = binding.run {
-        val wallpaper = if (!AppConfig.isEInkMode && ThemeConfig.hasUsableBgImage(this@MainActivity)) {
-            runCatching {
-                ThemeConfig.getBgImage(this@MainActivity, windowManager.windowSize)
-            }.getOrNull()
-        } else {
-            null
-        }
-        if (wallpaper != null) {
-            liquidGlassSampleBackground.background = wallpaper
-        } else {
-            liquidGlassSampleBackground.setBackgroundColor(
-                ThemeConfig.getFallbackBackgroundColor(this@MainActivity)
-            )
-        }
+        mainBackgroundVersion += 1
         invalidateLiquidGlassSampleTarget()
     }
 

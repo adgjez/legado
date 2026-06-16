@@ -1,0 +1,124 @@
+package io.legado.app.ui.main
+
+import android.content.Context
+import android.view.ViewGroup
+import android.widget.ImageView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import com.bumptech.glide.Glide
+import io.legado.app.constant.PreferKey
+import io.legado.app.constant.Theme
+import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ThemeConfig
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.getPrefString
+import java.io.File
+
+@Composable
+fun MainThemeBackgroundLayer(
+    version: Int,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val state = remember(version, context) {
+        MainThemeBackgroundState.from(context)
+    }
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(state.fallbackColor))
+    ) {
+        if (state.file != null) {
+            ThemeBackgroundImage(state.file, animate = state.animated && state.blur == 0)
+        }
+    }
+}
+
+@Composable
+private fun ThemeBackgroundImage(file: File, animate: Boolean) {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { context ->
+            ImageView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+        },
+        update = { imageView ->
+            val request = if (animate) {
+                Glide.with(imageView).load(file)
+            } else {
+                Glide.with(imageView).asBitmap().load(file)
+            }
+            request.centerCrop().into(imageView)
+        }
+    )
+}
+
+data class MainThemeBackgroundState(
+    val file: File?,
+    val animated: Boolean,
+    val blur: Int,
+    val fallbackColor: Int
+) {
+    companion object {
+        fun from(context: Context): MainThemeBackgroundState {
+            val fallbackColor = ThemeConfig.getFallbackBackgroundColor(context)
+            if (AppConfig.isEInkMode) {
+                return MainThemeBackgroundState(null, animated = false, blur = 0, fallbackColor)
+            }
+            val themeMode = ThemeConfig.getTheme()
+            val imageKey = when (themeMode) {
+                Theme.Light -> PreferKey.bgImage
+                Theme.Dark -> PreferKey.bgImageN
+                else -> return MainThemeBackgroundState(null, animated = false, blur = 0, fallbackColor)
+            }
+            val blurKey = when (themeMode) {
+                Theme.Light -> PreferKey.bgImageBlurring
+                Theme.Dark -> PreferKey.bgImageNBlurring
+                else -> null
+            }
+            val resolvedPath = resolveBackgroundPath(context, imageKey)
+            val file = resolvedPath?.let(::File)?.takeIf { it.isFile && it.canRead() }
+            return MainThemeBackgroundState(
+                file = file,
+                animated = file?.extension.equals("gif", ignoreCase = true),
+                blur = blurKey?.let { context.getPrefInt(it, 0) } ?: 0,
+                fallbackColor = fallbackColor
+            )
+        }
+
+        private fun resolveBackgroundPath(context: Context, imageKey: String): String? {
+            val path = context.getPrefString(imageKey)?.takeIf { it.isNotBlank() } ?: return null
+            if (!path.startsWith("http", ignoreCase = true)) return path
+            val name = urlToBackgroundFileName(path)
+            val filePath = FileUtils.getPath(context.externalFiles, imageKey, name)
+            return filePath.takeIf { FileUtils.exist(it) }
+        }
+
+        private fun urlToBackgroundFileName(url: String): String {
+            val suffix = when {
+                url.contains(".9.png", ignoreCase = true) -> ".9.png"
+                url.contains(".png", ignoreCase = true) -> ".png"
+                url.contains(".gif", ignoreCase = true) -> ".gif"
+                url.contains("webp", ignoreCase = true) -> ".webp"
+                else -> ".jpg"
+            }
+            return MD5Utils.md5Encode16(url) + suffix
+        }
+    }
+}
