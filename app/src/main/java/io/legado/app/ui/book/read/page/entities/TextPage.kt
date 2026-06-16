@@ -756,7 +756,13 @@ data class TextPage(
         if (epubDecorations.isEmpty()) return
         val paint = PaintPool.obtain()
         epubDecorations.forEach { decoration ->
-            val rect = RectF(decoration.left, decoration.top, decoration.right, decoration.bottom)
+            val paintBleed = 1.dpToPx().toFloat()
+            val rect = RectF(
+                decoration.left,
+                (decoration.top - paintBleed).coerceAtLeast(0f),
+                decoration.right,
+                decoration.bottom + paintBleed
+            )
             val radius = when {
                 decoration.clipTop || decoration.clipBottom -> 0f
                 else -> decoration.radius
