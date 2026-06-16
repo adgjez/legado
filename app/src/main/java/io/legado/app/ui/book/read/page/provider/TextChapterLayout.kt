@@ -1670,10 +1670,13 @@ class TextChapterLayout(
             if (lineStart == lineEnd) { //这一行没有内容，跳过
                 continue
             }
+            val measuredLine = measureHtmlLine(spanned, lineStart, lineEnd, textPaint, tempPaint)
+            if (measuredLine.items.isEmpty()) {
+                continue
+            }
             val textLine = TextLine(isHtml = true)
-            val lineText = StringBuilder()
-            val lineLeft = staticLayout.getLineLeft(lineIndex)
-            val lineStartX = lineAbsStartX + lineLeft
+            val lineText = StringBuilder(measuredLine.text)
+            val lineStartX = htmlLineStartX(lineAbsStartX, width, measuredLine.naturalWidth, alignment)
             textLine.startX = lineStartX //x坐标
             val mLineTop = staticLayout.getLineTop(lineIndex).toFloat()
             val mLineBottom = staticLayout.getLineBottom(lineIndex).toFloat()
@@ -1683,29 +1686,11 @@ class TextChapterLayout(
 
             val columns = mutableListOf<BaseColumn>()
             var currentX = lineStartX
-            var charIndex = lineStart
-            while (charIndex < lineEnd) {
-                val char = spanned[charIndex].toString()
-                lineText.append(char)
-                if (char == "\n") {
-                    textLine.isParagraphEnd = true
-                    durY += lineHeight * paragraphSpacing / 10f //段距
-                    charIndex++
-                    continue
-                }
-                val textSize = extractTextSize(spanned, charIndex, textPaint.textSize)
-                val textColor = extractTextColor(spanned, charIndex)
-                val linkUrl = extractLinkUrl(spanned, charIndex)
-                val isBold = spanned.hasStyleSpan(charIndex, Typeface.BOLD)
-                val isItalic = spanned.hasStyleSpan(charIndex, Typeface.ITALIC)
-                val isUnderline = spanned.hasSpan(charIndex, UnderlineSpan::class.java)
-                val isStrikethrough = spanned.hasSpan(charIndex, StrikethroughSpan::class.java)
-                tempPaint.textSize = textSize
-                tempPaint.isFakeBoldText = isBold
-                tempPaint.textSkewX = if (isItalic) -0.25f else 0f
-                val charWidth = tempPaint.measureText(char)
+            measuredLine.items.forEach { item ->
+                val charIndex = item.index
+                val char = item.char
                 val charStart = currentX
-                val charEnd = currentX + charWidth
+                val charEnd = currentX + item.width
                 var needAddText = true
                 spanned.getSpans(charIndex, charIndex + 1, ImageSpan::class.java).firstOrNull()?.let { span -> //处理图片
                     val source = span.source ?: return@let
@@ -1771,13 +1756,13 @@ class TextChapterLayout(
                                 lineAbsStartX,
                                 lineAbsStartX + width,
                                 HR_PLACE_STR,
-                                textSize,
-                                textColor,
-                                linkUrl,
-                                isBold = isBold,
-                                isItalic = isItalic,
-                                isUnderline = isUnderline,
-                                isStrikethrough = isStrikethrough,
+                                item.textSize,
+                                item.textColor,
+                                item.linkUrl,
+                                isBold = item.isBold,
+                                isItalic = item.isItalic,
+                                isUnderline = item.isUnderline,
+                                isStrikethrough = item.isStrikethrough,
                                 backgroundColor = extractBackgroundColor(spanned, charIndex)
                             )
                         )
@@ -1790,23 +1775,22 @@ class TextChapterLayout(
                             charStart,
                             charEnd,
                             char,
-                            textSize,
-                            textColor,
-                            linkUrl,
-                            isBold = isBold,
-                            isItalic = isItalic,
-                            isUnderline = isUnderline,
-                            isStrikethrough = isStrikethrough,
+                            item.textSize,
+                            item.textColor,
+                            item.linkUrl,
+                            isBold = item.isBold,
+                            isItalic = item.isItalic,
+                            isUnderline = item.isUnderline,
+                            isStrikethrough = item.isStrikethrough,
                             backgroundColor = extractBackgroundColor(spanned, charIndex)
                         )
                     )
                 }
                 currentX = charEnd
-                charIndex++
-                if (charIndex == lineEnd && lineIndex == staticLayout.lineCount - 1) {
-                    textLine.isParagraphEnd = true
-                    durY += lineHeight * paragraphSpacing / 10f //段距
-                }
+            }
+            if (measuredLine.hasParagraphBreak || lineIndex == staticLayout.lineCount - 1) {
+                textLine.isParagraphEnd = true
+                durY += lineHeight * paragraphSpacing / 10f //段距
             }
             textLine.text = lineText.toString()
             if (textFullJustify && alignment == Layout.Alignment.ALIGN_NORMAL && !textLine.isParagraphEnd) {
@@ -1823,6 +1807,92 @@ class TextChapterLayout(
             if (textPage.height < durY) {
                 textPage.height = durY
             }
+        }
+    }
+
+    private data class HtmlLineItem(
+        val index: Int,
+        val char: String,
+        val width: Float,
+        val textSize: Float,
+        val textColor: Int?,
+        val linkUrl: String?,
+        val isBold: Boolean,
+        val isItalic: Boolean,
+        val isUnderline: Boolean,
+        val isStrikethrough: Boolean
+    )
+
+    private data class HtmlMeasuredLine(
+        val text: String,
+        val items: List<HtmlLineItem>,
+        val naturalWidth: Float,
+        val hasParagraphBreak: Boolean
+    )
+
+    private fun measureHtmlLine(
+        spanned: Spanned,
+        lineStart: Int,
+        lineEnd: Int,
+        basePaint: TextPaint,
+        tempPaint: TextPaint
+    ): HtmlMeasuredLine {
+        val lineText = StringBuilder()
+        val items = arrayListOf<HtmlLineItem>()
+        var naturalWidth = 0f
+        var hasParagraphBreak = false
+        var charIndex = lineStart
+        while (charIndex < lineEnd) {
+            val char = spanned[charIndex].toString()
+            lineText.append(char)
+            if (char == "\n") {
+                hasParagraphBreak = true
+                charIndex++
+                continue
+            }
+            val textSize = extractTextSize(spanned, charIndex, basePaint.textSize)
+            val isBold = spanned.hasStyleSpan(charIndex, Typeface.BOLD)
+            val isItalic = spanned.hasStyleSpan(charIndex, Typeface.ITALIC)
+            tempPaint.textSize = textSize
+            tempPaint.isFakeBoldText = isBold
+            tempPaint.textSkewX = if (isItalic) -0.25f else 0f
+            val charWidth = tempPaint.measureText(char)
+            items.add(
+                HtmlLineItem(
+                    index = charIndex,
+                    char = char,
+                    width = charWidth,
+                    textSize = textSize,
+                    textColor = extractTextColor(spanned, charIndex),
+                    linkUrl = extractLinkUrl(spanned, charIndex),
+                    isBold = isBold,
+                    isItalic = isItalic,
+                    isUnderline = spanned.hasSpan(charIndex, UnderlineSpan::class.java),
+                    isStrikethrough = spanned.hasSpan(charIndex, StrikethroughSpan::class.java)
+                )
+            )
+            naturalWidth += charWidth
+            charIndex++
+        }
+        return HtmlMeasuredLine(
+            text = lineText.toString(),
+            items = items,
+            naturalWidth = naturalWidth,
+            hasParagraphBreak = hasParagraphBreak
+        )
+    }
+
+    private fun htmlLineStartX(
+        lineAbsStartX: Float,
+        layoutWidth: Int,
+        naturalWidth: Float,
+        alignment: Layout.Alignment
+    ): Float {
+        val freeWidth = (layoutWidth - naturalWidth).coerceAtLeast(0f)
+        return when (alignment) {
+            Layout.Alignment.ALIGN_CENTER -> lineAbsStartX + freeWidth / 2f
+            Layout.Alignment.ALIGN_OPPOSITE -> lineAbsStartX + freeWidth
+            else -> lineAbsStartX
         }
     }
 
