@@ -113,6 +113,7 @@ object AppearanceKitManager {
         applyBinding(context, binding ?: KitBinding(preset = MainLayoutPresetConfig.PRESET_DEFAULT))
         context.putPrefString(PreferKey.currentAppearanceKitId, kit.id)
         postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
+        postEvent(EventBus.RECREATE, "")
     }
 
     suspend fun deleteImportedTheme(context: Context, kit: AppearanceKit): Boolean = withContext(IO) {
@@ -171,9 +172,10 @@ object AppearanceKitManager {
             themes = ThemePackageManager.loadLocalOnly(isNight)
                 .filter { it.source != ThemePackageManager.Source.BUILTIN }
                 .map { ComponentRef(it.dirName, it.packageInfo.name) },
-            topBars = TopBarConfig.loadLocalOnlyForKit(isNight)
-                .filter { it.dirName != TopBarConfig.DEFAULT_DIR_NAME }
-                .map { ComponentRef(it.dirName, it.config.name) },
+            topBars = listOf(ComponentRef(TopBarConfig.DEFAULT_DIR_NAME, "默认顶栏")) +
+                TopBarConfig.loadLocalOnlyForKit(isNight)
+                    .filter { it.dirName != TopBarConfig.DEFAULT_DIR_NAME }
+                    .map { ComponentRef(it.dirName, it.config.name) },
             navigationBars = NavigationBarIconConfig.loadLocalOnlyForKit(isNight)
                 .filter { it.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME }
                 .map { ComponentRef(it.dirName, it.config.name) },
@@ -317,7 +319,10 @@ object AppearanceKitManager {
     }
 
     private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?) {
-        val entry = ref?.let { findTopBarEntry(isNight, it) }
+        val entry = when (ref?.dirName) {
+            TopBarConfig.DEFAULT_DIR_NAME -> TopBarConfig.defaultEntryForKit(appCtx, isNight)
+            else -> ref?.let { findTopBarEntry(isNight, it) }
+        }
         TopBarConfig.apply(entry ?: TopBarConfig.regularEntryForKit(appCtx, isNight))
     }
 

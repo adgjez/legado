@@ -33,7 +33,7 @@ import io.legado.app.utils.StatusBarInsetAware
 class MainTopBarView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : FrameLayout(context, attrs), StatusBarInsetAware {
+) : LinearLayout(context, attrs), StatusBarInsetAware {
 
     enum class Mode { BOOKSHELF, DISCOVERY, RSS, READ_RECORD }
 
@@ -56,6 +56,7 @@ class MainTopBarView @JvmOverloads constructor(
     private val filterToggleButton = actionButton(R.drawable.ic_expand_more, R.string.screen)
     private val titleSpacer = Space(context)
     private val titleRow = buildTitleRow()
+    private val surfaceLayout = FrameLayout(context)
     private val contentLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         clipChildren = true
@@ -79,18 +80,20 @@ class MainTopBarView @JvmOverloads constructor(
     private var statusBarInsetTop: Int = 0
 
     init {
+        orientation = VERTICAL
         clipChildren = true
         clipToPadding = false
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         contentLayout.setPadding(horizontal, paddingTop, horizontal, 0)
-        addView(
+        addView(surfaceLayout, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        surfaceLayout.addView(
             backgroundLayer,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-        addView(
+        surfaceLayout.addView(
             contentLayout,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,

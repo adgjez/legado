@@ -135,10 +135,13 @@ class AppearanceKitEditActivity : BaseActivity<ActivityThemeManageBinding>() {
         onSelected: (ComponentRef?) -> Unit
     ) {
         val labels = listOf(defaultLabel) + options.map { it.name.ifBlank { it.dirName } }
+        val currentIndex = current
+            ?.let { value -> options.indexOfFirst { it.key() == value.key() } }
+            ?.takeIf { it >= 0 }
         showComposeChoiceListDialog(
             title = title,
             labels = labels,
-            selectedIndex = if (current == null) 0 else options.indexOfFirst { it.key() == current.key() } + 1,
+            selectedIndex = currentIndex?.plus(1) ?: 0,
             onSelected = { index ->
                 onSelected(if (index <= 0) null else options.getOrNull(index - 1))
             }
@@ -291,7 +294,7 @@ private fun BindingSection(
         BindingRow("界面主题", if (isNight) binding.nightTheme else binding.dayTheme, options.themes, "使用内置界面主题", palette, {
             onBindingChange(binding.copy().apply { if (isNight) nightTheme = it else dayTheme = it })
         }, onSelect)
-        BindingRow("顶栏", if (isNight) binding.nightTopBar else binding.dayTopBar, options.topBars, "使用常规顶栏", palette, {
+        BindingRow("顶栏", if (isNight) binding.nightTopBar else binding.dayTopBar, options.topBars, "缺省: 常规顶栏", palette, {
             onBindingChange(binding.copy().apply { if (isNight) nightTopBar = it else dayTopBar = it })
         }, onSelect)
         BindingRow("底栏", if (isNight) binding.nightNavigationBar else binding.dayNavigationBar, options.navigationBars, "使用默认 MD3 常规底栏", palette, {
