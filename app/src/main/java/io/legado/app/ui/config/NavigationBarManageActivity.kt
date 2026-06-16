@@ -169,7 +169,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
         if (result == null) {
             return@registerForActivityResult
         }
-        if (!File(result).exists()) {
+        val resultPath = result.path
+        if (!File(resultPath).exists()) {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
             return@registerForActivityResult
         }
@@ -178,7 +179,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 withContext(Dispatchers.IO) {
                     NavigationBarIconConfig.saveSidebarBackgroundToPackage(
                         this@NavigationBarManageActivity,
-                        result,
+                        resultPath,
                         entry
                     )
                 }
@@ -290,8 +291,8 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private val cropBottomWallpaper = registerForActivityResult(ImageCropContract()) { result ->
         pendingBottomWallpaperCropRequest = null
         if (result == null) return@registerForActivityResult
-        if (File(result).exists()) {
-            pendingConfig?.wallpaperPath = result
+        if (File(result.path).exists()) {
+            pendingConfig?.wallpaperPath = result.path
             refreshEditDialog()
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))

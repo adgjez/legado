@@ -49,7 +49,12 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         const val EXTRA_PREFIX = "prefix"
         const val EXTRA_TARGET_WIDTH = "targetWidth"
         const val EXTRA_OUTPUT_PATH = "outputPath"
+        const val EXTRA_VIEWPORT_ONLY = "viewportOnly"
         const val EXTRA_RESULT_PATH = "resultPath"
+        const val EXTRA_RESULT_CROP_LEFT = "resultCropLeft"
+        const val EXTRA_RESULT_CROP_TOP = "resultCropTop"
+        const val EXTRA_RESULT_CROP_RIGHT = "resultCropRight"
+        const val EXTRA_RESULT_CROP_BOTTOM = "resultCropBottom"
     }
 
     override val binding by viewBinding(ActivityImageCropBinding::inflate)
@@ -61,6 +66,7 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
     private var prefix = "crop"
     private var targetWidth = 1600
     private var outputPath: String? = null
+    private var viewportOnly = false
 
     override fun setupSystemBar() {
         super.setupSystemBar()
@@ -75,6 +81,7 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         prefix = intent.getStringExtra(EXTRA_PREFIX).orEmpty().ifBlank { "crop" }
         targetWidth = intent.getIntExtra(EXTRA_TARGET_WIDTH, 1600).coerceAtLeast(128)
         outputPath = intent.getStringExtra(EXTRA_OUTPUT_PATH)
+        viewportOnly = intent.getBooleanExtra(EXTRA_VIEWPORT_ONLY, false)
         binding.cropOverlay.setAspect(aspectWidth, aspectHeight)
         binding.photoView.setScaleType(ImageView.ScaleType.CENTER_INSIDE)
         binding.photoView.setMaxScale(6f)
@@ -258,6 +265,25 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         val cropRect = RectF(0f, 0f, binding.photoView.width.toFloat(), binding.photoView.height.toFloat())
         val matrix = binding.photoView.getDisplayMatrixCopy()
         binding.btnConfirm.isEnabled = false
+        if (viewportOnly) {
+            val viewport = calculateNormalizedCropRect(bitmap, cropRect, matrix)
+            if (viewport == null || outputPath.isNullOrBlank()) {
+                binding.btnConfirm.isEnabled = true
+                toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
+                return
+            }
+            setResult(
+                Activity.RESULT_OK,
+                Intent()
+                    .putExtra(EXTRA_RESULT_PATH, outputPath)
+                    .putExtra(EXTRA_RESULT_CROP_LEFT, viewport.left)
+                    .putExtra(EXTRA_RESULT_CROP_TOP, viewport.top)
+                    .putExtra(EXTRA_RESULT_CROP_RIGHT, viewport.right)
+                    .putExtra(EXTRA_RESULT_CROP_BOTTOM, viewport.bottom)
+            )
+            finish()
+            return
+        }
         lifecycleScope.launch {
             val resultPath = withContext(Dispatchers.IO) {
                 kotlin.runCatching {
@@ -305,5 +331,21 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         canvas.concat(drawMatrix)
         drawable.draw(canvas)
         return output
+    }
+
+    private fun calculateNormalizedCropRect(source: Bitmap, cropRect: RectF, matrix: Matrix): RectF? {
+        if (cropRect.isEmpty || source.width <= 0 || source.height <= 0) return null
+        val inverse = Matrix()
+        if (!matrix.invert(inverse)) return null
+        val sourceRect = RectF(cropRect)
+        inverse.mapRect(sourceRect)
+        sourceRect.intersect(0f, 0f, source.width.toFloat(), source.height.toFloat())
+        if (sourceRect.isEmpty) return null
+        return RectF(
+            (sourceRect.left / source.width).coerceIn(0f, 1f),
+            (sourceRect.top / source.height).coerceIn(0f, 1f),
+            (sourceRect.right / source.width).coerceIn(0f, 1f),
+            (sourceRect.bottom / source.height).coerceIn(0f, 1f)
+        ).takeIf { it.right > it.left && it.bottom > it.top }
     }
 }

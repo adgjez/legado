@@ -94,8 +94,8 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private val cropWallpaper = registerForActivityResult(ImageCropContract()) { result ->
         pendingWallpaperCropRequest = null
         if (result == null) return@registerForActivityResult
-        if (File(result).exists()) {
-            pendingConfig?.wallpaperPath = result
+        if (File(result.path).exists()) {
+            pendingConfig?.wallpaperPath = result.path
             refreshEditDialog()
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))

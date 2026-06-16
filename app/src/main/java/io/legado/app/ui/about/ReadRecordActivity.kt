@@ -90,8 +90,8 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             pendingAvatarUpdate = null
             return@registerForActivityResult
         }
-        if (java.io.File(result).exists()) {
-            pendingAvatarUpdate?.invoke(result)
+        if (java.io.File(result.path).exists()) {
+            pendingAvatarUpdate?.invoke(result.path)
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
         }

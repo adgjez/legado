@@ -163,18 +163,19 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         if (result == null) {
             return@registerForActivityResult
         }
-        if (java.io.File(result).exists()) {
+        val resultPath = result.path
+        if (java.io.File(resultPath).exists()) {
             when (request.requestCode) {
                 requestMainBackground -> {
-                    pendingMainBackgroundPath = result
+                    pendingMainBackgroundPath = resultPath
                     editDialogBinding?.let { binding -> updateImageRow(binding.rowMainBackground, ThemeImageTarget.MAIN) }
                 }
                 requestBookInfoBackground -> {
-                    pendingBookInfoBackgroundPath = result
+                    pendingBookInfoBackgroundPath = resultPath
                     editDialogBinding?.let { binding -> updateImageRow(binding.rowBookInfoBackground, ThemeImageTarget.BOOK_INFO) }
                 }
                 requestPanelBackground -> {
-                    pendingPanelBackgroundPath = result
+                    pendingPanelBackgroundPath = resultPath
                     editDialogBinding?.let { binding -> updateImageRow(binding.rowPanelBackground, ThemeImageTarget.PANEL) }
                 }
             }
