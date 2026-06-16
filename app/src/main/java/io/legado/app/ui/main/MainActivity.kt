@@ -5,12 +5,10 @@ package io.legado.app.ui.main
 import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -94,11 +92,12 @@ import io.legado.app.ui.main.readrecord.ReadRecordFragment
 import io.legado.app.ui.main.rss.RssFragment
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.StableLiquidGlassView
+import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
+import io.legado.app.ui.widget.compose.ComposeThemeImageState
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.text.BadgeView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.BitmapUtils
-import io.legado.app.utils.CenterCropBitmapDrawable
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.getPrefInt
@@ -118,6 +117,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import splitties.views.bottomPadding
+import java.io.File
 import kotlin.coroutines.resume
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.about.UpdateDialog
@@ -511,6 +511,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         binding.liquidGlassSampleBackground.setContent {
             MainThemeBackgroundLayer(version = mainBackgroundVersion)
         }
+        binding.bottomNavigationWallpaper.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
     }
 
     private fun invalidateLiquidGlassSampleTarget() = binding.run {
@@ -1315,6 +1318,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 bottomNavigationIndicatorContainer.scaleX = 1f
                 bottomNavigationIndicatorContainer.scaleY = 1f
                 bottomNavigationShellOverlay.background = createStandardBottomShellDrawable()
+                renderStandardBottomWallpaper()
                 bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
                 syncSearchButtonTint()
                 bottomNavigationIndicatorOverlay.background =
@@ -1322,6 +1326,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 updateBottomNavigationIndicator(animate = false)
                 return
             }
+            bottomNavigationWallpaper.isVisible = false
             if (effectMode == "solid") {
                 bottomNavigationGlassView.visibility = android.view.View.GONE
                 bottomNavigationIndicatorGlassView.visibility = android.view.View.GONE
@@ -1548,34 +1553,31 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
         val baseColor = bottomBackground
         val alpha = standardBottomBarOpacityLevel(config.opacity)
-        val shell = GradientDrawable().apply {
+        return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 0f
             setColor(AppColorUtils.withAlpha(baseColor, alpha))
             bottomBarBorderColor(config)?.let { setStroke(1.dpToPx(), it) }
         }
+    }
+
+    private fun renderStandardBottomWallpaper() = binding.run {
+        val config = NavigationBarIconConfig.currentEntry(AppConfig.isNightTheme).config
+        val alpha = standardBottomBarOpacityLevel(config.opacity)
         val wallpaper = NavigationBarIconConfig.currentBottomWallpaperPath(AppConfig.isNightTheme)
-            ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
-            ?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }
-            ?.let {
-                CenterCropBitmapDrawable(resources, it).apply {
-                    setAlpha((alpha * 255).toInt().coerceIn(0, 255))
-                }
-            }
-            ?: return shell
-        val border = bottomBarBorderColor(config)?.let { color ->
-            GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 0f
-                setColor(Color.TRANSPARENT)
-                setStroke(1.dpToPx(), color)
-            }
+            ?.let(::File)
+            ?.takeIf { it.isFile && it.canRead() }
+        bottomNavigationWallpaper.isVisible = wallpaper != null
+        bottomNavigationWallpaper.setContent {
+            ComposeThemeImageLayer(
+                state = ComposeThemeImageState(
+                    file = wallpaper,
+                    animated = wallpaper?.extension.equals("gif", ignoreCase = true),
+                    alpha = alpha,
+                    fallbackColor = Color.TRANSPARENT
+                )
+            )
         }
-        return LayerDrawable(buildList {
-            add(shell)
-            add(wallpaper)
-            if (border != null) add(border)
-        }.toTypedArray())
     }
 
     private fun bottomBarOpacityLevel(value: Int): Float {

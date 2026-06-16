@@ -1,22 +1,16 @@
 package io.legado.app.ui.main
 
 import android.content.Context
-import android.view.ViewGroup
-import android.widget.ImageView
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import com.bumptech.glide.Glide
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
+import io.legado.app.ui.widget.compose.ComposeThemeImageState
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.externalFiles
@@ -33,39 +27,13 @@ fun MainThemeBackgroundLayer(
     val state = remember(version, context) {
         MainThemeBackgroundState.from(context)
     }
-    Box(
+    ComposeThemeImageLayer(
+        state = ComposeThemeImageState(
+            file = state.file,
+            animated = state.animated && state.blur == 0,
+            fallbackColor = state.fallbackColor
+        ),
         modifier = modifier
-            .fillMaxSize()
-            .background(Color(state.fallbackColor))
-    ) {
-        if (state.file != null) {
-            ThemeBackgroundImage(state.file, animate = state.animated && state.blur == 0)
-        }
-    }
-}
-
-@Composable
-private fun ThemeBackgroundImage(file: File, animate: Boolean) {
-    AndroidView(
-        modifier = Modifier.fillMaxSize(),
-        factory = { context ->
-            ImageView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                importantForAccessibility = ImageView.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }
-        },
-        update = { imageView ->
-            val request = if (animate) {
-                Glide.with(imageView).load(file)
-            } else {
-                Glide.with(imageView).asBitmap().load(file)
-            }
-            request.centerCrop().into(imageView)
-        }
     )
 }
 

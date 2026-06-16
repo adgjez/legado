@@ -1,29 +1,22 @@
 package io.legado.app.ui.widget
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapShader
-import android.graphics.Canvas
-import android.graphics.ColorFilter
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.PixelFormat
-import android.graphics.RectF
-import android.graphics.Shader
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.LayerDrawable
+import android.graphics.Color
 import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.LinearLayout.LayoutParams
 import android.widget.Space
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import io.legado.app.R
@@ -33,13 +26,14 @@ import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
-import io.legado.app.utils.BitmapUtils
+import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
+import io.legado.app.ui.widget.compose.ComposeThemeImageState
 import io.legado.app.utils.StatusBarInsetAware
 
 class MainTopBarView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : LinearLayout(context, attrs), StatusBarInsetAware {
+) : FrameLayout(context, attrs), StatusBarInsetAware {
 
     enum class Mode { BOOKSHELF, DISCOVERY, RSS, READ_RECORD }
 
@@ -62,6 +56,17 @@ class MainTopBarView @JvmOverloads constructor(
     private val filterToggleButton = actionButton(R.drawable.ic_expand_more, R.string.screen)
     private val titleSpacer = Space(context)
     private val titleRow = buildTitleRow()
+    private val contentLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        clipChildren = true
+        clipToPadding = false
+    }
+    private val backgroundLayer = ComposeView(context).apply {
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+    }
     private var mode = Mode.BOOKSHELF
     private var styleSignature: String? = null
     private var primaryBarRequested = false
@@ -69,31 +74,42 @@ class MainTopBarView @JvmOverloads constructor(
     private var tagsBarRequested = false
     private var filtersExpanded = false
     private var searchEntryRequested = true
-    private var wallpaperBitmapKey: String? = null
-    private var wallpaperBitmap: Bitmap? = null
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var statusBarInsetTop: Int = 0
 
     init {
-        orientation = VERTICAL
         clipChildren = true
         clipToPadding = false
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
-        setPadding(horizontal, paddingTop, horizontal, 0)
-        addView(titleRow)
-        addView(primaryFilterRow.apply {
-            orientation = HORIZONTAL
+        contentLayout.setPadding(horizontal, paddingTop, horizontal, 0)
+        addView(
+            backgroundLayer,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        addView(
+            contentLayout,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        contentLayout.addView(titleRow)
+        contentLayout.addView(primaryFilterRow.apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(primaryBar, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             addView(filterToggleButton)
         }, tagLayoutParams().apply {
             topMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_top)
         })
-        addView(selectsBar, tagLayoutParams().apply {
+        contentLayout.addView(selectsBar, tagLayoutParams().apply {
             topMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_top)
         })
-        addView(tagsBar, tagLayoutParams().apply {
+        contentLayout.addView(tagsBar, tagLayoutParams().apply {
             topMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_top)
         })
         primaryBar.isVisible = false
@@ -157,9 +173,6 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun refreshStyle() {
         styleSignature = null
-        wallpaperBitmapKey = null
-        wallpaperBitmap?.takeIf { !it.isRecycled }?.recycle()
-        wallpaperBitmap = null
         listOf(primaryBar, selectsBar, tagsBar).forEach { it.applyTopBarStyle(force = true) }
         applyTopBarStyle(force = true)
         requestLayout()
@@ -261,8 +274,9 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun applyDefaultStyle() {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
-        setPadding(horizontal, statusBarInsetTop, horizontal, 0)
+        contentLayout.setPadding(horizontal, statusBarInsetTop, horizontal, 0)
         background = null
+        renderBackgroundLayer(null, 0f)
         titleRow.background = null
         titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
         updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.bookshelf_title_select_height))
@@ -297,8 +311,9 @@ class MainTopBarView @JvmOverloads constructor(
     private fun applyRegularStyle(config: TopBarConfig.Config) {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 5.dp
-        setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
-        background = regularBackground(config)
+        contentLayout.setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
+        background = null
+        renderBackgroundLayer(config, TopBarConfig.cornerRadius(context, config))
         titleRow.background = null
         titleRow.setPadding(0, 0, 0, 0)
         updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size))
@@ -335,11 +350,11 @@ class MainTopBarView @JvmOverloads constructor(
 
     private fun buildTitleRow(): LinearLayout {
         return LinearLayout(context).apply {
-            orientation = HORIZONTAL
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
             addView(searchEntry.apply {
-                orientation = HORIZONTAL
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
@@ -364,7 +379,7 @@ class MainTopBarView @JvmOverloads constructor(
                 })
             })
             addView(titleSelect.apply {
-                orientation = HORIZONTAL
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
@@ -437,6 +452,33 @@ class MainTopBarView @JvmOverloads constructor(
         }
     }
 
+    private fun renderBackgroundLayer(config: TopBarConfig.Config?, radius: Float) {
+        val state = if (config == null) {
+            ComposeThemeImageState(
+                file = null,
+                fallbackColor = Color.TRANSPARENT
+            )
+        } else {
+            val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+            val alpha = config.wallpaperAlpha.coerceIn(0, 100) / 100f
+            ComposeThemeImageState(
+                file = file,
+                animated = file?.extension.equals("gif", ignoreCase = true),
+                alpha = alpha,
+                fallbackColor = TopBarConfig.withOpacity(
+                    TopBarConfig.resolveBackgroundColor(config),
+                    config.wallpaperAlpha
+                )
+            )
+        }
+        backgroundLayer.setContent {
+            ComposeThemeImageLayer(
+                state = state,
+                cornerRadius = (radius / resources.displayMetrics.density).dp
+            )
+        }
+    }
+
     private fun updatePrimaryBarVisibility() {
         primaryBar.isVisible = isRegularStyle() && primaryBarRequested
         primaryFilterRow.isVisible = primaryBar.isVisible || filterToggleButton.isVisible
@@ -469,99 +511,6 @@ class MainTopBarView @JvmOverloads constructor(
             invalidate()
             notifyHeightChangedAfterLayout()
         }
-    }
-
-    private fun bottomRoundedBackground(color: Int, radius: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(color)
-            cornerRadii = floatArrayOf(
-                0f, 0f,
-                0f, 0f,
-                radius, radius,
-                radius, radius
-            )
-        }
-    }
-
-    private fun regularBackground(config: TopBarConfig.Config): Drawable {
-        val radius = TopBarConfig.cornerRadius(context, config)
-        val backgroundColor = TopBarConfig.withOpacity(
-            TopBarConfig.resolveBackgroundColor(config),
-            config.wallpaperAlpha
-        )
-        val file = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
-            ?: return bottomRoundedBackground(backgroundColor, radius)
-        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}"
-        val bitmap = wallpaperBitmap?.takeIf { wallpaperBitmapKey == key && !it.isRecycled }
-            ?: kotlin.runCatching {
-                BitmapUtils.decodeBitmap(
-                    file.absolutePath,
-                    resources.displayMetrics.widthPixels.coerceAtLeast(1),
-                    resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height).coerceAtLeast(1) * 4
-                )
-            }.getOrNull()?.also {
-                wallpaperBitmapKey = key
-                wallpaperBitmap = it
-            }
-            ?: return bottomRoundedBackground(backgroundColor, radius)
-        return LayerDrawable(
-            arrayOf(
-                bottomRoundedBackground(backgroundColor, radius),
-                BottomRoundedBitmapDrawable(bitmap, radius, config.wallpaperAlpha)
-            )
-        )
-    }
-
-    private class BottomRoundedBitmapDrawable(
-        private val bitmap: Bitmap,
-        private val radius: Float,
-        alphaPercent: Int
-    ) : Drawable() {
-
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG).apply {
-            shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-            alpha = (alphaPercent.coerceIn(0, 100) * 255 / 100).coerceIn(0, 255)
-        }
-        private val rect = RectF()
-        private val matrix = Matrix()
-        private val path = Path()
-
-        override fun draw(canvas: Canvas) {
-            val bounds = bounds
-            if (bounds.isEmpty || bitmap.width <= 0 || bitmap.height <= 0) return
-            rect.set(bounds)
-            val scale = maxOf(
-                bounds.width() / bitmap.width.toFloat(),
-                bounds.height() / bitmap.height.toFloat()
-            )
-            val dx = bounds.left + (bounds.width() - bitmap.width * scale) / 2f
-            val dy = bounds.top + (bounds.height() - bitmap.height * scale) / 2f
-            matrix.reset()
-            matrix.setScale(scale, scale)
-            matrix.postTranslate(dx, dy)
-            paint.shader?.setLocalMatrix(matrix)
-            path.reset()
-            path.addRoundRect(
-                rect,
-                floatArrayOf(0f, 0f, 0f, 0f, radius, radius, radius, radius),
-                Path.Direction.CW
-            )
-            canvas.drawPath(path, paint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-            invalidateSelf()
-        }
-
-        override fun setColorFilter(colorFilter: ColorFilter?) {
-            paint.colorFilter = colorFilter
-            invalidateSelf()
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
     private val Int.dp: Int get() = (this * resources.displayMetrics.density).toInt()

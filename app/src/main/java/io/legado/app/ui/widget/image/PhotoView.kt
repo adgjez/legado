@@ -957,6 +957,21 @@ class PhotoView @JvmOverloads constructor(
         resetBase()
     }
 
+    fun fillRect(targetRect: RectF) {
+        if (!hasDrawable || !isKnowSize || targetRect.isEmpty) return
+        initBase()
+        val scaleX = targetRect.width() / mImgRect.width()
+        val scaleY = targetRect.height() / mImgRect.height()
+        val scale = maxOf(scaleX, scaleY)
+        mAnimMatrix.postScale(scale, scale, mScreenCenter.x, mScreenCenter.y)
+        executeTranslate()
+        val dx = targetRect.centerX() - mImgRect.centerX()
+        val dy = targetRect.centerY() - mImgRect.centerY()
+        mAnimMatrix.postTranslate(dx, dy)
+        executeTranslate()
+        resetBase()
+    }
+
     interface ClipCalculate {
         fun calculateTop(): Float
     }

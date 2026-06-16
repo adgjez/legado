@@ -242,7 +242,7 @@ class ImageCropActivity : BaseActivity<ActivityImageCropBinding>(
         binding.photoView.layoutParams = layoutParams
         binding.photoView.scaleType = ImageView.ScaleType.CENTER_INSIDE
         binding.photoView.post {
-            binding.photoView.fitInsideRect(
+            binding.photoView.fillRect(
                 RectF(
                     0f,
                     0f,
