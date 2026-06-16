@@ -96,7 +96,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         if (result == null) return@registerForActivityResult
         if (File(result).exists()) {
             pendingConfig?.wallpaperPath = result
-            showEditDialog(editingEntry)
+            refreshEditDialog()
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
         }
@@ -303,12 +303,22 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }
             return
         }
-        dismissDialogFragment<TopBarEditDialog>()
         editingEntry = base
         pendingConfig = base.config.copy()
+        showPendingEditDialog()
+    }
+
+    private fun refreshEditDialog() {
+        if (pendingConfig == null) return
+        showPendingEditDialog()
+    }
+
+    private fun showPendingEditDialog() {
+        val config = pendingConfig ?: return
+        dismissDialogFragment<TopBarEditDialog>()
         showDialogFragment(
             TopBarEditDialog.create(
-                config = pendingConfig!!,
+                config = config,
                 onNameChanged = { name ->
                     pendingConfig?.name = name
                 },
@@ -361,7 +371,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                                 }
                             }
                         }
-                        showEditDialog(editingEntry)
+                        refreshEditDialog()
                     }
                 },
                 onShowCornerScalePicker = { current ->
@@ -373,7 +383,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         isDecimalMode = true,
                         onValue = { value ->
                             pendingConfig?.cornerScale = (value / 10f).coerceIn(0f, 3f)
-                            showEditDialog(editingEntry)
+                            refreshEditDialog()
                         }
                     )
                 },
@@ -397,7 +407,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         maxValue = 100,
                         onValue = { value ->
                             pendingConfig?.wallpaperAlpha = value.coerceIn(0, 100)
-                            showEditDialog(editingEntry)
+                            refreshEditDialog()
                         }
                     )
                 },
@@ -411,7 +421,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         selectedIndex = if (current) 1 else 0
                     ) { index ->
                         pendingConfig?.expandFiltersByDefault = index == 1
-                        showEditDialog(editingEntry)
+                        refreshEditDialog()
                     }
                 },
                 onShowTagBarAlphaPicker = { current ->
@@ -422,7 +432,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         maxValue = 100,
                         onValue = { value ->
                             pendingConfig?.tagBarAlpha = value.coerceIn(0, 100)
-                            showEditDialog(editingEntry)
+                            refreshEditDialog()
                         }
                     )
                 },
@@ -434,7 +444,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         maxValue = 100,
                         onValue = { value ->
                             pendingConfig?.tagSelectedAlpha = value.coerceIn(0, 100)
-                            showEditDialog(editingEntry)
+                            refreshEditDialog()
                         }
                     )
                 },
@@ -464,7 +474,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
             } else {
                 pendingConfig?.wallpaperPath = null
-                showEditDialog(editingEntry)
+                refreshEditDialog()
             }
         }
     }
@@ -745,7 +755,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             COLOR_TAG_BAR -> config.tagBarColor = color
             COLOR_TAG_SELECTED -> config.tagSelectedColor = color
         }
-        showEditDialog(editingEntry)
+        refreshEditDialog()
     }
 
     override fun onDialogDismissed(dialogId: Int) {

@@ -100,6 +100,9 @@ class TopBarEditDialog : ComposeDialogFragment() {
                     TopBarEditDialogContent(
                         args = args,
                         style = style,
+                        onNameChanged = { name ->
+                            onNameChanged?.invoke(name)
+                        },
                         onShowStyleSelector = {
                             onShowStyleSelector?.invoke() ?: dismissAllowingStateLoss()
                         },
@@ -214,6 +217,7 @@ class TopBarEditDialog : ComposeDialogFragment() {
 private fun TopBarEditDialogContent(
     args: Bundle,
     style: AppDialogStyle,
+    onNameChanged: (String) -> Unit,
     onShowStyleSelector: () -> Unit,
     onShowCornerScalePicker: (Float?) -> Unit,
     onShowColorPicker: (Int, Int) -> Unit,
@@ -254,7 +258,10 @@ private fun TopBarEditDialogContent(
                 // Name input
                 TopBarEditTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = {
+                        name = it
+                        onNameChanged(it)
+                    },
                     label = stringResource(R.string.top_bar_name),
                     style = style
                 )
