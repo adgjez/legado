@@ -128,6 +128,42 @@ class UseHtmlTextBoxLayoutResolverTest {
         assertEquals(500, layout?.width)
     }
 
+    @Test
+    fun contentBoxAddsPaddingAndBorderToOuterWidth() {
+        val box = resolveBox(
+            style = "width:72%;padding:.1em .1em;border:1px solid #000;background:#eee"
+        )
+
+        assertEquals(720f, box?.contentWidth?.toFloat())
+        assertEquals(726f, box?.borderBoxWidth)
+        assertEquals(3f, box?.contentStartOffset)
+        assertEquals(2f, box?.padding?.left)
+        assertEquals(2f, box?.padding?.top)
+        assertEquals(1f, box?.borderWidth)
+    }
+
+    @Test
+    fun borderBoxKeepsDeclaredOuterWidth() {
+        val box = resolveBox(
+            style = "box-sizing:border-box;width:72%;padding:.5em 1em;border:2px solid #000"
+        )
+
+        assertEquals(720f, box?.borderBoxWidth)
+        assertEquals(676, box?.contentWidth)
+        assertEquals(22f, box?.contentStartOffset)
+    }
+
+    @Test
+    fun rightBubbleUsesBorderBoxForRightAlignment() {
+        val box = resolveBox(
+            style = "width:72%;margin-left:auto;padding:.5em 1em;background:#eee"
+        )
+
+        assertEquals(760f, box?.borderBoxWidth)
+        assertEquals(237f, box?.borderBoxStartOffset)
+        assertEquals(257f, box?.contentStartOffset)
+    }
+
     private fun resolve(
         attributes: Map<String, String> = emptyMap(),
         style: String
@@ -137,6 +173,22 @@ class UseHtmlTextBoxLayoutResolverTest {
             style = style,
             visibleWidth = 1000,
             emPx = 20f
+        )
+    }
+
+    private fun resolveBox(
+        attributes: Map<String, String> = emptyMap(),
+        style: String
+    ): UseHtmlBoxStyle? {
+        return UseHtmlTextBoxLayoutResolver.resolveBox(
+            attributes = attributes,
+            style = style,
+            visibleWidth = 1000,
+            emPx = 20f,
+            backgroundColor = 0xffeeeeee.toInt(),
+            borderColor = 0xff000000.toInt(),
+            borderWidth = if (style.contains("border:2px")) 2f else if (style.contains("border:")) 1f else 0f,
+            borderRadius = 0f
         )
     }
 }

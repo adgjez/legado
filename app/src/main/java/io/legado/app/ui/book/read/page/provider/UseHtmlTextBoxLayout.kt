@@ -10,6 +10,31 @@ internal data class UseHtmlTextBoxLayout(
     val width: Int
 )
 
+internal data class UseHtmlEdgeInsets(
+    val left: Float = 0f,
+    val top: Float = 0f,
+    val right: Float = 0f,
+    val bottom: Float = 0f
+) {
+    val horizontal: Float get() = left + right
+    val vertical: Float get() = top + bottom
+}
+
+internal data class UseHtmlBoxStyle(
+    val borderBoxStartOffset: Float,
+    val borderBoxWidth: Float,
+    val contentStartOffset: Float,
+    val contentWidth: Int,
+    val padding: UseHtmlEdgeInsets = UseHtmlEdgeInsets(),
+    val borderWidth: Float = 0f,
+    val borderRadius: Float = 0f,
+    val backgroundColor: Int? = null,
+    val borderColor: Int? = null
+) {
+    val hasDecoration: Boolean
+        get() = backgroundColor != null || borderColor != null
+}
+
 internal object UseHtmlTextBoxLayoutResolver {
 
     private const val ATTR_LAYOUT = "data-legado-layout"
@@ -87,6 +112,65 @@ internal object UseHtmlTextBoxLayoutResolver {
         )
     }
 
+    fun resolveBox(
+        attributes: Map<String, String>,
+        style: String,
+        visibleWidth: Int,
+        emPx: Float,
+        backgroundColor: Int?,
+        borderColor: Int?,
+        borderWidth: Float,
+        borderRadius: Float
+    ): UseHtmlBoxStyle? {
+        val layout = resolve(attributes, style, visibleWidth, emPx) ?: return null
+        val declarations = if (style.isBlank()) {
+            emptyMap()
+        } else {
+            EpubCss.declarations(style)
+        }
+        val attrs = attributes.mapKeys { it.key.lowercase(Locale.ROOT) }
+        val marginLeftValue = attrs.firstNotBlank(ATTR_MARGIN_LEFT)
+            ?: declarations.marginValue("margin-left")
+        val marginRightValue = attrs.firstNotBlank(ATTR_MARGIN_RIGHT)
+            ?: declarations.marginValue("margin-right")
+        val leftAuto = marginLeftValue.isAuto()
+        val rightAuto = marginRightValue.isAuto()
+        val marginLeft = marginLeftValue.takeUnless { leftAuto }.toCssPx(visibleWidth, emPx)
+            ?.coerceAtLeast(0)
+        val marginRight = marginRightValue.takeUnless { rightAuto }.toCssPx(visibleWidth, emPx)
+            ?.coerceAtLeast(0)
+        val padding = declarations.edgeInsets("padding", visibleWidth, emPx)
+        val boxSizing = declarations["box-sizing"]?.trim()?.lowercase(Locale.ROOT)
+        val borderWidthPx = borderWidth.coerceAtLeast(0f)
+        val borderBoxWidth = if (boxSizing == "border-box") {
+            layout.width.toFloat()
+        } else {
+            layout.width + padding.horizontal + borderWidthPx * 2f
+        }.coerceIn(1f, visibleWidth.toFloat())
+        val maxOffset = (visibleWidth - borderBoxWidth).coerceAtLeast(0f)
+        val rightEdgeInset = rightEdgeInsetPx(emPx).coerceAtMost(maxOffset.roundToInt())
+        val borderBoxStart = when {
+            leftAuto && rightAuto -> maxOffset / 2f
+            leftAuto -> visibleWidth - borderBoxWidth - (marginRight ?: 0) - rightEdgeInset
+            else -> (marginLeft ?: layout.startOffset.roundToInt()).toFloat()
+        }.coerceIn(0f, maxOffset)
+        val contentStart = borderBoxStart + borderWidthPx + padding.left
+        val contentWidth = (borderBoxWidth - padding.horizontal - borderWidthPx * 2f)
+            .roundToInt()
+            .coerceAtLeast(1)
+        return UseHtmlBoxStyle(
+            borderBoxStartOffset = borderBoxStart,
+            borderBoxWidth = borderBoxWidth,
+            contentStartOffset = contentStart,
+            contentWidth = contentWidth,
+            padding = padding,
+            borderWidth = borderWidthPx,
+            borderRadius = borderRadius.coerceAtLeast(0f),
+            backgroundColor = backgroundColor,
+            borderColor = borderColor
+        )
+    }
+
     private fun Map<String, String>.firstNotBlank(name: String): String? {
         return this[name]?.trim()?.takeIf { it.isNotBlank() }
     }
@@ -106,6 +190,24 @@ internal object UseHtmlTextBoxLayoutResolver {
             "bottom" -> bottom
             else -> ""
         }
+    }
+
+    private fun Map<String, String>.edgeInsets(
+        name: String,
+        baseWidth: Int,
+        emPx: Float
+    ): UseHtmlEdgeInsets {
+        val values = this[name]?.let { EpubCss.splitValueList(it) }.orEmpty()
+        val top = this["$name-top"] ?: values.getOrNull(0)
+        val right = this["$name-right"] ?: values.getOrNull(1) ?: top
+        val bottom = this["$name-bottom"] ?: values.getOrNull(2) ?: top
+        val left = this["$name-left"] ?: values.getOrNull(3) ?: right
+        return UseHtmlEdgeInsets(
+            left = left.toCssPx(baseWidth, emPx)?.coerceAtLeast(0)?.toFloat() ?: 0f,
+            top = top.toCssPx(baseWidth, emPx)?.coerceAtLeast(0)?.toFloat() ?: 0f,
+            right = right.toCssPx(baseWidth, emPx)?.coerceAtLeast(0)?.toFloat() ?: 0f,
+            bottom = bottom.toCssPx(baseWidth, emPx)?.coerceAtLeast(0)?.toFloat() ?: 0f
+        )
     }
 
     private fun String?.isAuto(): Boolean {
