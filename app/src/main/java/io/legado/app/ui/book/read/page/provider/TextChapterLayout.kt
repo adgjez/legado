@@ -1673,7 +1673,8 @@ class TextChapterLayout(
             val textLine = TextLine(isHtml = true)
             val lineText = StringBuilder()
             val lineLeft = staticLayout.getLineLeft(lineIndex)
-            textLine.startX = lineAbsStartX + lineLeft //x坐标
+            val lineStartX = lineAbsStartX + lineLeft
+            textLine.startX = lineStartX //x坐标
             val mLineTop = staticLayout.getLineTop(lineIndex).toFloat()
             val mLineBottom = staticLayout.getLineBottom(lineIndex).toFloat()
             val lineHeight = mLineBottom - mLineTop
@@ -1681,6 +1682,7 @@ class TextChapterLayout(
             textLine.upTopBottom(durY, lineHeight, textPaint.fontMetrics) //y坐标
 
             val columns = mutableListOf<BaseColumn>()
+            var currentX = lineStartX
             var charIndex = lineStart
             while (charIndex < lineEnd) {
                 val char = spanned[charIndex].toString()
@@ -1691,17 +1693,19 @@ class TextChapterLayout(
                     charIndex++
                     continue
                 }
-                val charX = staticLayout.getPrimaryHorizontal(charIndex)
                 val textSize = extractTextSize(spanned, charIndex, textPaint.textSize)
                 val textColor = extractTextColor(spanned, charIndex)
                 val linkUrl = extractLinkUrl(spanned, charIndex)
-                val charRight = if (charIndex + 1 < lineEnd) {
-                    staticLayout.getPrimaryHorizontal(charIndex + 1)
-                } else {
-                    tempPaint.textSize = textSize
-                    val charWidth = tempPaint.measureText(char)
-                    charX + charWidth
-                }
+                val isBold = spanned.hasStyleSpan(charIndex, Typeface.BOLD)
+                val isItalic = spanned.hasStyleSpan(charIndex, Typeface.ITALIC)
+                val isUnderline = spanned.hasSpan(charIndex, UnderlineSpan::class.java)
+                val isStrikethrough = spanned.hasSpan(charIndex, StrikethroughSpan::class.java)
+                tempPaint.textSize = textSize
+                tempPaint.isFakeBoldText = isBold
+                tempPaint.textSkewX = if (isItalic) -0.25f else 0f
+                val charWidth = tempPaint.measureText(char)
+                val charStart = currentX
+                val charEnd = currentX + charWidth
                 var needAddText = true
                 spanned.getSpans(charIndex, charIndex + 1, ImageSpan::class.java).firstOrNull()?.let { span -> //处理图片
                     val source = span.source ?: return@let
@@ -1729,8 +1733,8 @@ class TextChapterLayout(
                                 }
                                 columns.add(
                                     ImageColumn(
-                                        start = lineAbsStartX + charX,
-                                        end = lineAbsStartX + charRight,
+                                        start = charStart,
+                                        end = charEnd,
                                         src = imageInfo.renderSrc,
                                         click = click
                                     )
@@ -1770,10 +1774,10 @@ class TextChapterLayout(
                                 textSize,
                                 textColor,
                                 linkUrl,
-                                isBold = spanned.hasStyleSpan(charIndex, Typeface.BOLD),
-                                isItalic = spanned.hasStyleSpan(charIndex, Typeface.ITALIC),
-                                isUnderline = spanned.hasSpan(charIndex, UnderlineSpan::class.java),
-                                isStrikethrough = spanned.hasSpan(charIndex, StrikethroughSpan::class.java),
+                                isBold = isBold,
+                                isItalic = isItalic,
+                                isUnderline = isUnderline,
+                                isStrikethrough = isStrikethrough,
                                 backgroundColor = extractBackgroundColor(spanned, charIndex)
                             )
                         )
@@ -1783,20 +1787,21 @@ class TextChapterLayout(
                 if (needAddText) {
                     columns.add(
                         TextHtmlColumn(
-                            lineAbsStartX + charX,
-                            lineAbsStartX + charRight,
+                            charStart,
+                            charEnd,
                             char,
                             textSize,
                             textColor,
                             linkUrl,
-                            isBold = spanned.hasStyleSpan(charIndex, Typeface.BOLD),
-                            isItalic = spanned.hasStyleSpan(charIndex, Typeface.ITALIC),
-                            isUnderline = spanned.hasSpan(charIndex, UnderlineSpan::class.java),
-                            isStrikethrough = spanned.hasSpan(charIndex, StrikethroughSpan::class.java),
+                            isBold = isBold,
+                            isItalic = isItalic,
+                            isUnderline = isUnderline,
+                            isStrikethrough = isStrikethrough,
                             backgroundColor = extractBackgroundColor(spanned, charIndex)
                         )
                     )
                 }
+                currentX = charEnd
                 charIndex++
                 if (charIndex == lineEnd && lineIndex == staticLayout.lineCount - 1) {
                     textLine.isParagraphEnd = true
@@ -1804,7 +1809,7 @@ class TextChapterLayout(
                 }
             }
             textLine.text = lineText.toString()
-            if (textFullJustify && !textLine.isParagraphEnd) {
+            if (textFullJustify && alignment == Layout.Alignment.ALIGN_NORMAL && !textLine.isParagraphEnd) {
                 justifyHtmlLine(columns, textLine, width)
             } else {
                 textLine.addColumns(columns)
