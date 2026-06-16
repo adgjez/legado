@@ -3,6 +3,7 @@ package io.legado.app.ui.config
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.net.toUri
 import android.view.Menu
 import android.view.MenuItem
 import android.view.ViewGroup
@@ -95,7 +96,13 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         pendingWallpaperCropRequest = null
         if (result == null) return@registerForActivityResult
         if (File(result.path).exists()) {
-            pendingConfig?.wallpaperPath = result.path
+            pendingConfig?.let { config ->
+                config.wallpaperPath = result.path
+                config.wallpaperCropLeft = result.cropLeft
+                config.wallpaperCropTop = result.cropTop
+                config.wallpaperCropRight = result.cropRight
+                config.wallpaperCropBottom = result.cropBottom
+            }
             refreshEditDialog()
         } else {
             toastOnUi(getString(R.string.image_crop_failed, getString(R.string.unknown)))
@@ -474,6 +481,7 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 }
             } else {
                 pendingConfig?.wallpaperPath = null
+                clearPendingWallpaperCrop()
                 refreshEditDialog()
             }
         }
@@ -694,9 +702,16 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun startWallpaperCrop(uri: Uri) {
         val metrics = resources.displayMetrics
+        val isGif = isGifUri(uri)
+        val gifFile = if (isGif) {
+            copyWallpaperGif(uri)
+        } else {
+            null
+        }
+        if (isGif && gifFile == null) return
         val request = ImageCropHelper.buildRequest(
             context = this,
-            sourceUri = uri,
+            sourceUri = gifFile?.toUri() ?: uri,
             requestCode = REQUEST_WALLPAPER,
             aspectWidth = metrics.widthPixels.coerceAtLeast(1),
             aspectHeight = (220 * metrics.density).toInt().coerceAtLeast(1),
@@ -705,7 +720,44 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             targetWidth = 1600
         )
         pendingWallpaperCropRequest = request
-        cropWallpaper.launch(request.params)
+        cropWallpaper.launch(
+            if (gifFile != null) {
+                request.params.copy(
+                    outputPath = gifFile.absolutePath,
+                    viewportOnly = true
+                )
+            } else {
+                clearPendingWallpaperCrop()
+                request.params
+            }
+        )
+    }
+
+    private fun isGifUri(uri: Uri): Boolean {
+        val mime = contentResolver.getType(uri)
+        if (mime.equals("image/gif", ignoreCase = true)) return true
+        return uri.lastPathSegment?.substringBefore('?')?.endsWith(".gif", ignoreCase = true) == true
+    }
+
+    private fun copyWallpaperGif(uri: Uri): File? {
+        return kotlin.runCatching {
+            val dir = externalFiles.getFile("topBarWallpapers").apply { mkdirs() }
+            val file = File(dir, "top_bar_${System.currentTimeMillis()}.gif")
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(file).use { output -> input.copyTo(output) }
+            } ?: error(getString(R.string.error_image_url_empty))
+            file.takeIf { it.exists() && it.length() > 0L }
+                ?: error(getString(R.string.error_decode_bitmap))
+        }.onFailure {
+            toastOnUi(getString(R.string.image_crop_failed, it.localizedMessage ?: getString(R.string.unknown)))
+        }.getOrNull()
+    }
+
+    private fun clearPendingWallpaperCrop() {
+        pendingConfig?.wallpaperCropLeft = null
+        pendingConfig?.wallpaperCropTop = null
+        pendingConfig?.wallpaperCropRight = null
+        pendingConfig?.wallpaperCropBottom = null
     }
 
     private fun nextPackageName(): String {
