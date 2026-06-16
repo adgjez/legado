@@ -79,11 +79,13 @@ object TopBarConfig {
     )
 
     fun defaultConfig(context: Context, isNight: Boolean): Config {
+        val style = MainLayoutPresetConfig.defaultTopBarStyle()
         return Config(
             name = defaultName(isNight),
             isNightMode = isNight,
-            style = MainLayoutPresetConfig.defaultTopBarStyle(),
+            style = style,
             tagBarColor = ContextCompat.getColor(context, R.color.background_menu),
+            tagBarAlpha = if (style == STYLE_REGULAR) 0 else 100,
             tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
             backgroundColor = defaultBackgroundColor(isNight),
             cornerScale = 1f,
@@ -103,7 +105,9 @@ object TopBarConfig {
 
     fun currentSignature(isNight: Boolean): String {
         val dirName = activeDirName(isNight)
-        if (dirName == DEFAULT_DIR_NAME) return "$isNight|$DEFAULT_DIR_NAME"
+        if (dirName == DEFAULT_DIR_NAME) {
+            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}"
+        }
         val configFile = File(localDir(isNight, dirName), packageFileName)
         return "$isNight|$dirName|${configFile.lastModified()}"
     }
@@ -197,7 +201,10 @@ object TopBarConfig {
 
     fun regularEntryForKit(context: Context, isNight: Boolean): Entry {
         return Entry(
-            defaultConfig(context, isNight).copy(style = STYLE_REGULAR),
+            defaultConfig(context, isNight).copy(
+                style = STYLE_REGULAR,
+                tagBarAlpha = 0
+            ),
             Source.BUILTIN,
             DEFAULT_DIR_NAME
         )
