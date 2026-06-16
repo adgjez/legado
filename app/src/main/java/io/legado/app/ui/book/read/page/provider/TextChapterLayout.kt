@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.text.Layout
 import android.text.Spanned
 import android.text.StaticLayout
@@ -134,6 +135,7 @@ class TextChapterLayout(
     private val textFullJustify = ReadBookConfig.textFullJustify
     private val adaptSpecialStyle = AppConfig.adaptSpecialStyle
     private val pageAnim = book.getPageAnim()
+    private val atLeastApi35 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
 
     private var pendingTextPage = TextPage()
 
@@ -1856,7 +1858,7 @@ class TextChapterLayout(
             tempPaint.textSize = textSize
             tempPaint.isFakeBoldText = isBold
             tempPaint.textSkewX = if (isItalic) -0.25f else 0f
-            val charWidth = tempPaint.measureText(char)
+            val charWidth = measureHtmlCharWidth(tempPaint, char)
             items.add(
                 HtmlLineItem(
                     index = charIndex,
@@ -1894,6 +1896,14 @@ class TextChapterLayout(
             Layout.Alignment.ALIGN_OPPOSITE -> lineAbsStartX + freeWidth
             else -> lineAbsStartX
         }
+    }
+
+    private fun measureHtmlCharWidth(paint: TextPaint, char: String): Float {
+        var width = paint.measureText(char)
+        if (atLeastApi35) {
+            width += paint.letterSpacing * paint.textSize
+        }
+        return width
     }
 
     /**
