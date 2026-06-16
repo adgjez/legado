@@ -388,8 +388,8 @@ result = `<img src = "${url}">`;
 ```
 > 书源正文也支持使用`<usehtml></usehtml>`包裹轻量HTML内容。阅读正文中的`usehtml`不是浏览器渲染, 会将HTML转换为阅读器可复制、可选择的正文行列。  
 > 当前正文`usehtml`支持常见富文本标签, 如`p`、`div`、`span`、`b`、`strong`、`i`、`em`、`u`、`s`、`font`、`a`、`br`、`img`、`table`等。  
-> 当前正文`usehtml`支持有限文本块布局: `width`、`min-width`、`max-width`、`margin-left`、`margin-right`、`text-align`。宽度支持数字、`px`、`%`、`em`、`rem`; 左右外边距支持`auto`。  
-> 文本块可以设置轻量容器样式, 用于对话气泡、提示块等效果。支持`padding`、`background-color`、`background`中的颜色、`border`、`border-color`、`border-width`、`border-radius`。  
+> 当前正文`usehtml`支持轻量盒模型文本块: `width`、`min-width`、`max-width`、`margin-left`、`margin-right`、`padding`、`box-sizing`、`text-align`。宽度支持数字、`px`、`%`、`em`、`rem`; 左右外边距支持`auto`。  
+> 文本块可以设置容器样式, 用于对话气泡、提示块等效果。支持`background-color`、`background`中的颜色、`border`、`border-color`、`border-width`、`border-radius`。默认按标准`content-box`计算, 可使用`box-sizing:border-box`。  
 > `text-align:center`会让每一行居中, `text-align:right/end`会让每一行右对齐。正文菜单-设置中的`文字两端对齐`只影响默认或左对齐正文行, 不会强制改变居中和右对齐行。  
 > 如果需要“文本块居中, 但块内文字按正文设置两端对齐”, 可以使用`margin-left:auto;margin-right:auto;text-align:left`。  
 ```xml
@@ -408,6 +408,9 @@ result = `<img src = "${url}">`;
 </p>
 <div style="width:72%;padding:.7em .9em;background:rgba(68,150,211,.14);border-radius:12px;text-align:left;">
 左侧气泡文本
+</div>
+<div style="width:72%;padding:.1em .1em;background:rgba(68,150,211,.14);border-radius:12px;text-align:left;">
+极小内边距气泡文本
 </div>
 <div style="width:72%;margin-left:auto;padding:.7em .9em;background:#e8f3ff;border:1px solid rgba(68,150,211,.45);border-radius:12px;text-align:left;">
 右侧气泡文本
