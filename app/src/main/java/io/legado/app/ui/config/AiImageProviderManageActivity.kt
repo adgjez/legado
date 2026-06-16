@@ -316,10 +316,17 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
 
     private fun parseRule(json: JSONObject): AiImageProviderConfig? {
         val type = json.optString("type").ifBlank {
-            if (json.optString("script").isNotBlank()) AiImageProviderConfig.TYPE_JS else ""
+            when {
+                json.optString("script").isNotBlank() -> AiImageProviderConfig.TYPE_JS
+                json.optString("showRule").isNotBlank() || json.optString("urlRule").isNotBlank() -> AiImageProviderConfig.TYPE_JS
+                else -> ""
+            }
         }
         if (type != AiImageProviderConfig.TYPE_JS) return null
-        val script = json.optString("script").ifBlank { json.optString("rule") }.trim()
+        val script = json.optString("script")
+            .ifBlank { json.optString("rule") }
+            .ifBlank { legacyAiImageRuleScript(json) }
+            .trim()
         if (script.isBlank()) return null
         return AiImageProviderConfig(
             name = json.optString("name").ifBlank { getString(R.string.ai_image_provider_js) },
@@ -335,6 +342,61 @@ class AiImageProviderManageActivity : BaseActivity<ActivityAiProviderManageBindi
             order = json.optInt("order", 0),
             enabled = json.optBoolean("enabled", true)
         )
+    }
+
+    private fun legacyAiImageRuleScript(json: JSONObject): String {
+        val showRule = json.optString("showRule").trim()
+        val urlRule = json.optString("urlRule").trim()
+        if (showRule.isBlank() && urlRule.isBlank()) return ""
+        return buildString {
+            appendLine("/* Converted from legacy AI image showRule/urlRule. */")
+            appendLine("var __legacyUrlRule = ${JSONObject.quote(urlRule)};")
+            appendLine("var __legacyShowRule = ${JSONObject.quote(showRule)};")
+            appendLine(
+                """
+                function __legacyEvalRule(rule) {
+                    if (!rule) return result;
+                    var code = String(rule);
+                    if (code.indexOf('@js:') === 0) code = code.substring(4);
+                    return eval(code);
+                }
+                function __legacyFirstImage(value) {
+                    if (value == null) return '';
+                    var text = String(value).trim();
+                    if (/^(https?:|data:image\/)/i.test(text)) return text;
+                    try {
+                        if (text.charAt(0) === '{') {
+                            var objectValue = JSON.parse(text);
+                            return objectValue.url || objectValue.src || objectValue.image || objectValue.data || '';
+                        }
+                        if (text.charAt(0) === '[') {
+                            var arrayValue = JSON.parse(text);
+                            if (arrayValue.length > 0) return __legacyFirstImage(arrayValue[0]);
+                        }
+                    } catch (e) {}
+                    var match = text.match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i);
+                    if (match && match[1]) return match[1];
+                    match = text.match(/https?:\/\/[^\s"'<>]+/i);
+                    if (match && match[0]) return match[0];
+                    match = text.match(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/i);
+                    if (match && match[0]) return match[0];
+                    return text;
+                }
+                var __legacyPrompt = prompt;
+                var key = __legacyPrompt;
+                var result = __legacyPrompt;
+                if (__legacyUrlRule) {
+                    var __legacyUrlResult = __legacyEvalRule(__legacyUrlRule);
+                    if (typeof __legacyUrlResult !== 'undefined') result = __legacyUrlResult;
+                }
+                if (__legacyShowRule) {
+                    var __legacyShowResult = __legacyEvalRule(__legacyShowRule);
+                    if (typeof __legacyShowResult !== 'undefined') result = __legacyShowResult;
+                }
+                result = __legacyFirstImage(result);
+                """.trimIndent()
+            )
+        }
     }
 
     private fun importRules(rules: List<AiImageProviderConfig>) {
