@@ -1299,11 +1299,12 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }
                 } ?: throw IllegalArgumentException(getString(R.string.theme_zip_read_failed))
-                ThemePackageManager.importZip(file)
+                ThemePackageManager.importPackage(file)
             }.onSuccess {
                 toastOnUi(getString(R.string.theme_imported))
                 loadThemes()
-                if (enqueueUploadIfNeeded(it)) {
+                val hasUploadTask = it.any(::enqueueUploadIfNeeded)
+                if (hasUploadTask) {
                     showThemeSyncTasks()
                 }
             }.onFailure {

@@ -28,6 +28,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
 
 object ThemePackageManager {
 
@@ -136,6 +137,14 @@ object ThemePackageManager {
             throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
         }
         importZipInternal(zipFile, 0L)
+    }
+
+    suspend fun importPackage(file: File): List<Entry> = withContext(IO) {
+        if (isRedThemePackage(file)) {
+            importRed(file)
+        } else {
+            listOf(importZip(file))
+        }
     }
 
     suspend fun exportZip(entry: Entry): File = withContext(IO) {
@@ -476,6 +485,104 @@ object ThemePackageManager {
         }
     }
 
+    private fun isRedThemePackage(file: File): Boolean {
+        if (!file.isFile || file.length() < 5) return false
+        return file.inputStream().use { input ->
+            input.read() == 'R'.code && input.read() == 'E'.code && input.read() == 'D'.code
+        }
+    }
+
+    private fun importRed(file: File): List<Entry> {
+        val redPackage = readRedThemePackage(file)
+        if (redPackage.type != "theme" || redPackage.data.isEmpty()) {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        }
+        val configs = redPackage.data.flatMap { item ->
+            listOfNotNull(
+                item.light?.toThemeConfig(item.name, false),
+                item.dark?.toThemeConfig(item.name, true)
+            )
+        }
+        if (configs.isEmpty()) {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        }
+        configs.forEach { config ->
+            if (themeExistsBlocking(config.isNightTheme, config.themeName)) {
+                throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
+            }
+        }
+        return configs.map(::saveConfig)
+    }
+
+    private fun readRedThemePackage(file: File): RedThemePackage {
+        return runCatching {
+            file.inputStream().use { input ->
+                val header = ByteArray(4)
+                if (input.read(header) != header.size ||
+                    header[0] != 'R'.code.toByte() ||
+                    header[1] != 'E'.code.toByte() ||
+                    header[2] != 'D'.code.toByte()
+                ) {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                }
+                GZIPInputStream(input).bufferedReader(Charsets.UTF_8).use { reader ->
+                    GSON.fromJsonObject<RedThemePackage>(reader.readText()).getOrThrow()
+                }
+            }
+        }.getOrElse {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid), it)
+        }
+    }
+
+    private fun themeExistsBlocking(isNightTheme: Boolean, themeName: String): Boolean {
+        val normalizedDirName = themeName.trim().normalizeFileName()
+        return loadLocal(isNightTheme).any { it.dirName == normalizedDirName }
+    }
+
+    private fun RedThemeColors.toThemeConfig(name: String, isNightTheme: Boolean): ThemeConfig.Config {
+        return ThemeConfig.Config(
+            themeName = name.trim().ifBlank { "RED Theme" },
+            isNightTheme = isNightTheme,
+            primaryColor = primaryColor.normalizeArgbColor(default = if (isNightTheme) "#FFD97757" else "#FFD97757"),
+            accentColor = accentColor.normalizeArgbColor(default = primaryColor.ifBlank { "#FFD97757" }),
+            backgroundColor = backgroundColor.normalizeArgbColor(default = if (isNightTheme) "#FF1C1917" else "#FFFAF9F6"),
+            bottomBackground = cardColor
+                .ifBlank { mutedColor }
+                .normalizeArgbColor(default = if (isNightTheme) "#FF312E2B" else "#FFEEEBE3"),
+            transparentNavBar = false,
+            backgroundImgPath = null,
+            backgroundImgBlur = 0,
+            bookInfoBackgroundImgPath = null,
+            panelBackgroundImgPath = null,
+            panelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP,
+            panelBorderColor = borderColor.normalizeArgbColorOrNull(),
+            panelBorderAlpha = if (cardBorder || switchBorder) 100 else 0,
+            uiCornerScale = cardShadow?.let { (1f + it.coerceIn(0, 4) * 0.08f).coerceIn(0f, 3f) } ?: 1f,
+            uiLayoutAlpha = 100,
+            dialogAlpha = 100,
+            uiCornerSearchFollow = true,
+            uiCornerReplyFollow = true,
+            fontScale = null,
+            uiFontPath = null,
+            titleFontPath = null
+        )
+    }
+
+    private fun String.normalizeArgbColor(default: String): String {
+        return normalizeArgbColorOrNull() ?: default
+    }
+
+    private fun String.normalizeArgbColorOrNull(): String? {
+        val value = trim()
+        if (!value.startsWith("#")) return null
+        val hex = value.drop(1)
+        return when (hex.length) {
+            6 -> "#FF${hex.uppercase()}"
+            8 -> "#${hex.uppercase()}"
+            else -> null
+        }
+    }
+
     private fun importZipInternal(zipFile: File, remoteUpdatedAt: Long): Entry {
         val unzipDir = tempDir.getFile("import_${System.currentTimeMillis()}").apply {
             if (exists()) FileUtils.delete(this, deleteRootDir = true)
@@ -786,6 +893,39 @@ object ThemePackageManager {
         val isNightTheme: Boolean,
         val updatedAt: Long,
         val config: ThemeConfig.Config?
+    )
+
+    @Keep
+    private data class RedThemePackage(
+        val version: Int = 1,
+        val type: String = "",
+        val data: List<RedThemeItem> = emptyList()
+    )
+
+    @Keep
+    private data class RedThemeItem(
+        val name: String = "",
+        val light: RedThemeColors? = null,
+        val dark: RedThemeColors? = null
+    )
+
+    @Keep
+    private data class RedThemeColors(
+        val primaryColor: String = "",
+        val backgroundColor: String = "",
+        val foregroundColor: String = "",
+        val mutedForegroundColor: String = "",
+        val cardColor: String = "",
+        val cardForegroundColor: String = "",
+        val mutedColor: String = "",
+        val borderColor: String = "",
+        val accentColor: String = "",
+        val cardShadow: Int? = null,
+        val cardBorder: Boolean = false,
+        val searchFieldBackgroundColor: String = "",
+        val switchBorder: Boolean = false,
+        val tabBackgroundColor: String = "",
+        val shelfColor: String = ""
     )
 
     enum class Source {

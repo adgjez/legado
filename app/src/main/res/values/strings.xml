@@ -2281,4 +2281,5 @@ Selected text or question:
     <string name="main_layout_preset_regular_summary">Standard bottom bar with regular top bar</string>
     <string name="main_layout_preset_sidebar">Sidebar</string>
     <string name="main_layout_preset_sidebar_summary">Sidebar navigation with default top bar</string>
+    <string name="theme_red_invalid">Invalid RED theme package</string>
 </resources>
