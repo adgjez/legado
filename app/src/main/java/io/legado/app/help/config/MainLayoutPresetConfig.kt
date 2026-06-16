@@ -64,6 +64,5 @@ object MainLayoutPresetConfig {
             context.putPrefBoolean(PreferKey.mergeDiscoveryRss, false)
         }
         postEvent(EventBus.NOTIFY_MAIN, true)
-        postEvent(EventBus.RECREATE, "")
     }
 }

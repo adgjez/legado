@@ -2146,7 +2146,7 @@ bookUrl：%7$s
     <string name="bookshelf_list_style_rounded_card">圆角卡片</string>
     <string name="main_layout_preset">界面导航样式</string>
     <string name="main_layout_preset_summary">快速切换系统自带顶栏与底栏组合</string>
-    <string name="main_layout_preset_default">默认</string>
+    <string name="main_layout_preset_default">悬浮</string>
     <string name="main_layout_preset_default_summary">悬浮底栏 + 默认顶栏</string>
     <string name="main_layout_preset_regular">常规</string>
     <string name="main_layout_preset_regular_summary">常规底栏 + 常规顶栏</string>
