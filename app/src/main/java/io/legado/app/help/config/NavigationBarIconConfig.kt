@@ -555,13 +555,14 @@ object NavigationBarIconConfig {
     }
 
     private fun defaultEntry(isNight: Boolean): Entry {
+        val layoutMode = MainLayoutPresetConfig.defaultBottomLayoutMode()
         return Entry(
             Config(
                 name = defaultName(isNight),
                 isNightMode = isNight,
-                layoutMode = "floating",
+                layoutMode = layoutMode,
                 sidebarGravity = "start",
-                effectMode = "glass",
+                effectMode = if (layoutMode == "standard") "solid" else "glass",
                 opacity = 76,
                 updatedAt = 0L
             ),

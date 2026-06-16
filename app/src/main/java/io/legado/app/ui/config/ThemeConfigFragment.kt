@@ -12,6 +12,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.MainLayoutPresetConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.ui.config.compose.ComposeSettingFragment
 import io.legado.app.ui.config.compose.SettingActionSpec
@@ -55,6 +56,16 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
                             checked = booleanSetting(PreferKey.mainTransparentStatusBar, false),
                             onCheckedChange = {
                                 updateBooleanSetting(PreferKey.mainTransparentStatusBar, it)
+                            }
+                        ),
+                        SettingChoiceSpec(
+                            key = PreferKey.mainLayoutPreset,
+                            title = getString(R.string.main_layout_preset),
+                            summary = getString(R.string.main_layout_preset_summary),
+                            options = mainLayoutPresetOptions(),
+                            selectedValue = MainLayoutPresetConfig.currentPreset(),
+                            onSelected = {
+                                MainLayoutPresetConfig.apply(requireContext(), it)
                             }
                         ),
                         SettingActionSpec(
@@ -155,6 +166,26 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
                 iconName = value
             )
         }
+    }
+
+    private fun mainLayoutPresetOptions(): List<SettingChoiceOption> {
+        return listOf(
+            SettingChoiceOption(
+                value = MainLayoutPresetConfig.PRESET_DEFAULT,
+                label = getString(R.string.main_layout_preset_default),
+                description = getString(R.string.main_layout_preset_default_summary)
+            ),
+            SettingChoiceOption(
+                value = MainLayoutPresetConfig.PRESET_REGULAR,
+                label = getString(R.string.main_layout_preset_regular),
+                description = getString(R.string.main_layout_preset_regular_summary)
+            ),
+            SettingChoiceOption(
+                value = MainLayoutPresetConfig.PRESET_SIDEBAR,
+                label = getString(R.string.main_layout_preset_sidebar),
+                description = getString(R.string.main_layout_preset_sidebar_summary)
+            )
+        )
     }
 
     private fun recreateActivities() {

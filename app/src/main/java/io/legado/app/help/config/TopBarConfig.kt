@@ -82,6 +82,7 @@ object TopBarConfig {
         return Config(
             name = defaultName(isNight),
             isNightMode = isNight,
+            style = MainLayoutPresetConfig.defaultTopBarStyle(),
             tagBarColor = ContextCompat.getColor(context, R.color.background_menu),
             tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
             backgroundColor = defaultBackgroundColor(isNight),

@@ -2273,4 +2273,12 @@ Selected text or question:
     <string name="bookshelf_list_style">List card style</string>
     <string name="bookshelf_list_style_classic">Classic list</string>
     <string name="bookshelf_list_style_rounded_card">Rounded card</string>
+    <string name="main_layout_preset">Navigation style</string>
+    <string name="main_layout_preset_summary">Switch to built-in top and bottom navigation presets</string>
+    <string name="main_layout_preset_default">Default</string>
+    <string name="main_layout_preset_default_summary">Floating bottom bar with default top bar</string>
+    <string name="main_layout_preset_regular">Regular</string>
+    <string name="main_layout_preset_regular_summary">Standard bottom bar with regular top bar</string>
+    <string name="main_layout_preset_sidebar">Sidebar</string>
+    <string name="main_layout_preset_sidebar_summary">Sidebar navigation with default top bar</string>
 </resources>
