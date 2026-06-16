@@ -1719,7 +1719,8 @@ class TextChapterLayout(
                                 start = charStart,
                                 end = charEnd,
                                 src = imageInfo.renderSrc,
-                                click = imageInfo.click
+                                click = imageInfo.click,
+                                clickSrc = source
                             )
                         )
                     } else if (urlMatcher.find()) {
@@ -2572,7 +2573,9 @@ class TextChapterLayout(
 
     private fun parseParagraphBubble(src: String): ImageInfo {
         val payload = src.removePrefix(PARAGRAPH_BUBBLE_PREFIX).trim()
-        val optionIndex = payload.indexOf(",{")
+        val optionIndex = listOf(payload.indexOf(",{"), payload.indexOf("，{"))
+            .filter { it >= 0 }
+            .minOrNull() ?: -1
         val count = if (optionIndex >= 0) {
             payload.substring(0, optionIndex)
         } else {
