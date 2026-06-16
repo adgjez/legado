@@ -28,7 +28,9 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.UUID
 import java.util.zip.GZIPInputStream
+import java.util.zip.ZipFile
 
 object ThemePackageManager {
 
@@ -39,6 +41,7 @@ object ThemePackageManager {
     private const val panelBackgroundPrefix = "panel_background"
     private const val uiFontPrefix = "ui_font"
     private const val titleFontPrefix = "title_font"
+    private const val redReaderSchemaDirName = "reader_schema"
     private const val builtinDayDirName = "builtin_day"
     private const val builtinNightDirName = "builtin_night"
     private const val builtinDayName = "\u5185\u7f6e\u65e5\u95f4\u4e3b\u9898"
@@ -493,6 +496,9 @@ object ThemePackageManager {
     }
 
     private fun importRed(file: File): List<Entry> {
+        if (isRedZipThemePackage(file)) {
+            return importRedZip(file)
+        }
         val redPackage = readRedThemePackage(file)
         if (redPackage.type != "theme" || redPackage.data.isEmpty()) {
             throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
@@ -512,6 +518,196 @@ object ThemePackageManager {
             }
         }
         return configs.map(::saveConfig)
+    }
+
+    private fun isRedZipThemePackage(file: File): Boolean {
+        if (!file.isFile || file.length() < 8) return false
+        return file.inputStream().use { input ->
+            val header = ByteArray(8)
+            input.read(header) == header.size &&
+                header[0] == 'R'.code.toByte() &&
+                header[1] == 'E'.code.toByte() &&
+                header[2] == 'D'.code.toByte() &&
+                header[3] == 4.toByte() &&
+                header[4] == 'P'.code.toByte() &&
+                header[5] == 'K'.code.toByte()
+        }
+    }
+
+    private fun importRedZip(file: File): List<Entry> {
+        val zipFile = tempDir.getFile("red_${System.currentTimeMillis()}.zip")
+        val unzipDir = tempDir.getFile("red_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        return try {
+            file.inputStream().use { input ->
+                val header = ByteArray(4)
+                if (input.read(header) != header.size) {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                }
+                FileOutputStream(zipFile).use { output -> input.copyTo(output) }
+            }
+            ZipFile(zipFile).use { zip ->
+                zip.entries().asSequence().forEach { entry ->
+                    if (entry.isDirectory) return@forEach
+                    val target = File(unzipDir, entry.name)
+                    target.canonicalPath.takeIf { it.startsWith(unzipDir.canonicalPath) }
+                        ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                    target.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(target).use { output -> input.copyTo(output) }
+                    }
+                }
+            }
+            val themeFile = File(unzipDir, packageFileName)
+            val redTheme = GSON.fromJsonObject<RedThemeV4>(themeFile.readText()).getOrThrow()
+            val entries = listOfNotNull(
+                redTheme.light?.toThemeConfig(redTheme.name, false, unzipDir),
+                redTheme.dark?.toThemeConfig(redTheme.name, true, unzipDir)
+            ).map { config ->
+                if (themeExistsBlocking(config.isNightTheme, config.themeName)) {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_name_exists))
+                }
+                saveConfig(config)
+            }
+            importRedNavigationPack(unzipDir, redTheme.light)
+            importRedCoverGallery(unzipDir, redTheme.light)
+            copyRedReaderSchema(unzipDir, redTheme.light)
+            entries
+        } catch (e: Throwable) {
+            if (e is IllegalArgumentException) throw e
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid), e)
+        } finally {
+            zipFile.delete()
+            FileUtils.delete(unzipDir, deleteRootDir = true)
+        }
+    }
+
+    private fun RedThemeColors.toThemeConfig(name: String, isNightTheme: Boolean, root: File): ThemeConfig.Config {
+        val background = if (!isNightTheme && backgroundImage.isNotBlank()) {
+            File(root, "light/theme_bg.img")
+                .takeIf { it.isFile }
+                ?.absolutePath
+        } else {
+            null
+        }
+        return toThemeConfig(name, isNightTheme).copy(
+            backgroundImgPath = background,
+            panelBackgroundImgPath = background,
+            panelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP,
+            panelBorderColor = borderColor.normalizeArgbColorOrNull(),
+            panelBorderAlpha = 100,
+            uiLayoutAlpha = cardColor.alphaPercentOrNull() ?: 100,
+            dialogAlpha = 100
+        )
+    }
+
+    private fun importRedNavigationPack(root: File, light: RedThemeColors?) {
+        val packId = light?.navbarPackId?.takeIf { it.isNotBlank() } ?: return
+        val sourceDir = File(root, "navbar_pack/$packId").takeIf { it.isDirectory } ?: return
+        val meta = File(sourceDir, "meta.json")
+            .takeIf { it.isFile }
+            ?.let { GSON.fromJsonObject<RedNameMeta>(it.readText()).getOrNull() }
+        val packageDir = tempDir.getFile("red_nav_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val zipFile = tempDir.getFile("red_nav_${System.currentTimeMillis()}.zip")
+        try {
+            val icons = linkedMapOf<String, String>()
+            val itemMap = mapOf(
+                "home" to "discovery",
+                "bookshelf" to "bookshelf",
+                "notes" to "rss",
+                "statistics" to "readRecord",
+                "settings" to "my"
+            )
+            itemMap.forEach { (redKey, targetKey) ->
+                val source = File(sourceDir, "${redKey}_normal.png")
+                if (source.isFile) {
+                    val name = "${targetKey}_normal.png"
+                    source.copyTo(File(packageDir, name), overwrite = true)
+                    icons["${targetKey}_normal"] = name
+                }
+            }
+            if (icons.isEmpty()) return
+            val config = NavigationBarIconConfig.Config(
+                name = meta?.name?.ifBlank { null } ?: "RED Navigation",
+                isNightMode = false,
+                layoutMode = "floating",
+                effectMode = "glass",
+                opacity = light.cardColor.alphaPercentOrNull() ?: 72,
+                icons = icons
+            )
+            File(packageDir, "navigation.json").writeText(GSON.toJson(config))
+            ZipUtils.zipFile(packageDir, zipFile)
+            val entry = NavigationBarIconConfig.importZip(zipFile)
+            NavigationBarIconConfig.apply(entry)
+        } finally {
+            zipFile.delete()
+            FileUtils.delete(packageDir, deleteRootDir = true)
+        }
+    }
+
+    private fun importRedCoverGallery(root: File, light: RedThemeColors?) {
+        val galleryId = light?.coverGalleryId?.takeIf { it.isNotBlank() } ?: return
+        val sourceDir = File(root, "cover_gallery/$galleryId").takeIf { it.isDirectory } ?: return
+        val meta = File(sourceDir, "meta.json")
+            .takeIf { it.isFile }
+            ?.let { GSON.fromJsonObject<RedNameMeta>(it.readText()).getOrNull() }
+        val packageDir = tempDir.getFile("red_cover_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val imagesDir = packageDir.getFile("images").apply { mkdirs() }
+        val zipFile = tempDir.getFile("red_cover_${System.currentTimeMillis()}.zip")
+        try {
+            val images = sourceDir.listFiles()
+                ?.filter { it.isFile && it.name != "meta.json" }
+                ?.sortedBy { it.name }
+                ?.mapIndexedNotNull { index, source ->
+                    val target = File(imagesDir, "cover_${index + 1}.${source.extension.ifBlank { "png" }}")
+                    source.copyTo(target, overwrite = true)
+                    "images/${target.name}"
+                }
+                .orEmpty()
+            if (images.isEmpty()) return
+            val collection = CoverCollectionManager.Collection(
+                id = UUID.randomUUID().toString(),
+                name = meta?.name?.ifBlank { null } ?: "RED Cover Gallery",
+                dirName = (meta?.name?.ifBlank { null } ?: "RED Cover Gallery").normalizeFileName(),
+                isNight = false,
+                images = images,
+                updatedAt = System.currentTimeMillis()
+            )
+            File(packageDir, "collection.json").writeText(GSON.toJson(collection))
+            ZipUtils.zipFile(packageDir, zipFile)
+            val imported = kotlinx.coroutines.runBlocking {
+                CoverCollectionManager.importZip(appCtx, zipFile, false)
+            }
+            CoverCollectionManager.setSelected(false, imported.id)
+        } finally {
+            zipFile.delete()
+            FileUtils.delete(packageDir, deleteRootDir = true)
+        }
+    }
+
+    private fun copyRedReaderSchema(root: File, light: RedThemeColors?) {
+        val schemaId = light?.readerColorSchemaId?.takeIf { it.isNotBlank() } ?: return
+        val sourceDir = File(root, "reader_schema/$schemaId").takeIf { it.isDirectory } ?: return
+        val targetDir = rootDir.getFile(redReaderSchemaDirName).getFile(schemaId).apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        sourceDir.copyRecursively(targetDir, overwrite = true)
+    }
+
+    private fun String.alphaPercentOrNull(): Int? {
+        val value = trim().removePrefix("#")
+        if (value.length != 8) return null
+        return value.take(2).toIntOrNull(16)
+            ?.let { (it * 100f / 255f).toInt().coerceIn(0, 100) }
     }
 
     private fun readRedThemePackage(file: File): RedThemePackage {
@@ -896,6 +1092,18 @@ object ThemePackageManager {
     )
 
     @Keep
+    private data class RedThemeV4(
+        val name: String = "",
+        val light: RedThemeColors? = null,
+        val dark: RedThemeColors? = null
+    )
+
+    @Keep
+    private data class RedNameMeta(
+        val name: String = ""
+    )
+
+    @Keep
     private data class RedThemePackage(
         val version: Int = 1,
         val type: String = "",
@@ -920,10 +1128,15 @@ object ThemePackageManager {
         val mutedColor: String = "",
         val borderColor: String = "",
         val accentColor: String = "",
+        val backgroundImage: String = "",
+        val coverGalleryId: String = "",
+        val navbarPackId: String = "",
+        val readerColorSchemaId: String = "",
         val cardShadow: Int? = null,
         val cardBorder: Boolean = false,
         val searchFieldBackgroundColor: String = "",
         val switchBorder: Boolean = false,
+        val tabBorder: Boolean = false,
         val tabBackgroundColor: String = "",
         val shelfColor: String = ""
     )

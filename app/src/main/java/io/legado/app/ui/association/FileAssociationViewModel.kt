@@ -12,6 +12,7 @@ import io.legado.app.utils.*
 
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
     val importBookLiveData = MutableLiveData<Uri>()
+    val importRedThemeLiveData = MutableLiveData<Uri>()
     val onLineImportLive = MutableLiveData<Uri>()
     val openBookLiveData = MutableLiveData<Book>()
     val notSupportedLiveData = MutableLiveData<Pair<Uri, String>>()
@@ -51,6 +52,10 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
         }.onFailure {
             it.printOnDebug()
             AppLog.put("尝试导入为JSON文件失败\n${it.localizedMessage}", it)
+        }
+        if (fileDoc.name.endsWith(".red", ignoreCase = true)) {
+            importRedThemeLiveData.postValue(fileDoc.uri)
+            return
         }
         if (fileDoc.name.matches(bookFileRegex)) {
             importBookLiveData.postValue(fileDoc.uri)

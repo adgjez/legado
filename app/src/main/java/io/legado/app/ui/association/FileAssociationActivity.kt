@@ -65,6 +65,10 @@ class FileAssociationActivity :
         viewModel.importBookLiveData.observe(this) { uri ->
             importBook(uri)
         }
+        viewModel.importRedThemeLiveData.observe(this) { uri ->
+            binding.rotateLoading.gone()
+            showDialogFragment(ImportRedThemeDialog(uri, true))
+        }
         viewModel.onLineImportLive.observe(this) {
             startActivity<OnLineImportActivity> {
                 data = it
