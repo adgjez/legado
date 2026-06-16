@@ -2294,4 +2294,5 @@ Selected text or question:
     <string name="appearance_kit_cover_summary">Manage book cover gallery resources</string>
     <string name="appearance_kit_delete_confirm">Delete app theme \"%s\"?</string>
     <string name="theme_red_invalid">Invalid RED theme package</string>
+    <string name="theme_red_private_encrypted_unsupported">This RED app theme uses private encryption and cannot be imported yet</string>
 </resources>

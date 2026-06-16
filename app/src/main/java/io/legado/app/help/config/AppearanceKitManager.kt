@@ -8,16 +8,19 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalFiles
+import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.normalizeFileName
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 import java.util.zip.ZipFile
 
 object AppearanceKitManager {
@@ -27,6 +30,12 @@ object AppearanceKitManager {
     const val KIT_SIDEBAR = "builtin_sidebar"
     private const val kitManifestName = "appearance_kit.json"
     private const val kitVersion = 1
+
+    private val rootDir: File
+        get() = appCtx.externalFiles.getFile("appThemeKits").apply { mkdirs() }
+
+    private val indexFile: File
+        get() = rootDir.getFile("kits.json")
 
     private val tempDir: File
         get() = appCtx.externalFiles.getFile("appearanceKitTemp").apply { mkdirs() }
@@ -38,26 +47,29 @@ object AppearanceKitManager {
                 name = "悬浮",
                 summary = "悬浮底栏 + 默认顶栏",
                 type = AppearanceKitType.BUILTIN,
-                preset = MainLayoutPresetConfig.PRESET_DEFAULT
+                binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_DEFAULT)
             ),
             AppearanceKit(
                 id = KIT_REGULAR,
                 name = "常规",
                 summary = "常规底栏 + 常规顶栏",
                 type = AppearanceKitType.BUILTIN,
-                preset = MainLayoutPresetConfig.PRESET_REGULAR
+                binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_REGULAR)
             ),
             AppearanceKit(
                 id = KIT_SIDEBAR,
                 name = "侧栏",
                 summary = "侧边栏 + 默认顶栏",
                 type = AppearanceKitType.BUILTIN,
-                preset = MainLayoutPresetConfig.PRESET_SIDEBAR
+                binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_SIDEBAR)
             )
         )
     }
 
     suspend fun importedThemeKits(): List<AppearanceKit> {
+        migrateLegacyThemeKits()
+        val indexed = loadIndex().map { it.toAppearanceKit() }
+        if (indexed.isNotEmpty()) return indexed.sortedBy { it.name }
         val day = ThemePackageManager.loadLocalOnly(false)
             .filter { it.source != ThemePackageManager.Source.BUILTIN }
         val night = ThemePackageManager.loadLocalOnly(true)
@@ -76,7 +88,11 @@ object AppearanceKitManager {
                         else -> "已导入日间界面主题"
                     },
                     type = AppearanceKitType.IMPORTED_THEME,
-                    themeName = name
+                    binding = KitBinding().apply {
+                        entries.forEach {
+                            setTheme(it.packageInfo.isNightTheme, ComponentRef(it.dirName, it.packageInfo.name))
+                        }
+                    }
                 )
             }
             .sortedBy { it.name }
@@ -93,34 +109,22 @@ object AppearanceKitManager {
     }
 
     suspend fun apply(context: Context, kit: AppearanceKit) {
-        when (kit.type) {
-            AppearanceKitType.BUILTIN -> {
-                MainLayoutPresetConfig.apply(context, kit.preset ?: MainLayoutPresetConfig.PRESET_DEFAULT, notify = false)
-            }
-
-            AppearanceKitType.IMPORTED_THEME -> {
-                applyImportedTheme(context, kit.themeName.orEmpty())
-            }
-        }
+        val binding = kit.binding ?: loadIndex().firstOrNull { it.id == kit.id }?.binding
+        applyBinding(context, binding ?: KitBinding(preset = MainLayoutPresetConfig.PRESET_DEFAULT))
         context.putPrefString(PreferKey.currentAppearanceKitId, kit.id)
         postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
     }
 
     suspend fun deleteImportedTheme(context: Context, kit: AppearanceKit): Boolean = withContext(IO) {
         if (kit.type != AppearanceKitType.IMPORTED_THEME) return@withContext false
-        val themeName = kit.themeName?.takeIf { it.isNotBlank() } ?: return@withContext false
-        if (isThemeApplied(context, themeName)) {
+        if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == kit.id) {
             throw IllegalArgumentException(context.getString(io.legado.app.R.string.theme_delete_applied_forbidden))
         }
-        val entries = ThemePackageManager.loadLocalOnly(false)
-            .filter { it.source != ThemePackageManager.Source.BUILTIN && it.packageInfo.name == themeName } +
-            ThemePackageManager.loadLocalOnly(true)
-                .filter { it.source != ThemePackageManager.Source.BUILTIN && it.packageInfo.name == themeName }
-        entries.forEach { ThemePackageManager.deleteLocal(it) }
-        if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == kit.id) {
-            appCtx.putPrefString(PreferKey.currentAppearanceKitId, "")
-        }
-        entries.isNotEmpty()
+        val kits = loadIndex()
+        val target = kits.firstOrNull { it.id == kit.id } ?: return@withContext false
+        deleteExclusiveComponents(target, kits.filterNot { it.id == target.id })
+        saveIndex(kits.filterNot { it.id == target.id })
+        true
     }
 
     suspend fun importPackage(file: File): ImportResult = withContext(IO) {
@@ -128,7 +132,8 @@ object AppearanceKitManager {
             importAppearanceKit(file)
         } else {
             val entries = ThemePackageManager.importPackage(file)
-            ImportResult(themeCount = entries.size)
+            val kit = createKitFromImportedThemes(entries)
+            ImportResult(themeCount = entries.size, kitCount = if (kit != null) 1 else 0)
         }
     }
 
@@ -147,9 +152,11 @@ object AppearanceKitManager {
                 throw IllegalArgumentException("No local appearance components to export")
             }
             val manifest = AppearanceKitPackage(
-                name = "Appearance Kit",
+                id = UUID.randomUUID().toString(),
+                name = "应用主题",
                 version = kitVersion,
                 exportedAt = System.currentTimeMillis(),
+                binding = currentBinding(context),
                 components = components
             )
             File(packageDir, kitManifestName).writeText(GSON.toJson(manifest))
@@ -162,22 +169,6 @@ object AppearanceKitManager {
         } finally {
             FileUtils.delete(packageDir, deleteRootDir = true)
         }
-    }
-
-    private suspend fun applyImportedTheme(context: Context, themeName: String) {
-        val isNight = AppConfig.isNightTheme
-        val entry = ThemePackageManager.loadLocalOnly(isNight)
-            .firstOrNull { it.packageInfo.name == themeName }
-            ?: ThemePackageManager.loadLocalOnly(!isNight)
-                .firstOrNull { it.packageInfo.name == themeName }
-            ?: return
-        ThemePackageManager.apply(context, entry, switchNightMode = false)
-    }
-
-    private fun isThemeApplied(context: Context, themeName: String): Boolean {
-        val dayName = context.getPrefString(PreferKey.dThemeName).orEmpty()
-        val nightName = context.getPrefString(PreferKey.dNThemeName).orEmpty()
-        return dayName == themeName || nightName == themeName
     }
 
     private fun isAppearanceKitPackage(file: File): Boolean {
@@ -196,32 +187,224 @@ object AppearanceKitManager {
             unzipSecure(file, unzipDir)
             val manifestFile = File(unzipDir, kitManifestName)
             val manifest = GSON.fromJsonObject<AppearanceKitPackage>(manifestFile.readText()).getOrThrow()
+            val importedBinding = KitBinding()
             manifest.components.forEach { component ->
                 val componentFile = File(unzipDir, component.path)
                     .takeIf { it.isFile }
                     ?: return@forEach
                 when (component.type) {
                     KitComponentType.THEME.name -> {
-                        result = result.copy(themeCount = result.themeCount + ThemePackageManager.importZip(componentFile).let { 1 })
+                        val entry = ThemePackageManager.importZip(componentFile)
+                        importedBinding.setTheme(component.isNight, ComponentRef(entry.dirName, entry.packageInfo.name))
+                        result = result.copy(themeCount = result.themeCount + 1)
                     }
                     KitComponentType.TOP_BAR.name -> {
-                        TopBarConfig.importZip(componentFile)
+                        val entry = TopBarConfig.importZip(componentFile)
+                        importedBinding.setTopBar(component.isNight, ComponentRef(entry.dirName, entry.config.name))
                         result = result.copy(topBarCount = result.topBarCount + 1)
                     }
                     KitComponentType.NAVIGATION_BAR.name -> {
-                        NavigationBarIconConfig.importZip(componentFile)
+                        val entry = NavigationBarIconConfig.importZip(componentFile)
+                        importedBinding.setNavigationBar(component.isNight, ComponentRef(entry.dirName, entry.config.name))
                         result = result.copy(navigationBarCount = result.navigationBarCount + 1)
                     }
                     KitComponentType.COVER_COLLECTION.name -> {
-                        CoverCollectionManager.importZip(appCtx, componentFile, component.isNight)
+                        val collection = CoverCollectionManager.importZip(appCtx, componentFile, component.isNight)
+                        importedBinding.setCoverCollection(component.isNight, ComponentRef(collection.id, collection.name))
                         result = result.copy(coverCollectionCount = result.coverCollectionCount + 1)
                     }
                 }
             }
+            val finalBinding = manifest.binding.mergeImported(importedBinding)
+            saveOrReplaceKit(
+                StoredAppearanceKit(
+                    id = manifest.id.ifBlank { "kit_${manifest.name.normalizeFileName()}_${System.currentTimeMillis()}" },
+                    name = manifest.name.ifBlank { "应用主题" },
+                    previewPath = manifest.previewPath,
+                    binding = finalBinding,
+                    importedAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            result = result.copy(kitCount = result.kitCount + 1)
             return result
         } finally {
             FileUtils.delete(unzipDir, deleteRootDir = true)
         }
+    }
+
+    private suspend fun applyBinding(context: Context, binding: KitBinding) {
+        binding.preset?.takeIf { it.isNotBlank() }?.let {
+            MainLayoutPresetConfig.apply(context, it, notify = false)
+        }
+        applyThemeRef(context, false, binding.dayTheme)
+        applyThemeRef(context, true, binding.nightTheme)
+        applyTopBarRef(false, binding.dayTopBar)
+        applyTopBarRef(true, binding.nightTopBar)
+        applyNavigationRef(false, binding.dayNavigationBar)
+        applyNavigationRef(true, binding.nightNavigationBar)
+        CoverCollectionManager.setSelected(false, binding.dayCoverCollection?.dirName)
+        CoverCollectionManager.setSelected(true, binding.nightCoverCollection?.dirName)
+        NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+    }
+
+    private suspend fun applyThemeRef(context: Context, isNight: Boolean, ref: ComponentRef?) {
+        val entry = ref?.let { findThemeEntry(isNight, it) } ?: ThemePackageManager.builtinEntryForKit(isNight)
+        ThemePackageManager.apply(context, entry, switchNightMode = false, notify = false)
+    }
+
+    private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?) {
+        val entry = ref?.let { findTopBarEntry(isNight, it) }
+        TopBarConfig.apply(entry ?: TopBarConfig.defaultEntryForKit(appCtx, isNight))
+    }
+
+    private suspend fun applyNavigationRef(isNight: Boolean, ref: ComponentRef?) {
+        val entry = ref?.let { findNavigationEntry(isNight, it) }
+        if (entry != null) {
+            NavigationBarIconConfig.select(entry)
+        } else {
+            NavigationBarIconConfig.select(NavigationBarIconConfig.defaultEntryForKit(isNight))
+        }
+    }
+
+    private suspend fun findThemeEntry(isNight: Boolean, ref: ComponentRef): ThemePackageManager.Entry? {
+        return ThemePackageManager.loadLocalOnly(isNight).firstOrNull {
+            it.dirName == ref.dirName || it.packageInfo.name == ref.name
+        }
+    }
+
+    private suspend fun findTopBarEntry(isNight: Boolean, ref: ComponentRef): TopBarConfig.Entry? {
+        return TopBarConfig.loadLocalOnlyForKit(isNight).firstOrNull {
+            it.dirName == ref.dirName || it.config.name == ref.name
+        }
+    }
+
+    private suspend fun findNavigationEntry(isNight: Boolean, ref: ComponentRef): NavigationBarIconConfig.Entry? {
+        return NavigationBarIconConfig.loadLocalOnlyForKit(isNight).firstOrNull {
+            it.dirName == ref.dirName || it.config.name == ref.name
+        }
+    }
+
+    private suspend fun createKitFromImportedThemes(entries: List<ThemePackageManager.Entry>): StoredAppearanceKit? {
+        if (entries.isEmpty()) return null
+        val name = entries.first().packageInfo.name.ifBlank { "应用主题" }
+        val binding = KitBinding()
+        entries.forEach {
+            binding.setTheme(it.packageInfo.isNightTheme, ComponentRef(it.dirName, it.packageInfo.name))
+        }
+        return saveOrReplaceKit(
+            StoredAppearanceKit(
+                id = "theme_${name.normalizeFileName()}",
+                name = name,
+                binding = binding,
+                importedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private suspend fun migrateLegacyThemeKits() {
+        if (loadIndex().isNotEmpty()) return
+        val day = ThemePackageManager.loadLocalOnly(false)
+            .filter { it.source != ThemePackageManager.Source.BUILTIN }
+        val night = ThemePackageManager.loadLocalOnly(true)
+            .filter { it.source != ThemePackageManager.Source.BUILTIN }
+        val kits = (day + night).groupBy { it.packageInfo.name }.map { (name, entries) ->
+            val binding = KitBinding()
+            entries.forEach {
+                binding.setTheme(it.packageInfo.isNightTheme, ComponentRef(it.dirName, it.packageInfo.name))
+            }
+            StoredAppearanceKit(
+                id = "theme_${name.normalizeFileName()}",
+                name = name,
+                binding = binding,
+                importedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        }
+        if (kits.isNotEmpty()) saveIndex(kits)
+    }
+
+    private fun currentBinding(context: Context): KitBinding {
+        return KitBinding(
+            preset = MainLayoutPresetConfig.currentPreset(),
+            dayTheme = currentThemeRef(context, false),
+            nightTheme = currentThemeRef(context, true),
+            dayTopBar = currentTopBarRef(context, false),
+            nightTopBar = currentTopBarRef(context, true),
+            dayNavigationBar = currentNavigationRef(false),
+            nightNavigationBar = currentNavigationRef(true),
+            dayCoverCollection = currentCoverRef(false),
+            nightCoverCollection = currentCoverRef(true)
+        )
+    }
+
+    private fun currentThemeRef(context: Context, isNight: Boolean): ComponentRef? {
+        val name = context.getPrefString(if (isNight) PreferKey.dNThemeName else PreferKey.dThemeName).orEmpty()
+        if (name.isBlank() || ThemePackageManager.isBuiltinThemeForKit(isNight, name)) return null
+        return ComponentRef(name.normalizeFileName(), name)
+    }
+
+    private fun currentTopBarRef(context: Context, isNight: Boolean): ComponentRef? {
+        val entry = TopBarConfig.currentEntry(context, isNight)
+        if (entry.dirName == TopBarConfig.DEFAULT_DIR_NAME) return null
+        return ComponentRef(entry.dirName, entry.config.name)
+    }
+
+    private fun currentNavigationRef(isNight: Boolean): ComponentRef? {
+        val entry = NavigationBarIconConfig.currentEntry(isNight)
+        if (entry.dirName == NavigationBarIconConfig.DEFAULT_DIR_NAME) return null
+        return ComponentRef(entry.dirName, entry.config.name)
+    }
+
+    private fun currentCoverRef(isNight: Boolean): ComponentRef? {
+        val entry = kotlinx.coroutines.runBlocking { CoverCollectionManager.selectedEntry(isNight) } ?: return null
+        return ComponentRef(entry.collection.id, entry.collection.name)
+    }
+
+    private suspend fun deleteExclusiveComponents(target: StoredAppearanceKit, others: List<StoredAppearanceKit>) {
+        val usedThemeRefs = others.flatMap { listOfNotNull(it.binding.dayTheme, it.binding.nightTheme) }.map { it.key() }.toSet()
+        val usedTopRefs = others.flatMap { listOfNotNull(it.binding.dayTopBar, it.binding.nightTopBar) }.map { it.key() }.toSet()
+        val usedNavRefs = others.flatMap { listOfNotNull(it.binding.dayNavigationBar, it.binding.nightNavigationBar) }.map { it.key() }.toSet()
+        val usedCoverRefs = others.flatMap { listOfNotNull(it.binding.dayCoverCollection, it.binding.nightCoverCollection) }.map { it.key() }.toSet()
+
+        listOf(false to target.binding.dayTheme, true to target.binding.nightTheme).forEach { (isNight, ref) ->
+            if (ref != null && ref.key() !in usedThemeRefs) {
+                findThemeEntry(isNight, ref)?.let { ThemePackageManager.deleteLocal(it) }
+            }
+        }
+        listOf(false to target.binding.dayTopBar, true to target.binding.nightTopBar).forEach { (isNight, ref) ->
+            if (ref != null && ref.key() !in usedTopRefs) {
+                findTopBarEntry(isNight, ref)?.let { TopBarConfig.deleteLocal(it) }
+            }
+        }
+        listOf(false to target.binding.dayNavigationBar, true to target.binding.nightNavigationBar).forEach { (isNight, ref) ->
+            if (ref != null && ref.key() !in usedNavRefs) {
+                findNavigationEntry(isNight, ref)?.let { NavigationBarIconConfig.deleteLocal(it) }
+            }
+        }
+        listOf(false to target.binding.dayCoverCollection, true to target.binding.nightCoverCollection).forEach { (isNight, ref) ->
+            if (ref != null && ref.key() !in usedCoverRefs) {
+                CoverCollectionManager.localEntryForKit(isNight, ref.dirName, ref.name)
+                    ?.let { CoverCollectionManager.deleteLocal(it) }
+            }
+        }
+    }
+
+    private fun loadIndex(): List<StoredAppearanceKit> {
+        if (!indexFile.isFile) return emptyList()
+        return GSON.fromJsonArray<StoredAppearanceKit>(indexFile.readText()).getOrDefault(emptyList())
+    }
+
+    private fun saveIndex(kits: List<StoredAppearanceKit>) {
+        indexFile.parentFile?.mkdirs()
+        indexFile.writeText(GSON.toJson(kits.sortedBy { it.name }))
+    }
+
+    private fun saveOrReplaceKit(kit: StoredAppearanceKit): StoredAppearanceKit {
+        val list = loadIndex().filterNot { it.id == kit.id || it.name == kit.name } + kit
+        saveIndex(list)
+        return kit
     }
 
     private fun unzipSecure(zipFile: File, targetDir: File) {
@@ -299,17 +482,21 @@ data class ImportResult(
     val themeCount: Int = 0,
     val topBarCount: Int = 0,
     val navigationBarCount: Int = 0,
-    val coverCollectionCount: Int = 0
+    val coverCollectionCount: Int = 0,
+    val kitCount: Int = 0
 ) {
     val total: Int
-        get() = themeCount + topBarCount + navigationBarCount + coverCollectionCount
+        get() = themeCount + topBarCount + navigationBarCount + coverCollectionCount + kitCount
 }
 
 @Keep
 private data class AppearanceKitPackage(
+    val id: String = "",
     val name: String = "",
     val version: Int = 0,
     val exportedAt: Long = 0L,
+    val previewPath: String? = null,
+    val binding: KitBinding = KitBinding(),
     val components: List<KitComponent> = emptyList()
 )
 
@@ -332,11 +519,105 @@ data class AppearanceKit(
     val name: String,
     val summary: String,
     val type: AppearanceKitType,
-    val preset: String? = null,
-    val themeName: String? = null
+    val binding: KitBinding? = null,
+    val previewPath: String? = null
 )
 
 enum class AppearanceKitType {
     BUILTIN,
     IMPORTED_THEME
+}
+
+@Keep
+data class StoredAppearanceKit(
+    val id: String = "",
+    val name: String = "",
+    val previewPath: String? = null,
+    val binding: KitBinding = KitBinding(),
+    val importedAt: Long = 0L,
+    val updatedAt: Long = 0L
+) {
+    fun toAppearanceKit(): AppearanceKit {
+        val parts = listOfNotNull(
+            binding.dayTheme?.let { "日间主题" },
+            binding.nightTheme?.let { "夜间主题" },
+            binding.dayNavigationBar?.let { "底栏" } ?: binding.nightNavigationBar?.let { "底栏" },
+            binding.dayTopBar?.let { "顶栏" } ?: binding.nightTopBar?.let { "顶栏" },
+            binding.dayCoverCollection?.let { "封面" } ?: binding.nightCoverCollection?.let { "封面" }
+        ).distinct()
+        return AppearanceKit(
+            id = id,
+            name = name,
+            summary = if (parts.isEmpty()) "应用后缺失组件将恢复默认" else parts.joinToString(" / "),
+            type = AppearanceKitType.IMPORTED_THEME,
+            binding = binding,
+            previewPath = previewPath
+        )
+    }
+}
+
+@Keep
+data class KitBinding(
+    var preset: String? = null,
+    var dayTheme: ComponentRef? = null,
+    var nightTheme: ComponentRef? = null,
+    var dayTopBar: ComponentRef? = null,
+    var nightTopBar: ComponentRef? = null,
+    var dayNavigationBar: ComponentRef? = null,
+    var nightNavigationBar: ComponentRef? = null,
+    var dayCoverCollection: ComponentRef? = null,
+    var nightCoverCollection: ComponentRef? = null
+) {
+    fun mergeImported(imported: KitBinding): KitBinding {
+        return copy(
+            dayTheme = imported.dayTheme ?: dayTheme,
+            nightTheme = imported.nightTheme ?: nightTheme,
+            dayTopBar = imported.dayTopBar ?: dayTopBar,
+            nightTopBar = imported.nightTopBar ?: nightTopBar,
+            dayNavigationBar = imported.dayNavigationBar ?: dayNavigationBar,
+            nightNavigationBar = imported.nightNavigationBar ?: nightNavigationBar,
+            dayCoverCollection = imported.dayCoverCollection ?: dayCoverCollection,
+            nightCoverCollection = imported.nightCoverCollection ?: nightCoverCollection
+        )
+    }
+
+    fun setTheme(isNight: Boolean, ref: ComponentRef) {
+        if (isNight) {
+            nightTheme = ref
+        } else {
+            dayTheme = ref
+        }
+    }
+
+    fun setTopBar(isNight: Boolean, ref: ComponentRef) {
+        if (isNight) {
+            nightTopBar = ref
+        } else {
+            dayTopBar = ref
+        }
+    }
+
+    fun setNavigationBar(isNight: Boolean, ref: ComponentRef) {
+        if (isNight) {
+            nightNavigationBar = ref
+        } else {
+            dayNavigationBar = ref
+        }
+    }
+
+    fun setCoverCollection(isNight: Boolean, ref: ComponentRef) {
+        if (isNight) {
+            nightCoverCollection = ref
+        } else {
+            dayCoverCollection = ref
+        }
+    }
+}
+
+@Keep
+data class ComponentRef(
+    val dirName: String = "",
+    val name: String = ""
+) {
+    fun key(): String = dirName.ifBlank { name }
 }

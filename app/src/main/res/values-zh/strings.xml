@@ -2165,4 +2165,5 @@ bookUrl：%7$s
     <string name="appearance_kit_cover_summary">管理书籍封面图集资源</string>
     <string name="appearance_kit_delete_confirm">删除应用主题“%s”？</string>
     <string name="theme_red_invalid">RED 主题包格式不正确</string>
+    <string name="theme_red_private_encrypted_unsupported">该 RED 应用主题使用私有加密格式，暂时无法导入</string>
 </resources>

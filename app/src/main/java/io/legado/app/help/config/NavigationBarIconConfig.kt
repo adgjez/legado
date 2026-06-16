@@ -239,6 +239,14 @@ object NavigationBarIconConfig {
         }
     }
 
+    suspend fun loadLocalOnlyForKit(isNight: Boolean): List<Entry> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        loadLocal(isNight)
+    }
+
+    fun defaultEntryForKit(isNight: Boolean): Entry {
+        return defaultEntry(isNight)
+    }
+
     suspend fun restoreApplied(isNight: Boolean): Entry? {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) {

@@ -187,6 +187,14 @@ object TopBarConfig {
         appCtx.putPrefString(key, entry.dirName)
     }
 
+    suspend fun loadLocalOnlyForKit(isNight: Boolean): List<Entry> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        loadLocal(isNight)
+    }
+
+    fun defaultEntryForKit(context: Context, isNight: Boolean): Entry {
+        return defaultEntry(context, isNight)
+    }
+
     suspend fun restoreApplied(isNight: Boolean): Entry? {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) return defaultEntry(appCtx, isNight)

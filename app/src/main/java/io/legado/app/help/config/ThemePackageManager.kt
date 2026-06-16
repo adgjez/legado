@@ -151,6 +151,7 @@ object ThemePackageManager {
             RedPackageFormat.RED04_ZIP,
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importRed(file)
+            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
             null -> listOf(importZip(file))
         }
     }
@@ -178,11 +179,24 @@ object ThemePackageManager {
         AppCloudStorage.deleteThemePackage(entry.packageInfo.isNightTheme, entry.dirName, containerId, scope)
     }
 
-    suspend fun apply(context: Context, entry: Entry, switchNightMode: Boolean = true) {
+    suspend fun apply(
+        context: Context,
+        entry: Entry,
+        switchNightMode: Boolean = true,
+        notify: Boolean = true
+    ) {
         val config = withContext(IO) {
             validatedConfig(entry)
         }
-        ThemeConfig.applyConfig(context, config, switchNightMode)
+        ThemeConfig.applyConfig(context, config, switchNightMode, notify)
+    }
+
+    fun builtinEntryForKit(isNightTheme: Boolean): Entry {
+        return builtinEntry(isNightTheme)
+    }
+
+    fun isBuiltinThemeForKit(isNightTheme: Boolean, name: String): Boolean {
+        return isBuiltinTheme(isNightTheme, name)
     }
 
     suspend fun reapplyRestoredAppliedThemes(context: Context) = withContext(IO) {
@@ -523,6 +537,7 @@ object ThemePackageManager {
             RedPackageFormat.RED04_ZIP -> importRedZip(file)
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importRedGzip(file)
+            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
             null -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         }
     }
@@ -561,6 +576,12 @@ object ThemePackageManager {
                     header[3] == 4.toByte() &&
                     header[4] == 'P'.code.toByte() &&
                     header[5] == 'K'.code.toByte() -> RedPackageFormat.RED04_ZIP
+
+                size >= 6 &&
+                    header[0] == 'R'.code.toByte() &&
+                    header[1] == 'E'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[3] == 0x10.toByte() -> RedPackageFormat.RED10_PRIVATE
 
                 size >= 6 &&
                     header[0] == 'R'.code.toByte() &&
@@ -1276,6 +1297,7 @@ object ThemePackageManager {
 
     private enum class RedPackageFormat {
         RED04_ZIP,
+        RED10_PRIVATE,
         RED_GZIP_JSON,
         RAW_GZIP_JSON
     }

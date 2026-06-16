@@ -110,6 +110,13 @@ object CoverCollectionManager {
         Entry(collection, Source.LOCAL, collectionDir(collection))
     }
 
+    suspend fun localEntryForKit(isNight: Boolean, refId: String, name: String): Entry? = withContext(IO) {
+        val collection = loadIndex(isNight).firstOrNull {
+            it.id == refId || it.dirName == refId || it.name == name
+        } ?: return@withContext null
+        Entry(collection, Source.LOCAL, collectionDir(collection))
+    }
+
     fun cachedName(isNight: Boolean, id: String?): String? {
         if (id.isNullOrBlank()) return null
         val cache = if (isNight) nightCache else dayCache
