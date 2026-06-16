@@ -412,6 +412,9 @@ result = `<img src = "${url}">`;
 <div style="width:72%;padding:.1em .1em;background:rgba(68,150,211,.14);border-radius:12px;text-align:left;">
 极小内边距气泡文本
 </div>
+<div style="width:72%;padding:.1em .1em;background:rgba(68,150,211,.14);border-radius:12px;text-align:left;">
+容器内段评文本<img src="dp:5,{&quot;status&quot;:&quot;normal&quot;,&quot;pclick&quot;:&quot;rule:xxx&quot;}">
+</div>
 <div style="width:72%;margin-left:auto;padding:.7em .9em;background:#e8f3ff;border:1px solid rgba(68,150,211,.45);border-radius:12px;text-align:left;">
 右侧气泡文本
 </div>
@@ -428,7 +431,7 @@ result = `<img src = "${url}">`;
 </p>
 </usehtml>
 ```
-> 正文`usehtml`支持图片标签。图片`src`可以附加`style`、`width`、`click`等参数, 具体写法参考上方图片链接控制样式。  
+> 正文`usehtml`支持图片标签。图片`src`可以附加`style`、`width`、`click`等参数, 具体写法参考上方图片链接控制样式。`dp:`段评图片可以放在文本容器内并按行内内容渲染; 普通大图仍建议按块级图片处理。  
 > 正文`usehtml`不支持完整CSS盒模型和浏览器复杂布局, 不支持背景图、`float`、`flex`、`grid`、`position:absolute`、脚本执行、内嵌视频播放等。复杂图文布局建议使用阅读器支持的图片样式或后续专用布局属性。  
 > 支持Markdown语法，需要用`<md></md>`包裹起来  
 > 支持使用浏览器渲染，需要用`<useweb></useweb>`包裹起来  
