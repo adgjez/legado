@@ -15,6 +15,22 @@ class UseHtmlTextBoxLayoutResolverTest {
     }
 
     @Test
+    fun fullWidthPercentageKeepsReaderLeftEdge() {
+        val layout = resolve(style = "width:100%;text-align:left")
+
+        assertEquals(1000, layout?.width)
+        assertEquals(0f, layout?.startOffset)
+    }
+
+    @Test
+    fun fullWidthWithZeroMarginKeepsReaderLeftEdge() {
+        val layout = resolve(style = "margin:0;width:100%")
+
+        assertEquals(1000, layout?.width)
+        assertEquals(0f, layout?.startOffset)
+    }
+
+    @Test
     fun widthPxKeepsAbsoluteWidth() {
         val layout = resolve(style = "width:240px")
 
@@ -85,6 +101,17 @@ class UseHtmlTextBoxLayoutResolverTest {
         val layout = resolve(
             attributes = mapOf("data-legado-layout" to "text-box"),
             style = ""
+        )
+
+        assertEquals(1000, layout?.width)
+        assertEquals(0f, layout?.startOffset)
+    }
+
+    @Test
+    fun explicitAttributeFullWidthKeepsReaderLeftEdge() {
+        val layout = resolve(
+            attributes = mapOf("data-legado-layout" to "text-box"),
+            style = "width:100%;margin-left:0;margin-right:0"
         )
 
         assertEquals(1000, layout?.width)
