@@ -3,14 +3,17 @@ package io.legado.app.ui.config
 import android.os.Bundle
 import android.net.Uri
 import android.view.View
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -49,6 +55,7 @@ import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -99,6 +106,7 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
                     kits = kitsState,
                     currentKitId = currentKitIdState,
                     onApply = ::applyKit,
+                    onEdit = ::editKit,
                     onDelete = ::confirmDeleteKit,
                     onImport = ::selectImportPackage,
                     onExport = ::exportCurrentKit,
@@ -141,6 +149,27 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
             negativeText = getString(R.string.cancel),
             dangerPositive = true,
             onPositive = { deleteKit(kit) }
+        )
+    }
+
+    private fun editKit(kit: AppearanceKit) {
+        if (kit.type != AppearanceKitType.IMPORTED_THEME) return
+        showComposeTextInputDialog(
+            title = getString(R.string.edit),
+            initialValue = kit.name,
+            hint = getString(R.string.name),
+            onPositive = { name ->
+                lifecycleScope.launch {
+                    runCatching {
+                        AppearanceKitManager.renameKit(kit, name)
+                    }.onSuccess {
+                        toastOnUi(if (it) R.string.success else R.string.error)
+                        refreshKits()
+                    }.onFailure {
+                        toastOnUi(it.localizedMessage ?: getString(R.string.error))
+                    }
+                }
+            }
         )
     }
 
@@ -219,6 +248,7 @@ private fun AppearanceKitScreen(
     kits: List<AppearanceKit>,
     currentKitId: String,
     onApply: (AppearanceKit) -> Unit,
+    onEdit: (AppearanceKit) -> Unit,
     onDelete: (AppearanceKit) -> Unit,
     onImport: () -> Unit,
     onExport: () -> Unit,
@@ -241,6 +271,7 @@ private fun AppearanceKitScreen(
                 rows = kits,
                 currentKitId = currentKitId,
                 onApply = onApply,
+                onEdit = onEdit,
                 onDelete = onDelete
             )
         }
@@ -290,6 +321,7 @@ private fun KitSection(
     rows: List<AppearanceKit>,
     currentKitId: String,
     onApply: (AppearanceKit) -> Unit,
+    onEdit: (AppearanceKit) -> Unit,
     onDelete: (AppearanceKit) -> Unit
 ) {
     val context = LocalContext.current
@@ -311,11 +343,14 @@ private fun KitSection(
                 title = kit.name,
                 summary = kit.summary,
                 trailing = if (kit.id == currentKitId) "已应用" else "应用",
-                secondaryTrailing = if (kit.type == AppearanceKitType.IMPORTED_THEME) stringResourceCompat(R.string.delete) else "",
+                secondaryTrailing = if (kit.type == AppearanceKitType.IMPORTED_THEME) stringResourceCompat(R.string.edit) else "",
+                tertiaryTrailing = if (kit.type == AppearanceKitType.IMPORTED_THEME) stringResourceCompat(R.string.delete) else "",
+                previewSeed = kit.id,
                 palette = palette,
                 isLast = index == rows.lastIndex,
                 onClick = { onApply(kit) },
-                onSecondaryClick = { onDelete(kit) }
+                onSecondaryClick = { onEdit(kit) },
+                onTertiaryClick = { onDelete(kit) }
             )
         }
     }
@@ -386,10 +421,13 @@ private fun ActionRow(
     summary: String,
     trailing: String,
     secondaryTrailing: String = "",
+    tertiaryTrailing: String = "",
+    previewSeed: String? = null,
     palette: AppSettingPalette,
     isLast: Boolean,
     onClick: () -> Unit,
-    onSecondaryClick: (() -> Unit)? = null
+    onSecondaryClick: (() -> Unit)? = null,
+    onTertiaryClick: (() -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -414,6 +452,10 @@ private fun ActionRow(
             )
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
+        previewSeed?.let {
+            KitPreview(seed = it, palette = palette)
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
@@ -453,5 +495,45 @@ private fun ActionRow(
                 )
             )
         }
+        if (tertiaryTrailing.isNotBlank() && onTertiaryClick != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = tertiaryTrailing,
+                color = palette.accent,
+                fontSize = 14.sp,
+                maxLines = 1,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onTertiaryClick
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun KitPreview(seed: String, palette: AppSettingPalette) {
+    val colors = remember(seed) {
+        val hash = seed.hashCode()
+        val first = Color(0xFF000000 or (hash and 0x00FFFFFF).toLong())
+        val second = Color(0xFF000000 or ((hash * 31) and 0x00FFFFFF).toLong())
+        listOf(first, second)
+    }
+    Box(
+        modifier = Modifier
+            .size(width = 56.dp, height = 42.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Brush.linearGradient(colors))
+            .padding(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.66f)
+                .height(6.dp)
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                .background(Color(palette.row).copy(alpha = 0.72f))
+        )
     }
 }

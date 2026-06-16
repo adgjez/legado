@@ -127,6 +127,21 @@ object AppearanceKitManager {
         true
     }
 
+    suspend fun renameKit(kit: AppearanceKit, name: String): Boolean = withContext(IO) {
+        if (kit.type != AppearanceKitType.IMPORTED_THEME) return@withContext false
+        val nextName = name.trim().ifBlank { return@withContext false }
+        val kits = loadIndex()
+        val index = kits.indexOfFirst { it.id == kit.id }
+        if (index < 0) return@withContext false
+        if (kits.any { it.id != kit.id && it.name == nextName }) {
+            throw IllegalArgumentException("应用主题名称已存在")
+        }
+        val next = kits.toMutableList()
+        next[index] = next[index].copy(name = nextName, updatedAt = System.currentTimeMillis())
+        saveIndex(next)
+        true
+    }
+
     suspend fun importPackage(file: File): ImportResult = withContext(IO) {
         if (isAppearanceKitPackage(file)) {
             importAppearanceKit(file)
