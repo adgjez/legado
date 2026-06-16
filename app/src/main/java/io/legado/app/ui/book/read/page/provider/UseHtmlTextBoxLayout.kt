@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.provider
 
 import io.legado.app.model.localBook.EpubCss
 import java.util.Locale
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 internal data class UseHtmlTextBoxLayout(
@@ -71,9 +72,12 @@ internal object UseHtmlTextBoxLayoutResolver {
 
         val maxOffset = (visibleWidth - width).coerceAtLeast(0)
         val hasConstrainedWidth = hasExplicitWidth || width < visibleWidth
+        val rightEdgeInset = rightEdgeInsetPx(emPx).coerceAtMost(maxOffset)
         val offset = when {
             leftAuto && rightAuto && hasConstrainedWidth -> maxOffset / 2f
-            leftAuto && hasConstrainedWidth -> (visibleWidth - width - (marginRight ?: 0)).toFloat()
+            leftAuto && hasConstrainedWidth -> (
+                visibleWidth - width - (marginRight ?: 0) - rightEdgeInset
+                ).toFloat()
             else -> (marginLeft ?: 0).toFloat()
         }.coerceIn(0f, maxOffset.toFloat())
 
@@ -111,6 +115,10 @@ internal object UseHtmlTextBoxLayoutResolver {
     private fun String.isMeaningfulHorizontalMargin(): Boolean {
         val clean = trim().lowercase(Locale.ROOT)
         return clean.isNotBlank() && clean != "0" && clean != "0px" && clean != "0em" && clean != "0rem"
+    }
+
+    private fun rightEdgeInsetPx(emPx: Float): Int {
+        return max(2, (emPx * 0.15f).roundToInt())
     }
 
     private fun String?.toCssPx(baseWidth: Int, emPx: Float): Int? {

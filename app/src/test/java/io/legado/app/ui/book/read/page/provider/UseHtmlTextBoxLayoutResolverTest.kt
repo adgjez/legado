@@ -35,7 +35,15 @@ class UseHtmlTextBoxLayoutResolverTest {
         val layout = resolve(style = "width:40%;margin-left:auto;margin-right:100px")
 
         assertEquals(400, layout?.width)
-        assertEquals(500f, layout?.startOffset)
+        assertEquals(497f, layout?.startOffset)
+    }
+
+    @Test
+    fun rightAlignedBoxKeepsSmallRightEdgeInset() {
+        val layout = resolve(style = "width:60%;margin-left:auto;text-align:right")
+
+        assertEquals(600, layout?.width)
+        assertEquals(397f, layout?.startOffset)
     }
 
     @Test
