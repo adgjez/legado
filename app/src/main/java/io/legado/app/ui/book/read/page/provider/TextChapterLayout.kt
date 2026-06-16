@@ -901,7 +901,7 @@ class TextChapterLayout(
                         addEpubBlockSpacingBefore(node)
                     }
                     val textBoxLayout = node.useHtmlTextBoxLayout()
-                    if (node.isHtmlBlock() && node.hasEpubBlockBoxStyle() && !node.hasHtmlImage()) {
+                    if (node.isHtmlBlock() && node.hasEpubBlockBoxStyle() && !node.hasNonInlineHtmlImage()) {
                         flushHtmlBuffer()
                         setTypeEpubBlockBox(imageStyle, book, node, textBoxLayout)
                     } else if (textBoxLayout != null) {
@@ -1559,6 +1559,17 @@ class TextChapterLayout(
         return children().any { it.hasHtmlImage() }
     }
 
+    private fun Element.hasNonInlineHtmlImage(): Boolean {
+        if (normalName() == "img") {
+            return !isParagraphBubbleImg()
+        }
+        return children().any { it.hasNonInlineHtmlImage() }
+    }
+
+    private fun Element.isParagraphBubbleImg(): Boolean {
+        return normalName() == "img" && attr("src").trim().startsWith(PARAGRAPH_BUBBLE_PREFIX)
+    }
+
     private fun Element.isHtmlBlock(): Boolean {
         return when (normalName()) {
             "address", "article", "aside", "blockquote", "body", "center", "dd", "details",
@@ -1573,7 +1584,7 @@ class TextChapterLayout(
     private fun Element.useHtmlTextBoxLayout(): UseHtmlTextBoxLayout? {
         if (
             !isUseHtmlTextBoxCandidate() ||
-            hasHtmlImage() ||
+            hasNonInlineHtmlImage() ||
             hasEpubBlockBoxDescendant() ||
             hasComplexUseHtmlTextBoxDescendant()
         ) {
@@ -1702,7 +1713,16 @@ class TextChapterLayout(
                     val source = span.source ?: return@let
                     val imageInfo = parseImageInfo(source)
                     val urlMatcher = paramPattern.matcher(source)
-                    if (urlMatcher.find()) {
+                    if (ParagraphBubbleRenderer.isBubbleSrc(imageInfo.renderSrc)) {
+                        columns.add(
+                            ImageColumn(
+                                start = charStart,
+                                end = charEnd,
+                                src = imageInfo.renderSrc,
+                                click = imageInfo.click
+                            )
+                        )
+                    } else if (urlMatcher.find()) {
                         var iStyle = imageInfo.style
                         val width = imageInfo.width
                         val click = imageInfo.click
