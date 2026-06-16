@@ -1451,6 +1451,28 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
     }
 
+    private fun refreshAppearanceKit() = binding.run {
+        bottomNavigationConfigSignature = ""
+        NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+        bottomNavigationView.menu.clear()
+        bottomNavigationView.inflateMenu(R.menu.main_bnv)
+        applyBottomNavigationIcons()
+        onUpBooksBadgeView = null
+        upBottomMenu()
+        syncLiquidGlassSampleBackground()
+        applyBottomLayoutMode()
+        refreshMainTopBars(root)
+        updateAiFloatingBall()
+        scheduleLiquidGlassWarmup()
+        root.post {
+            refreshMainTopBars(root)
+            applyBottomLayoutMode()
+            bottomNavigationView.doOnLayout {
+                updateBottomNavigationIndicator(animate = false)
+            }
+        }
+    }
+
     private fun syncAiFloatingBallIcon(ball: View) {
         val imageView = (ball as? ViewGroup)?.getChildAt(0) as? ImageView ?: return
         val hasCustomSearchIcon = NavigationBarIconConfig.hasCurrentSingleIcon(NavigationBarIconConfig.EXTRA_SEARCH)
@@ -2122,6 +2144,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                     scheduleLiquidGlassSetup(delayMillis = 96L)
                 }
             }
+        }
+        observeEvent<Boolean>(EventBus.MAIN_APPEARANCE_KIT_CHANGED) {
+            refreshAppearanceKit()
         }
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
             binding.apply {

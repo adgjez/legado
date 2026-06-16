@@ -44,7 +44,6 @@ import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 internal enum class MySettingsRowKind {
     Action,
     ThemeMode,
-    MainLayoutPreset,
     WebService
 }
 
@@ -101,7 +100,6 @@ internal fun MySettingsScreen(
     subSearchItems: List<MySettingsSubSearchItem>,
     searchQuery: String,
     themeModeLabel: String,
-    mainLayoutPresetLabel: String,
     webServiceState: MyWebServiceUiState,
     onThemeModeClick: () -> Unit,
     onWebServiceCheckedChange: (Boolean) -> Unit,
@@ -116,7 +114,6 @@ internal fun MySettingsScreen(
         searchQuery = searchQuery,
         webServiceState = webServiceState,
         themeModeLabel = themeModeLabel,
-        mainLayoutPresetLabel = mainLayoutPresetLabel
     )
 
     CompositionLocalProvider(
@@ -141,7 +138,6 @@ internal fun MySettingsScreen(
                         colors = colors,
                         panelRadiusPx = panelRadiusPx,
                         themeModeLabel = themeModeLabel,
-                        mainLayoutPresetLabel = mainLayoutPresetLabel,
                         webServiceState = webServiceState,
                         onThemeModeClick = onThemeModeClick,
                         onWebServiceCheckedChange = onWebServiceCheckedChange,
@@ -168,7 +164,6 @@ private fun SettingsSectionCard(
     colors: AppSettingPalette,
     panelRadiusPx: Float,
     themeModeLabel: String,
-    mainLayoutPresetLabel: String,
     webServiceState: MyWebServiceUiState,
     onThemeModeClick: () -> Unit,
     onWebServiceCheckedChange: (Boolean) -> Unit,
@@ -201,16 +196,6 @@ private fun SettingsSectionCard(
                     isLast = isLastRowInSection,
                     showDivider = showDivider,
                     onClick = onThemeModeClick
-                )
-
-                MySettingsRowKind.MainLayoutPreset -> SettingsActionRow(
-                    item = item.copy(summary = mainLayoutPresetLabel),
-                    colors = colors,
-                    panelRadiusPx = panelRadiusPx,
-                    isFirst = false,
-                    isLast = isLastRowInSection,
-                    showDivider = showDivider,
-                    onClick = { onRowClick(item.row.key, item.searchTarget) }
                 )
 
                 MySettingsRowKind.WebService -> WebServiceRow(
@@ -398,13 +383,12 @@ private fun buildVisibleSections(
     subSearchItems: List<MySettingsSubSearchItem>,
     searchQuery: String,
     webServiceState: MyWebServiceUiState,
-    themeModeLabel: String,
-    mainLayoutPresetLabel: String
+    themeModeLabel: String
 ): List<VisibleSection> {
     val query = searchQuery.trim().lowercase()
     return sections.mapNotNull { section ->
         val rows = section.rows.mapNotNull { row ->
-            val summary = row.effectiveSummary(webServiceState, themeModeLabel, mainLayoutPresetLabel)
+            val summary = row.effectiveSummary(webServiceState, themeModeLabel)
             val matchedSubItems = if (query.isBlank()) {
                 emptyList()
             } else {
@@ -433,12 +417,10 @@ private fun buildVisibleSections(
 
 private fun MySettingsRowModel.effectiveSummary(
     webServiceState: MyWebServiceUiState,
-    themeModeLabel: String,
-    mainLayoutPresetLabel: String
+    themeModeLabel: String
 ): String {
     return when (kind) {
         MySettingsRowKind.ThemeMode -> themeModeLabel
-        MySettingsRowKind.MainLayoutPreset -> mainLayoutPresetLabel
         MySettingsRowKind.WebService -> webServiceState.summary
         MySettingsRowKind.Action -> summary.orEmpty()
     }

@@ -40,7 +40,7 @@ object MainLayoutPresetConfig {
             }
     }
 
-    fun apply(context: Context, preset: String) {
+    fun apply(context: Context, preset: String, notify: Boolean = true) {
         val nextPreset = preset.takeIf { it in validPresets } ?: PRESET_DEFAULT
         val topBarStyle = when (nextPreset) {
             PRESET_REGULAR -> TopBarConfig.STYLE_REGULAR
@@ -63,6 +63,8 @@ object MainLayoutPresetConfig {
         if (bottomLayoutMode == "sidebar") {
             context.putPrefBoolean(PreferKey.mergeDiscoveryRss, false)
         }
-        postEvent(EventBus.NOTIFY_MAIN, true)
+        if (notify) {
+            postEvent(EventBus.NOTIFY_MAIN, true)
+        }
     }
 }

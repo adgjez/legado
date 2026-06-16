@@ -2152,5 +2152,7 @@ bookUrl：%7$s
     <string name="main_layout_preset_regular_summary">常规底栏 + 常规顶栏</string>
     <string name="main_layout_preset_sidebar">侧栏</string>
     <string name="main_layout_preset_sidebar_summary">侧边栏 + 默认顶栏</string>
+    <string name="appearance_kit_manage">界面套件</string>
+    <string name="appearance_kit_summary">统一管理主题、顶栏、底栏和封面图集</string>
     <string name="theme_red_invalid">RED 主题包格式不正确</string>
 </resources>

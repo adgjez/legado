@@ -16,7 +16,6 @@ import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.FragmentMyConfigBinding
-import io.legado.app.help.config.MainLayoutPresetConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.applyUiBodyTypefaceDeep
@@ -30,6 +29,7 @@ import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
 import io.legado.app.ui.config.ConfigActivity
 import io.legado.app.ui.config.ConfigTag
+import io.legado.app.ui.config.AppearanceKitActivity
 import io.legado.app.ui.dict.rule.DictRuleActivity
 import io.legado.app.ui.file.FileManageActivity
 import io.legado.app.ui.main.MainFragmentInterface
@@ -69,13 +69,11 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
     }
     private val searchQueryState = mutableStateOf("")
     private val themeModeState = mutableStateOf("0")
-    private val mainLayoutPresetState = mutableStateOf(MainLayoutPresetConfig.currentPreset())
     private val webServiceState = mutableStateOf(
         MyWebServiceUiState(checked = false, summary = "")
     )
     private val sections by lazy(LazyThreadSafetyMode.NONE) { buildSections() }
     private val themeOptions by lazy(LazyThreadSafetyMode.NONE) { buildThemeOptions() }
-    private val mainLayoutPresetOptions by lazy(LazyThreadSafetyMode.NONE) { buildMainLayoutPresetOptions() }
     private val subSearchItems by lazy(LazyThreadSafetyMode.NONE) { buildSubSearchItems() }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -129,10 +127,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                 themeModeState.value = requireContext().getPrefString(PreferKey.themeMode, "0") ?: "0"
             }
 
-            PreferKey.mainLayoutPreset -> {
-                mainLayoutPresetState.value = MainLayoutPresetConfig.currentPreset()
-            }
-
             "recordLog" -> LogUtils.upLevel()
         }
     }
@@ -151,7 +145,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                     subSearchItems = subSearchItems,
                     searchQuery = searchQueryState.value,
                     themeModeLabel = currentThemeModeLabel(),
-                    mainLayoutPresetLabel = currentMainLayoutPresetLabel(),
                     webServiceState = webServiceState.value,
                     onThemeModeClick = ::showThemeModeActions,
                     onWebServiceCheckedChange = ::setWebServiceEnabled,
@@ -192,7 +185,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
 
     private fun updateSettingsState() {
         themeModeState.value = requireContext().getPrefString(PreferKey.themeMode, "0") ?: "0"
-        mainLayoutPresetState.value = MainLayoutPresetConfig.currentPreset()
         updateWebServiceState()
     }
 
@@ -221,12 +213,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
             ?: getString(R.string.theme_mode)
     }
 
-    private fun currentMainLayoutPresetLabel(): String {
-        return mainLayoutPresetOptions.firstOrNull { it.value == mainLayoutPresetState.value }?.label
-            ?: mainLayoutPresetOptions.firstOrNull()?.label
-            ?: getString(R.string.main_layout_preset)
-    }
-
     private fun showThemeModeActions() {
         showDialogFragment(
             ComposeActionListDialog.create(
@@ -241,31 +227,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                 negativeText = getString(R.string.cancel),
                 onSelected = { index ->
                     themeOptions.getOrNull(index)?.value?.let(::setThemeMode)
-                }
-            )
-        )
-    }
-
-    private fun setMainLayoutPreset(value: String) {
-        MainLayoutPresetConfig.apply(requireContext(), value)
-        mainLayoutPresetState.value = MainLayoutPresetConfig.currentPreset()
-    }
-
-    private fun showMainLayoutPresetActions() {
-        showDialogFragment(
-            ComposeActionListDialog.create(
-                title = getString(R.string.main_layout_preset),
-                labels = mainLayoutPresetOptions.map { option ->
-                    if (option.value == mainLayoutPresetState.value) {
-                        "${option.label}  ✓"
-                    } else {
-                        option.label
-                    }
-                },
-                descriptions = mainLayoutPresetOptions.map { it.summary },
-                negativeText = getString(R.string.cancel),
-                onSelected = { index ->
-                    mainLayoutPresetOptions.getOrNull(index)?.value?.let(::setMainLayoutPreset)
                 }
             )
         )
@@ -338,7 +299,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                 putExtra("configTag", ConfigTag.THEME_CONFIG)
             }
 
-            PreferKey.mainLayoutPreset -> showMainLayoutPresetActions()
+            "appearanceKit" -> startActivity<AppearanceKitActivity>()
 
             "ai_setting" -> startActivity<ConfigActivity> {
                 putExtra("configTag", ConfigTag.AI_CONFIG)
@@ -373,10 +334,9 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
                         kind = MySettingsRowKind.ThemeMode
                     ),
                     MySettingsRowModel(
-                        key = PreferKey.mainLayoutPreset,
-                        title = getString(R.string.main_layout_preset),
-                        summary = getString(R.string.main_layout_preset_summary),
-                        kind = MySettingsRowKind.MainLayoutPreset
+                        key = "appearanceKit",
+                        title = getString(R.string.appearance_kit_manage),
+                        summary = getString(R.string.appearance_kit_summary)
                     ),
                     actionRow("theme_setting", R.string.theme_setting, R.string.theme_setting_s),
                     actionRow("ai_setting", R.string.ai_setting, R.string.ai_setting_summary)
@@ -434,26 +394,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config),
         }.ifEmpty {
             listOf(MySettingsThemeOption("0", getString(R.string.theme_mode)))
         }
-    }
-
-    private fun buildMainLayoutPresetOptions(): List<MySettingsThemeOption> {
-        return listOf(
-            MySettingsThemeOption(
-                value = MainLayoutPresetConfig.PRESET_DEFAULT,
-                label = getString(R.string.main_layout_preset_default),
-                summary = getString(R.string.main_layout_preset_default_summary)
-            ),
-            MySettingsThemeOption(
-                value = MainLayoutPresetConfig.PRESET_REGULAR,
-                label = getString(R.string.main_layout_preset_regular),
-                summary = getString(R.string.main_layout_preset_regular_summary)
-            ),
-            MySettingsThemeOption(
-                value = MainLayoutPresetConfig.PRESET_SIDEBAR,
-                label = getString(R.string.main_layout_preset_sidebar),
-                summary = getString(R.string.main_layout_preset_sidebar_summary)
-            )
-        )
     }
 
     private fun buildSubSearchItems(): List<MySettingsSubSearchItem> {
