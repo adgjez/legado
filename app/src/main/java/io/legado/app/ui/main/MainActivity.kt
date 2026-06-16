@@ -2152,18 +2152,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
             refreshAppearanceKit()
         }
         observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
-            binding.apply {
-                if (it) {
-                    bottomNavigationView.menu.clear()
-                    bottomNavigationView.inflateMenu(R.menu.main_bnv)
-                    applyBottomNavigationIcons()
-                    onUpBooksBadgeView = null
-                }
-                upBottomMenu()
-                updateAiFloatingBall()
-                if (it) {
+            refreshAppearanceKit()
+            if (it) {
+                binding.root.post {
                     pagePosition = resolveHomePagePosition().coerceIn(0, bottomMenuCount - 1)
-                    viewPagerMain.setCurrentItem(pagePosition, false)
+                    binding.viewPagerMain.setCurrentItem(pagePosition, false)
                 }
             }
         }

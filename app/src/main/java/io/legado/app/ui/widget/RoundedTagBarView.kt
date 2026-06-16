@@ -17,6 +17,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.uiTypeface
+import io.legado.app.utils.ColorUtils
 
 class RoundedTagBarView @JvmOverloads constructor(
     context: Context,
@@ -100,7 +101,22 @@ class RoundedTagBarView @JvmOverloads constructor(
             if (displayMode == DisplayMode.TEXT) 0 else verticalPadding
         )
         adapter.selectedBackgroundColor = TopBarConfig.withOpacity(selectedColor, config.tagSelectedAlpha)
+        adapter.selectedTextColor = readableTagTextColor(context.accentColor, adapter.selectedBackgroundColor)
+        adapter.normalTextColor = context.primaryTextColor
         adapter.notifyDataSetChanged()
+    }
+
+    private fun readableTagTextColor(preferredColor: Int, backgroundColor: Int): Int {
+        if (Color.alpha(backgroundColor) < 40) return preferredColor
+        val preferredIsLight = ColorUtils.isColorLight(preferredColor)
+        val backgroundIsLight = ColorUtils.isColorLight(backgroundColor)
+        return if (preferredIsLight != backgroundIsLight) {
+            preferredColor
+        } else if (backgroundIsLight) {
+            Color.BLACK
+        } else {
+            Color.WHITE
+        }
     }
 
     fun setDisplayMode(mode: DisplayMode) {
@@ -205,6 +221,8 @@ class RoundedTagBarView @JvmOverloads constructor(
     private inner class TagAdapter : RecyclerView.Adapter<TagViewHolder>() {
 
         var selectedBackgroundColor: Int = ContextCompat.getColor(context, R.color.background_card)
+        var selectedTextColor: Int = context.accentColor
+        var normalTextColor: Int = context.primaryTextColor
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): TagViewHolder {
             val textView = LayoutInflater.from(parent.context)
@@ -217,7 +235,7 @@ class RoundedTagBarView @JvmOverloads constructor(
             textView.setTextColor(
                 ColorStateList(
                     arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
-                    intArrayOf(parent.context.accentColor, parent.context.primaryTextColor)
+                    intArrayOf(selectedTextColor, normalTextColor)
                 )
             )
             return TagViewHolder(textView)
@@ -237,6 +255,12 @@ class RoundedTagBarView @JvmOverloads constructor(
             val verticalPadding = if (displayMode == DisplayMode.TEXT) 0 else resources.getDimensionPixelSize(R.dimen.bookshelf_tag_recycler_padding_vertical)
             val horizontalPadding = if (displayMode == DisplayMode.TEXT) 8.dp else resources.getDimensionPixelSize(R.dimen.bookshelf_tag_item_padding_horizontal)
             holder.textView.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+            holder.textView.setTextColor(
+                ColorStateList(
+                    arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+                    intArrayOf(selectedTextColor, normalTextColor)
+                )
+            )
             holder.textView.text = item.text
             holder.textView.typeface = holder.textView.context.uiTypeface()
             holder.textView.alpha = item.alpha
