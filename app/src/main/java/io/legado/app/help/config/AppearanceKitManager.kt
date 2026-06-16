@@ -142,6 +142,47 @@ object AppearanceKitManager {
         true
     }
 
+    suspend fun importedKit(id: String): StoredAppearanceKit? = withContext(IO) {
+        loadIndex().firstOrNull { it.id == id }
+    }
+
+    suspend fun saveImportedKit(kit: StoredAppearanceKit): Boolean = withContext(IO) {
+        val nextName = kit.name.trim().ifBlank { return@withContext false }
+        val kits = loadIndex()
+        if (kits.any { it.id != kit.id && it.name == nextName }) {
+            throw IllegalArgumentException("应用主题名称已存在")
+        }
+        val target = kits.firstOrNull { it.id == kit.id } ?: return@withContext false
+        val next = kit.copy(
+            id = target.id,
+            name = nextName,
+            importedAt = target.importedAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        saveIndex(kits.map { if (it.id == target.id) next else it })
+        if (appCtx.getPrefString(PreferKey.currentAppearanceKitId, "") == target.id) {
+            postEvent(EventBus.MAIN_APPEARANCE_KIT_CHANGED, true)
+        }
+        true
+    }
+
+    suspend fun editableOptions(isNight: Boolean): AppearanceKitEditOptions = withContext(IO) {
+        AppearanceKitEditOptions(
+            themes = ThemePackageManager.loadLocalOnly(isNight)
+                .filter { it.source != ThemePackageManager.Source.BUILTIN }
+                .map { ComponentRef(it.dirName, it.packageInfo.name) },
+            topBars = TopBarConfig.loadLocalOnlyForKit(isNight)
+                .filter { it.dirName != TopBarConfig.DEFAULT_DIR_NAME }
+                .map { ComponentRef(it.dirName, it.config.name) },
+            navigationBars = NavigationBarIconConfig.loadLocalOnlyForKit(isNight)
+                .filter { it.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME }
+                .map { ComponentRef(it.dirName, it.config.name) },
+            coverCollections = CoverCollectionManager.loadEntries(isNight)
+                .filter { it.source != CoverCollectionManager.Source.REMOTE }
+                .map { ComponentRef(it.collection.id, it.collection.name) }
+        )
+    }
+
     suspend fun importPackage(file: File): ImportResult = withContext(IO) {
         if (isAppearanceKitPackage(file)) {
             importAppearanceKit(file)
@@ -661,6 +702,14 @@ data class KitBinding(
         }
     }
 }
+
+@Keep
+data class AppearanceKitEditOptions(
+    val themes: List<ComponentRef> = emptyList(),
+    val topBars: List<ComponentRef> = emptyList(),
+    val navigationBars: List<ComponentRef> = emptyList(),
+    val coverCollections: List<ComponentRef> = emptyList()
+)
 
 @Keep
 data class ComponentRef(

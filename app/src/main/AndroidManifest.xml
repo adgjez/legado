@@ -264,6 +264,9 @@
             android:name=".ui.config.AppearanceKitActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.config.AppearanceKitEditActivity"
+            android:launchMode="standard" />
+        <activity
             android:name=".ui.config.NavigationBarManageActivity"
             android:launchMode="standard" />
         <activity

@@ -55,7 +55,6 @@ import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
-import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -154,23 +153,9 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     private fun editKit(kit: AppearanceKit) {
         if (kit.type != AppearanceKitType.IMPORTED_THEME) return
-        showComposeTextInputDialog(
-            title = getString(R.string.edit),
-            initialValue = kit.name,
-            hint = getString(R.string.name),
-            onPositive = { name ->
-                lifecycleScope.launch {
-                    runCatching {
-                        AppearanceKitManager.renameKit(kit, name)
-                    }.onSuccess {
-                        toastOnUi(if (it) R.string.success else R.string.error)
-                        refreshKits()
-                    }.onFailure {
-                        toastOnUi(it.localizedMessage ?: getString(R.string.error))
-                    }
-                }
-            }
-        )
+        startActivity<AppearanceKitEditActivity> {
+            putExtra(AppearanceKitEditActivity.EXTRA_KIT_ID, kit.id)
+        }
     }
 
     private fun deleteKit(kit: AppearanceKit) {
