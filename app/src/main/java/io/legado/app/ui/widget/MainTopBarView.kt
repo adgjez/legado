@@ -27,6 +27,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
+import io.legado.app.ui.widget.compose.ComposeThemeImageCrop
 import io.legado.app.ui.widget.compose.ComposeThemeImageState
 import io.legado.app.utils.StatusBarInsetAware
 
@@ -468,6 +469,7 @@ class MainTopBarView @JvmOverloads constructor(
                 file = file,
                 animated = file?.extension.equals("gif", ignoreCase = true),
                 alpha = alpha,
+                crop = topBarWallpaperCrop(config),
                 fallbackColor = TopBarConfig.withOpacity(
                     TopBarConfig.resolveBackgroundColor(config),
                     config.wallpaperAlpha
@@ -480,6 +482,15 @@ class MainTopBarView @JvmOverloads constructor(
                 cornerRadius = (radius / resources.displayMetrics.density).dp
             )
         }
+    }
+
+    private fun topBarWallpaperCrop(config: TopBarConfig.Config): ComposeThemeImageCrop? {
+        val left = config.wallpaperCropLeft ?: return null
+        val top = config.wallpaperCropTop ?: return null
+        val right = config.wallpaperCropRight ?: return null
+        val bottom = config.wallpaperCropBottom ?: return null
+        if (right <= left || bottom <= top) return null
+        return ComposeThemeImageCrop(left, top, right, bottom)
     }
 
     private fun updatePrimaryBarVisibility() {
