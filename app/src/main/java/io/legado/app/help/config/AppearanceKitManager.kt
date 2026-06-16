@@ -146,9 +146,14 @@ object AppearanceKitManager {
         if (isAppearanceKitPackage(file)) {
             importAppearanceKit(file)
         } else {
-            val entries = ThemePackageManager.importPackage(file)
-            val kit = createKitFromImportedThemes(entries)
-            ImportResult(themeCount = entries.size, kitCount = if (kit != null) 1 else 0)
+            val result = ThemePackageManager.importPackageDetailed(file)
+            val kit = createKitFromImportResult(result)
+            ImportResult(
+                themeCount = result.themes.size,
+                navigationBarCount = result.navigationBars.size,
+                coverCollectionCount = result.coverCollections.size,
+                kitCount = if (kit != null) 1 else 0
+            )
         }
     }
 
@@ -306,6 +311,32 @@ object AppearanceKitManager {
         val binding = KitBinding()
         entries.forEach {
             binding.setTheme(it.packageInfo.isNightTheme, ComponentRef(it.dirName, it.packageInfo.name))
+        }
+        return saveOrReplaceKit(
+            StoredAppearanceKit(
+                id = "theme_${name.normalizeFileName()}",
+                name = name,
+                binding = binding,
+                importedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun createKitFromImportResult(result: ThemePackageManager.ThemeImportResult): StoredAppearanceKit? {
+        if (result.themes.isEmpty()) return null
+        val name = result.sourceName.ifBlank {
+            result.themes.first().packageInfo.name.ifBlank { "应用主题" }
+        }
+        val binding = KitBinding()
+        result.themes.forEach {
+            binding.setTheme(it.packageInfo.isNightTheme, ComponentRef(it.dirName, it.packageInfo.name))
+        }
+        result.navigationBars.forEach {
+            binding.setNavigationBar(it.config.isNightMode, ComponentRef(it.dirName, it.config.name))
+        }
+        result.coverCollections.forEach {
+            binding.setCoverCollection(it.isNight, ComponentRef(it.id, it.name))
         }
         return saveOrReplaceKit(
             StoredAppearanceKit(

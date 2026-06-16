@@ -150,9 +150,25 @@ object ThemePackageManager {
         when (detectRedPackageFormat(file)) {
             RedPackageFormat.RED04_ZIP,
             RedPackageFormat.RED_GZIP_JSON,
-            RedPackageFormat.RAW_GZIP_JSON -> importRed(file)
+            RedPackageFormat.RAW_GZIP_JSON -> importPackageDetailed(file).themes
             RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
             null -> listOf(importZip(file))
+        }
+    }
+
+    suspend fun importPackageDetailed(file: File): ThemeImportResult = withContext(IO) {
+        when (detectRedPackageFormat(file)) {
+            RedPackageFormat.RED04_ZIP -> importRedZipDetailed(file)
+            RedPackageFormat.RED_GZIP_JSON,
+            RedPackageFormat.RAW_GZIP_JSON -> {
+                val themes = importRedGzip(file)
+                ThemeImportResult(sourceName = themes.firstOrNull()?.packageInfo?.name.orEmpty(), themes = themes)
+            }
+            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+            null -> {
+                val theme = importZip(file)
+                ThemeImportResult(sourceName = theme.packageInfo.name, themes = listOf(theme))
+            }
         }
     }
 
@@ -600,6 +616,10 @@ object ThemePackageManager {
     }
 
     private fun importRedZip(file: File): List<Entry> {
+        return importRedZipDetailed(file).themes
+    }
+
+    private fun importRedZipDetailed(file: File): ThemeImportResult {
         val zipFile = tempDir.getFile("red_${System.currentTimeMillis()}.zip")
         val unzipDir = tempDir.getFile("red_${System.currentTimeMillis()}").apply {
             if (exists()) FileUtils.delete(this, deleteRootDir = true)
@@ -638,13 +658,22 @@ object ThemePackageManager {
             if (entries.isEmpty()) {
                 throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
-            importRedNavigationPack(unzipDir, redTheme.light, false)
-            importRedNavigationPack(unzipDir, redTheme.dark, true)
-            importRedCoverGallery(unzipDir, redTheme.light, false)
-            importRedCoverGallery(unzipDir, redTheme.dark, true)
+            val navigationBars = listOfNotNull(
+                importRedNavigationPack(unzipDir, redTheme.light, false),
+                importRedNavigationPack(unzipDir, redTheme.dark, true)
+            )
+            val coverCollections = listOfNotNull(
+                importRedCoverGallery(unzipDir, redTheme.light, false),
+                importRedCoverGallery(unzipDir, redTheme.dark, true)
+            )
             copyRedReaderSchema(unzipDir, redTheme.light)
             copyRedReaderSchema(unzipDir, redTheme.dark)
-            entries
+            ThemeImportResult(
+                sourceName = redTheme.name,
+                themes = entries,
+                navigationBars = navigationBars,
+                coverCollections = coverCollections
+            )
         } catch (e: Throwable) {
             if (e is IllegalArgumentException) throw e
             throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid), e)
@@ -671,9 +700,13 @@ object ThemePackageManager {
         )
     }
 
-    private fun importRedNavigationPack(root: File, colors: RedThemeColors?, isNightTheme: Boolean) {
-        val packId = colors?.navbarPackId?.takeIf { it.isNotBlank() } ?: return
-        val sourceDir = File(root, "navbar_pack/$packId").takeIf { it.isDirectory } ?: return
+    private fun importRedNavigationPack(
+        root: File,
+        colors: RedThemeColors?,
+        isNightTheme: Boolean
+    ): NavigationBarIconConfig.Entry? {
+        val packId = colors?.navbarPackId?.takeIf { it.isNotBlank() } ?: return null
+        val sourceDir = File(root, "navbar_pack/$packId").takeIf { it.isDirectory } ?: return null
         val meta = File(sourceDir, "meta.json")
             .takeIf { it.isFile }
             ?.let { GSON.fromJsonObject<RedNameMeta>(it.readText()).getOrNull() }
@@ -699,7 +732,7 @@ object ThemePackageManager {
                     icons["${targetKey}_normal"] = name
                 }
             }
-            if (icons.isEmpty()) return
+            if (icons.isEmpty()) return null
             val config = NavigationBarIconConfig.Config(
                 name = meta?.name?.ifBlank { null } ?: "RED Navigation",
                 isNightMode = isNightTheme,
@@ -710,21 +743,20 @@ object ThemePackageManager {
             )
             File(packageDir, "navigation.json").writeText(GSON.toJson(config))
             ZipUtils.zipFile(packageDir, zipFile)
-            val entry = NavigationBarIconConfig.importZip(zipFile)
-            if (isNightTheme == AppConfig.isNightTheme) {
-                NavigationBarIconConfig.apply(entry)
-            } else {
-                NavigationBarIconConfig.select(entry)
-            }
+            return NavigationBarIconConfig.importZip(zipFile)
         } finally {
             zipFile.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)
         }
     }
 
-    private fun importRedCoverGallery(root: File, colors: RedThemeColors?, isNightTheme: Boolean) {
-        val galleryId = colors?.coverGalleryId?.takeIf { it.isNotBlank() } ?: return
-        val sourceDir = File(root, "cover_gallery/$galleryId").takeIf { it.isDirectory } ?: return
+    private fun importRedCoverGallery(
+        root: File,
+        colors: RedThemeColors?,
+        isNightTheme: Boolean
+    ): CoverCollectionManager.Collection? {
+        val galleryId = colors?.coverGalleryId?.takeIf { it.isNotBlank() } ?: return null
+        val sourceDir = File(root, "cover_gallery/$galleryId").takeIf { it.isDirectory } ?: return null
         val meta = File(sourceDir, "meta.json")
             .takeIf { it.isFile }
             ?.let { GSON.fromJsonObject<RedNameMeta>(it.readText()).getOrNull() }
@@ -744,7 +776,7 @@ object ThemePackageManager {
                     "images/${target.name}"
                 }
                 .orEmpty()
-            if (images.isEmpty()) return
+            if (images.isEmpty()) return null
             val collection = CoverCollectionManager.Collection(
                 id = UUID.randomUUID().toString(),
                 name = meta?.name?.ifBlank { null } ?: "RED Cover Gallery",
@@ -755,10 +787,9 @@ object ThemePackageManager {
             )
             File(packageDir, "collection.json").writeText(GSON.toJson(collection))
             ZipUtils.zipFile(packageDir, zipFile)
-            val imported = kotlinx.coroutines.runBlocking {
+            return kotlinx.coroutines.runBlocking {
                 CoverCollectionManager.importZip(appCtx, zipFile, isNightTheme)
             }
-            CoverCollectionManager.setSelected(isNightTheme, imported.id)
         } finally {
             zipFile.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)
@@ -903,6 +934,13 @@ object ThemePackageManager {
             uiCornerScale = cardShadow?.let { (1f + it.coerceIn(0, 4) * 0.08f).coerceIn(0f, 3f) } ?: 1f,
             uiLayoutAlpha = 100,
             dialogAlpha = 100,
+            cardColor = cardColor.normalizeArgbColorOrNull(),
+            mutedColor = mutedColor.normalizeArgbColorOrNull(),
+            searchFieldBackgroundColor = searchFieldBackgroundColor.normalizeArgbColorOrNull(),
+            tabBackgroundColor = tabBackgroundColor.normalizeArgbColorOrNull(),
+            shelfColor = shelfColor.normalizeArgbColorOrNull(),
+            cardShadow = cardShadow?.coerceIn(0, 24),
+            cardBackgroundBlur = cardBackgroundBlur?.coerceIn(0f, 25f),
             uiCornerSearchFollow = true,
             uiCornerReplyFollow = true,
             fontScale = null,
@@ -1228,6 +1266,13 @@ object ThemePackageManager {
     ) {
         val dirName: String get() = packageInfo.dirName
     }
+
+    data class ThemeImportResult(
+        val sourceName: String = "",
+        val themes: List<Entry> = emptyList(),
+        val navigationBars: List<NavigationBarIconConfig.Entry> = emptyList(),
+        val coverCollections: List<CoverCollectionManager.Collection> = emptyList()
+    )
 
     @Keep
     data class Package(

@@ -21,7 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
-import io.legado.app.help.config.ThemePackageManager
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.ui.widget.compose.AppDialogFrame
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
@@ -119,7 +119,7 @@ class ImportRedThemeDialog() : ComposeDialogFragment() {
             requireContext().contentResolver.openInputStream(uri)?.use { input ->
                 file.outputStream().use { output -> input.copyTo(output) }
             } ?: throw IllegalArgumentException(getString(R.string.wrong_format))
-            ThemePackageManager.importPackage(file).size
+            AppearanceKitManager.importPackage(file).total
         } finally {
             file.delete()
         }

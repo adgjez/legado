@@ -32,6 +32,7 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.removePref
 import io.legado.app.utils.stackBlur
 import splitties.init.appCtx
 import java.io.File
@@ -302,6 +303,7 @@ object ThemeConfig {
             config.dialogAlpha?.let {
                 context.putPrefInt(PreferKey.dialogAlpha, it.coerceIn(0, 100))
             }
+            applyExtendedInterfaceColors(context, config)
             config.uiCornerSearchFollow?.let {
                 context.putPrefBoolean(PreferKey.uiCornerSearchFollow, it)
             }
@@ -570,6 +572,13 @@ object ThemeConfig {
             uiCornerScale = config.uiCornerScale ?: stored.uiCornerScale,
             uiLayoutAlpha = config.uiLayoutAlpha ?: stored.uiLayoutAlpha,
             dialogAlpha = config.dialogAlpha ?: stored.dialogAlpha,
+            cardColor = config.cardColor,
+            mutedColor = config.mutedColor,
+            searchFieldBackgroundColor = config.searchFieldBackgroundColor,
+            tabBackgroundColor = config.tabBackgroundColor,
+            shelfColor = config.shelfColor,
+            cardShadow = config.cardShadow,
+            cardBackgroundBlur = config.cardBackgroundBlur,
             uiCornerSearchFollow = config.uiCornerSearchFollow ?: stored.uiCornerSearchFollow,
             uiCornerReplyFollow = config.uiCornerReplyFollow ?: stored.uiCornerReplyFollow,
             fontScale = config.fontScale ?: stored.fontScale,
@@ -586,6 +595,32 @@ object ThemeConfig {
         }
         return fallback?.takeIf {
             it.startsWith("http", ignoreCase = true) || isReadableThemeFile(it)
+        }
+    }
+
+    private fun applyExtendedInterfaceColors(context: Context, config: Config) {
+        context.putOrClearThemeColor(PreferKey.themeCardColor, config.cardColor)
+        context.putOrClearThemeColor(PreferKey.themeMutedColor, config.mutedColor)
+        context.putOrClearThemeColor(
+            PreferKey.themeSearchFieldBackgroundColor,
+            config.searchFieldBackgroundColor
+        )
+        context.putOrClearThemeColor(PreferKey.themeTabBackgroundColor, config.tabBackgroundColor)
+        context.putOrClearThemeColor(PreferKey.themeShelfColor, config.shelfColor)
+        config.cardShadow?.let {
+            context.putPrefInt(PreferKey.themeCardShadow, it.coerceIn(0, 24))
+        } ?: context.removePref(PreferKey.themeCardShadow)
+        config.cardBackgroundBlur?.let {
+            context.putPrefInt(PreferKey.themeCardBackgroundBlur, (it * 10f).toInt().coerceIn(0, 250))
+        } ?: context.removePref(PreferKey.themeCardBackgroundBlur)
+    }
+
+    private fun Context.putOrClearThemeColor(key: String, value: String?) {
+        val normalized = value?.takeIf { it.isNotBlank() }
+        if (normalized == null) {
+            removePref(key)
+        } else {
+            putPrefString(key, normalized)
         }
     }
 
@@ -730,6 +765,13 @@ object ThemeConfig {
         var uiCornerScale: Float? = null,
         var uiLayoutAlpha: Int? = null,
         var dialogAlpha: Int? = null,
+        var cardColor: String? = null,
+        var mutedColor: String? = null,
+        var searchFieldBackgroundColor: String? = null,
+        var tabBackgroundColor: String? = null,
+        var shelfColor: String? = null,
+        var cardShadow: Int? = null,
+        var cardBackgroundBlur: Float? = null,
         var uiCornerSearchFollow: Boolean? = null,
         var uiCornerReplyFollow: Boolean? = null,
         var fontScale: Int? = null,
@@ -761,6 +803,13 @@ object ThemeConfig {
                         && other.uiCornerScale == uiCornerScale
                         && other.uiLayoutAlpha == uiLayoutAlpha
                         && other.dialogAlpha == dialogAlpha
+                        && other.cardColor == cardColor
+                        && other.mutedColor == mutedColor
+                        && other.searchFieldBackgroundColor == searchFieldBackgroundColor
+                        && other.tabBackgroundColor == tabBackgroundColor
+                        && other.shelfColor == shelfColor
+                        && other.cardShadow == cardShadow
+                        && other.cardBackgroundBlur == cardBackgroundBlur
                         && other.uiCornerSearchFollow == uiCornerSearchFollow
                         && other.uiCornerReplyFollow == uiCornerReplyFollow
                         && other.fontScale == fontScale
@@ -788,6 +837,13 @@ object ThemeConfig {
             "uiCornerScale" to uiCornerScale,
             "uiLayoutAlpha" to uiLayoutAlpha,
             "dialogAlpha" to dialogAlpha,
+            "cardColor" to cardColor,
+            "mutedColor" to mutedColor,
+            "searchFieldBackgroundColor" to searchFieldBackgroundColor,
+            "tabBackgroundColor" to tabBackgroundColor,
+            "shelfColor" to shelfColor,
+            "cardShadow" to cardShadow,
+            "cardBackgroundBlur" to cardBackgroundBlur,
             "uiCornerSearchFollow" to uiCornerSearchFollow,
             "uiCornerReplyFollow" to uiCornerReplyFollow,
             "fontScale" to fontScale,

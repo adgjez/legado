@@ -109,6 +109,26 @@
                     android:id="@+id/row_bottom_background"
                     layout="@layout/item_theme_package_option" />
 
+                <include
+                    android:id="@+id/row_card_color"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_muted_color"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_search_field_background_color"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_tab_background_color"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_shelf_color"
+                    layout="@layout/item_theme_package_option" />
+
             </LinearLayout>
 
             <LinearLayout
@@ -163,6 +183,14 @@
 
                 <include
                     android:id="@+id/row_panel_border_alpha"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_card_shadow"
+                    layout="@layout/item_theme_package_option" />
+
+                <include
+                    android:id="@+id/row_card_background_blur"
                     layout="@layout/item_theme_package_option" />
 
                 <include
