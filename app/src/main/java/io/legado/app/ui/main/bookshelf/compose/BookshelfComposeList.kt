@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,7 +28,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -58,7 +55,6 @@ import io.legado.app.ui.widget.compose.appSettingPanelBackground
 object BookshelfListItemStyle {
     const val Classic = 0
     const val RoundedCard = 1
-    const val CoverImmersive = 2
 }
 
 @Immutable
@@ -79,21 +75,15 @@ data class BookshelfListPalette(
 @Immutable
 data class BookshelfListRenderConfig(
     val palette: BookshelfListPalette,
-    val immersivePalette: BookshelfListPalette,
     val panelImage: Drawable?,
     val classicMinHeight: Dp = 112.dp,
     val classicCompactMinHeight: Dp = 82.dp,
     val roundedMinHeight: Dp = 154.dp,
     val roundedCompactMinHeight: Dp = 112.dp,
-    val immersiveHeight: Dp = 158.dp,
-    val immersiveCompactHeight: Dp = 118.dp,
     val classicCoverWidth: Dp = 78.dp,
     val classicCompactCoverWidth: Dp = 58.dp,
     val cardCoverWidth: Dp = 94.dp,
-    val cardCompactCoverWidth: Dp = 68.dp,
-    val immersiveBlur: Dp = 6.dp,
-    val immersiveCompactBlur: Dp = 4.dp,
-    val immersiveScrimAlpha: Float = 0.38f
+    val cardCompactCoverWidth: Dp = 68.dp
 )
 
 @Composable
@@ -150,11 +140,6 @@ fun rememberBookshelfListRenderConfig(): BookshelfListRenderConfig {
     return remember(palette, panelImage) {
         BookshelfListRenderConfig(
             palette = palette,
-            immersivePalette = palette.copy(
-                primaryText = Color.White,
-                secondaryText = Color.White.copy(alpha = 0.78f),
-                accent = Color.White
-            ),
             panelImage = panelImage
         )
     }
@@ -175,17 +160,6 @@ fun BookshelfListItem(
     val compact = listLayout == 1
     when (cardStyle) {
         BookshelfListItemStyle.RoundedCard -> BookshelfRoundedCardListItem(
-            item = item,
-            compact = compact,
-            renderConfig = renderConfig,
-            modifier = modifier,
-            fragment = fragment,
-            lifecycle = lifecycle,
-            onClick = onClick,
-            onLongClick = onLongClick
-        )
-
-        BookshelfListItemStyle.CoverImmersive -> BookshelfImmersiveListItem(
             item = item,
             compact = compact,
             renderConfig = renderConfig,
@@ -308,87 +282,6 @@ private fun BookshelfRoundedCardListItem(
             introMaxLines = if (compact) 1 else 2
         )
         BookshelfListStatus(item = item, palette = palette)
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun BookshelfImmersiveListItem(
-    item: BookshelfItemUi,
-    compact: Boolean,
-    renderConfig: BookshelfListRenderConfig,
-    modifier: Modifier,
-    fragment: Fragment?,
-    lifecycle: Lifecycle?,
-    onClick: (BookshelfItemUi) -> Unit,
-    onLongClick: (BookshelfItemUi) -> Unit
-) {
-    val palette = renderConfig.palette
-    val immersivePalette = renderConfig.immersivePalette
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(if (compact) renderConfig.immersiveCompactHeight else renderConfig.immersiveHeight)
-            .clip(RoundedCornerShape(palette.panelRadius))
-            .then(
-                palette.borderColor?.let {
-                    Modifier.border(
-                        width = 1.dp,
-                        color = Color(it),
-                        shape = RoundedCornerShape(palette.panelRadius)
-                    )
-                } ?: Modifier
-            )
-            .combinedClickable(
-                onClick = { onClick(item) },
-                onLongClick = { onLongClick(item) }
-            )
-    ) {
-        BookshelfListCover(
-            item = item,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(if (compact) renderConfig.immersiveCompactBlur else renderConfig.immersiveBlur),
-            fillWidth = true,
-            width = 1.dp,
-            cornerRadius = 0.dp,
-            fragment = fragment,
-            lifecycle = lifecycle
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = renderConfig.immersiveScrimAlpha))
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = if (compact) 12.dp else 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BookshelfCoverBlock(
-                item = item,
-                width = renderConfig.cardCoverWidth(compact),
-                cornerRadius = palette.actionRadius,
-                palette = immersivePalette,
-                fragment = fragment,
-                lifecycle = lifecycle
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            BookshelfListTextContent(
-                item = item,
-                compact = compact,
-                palette = immersivePalette,
-                modifier = Modifier.weight(1f),
-                showIntro = true,
-                showTags = true,
-                introMaxLines = 1
-            )
-            BookshelfListStatus(
-                item = item,
-                palette = immersivePalette
-            )
-        }
     }
 }
 

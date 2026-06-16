@@ -2144,5 +2144,4 @@ bookUrl：%7$s
     <string name="bookshelf_list_style">列表卡片样式</string>
     <string name="bookshelf_list_style_classic">经典列表</string>
     <string name="bookshelf_list_style_rounded_card">圆角卡片</string>
-    <string name="bookshelf_list_style_cover_immersive">封面沉浸</string>
 </resources>
