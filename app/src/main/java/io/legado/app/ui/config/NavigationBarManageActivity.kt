@@ -986,7 +986,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }
                 } ?: throw IllegalArgumentException(getString(R.string.theme_zip_read_failed))
-                withContext(Dispatchers.IO) { NavigationBarIconConfig.importZip(file) }
+                withContext(Dispatchers.IO) { NavigationBarIconConfig.importPackage(file) }
             }.onSuccess {
                 toastOnUi(R.string.success)
                 loadPackages()

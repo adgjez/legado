@@ -46,6 +46,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.UUID
 import kotlin.math.min
 
 object NavigationBarIconConfig {
@@ -354,6 +355,20 @@ object NavigationBarIconConfig {
 
     fun importZip(zipFile: File): Entry {
         return importZipInternal(zipFile)
+    }
+
+    fun importPackage(file: File): Entry {
+        val zipFile = RedAssetPackage.zipPayload(file, tempDir) ?: return importZip(file)
+        return try {
+            when (RedAssetPackage.classifyZip(zipFile)) {
+                RedAssetPackage.Kind.NavigationBar -> importRedNavigationPackage(zipFile, file.nameWithoutExtension)
+                RedAssetPackage.Kind.ThemeZip,
+                RedAssetPackage.Kind.CoverCollection -> throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
+                RedAssetPackage.Kind.Unknown -> importZipInternal(zipFile)
+            }
+        } finally {
+            zipFile.delete()
+        }
     }
 
     suspend fun upload(entry: Entry, containerId: String? = null, scope: String? = null) {
@@ -743,6 +758,83 @@ object NavigationBarIconConfig {
         }
     }
 
+    private fun importRedNavigationPackage(zipFile: File, fallbackName: String): Entry {
+        val unzipDir = tempDir.getFile("red_nav_import_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val packageDir = tempDir.getFile("red_nav_package_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val packageZip = tempDir.getFile("red_nav_package_${UUID.randomUUID()}.zip")
+        return try {
+            RedAssetPackage.unzipSecure(zipFile, unzipDir)
+            unzipDir.walkTopDown().firstOrNull { it.isFile && it.name == packageFileName }?.let {
+                return importZipInternal(zipFile)
+            }
+            val icons = linkedMapOf<String, String>()
+            val itemMap = mapOf(
+                "home" to "discovery",
+                "bookshelf" to "bookshelf",
+                "notes" to "rss",
+                "statistics" to "readRecord",
+                "settings" to "my"
+            )
+            itemMap.forEach { (redKey, targetKey) ->
+                copyRedNavigationIcon(unzipDir, packageDir, icons, redKey, targetKey, STATE_NORMAL)
+                copyRedNavigationIcon(unzipDir, packageDir, icons, redKey, targetKey, STATE_SELECTED)
+            }
+            if (icons.isEmpty()) {
+                throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
+            }
+            val name = readRedNavigationName(unzipDir).ifBlank { fallbackName }
+                .ifBlank { "RED Navigation" }
+            val config = Config(
+                name = name,
+                isNightMode = AppConfig.isNightTheme,
+                layoutMode = "floating",
+                effectMode = "glass",
+                opacity = 72,
+                icons = icons
+            )
+            File(packageDir, packageFileName).writeText(GSON.toJson(config))
+            if (!ZipUtils.zipFile(packageDir, packageZip) || !packageZip.isFile || packageZip.length() <= 0L) {
+                throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
+            }
+            importZipInternal(packageZip)
+        } finally {
+            packageZip.delete()
+            FileUtils.delete(unzipDir, deleteRootDir = true)
+            FileUtils.delete(packageDir, deleteRootDir = true)
+        }
+    }
+
+    private fun copyRedNavigationIcon(
+        sourceDir: File,
+        targetDir: File,
+        icons: MutableMap<String, String>,
+        redKey: String,
+        targetKey: String,
+        state: String
+    ) {
+        val source = sourceDir.walkTopDown().firstOrNull {
+            it.isFile && it.name.equals("${redKey}_$state.png", ignoreCase = true)
+        } ?: return
+        val fileName = "${targetKey}_$state.png"
+        source.copyTo(File(targetDir, fileName), overwrite = true)
+        icons[iconKey(targetKey, state)] = fileName
+    }
+
+    private fun readRedNavigationName(root: File): String {
+        val metaFile = root.walkTopDown().firstOrNull {
+            it.isFile && it.name.equals("reeden_bottom_navbar_pack.json", ignoreCase = true)
+        } ?: return ""
+        val text = runCatching { metaFile.readText() }.getOrDefault("")
+        if (text.isBlank()) return ""
+        return GSON.fromJsonObject<RedNameMeta>(text).getOrNull()?.name.orEmpty()
+    }
+
     private fun createMenuDrawable(context: Context, entry: Entry, item: NavItem): Drawable {
         val defaultColor = defaultIconColor(context)
         val selectedColor = ThemeStore.accentColor(context)
@@ -1008,4 +1100,9 @@ object NavigationBarIconConfig {
         )
         appCtx.putPrefBoolean(migratedKey, true)
     }
+
+    @Keep
+    private data class RedNameMeta(
+        val name: String = ""
+    )
 }

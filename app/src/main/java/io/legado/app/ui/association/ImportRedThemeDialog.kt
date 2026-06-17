@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.help.config.AppearanceKitManager
+import io.legado.app.help.config.ImportResult
 import io.legado.app.ui.widget.compose.AppDialogFrame
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
@@ -81,8 +82,8 @@ class ImportRedThemeDialog() : ComposeDialogFragment() {
             }
             runCatching {
                 importRedTheme(uri)
-            }.onSuccess { count ->
-                message = "${getString(R.string.import_str)}: $count"
+            }.onSuccess { result ->
+                message = "${getString(R.string.import_str)}: ${result.total}"
             }.onFailure {
                 message = it.localizedMessage ?: getString(R.string.wrong_format)
             }
@@ -112,14 +113,14 @@ class ImportRedThemeDialog() : ComposeDialogFragment() {
         )
     }
 
-    private suspend fun importRedTheme(uri: Uri): Int = withContext(Dispatchers.IO) {
+    private suspend fun importRedTheme(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
         val tempDir = requireContext().externalFiles.getFile("themePackageImports").apply { mkdirs() }
         val file = File(tempDir, "import_${System.currentTimeMillis()}.red")
         try {
             requireContext().contentResolver.openInputStream(uri)?.use { input ->
                 file.outputStream().use { output -> input.copyTo(output) }
             } ?: throw IllegalArgumentException(getString(R.string.wrong_format))
-            AppearanceKitManager.importPackage(file).total
+            AppearanceKitManager.importPackage(file)
         } finally {
             file.delete()
         }

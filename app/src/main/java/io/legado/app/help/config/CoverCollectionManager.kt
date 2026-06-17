@@ -141,6 +141,25 @@ object CoverCollectionManager {
         importZipInternal(zipFile, isNight, overwrite = false, remoteUpdatedAt = 0L).collection
     }
 
+    suspend fun importPackage(context: Context, file: File, isNight: Boolean): Collection = withContext(IO) {
+        val zipFile = RedAssetPackage.zipPayload(file, tempDir) ?: return@withContext importZipInternal(
+            file,
+            isNight,
+            overwrite = false,
+            remoteUpdatedAt = 0L
+        ).collection
+        try {
+            when (RedAssetPackage.classifyZip(zipFile)) {
+                RedAssetPackage.Kind.CoverCollection -> importRedCoverCollection(zipFile, file.nameWithoutExtension, isNight)
+                RedAssetPackage.Kind.NavigationBar,
+                RedAssetPackage.Kind.ThemeZip -> throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
+                RedAssetPackage.Kind.Unknown -> importZipInternal(zipFile, isNight, overwrite = false, remoteUpdatedAt = 0L).collection
+            }
+        } finally {
+            zipFile.delete()
+        }
+    }
+
     suspend fun addImages(context: Context, collection: Collection, uris: List<Uri>): Collection = withContext(IO) {
         val dir = collectionDir(collection).apply { mkdirs() }
         val added = arrayListOf<String>()
@@ -373,6 +392,56 @@ object CoverCollectionManager {
             Entry(collection, Source.LOCAL, targetDir, remoteUpdatedAt)
         } finally {
             FileUtils.delete(unzipDir, deleteRootDir = true)
+        }
+    }
+
+    private fun importRedCoverCollection(zipFile: File, fallbackName: String, isNight: Boolean): Collection {
+        val unzipDir = tempDir.getFile("red_cover_import_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val packageDir = tempDir.getFile("red_cover_package_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        val imagesDir = packageDir.getFile("images").apply { mkdirs() }
+        val packageZip = tempDir.getFile("red_cover_package_${UUID.randomUUID()}.zip")
+        return try {
+            RedAssetPackage.unzipSecure(zipFile, unzipDir)
+            unzipDir.walkTopDown().firstOrNull { it.isFile && it.name == packageFileName }?.let {
+                return importZipInternal(zipFile, isNight, overwrite = false, remoteUpdatedAt = 0L).collection
+            }
+            val images = unzipDir.walkTopDown()
+                .filter { it.isFile && it.extension.lowercase() in imageExtensions }
+                .sortedBy { it.name }
+                .mapIndexedNotNull { index, source ->
+                    val ext = source.extension.lowercase().ifBlank { "jpg" }
+                    val target = File(imagesDir, "cover_${index + 1}.$ext")
+                    source.copyTo(target, overwrite = true)
+                    "images/${target.name}"
+                }
+                .toList()
+            if (images.isEmpty()) {
+                throw IllegalArgumentException(appCtx.getString(R.string.cover_collection_zip_no_images))
+            }
+            val name = fallbackName.ifBlank { "RED Cover Gallery" }
+            val collection = Collection(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                dirName = name.normalizeFileName(),
+                isNight = isNight,
+                images = images,
+                updatedAt = System.currentTimeMillis()
+            )
+            File(packageDir, packageFileName).writeText(GSON.toJson(collection))
+            if (!ZipUtils.zipFile(packageDir, packageZip) || !packageZip.isFile || packageZip.length() <= 0L) {
+                throw IllegalArgumentException(appCtx.getString(R.string.wrong_format))
+            }
+            importZipInternal(packageZip, isNight, overwrite = false, remoteUpdatedAt = 0L).collection
+        } finally {
+            packageZip.delete()
+            FileUtils.delete(unzipDir, deleteRootDir = true)
+            FileUtils.delete(packageDir, deleteRootDir = true)
         }
     }
 

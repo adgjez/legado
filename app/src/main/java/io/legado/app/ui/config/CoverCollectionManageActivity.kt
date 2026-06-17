@@ -211,7 +211,7 @@ class CoverCollectionManageActivity : BaseActivity<ActivityCoverCollectionManage
                     }
                     target
                 }
-                CoverCollectionManager.importZip(this@CoverCollectionManageActivity, file, isNightState.value)
+                CoverCollectionManager.importPackage(this@CoverCollectionManageActivity, file, isNightState.value)
             }.onFailure {
                 toastOnUi(it.localizedMessage)
             }

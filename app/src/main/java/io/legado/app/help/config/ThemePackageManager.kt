@@ -154,6 +154,7 @@ object ThemePackageManager {
             RedPackageFormat.RED04_ZIP,
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importPackageDetailed(file).themes
+            RedPackageFormat.RED_ASSET_ZIP -> importPackageDetailed(file).themes
             RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
             null -> listOf(importZip(file))
         }
@@ -162,6 +163,7 @@ object ThemePackageManager {
     suspend fun importPackageDetailed(file: File): ThemeImportResult = withContext(IO) {
         when (detectRedPackageFormat(file)) {
             RedPackageFormat.RED04_ZIP -> importRedZipDetailed(file)
+            RedPackageFormat.RED_ASSET_ZIP -> importRedAssetZipDetailed(file)
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> {
                 val themes = importRedGzip(file)
@@ -172,6 +174,35 @@ object ThemePackageManager {
                 val theme = importZip(file)
                 ThemeImportResult(sourceName = theme.packageInfo.name, themes = listOf(theme))
             }
+        }
+    }
+
+    private fun importRedAssetZipDetailed(file: File): ThemeImportResult {
+        val zipFile = RedAssetPackage.zipPayload(file, tempDir)
+            ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        return try {
+            when (RedAssetPackage.classifyZip(zipFile)) {
+                RedAssetPackage.Kind.NavigationBar -> {
+                    val entry = NavigationBarIconConfig.importPackage(file)
+                    ThemeImportResult(
+                        sourceName = entry.config.name,
+                        navigationBars = listOf(entry)
+                    )
+                }
+                RedAssetPackage.Kind.CoverCollection -> {
+                    val collection = kotlinx.coroutines.runBlocking {
+                        CoverCollectionManager.importPackage(appCtx, file, AppConfig.isNightTheme)
+                    }
+                    ThemeImportResult(
+                        sourceName = collection.name,
+                        coverCollections = listOf(collection)
+                    )
+                }
+                RedAssetPackage.Kind.ThemeZip -> importRedZipDetailed(file)
+                RedAssetPackage.Kind.Unknown -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+            }
+        } finally {
+            zipFile.delete()
         }
     }
 
@@ -554,6 +585,7 @@ object ThemePackageManager {
     private fun importRed(file: File): List<Entry> {
         return when (detectRedPackageFormat(file)) {
             RedPackageFormat.RED04_ZIP -> importRedZip(file)
+            RedPackageFormat.RED_ASSET_ZIP -> importRedAssetZipDetailed(file).themes
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importRedGzip(file)
             RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
@@ -595,6 +627,13 @@ object ThemePackageManager {
                     header[3] == 4.toByte() &&
                     header[4] == 'P'.code.toByte() &&
                     header[5] == 'K'.code.toByte() -> RedPackageFormat.RED04_ZIP
+
+                size >= 6 &&
+                    header[0] == 'R'.code.toByte() &&
+                    header[1] == 'E'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[4] == 'P'.code.toByte() &&
+                    header[5] == 'K'.code.toByte() -> RedPackageFormat.RED_ASSET_ZIP
 
                 size >= 6 &&
                     header[0] == 'R'.code.toByte() &&
@@ -1347,6 +1386,7 @@ object ThemePackageManager {
 
     private enum class RedPackageFormat {
         RED04_ZIP,
+        RED_ASSET_ZIP,
         RED10_PRIVATE,
         RED_GZIP_JSON,
         RAW_GZIP_JSON
