@@ -183,9 +183,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
         binding.swipeRefreshLayout.setOnRefreshListener {
             if (usingModernDiscovery) {
-                loadDiscoverBooks(reset = true)
+                if (discoverTagItems.isEmpty()) {
+                    refreshModernDiscoverKinds()
+                } else {
+                    loadDiscoverBooks(reset = true)
+                }
             } else {
-                upExploreData(searchView?.query?.toString())
+                if (!adapter.refreshExpandedIfNoKinds()) {
+                    upExploreData(searchView?.query?.toString())
+                }
             }
         }
         binding.topBar.setMode(io.legado.app.ui.widget.MainTopBarView.Mode.DISCOVERY)
@@ -667,7 +673,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setDimAmount(0.45f)
         dialog.window?.setLayout(dialogWidth, dialogHeight)
-        refreshDiscoverKindsDialog(itemBinding, source, dialog, refreshLayout, clearCache = false)
+        refreshDiscoverKindsDialog(itemBinding, source, dialog, refreshLayout, clearCache = true)
     }
 
     private fun refreshDiscoverKindsDialog(
@@ -1241,6 +1247,26 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverSources.map { RoundedTagBarView.Item(it.bookSourceName) },
             discoverSources.indexOfFirst { it.bookSourceUrl == selectedDiscoverSourcePart?.bookSourceUrl }
         )
+    }
+
+    private fun refreshModernDiscoverKinds() {
+        val source = selectedDiscoverSource ?: run {
+            binding.swipeRefreshLayout.isRefreshing = false
+            return
+        }
+        discoverActionJob?.cancel()
+        discoverActionJob = viewLifecycleOwner.lifecycleScope.launch {
+            runCatching {
+                withContext(IO) {
+                    source.clearExploreKindsCache()
+                }
+                loadDiscoverKindsAndDefault()
+            }.onFailure {
+                AppLog.put("刷新发现分类失败", it)
+                context?.toastOnUi(it.localizedMessage ?: getString(R.string.unknown_error))
+            }
+            binding.swipeRefreshLayout.isRefreshing = false
+        }
     }
 
     private suspend fun loadDiscoverKindsAndDefault() {

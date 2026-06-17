@@ -103,12 +103,7 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
                 rotateLoading.loadingColor = context.accentColor
                 rotateLoading.visible()
                 Coroutine.async(callBack.scope) {
-                    sourceKinds[item.bookSourceUrl]?.also {
-                        return@async it
-                    }
-                    item.exploreKinds().also {
-                        sourceKinds[item.bookSourceUrl] = it
-                    }
+                    loadExploreKinds(item)
                 }.onSuccess { kindList ->
                     upKindList(this@run, item, kindList, exIndex)
                 }.onFinally {
@@ -614,6 +609,15 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
+    fun refreshExpandedIfNoKinds(): Boolean {
+        val position = exIndex
+        if (position < 0) return false
+        val source = getItem(position) ?: return false
+        if (!sourceKinds[source.bookSourceUrl].isNullOrEmpty()) return false
+        refreshExplore(source, position, null)
+        return true
+    }
+
     fun onPause() {
         sourceKinds.clear()
         saveInfoMapJob?.cancel()
@@ -626,15 +630,30 @@ class ExploreAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-    private fun refreshExplore(source: BookSourcePart, position: Int, binding: ItemFindBookBinding) {
-        binding.rotateLoading.visible()
+    private suspend fun loadExploreKinds(source: BookSourcePart): List<ExploreKind> {
+        sourceKinds[source.bookSourceUrl]?.takeIf { it.isNotEmpty() }?.let {
+            return it
+        }
+        val kinds = source.exploreKinds()
+        if (kinds.isNotEmpty()) {
+            sourceKinds[source.bookSourceUrl] = kinds
+            return kinds
+        }
+        source.clearExploreKindsCache()
+        return source.exploreKinds().also {
+            sourceKinds[source.bookSourceUrl] = it
+        }
+    }
+
+    private fun refreshExplore(source: BookSourcePart, position: Int, binding: ItemFindBookBinding?) {
+        binding?.rotateLoading?.visible()
         Coroutine.async(callBack.scope) {
             source.clearExploreKindsCache()
             sourceKinds[source.bookSourceUrl] = source.exploreKinds()
         }.onSuccess {
             notifyItemChanged(position, false)
         }.onFinally {
-            binding.rotateLoading.gone()
+            binding?.rotateLoading?.gone()
         }
     }
 
