@@ -73,7 +73,6 @@ import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
-import io.legado.app.utils.FileDoc
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -261,20 +260,14 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
         importPackage.launch {
             mode = HandleFileContract.FILE
             title = getString(R.string.appearance_kit_import)
-            allowExtensions = arrayOf("red", "arc", "zip")
+            allowExtensions = arrayOf("red", "zip")
         }
     }
 
     private fun importAppearanceKit(uri: Uri) {
         lifecycleScope.launch {
             runCatching {
-                val extension = FileDoc.fromUri(uri, false)
-                    .name
-                    .substringAfterLast('.', "zip")
-                    .lowercase()
-                    .takeIf { it in setOf("red", "arc", "zip") }
-                    ?: "zip"
-                val file = externalFiles.getFile("appearanceKitImports", "import_${System.currentTimeMillis()}.$extension")
+                val file = externalFiles.getFile("appearanceKitImports", "import_${System.currentTimeMillis()}.zip")
                 file.parentFile?.mkdirs()
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }

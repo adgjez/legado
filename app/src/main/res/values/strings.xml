@@ -2293,7 +2293,7 @@ Selected text or question:
     <string name="appearance_kit_summary">Manage themes, top bar, bottom bar, and cover galleries together</string>
     <string name="appearance_kit_actions">Theme actions</string>
     <string name="appearance_kit_import">Import app theme</string>
-    <string name="appearance_kit_import_summary">Supports RED, ARC recovery, theme ZIPs, and app theme ZIPs</string>
+    <string name="appearance_kit_import_summary">Supports RED theme packages, theme ZIPs, and app theme ZIPs</string>
     <string name="appearance_kit_export">Export current app theme</string>
     <string name="appearance_kit_export_summary">Export current theme, top bar, bottom bar, and cover collection together</string>
     <string name="appearance_kit_imported">Imported %d components</string>

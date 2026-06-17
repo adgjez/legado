@@ -2164,7 +2164,7 @@ bookUrl：%7$s
     <string name="appearance_kit_summary">统一管理主题、顶栏、底栏和封面图集</string>
     <string name="appearance_kit_actions">主题操作</string>
     <string name="appearance_kit_import">导入应用主题</string>
-    <string name="appearance_kit_import_summary">支持 RED 主题包、ARC 恢复、主题 ZIP 和应用主题 ZIP</string>
+    <string name="appearance_kit_import_summary">支持 RED 主题包、主题 ZIP 和应用主题 ZIP</string>
     <string name="appearance_kit_export">导出当前应用主题</string>
     <string name="appearance_kit_export_summary">导出当前主题、顶栏、底栏和封面图集的组合包</string>
     <string name="appearance_kit_imported">已导入 %d 个组件</string>
