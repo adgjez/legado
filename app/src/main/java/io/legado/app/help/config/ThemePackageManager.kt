@@ -11,6 +11,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
@@ -1081,7 +1082,9 @@ object ThemePackageManager {
     }
 
     private fun packageAssetName(prefix: String, sourceName: String, keepOriginalName: Boolean): String {
-        val suffix = sourceName.substringAfterLast('.', "")
+        val sourceFile = File(sourceName)
+        val suffix = ImageTypeUtils.preferredRasterExtension(sourceFile.takeIf { it.isFile }, "")
+            .ifBlank { sourceName.substringAfterLast('.', "") }
             .takeIf { it.isNotBlank() }
             ?.let { ".$it" }
             .orEmpty()

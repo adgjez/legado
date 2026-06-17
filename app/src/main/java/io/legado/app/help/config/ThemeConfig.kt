@@ -287,6 +287,7 @@ object ThemeConfig {
             val bBackground = config.bottomBackground.toColorInt()
             val isNightTheme = config.isNightTheme
             val backgroundPath = config.backgroundImgPath
+            val backgroundCrop = normalizeBackgroundCrop(config.backgroundImgCrop)
             val bookInfoBackgroundPath = config.bookInfoBackgroundImgPath
             val panelBackgroundPath = config.panelBackgroundImgPath
             val panelBackgroundScaleType = config.panelBackgroundScaleType?.takeIf {
@@ -361,6 +362,7 @@ object ThemeConfig {
                 context.putPrefBoolean(PreferKey.tNavBarN, true)
                 context.putPrefString(PreferKey.bgImageN, backgroundPath)
                 context.putPrefInt(PreferKey.bgImageNBlurring, backgroundBlur)
+                context.putPrefString(PreferKey.bgImageNCrop, backgroundCrop.orEmpty())
                 context.putPrefString(PreferKey.bookInfoBgImageN, bookInfoBackgroundPath)
                 context.putPrefString(PreferKey.panelBgImageN, panelBackgroundPath)
                 context.putPrefString(PreferKey.panelBgScaleTypeN, panelBackgroundScaleType)
@@ -375,6 +377,7 @@ object ThemeConfig {
                 context.putPrefBoolean(PreferKey.tNavBar, true)
                 context.putPrefString(PreferKey.bgImage, backgroundPath)
                 context.putPrefInt(PreferKey.bgImageBlurring, backgroundBlur)
+                context.putPrefString(PreferKey.bgImageCrop, backgroundCrop.orEmpty())
                 context.putPrefString(PreferKey.bookInfoBgImage, bookInfoBackgroundPath)
                 context.putPrefString(PreferKey.panelBgImage, panelBackgroundPath)
                 context.putPrefString(PreferKey.panelBgScaleType, panelBackgroundScaleType)
@@ -439,6 +442,8 @@ object ThemeConfig {
             context.getPrefString(PreferKey.bgImage)
         val bgImgBlur =
             context.getPrefInt(PreferKey.bgImageBlurring, 0)
+        val bgImgCrop =
+            context.getPrefString(PreferKey.bgImageCrop)
         val bookInfoBgImgPath =
             context.getPrefString(PreferKey.bookInfoBgImage)
         val panelBgImgPath =
@@ -464,6 +469,7 @@ object ThemeConfig {
                 transparentNavBar = true,
                 backgroundImgPath = bgImgPath,
                 backgroundImgBlur = bgImgBlur,
+                backgroundImgCrop = bgImgCrop,
                 bookInfoBackgroundImgPath = bookInfoBgImgPath,
                 panelBackgroundImgPath = panelBgImgPath,
                 panelBackgroundScaleType = panelBgScaleType,
@@ -505,6 +511,8 @@ object ThemeConfig {
             context.getPrefString(PreferKey.bgImageN)
         val bgImgBlur =
             context.getPrefInt(PreferKey.bgImageNBlurring, 0)
+        val bgImgCrop =
+            context.getPrefString(PreferKey.bgImageNCrop)
         val bookInfoBgImgPath =
             context.getPrefString(PreferKey.bookInfoBgImageN)
         val panelBgImgPath =
@@ -529,6 +537,7 @@ object ThemeConfig {
                 transparentNavBar = true,
                 backgroundImgPath = bgImgPath,
                 backgroundImgBlur = bgImgBlur,
+                backgroundImgCrop = bgImgCrop,
                 bookInfoBackgroundImgPath = bookInfoBgImgPath,
                 panelBackgroundImgPath = panelBgImgPath,
                 panelBackgroundScaleType = panelBgScaleType,
@@ -569,6 +578,11 @@ object ThemeConfig {
             } else {
                 config.backgroundImgBlur
             },
+            backgroundImgCrop = if (config.backgroundImgPath.isNullOrBlank() && !stored.backgroundImgPath.isNullOrBlank()) {
+                stored.backgroundImgCrop
+            } else {
+                normalizeBackgroundCrop(config.backgroundImgCrop) ?: stored.backgroundImgCrop
+            },
             uiCornerScale = config.uiCornerScale ?: stored.uiCornerScale,
             uiLayoutAlpha = config.uiLayoutAlpha ?: stored.uiLayoutAlpha,
             dialogAlpha = config.dialogAlpha ?: stored.dialogAlpha,
@@ -595,6 +609,19 @@ object ThemeConfig {
         }
         return fallback?.takeIf {
             it.startsWith("http", ignoreCase = true) || isReadableThemeFile(it)
+        }
+    }
+
+    fun normalizeBackgroundCrop(value: String?): String? {
+        val parts = value
+            ?.split(',', '|', ';')
+            ?.mapNotNull { it.trim().toFloatOrNull()?.coerceIn(0f, 1f) }
+            ?: return null
+        if (parts.size != 4) return null
+        val (left, top, right, bottom) = parts
+        if (right <= left || bottom <= top) return null
+        return parts.joinToString(",") { crop ->
+            String.format(Locale.US, "%.6f", crop).trimEnd('0').trimEnd('.')
         }
     }
 
@@ -757,6 +784,7 @@ object ThemeConfig {
         var transparentNavBar: Boolean,
         var backgroundImgPath: String?,
         var backgroundImgBlur: Int,
+        var backgroundImgCrop: String? = null,
         var bookInfoBackgroundImgPath: String? = null,
         var panelBackgroundImgPath: String? = null,
         var panelBackgroundScaleType: String? = PANEL_BG_CROP,
@@ -795,6 +823,7 @@ object ThemeConfig {
                         && other.transparentNavBar == transparentNavBar
                         && other.backgroundImgPath == backgroundImgPath
                         && other.backgroundImgBlur == backgroundImgBlur
+                        && other.backgroundImgCrop == backgroundImgCrop
                         && other.bookInfoBackgroundImgPath == bookInfoBackgroundImgPath
                         && other.panelBackgroundImgPath == panelBackgroundImgPath
                         && other.panelBackgroundScaleType == panelBackgroundScaleType
@@ -829,6 +858,7 @@ object ThemeConfig {
             "transparentNavBar" to transparentNavBar,
             "backgroundImgPath" to backgroundImgPath,
             "backgroundImgBlur" to backgroundImgBlur,
+            "backgroundImgCrop" to backgroundImgCrop,
             "bookInfoBackgroundImgPath" to bookInfoBackgroundImgPath,
             "panelBackgroundImgPath" to panelBackgroundImgPath,
             "panelBackgroundScaleType" to panelBackgroundScaleType,

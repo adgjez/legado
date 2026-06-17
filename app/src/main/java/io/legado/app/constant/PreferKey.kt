@@ -347,6 +347,7 @@ object PreferKey {
     const val cBBackground = "colorBottomBackground"
     const val bgImage = "backgroundImage"
     const val bgImageBlurring = "backgroundImageBlurring"
+    const val bgImageCrop = "backgroundImageCrop"
     const val bookInfoBgImage = "bookInfoBackgroundImage"
     const val bookInfoBgImageN = "bookInfoBackgroundImageNight"
     const val panelBgImage = "panelBackgroundImage"
@@ -366,6 +367,7 @@ object PreferKey {
     const val cNBBackground = "colorBottomBackgroundNight"
     const val bgImageN = "backgroundImageNight"
     const val bgImageNBlurring = "backgroundImageNightBlurring"
+    const val bgImageNCrop = "backgroundImageNightCrop"
     const val tNavBarN = "transparentNavBarNight"
 
     const val showReadTitleAddition = "showReadTitleAddition"

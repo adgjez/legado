@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -77,6 +78,7 @@ import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.ImageCropHelper
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
@@ -120,6 +122,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var editingEntry: ThemePackageManager.Entry? = null
     private var pendingBlur = 0
     private var pendingMainBackgroundPath: String? = null
+    private var pendingMainBackgroundCrop: String? = null
     private var pendingBookInfoBackgroundPath: String? = null
     private var pendingPanelBackgroundPath: String? = null
     private var pendingPanelBackgroundScaleType = ThemeConfig.PANEL_BG_CROP
@@ -168,6 +171,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             when (request.requestCode) {
                 requestMainBackground -> {
                     pendingMainBackgroundPath = resultPath
+                    pendingMainBackgroundCrop = formatMainBackgroundCrop(result)
                     editDialogBinding?.let { binding -> updateImageRow(binding.rowMainBackground, ThemeImageTarget.MAIN) }
                 }
                 requestBookInfoBackground -> {
@@ -435,6 +439,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         entry: ThemePackageManager.Entry?
     ): DialogThemePackageEditBinding {
         pendingMainBackgroundPath = current.backgroundImgPath
+        pendingMainBackgroundCrop = current.backgroundImgCrop
         pendingBookInfoBackgroundPath = current.bookInfoBackgroundImgPath
         pendingPanelBackgroundPath = current.panelBackgroundImgPath
         pendingPanelBackgroundScaleType = current.panelBackgroundScaleType ?: ThemeConfig.PANEL_BG_CROP
@@ -972,6 +977,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     when (target) {
                         ThemeImageTarget.MAIN -> {
                             pendingMainBackgroundPath = ""
+                            pendingMainBackgroundCrop = null
                             editDialogBinding?.let { updateImageRow(it.rowMainBackground, ThemeImageTarget.MAIN) }
                         }
                         ThemeImageTarget.BOOK_INFO -> {
@@ -1064,6 +1070,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 transparentNavBar = true,
                 backgroundImgPath = pendingMainBackgroundPath,
                 backgroundImgBlur = pendingBlur,
+                backgroundImgCrop = ThemeConfig.normalizeBackgroundCrop(pendingMainBackgroundCrop),
                 bookInfoBackgroundImgPath = pendingBookInfoBackgroundPath,
                 panelBackgroundImgPath = pendingPanelBackgroundPath,
                 panelBackgroundScaleType = pendingPanelBackgroundScaleType,
@@ -1216,6 +1223,7 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             transparentNavBar = true,
             backgroundImgPath = getPrefString(if (isNightTheme) PreferKey.bgImageN else PreferKey.bgImage),
             backgroundImgBlur = getPrefInt(if (isNightTheme) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring, 0),
+            backgroundImgCrop = getPrefString(if (isNightTheme) PreferKey.bgImageNCrop else PreferKey.bgImageCrop),
             bookInfoBackgroundImgPath = getPrefString(if (isNightTheme) PreferKey.bookInfoBgImageN else PreferKey.bookInfoBgImage),
             panelBackgroundImgPath = getPrefString(if (isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage),
             panelBackgroundScaleType = getPrefString(if (isNightTheme) PreferKey.panelBgScaleTypeN else PreferKey.panelBgScaleType)
@@ -1341,7 +1349,50 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             targetWidth = 1600
         )
         pendingImageCropRequest = request
-        cropImage.launch(request.params)
+        val animatedSource = if (requestCode == requestMainBackground) copyAnimatedBackgroundSource(uri) else null
+        cropImage.launch(
+            if (animatedSource != null) {
+                request.params.copy(
+                    uri = animatedSource.toUri(),
+                    outputPath = animatedSource.absolutePath,
+                    viewportOnly = true
+                )
+            } else {
+                if (requestCode == requestMainBackground) {
+                    pendingMainBackgroundCrop = null
+                }
+                request.params
+            }
+        )
+    }
+
+    private fun copyAnimatedBackgroundSource(uri: Uri): File? {
+        return kotlin.runCatching {
+            val dir = externalFiles.getFile("themePackageTemp").apply { mkdirs() }
+            val temp = File(dir, "main_source_${System.currentTimeMillis()}.img")
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(temp).use { output -> input.copyTo(output) }
+            } ?: error(getString(R.string.error_image_url_empty))
+            if (!ImageTypeUtils.isAnimatedImage(temp)) {
+                temp.delete()
+                return null
+            }
+            val suffix = ImageTypeUtils.preferredRasterExtension(temp, "img")
+            val target = File(dir, "main_${System.currentTimeMillis()}.$suffix")
+            temp.renameTo(target)
+            target.takeIf { it.exists() && it.length() > 0L }
+                ?: error(getString(R.string.error_decode_bitmap))
+        }.onFailure {
+            toastOnUi(getString(R.string.image_crop_failed, it.localizedMessage ?: getString(R.string.unknown)))
+        }.getOrNull()
+    }
+
+    private fun formatMainBackgroundCrop(result: ImageCropContract.Result): String? {
+        val left = result.cropLeft ?: return null
+        val top = result.cropTop ?: return null
+        val right = result.cropRight ?: return null
+        val bottom = result.cropBottom ?: return null
+        return ThemeConfig.normalizeBackgroundCrop("$left,$top,$right,$bottom")
     }
 
     private fun entryActions(entry: ThemePackageManager.Entry): List<AppManagementMenuAction> {
