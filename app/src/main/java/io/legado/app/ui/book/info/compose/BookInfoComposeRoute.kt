@@ -907,15 +907,6 @@ private fun BookInfoMoreActionSheet(
                     onDismiss()
                     actions.onOpenLibraryContainer()
                 }
-                if (state.hasBookSource) {
-                    BookInfoToggleActionItem(
-                        text = stringResource(R.string.allow_update),
-                        checked = state.canUpdate,
-                        style = style
-                    ) {
-                        actions.onAllowUpdateChanged(!state.canUpdate)
-                    }
-                }
                 BookInfoMoreActionItem(stringResource(R.string.back), style) {
                     showCloudOptions = false
                 }
@@ -928,6 +919,15 @@ private fun BookInfoMoreActionSheet(
                 }
                 BookInfoMoreActionItem(stringResource(R.string.book_cloud_entry_mode), style) {
                     showCloudOptions = true
+                }
+                if (state.hasBookSource) {
+                    BookInfoToggleActionItem(
+                        text = stringResource(R.string.allow_update),
+                        checked = state.canUpdate,
+                        style = style
+                    ) {
+                        actions.onAllowUpdateChanged(!state.canUpdate)
+                    }
                 }
                 BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
                     onDismiss()
