@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import com.bumptech.glide.Glide
 import io.legado.app.R
 import io.legado.app.help.config.CoverCollectionManager
@@ -204,6 +205,7 @@ private fun CoverCollectionItemRow(
                         .centerCrop()
                         .into(imageView)
                 },
+                onRelease = { it.releaseComposeImage() },
                 modifier = Modifier
                     .size(width = 54.dp, height = 72.dp)
                     .clip(RoundedCornerShape(8.dp))

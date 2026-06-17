@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.data.entities.BookCharacter
@@ -2214,6 +2215,7 @@ fun CharacterAvatar(
                     .error(R.drawable.ic_bottom_person)
                     .into(imageView)
             }
-        }
+        },
+        onRelease = { it.releaseComposeImage() }
     )
 }

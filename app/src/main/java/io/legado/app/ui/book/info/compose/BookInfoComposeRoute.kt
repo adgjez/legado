@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.zIndex
 import androidx.core.text.HtmlCompat
 import io.legado.app.R
@@ -1775,7 +1776,8 @@ private fun BookInfoImage(
                         .into(imageView)
                 }
             }
-        }
+        },
+        onRelease = { it.releaseComposeImage() }
     )
 }
 
@@ -1817,7 +1819,8 @@ private fun BookInfoPreviewImage(
                     .override(width, height)
                     .into(imageView)
             }
-        }
+        },
+        onRelease = { it.releaseComposeImage() }
     )
 }
 

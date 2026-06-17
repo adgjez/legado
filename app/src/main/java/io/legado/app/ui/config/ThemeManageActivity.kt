@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.graphics.toColorInt
@@ -2285,6 +2286,7 @@ private fun ThemePackagePreview(
                     request.into(imageView)
                 }
             },
+            onRelease = { it.releaseComposeImage() },
             modifier = Modifier.fillMaxSize()
         )
         Column(

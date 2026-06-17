@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import com.github.liuyueyi.quick.transfer.constants.TransType
 import io.legado.app.R
 import io.legado.app.constant.EventBus
@@ -417,6 +418,7 @@ class ReadStyleDialog : ReaderBottomSheetComposeDialogFragment(),
                     imageView.borderColor = if (selected) context.accentColor else config.curTextColor()
                     imageView.setTextBold(selected)
                 },
+                onRelease = { it.releaseComposeImage() },
                 modifier = Modifier.size(48.dp)
             )
             }

@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -671,7 +672,8 @@ class BgTextConfigDialog : BaseDialogFragment(0) {
                 ImageLoader.load(imageView.context, "file:///android_asset/bg/$imageName")
                     .centerCrop()
                     .into(imageView)
-            }
+            },
+            onRelease = { it.releaseComposeImage() }
         )
     }
 

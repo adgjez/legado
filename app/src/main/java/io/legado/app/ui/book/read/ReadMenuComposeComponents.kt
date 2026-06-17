@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import android.graphics.PorterDuff
 import io.legado.app.R
 import io.legado.app.data.entities.ReadMenuCustomButton
@@ -675,6 +676,7 @@ private fun ReadMenuButton(
                 )
                 imageView.setColorFilter(style.primaryText.toArgb(), PorterDuff.Mode.SRC_IN)
             },
+            onRelease = { it.releaseComposeImage() },
             modifier = Modifier.size(22.dp)
         )
         Text(

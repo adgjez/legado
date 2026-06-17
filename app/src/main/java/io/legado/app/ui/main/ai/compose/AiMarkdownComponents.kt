@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.ai.AiImageGalleryManager
@@ -489,7 +490,8 @@ private fun AiMarkdownImage(
                         .error(R.drawable.image_loading_error)
                         .into(imageView)
                 }
-            }
+            },
+            onRelease = { it.releaseComposeImage() }
         )
     }
 }

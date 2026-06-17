@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.book.SearchBookOpenHelper
@@ -167,7 +168,8 @@ private fun BookResultPreview(
                                 sourceOrigin = book.origin,
                                 preferThumb = true
                             )
-                        }
+                        },
+                        onRelease = { it.releaseComposeImage() }
                     )
                     Text(
                         text = book.name,
@@ -293,7 +295,8 @@ private fun ImageResultPreview(
                             io.legado.app.help.glide.ImageLoader.load(context, image.image)
                                 .error(io.legado.app.R.drawable.image_loading_error)
                                 .into(it)
-                        }
+                        },
+                        onRelease = { it.releaseComposeImage() }
                     )
                     Text(
                         text = image.prompt.ifBlank { "图片已生成" },

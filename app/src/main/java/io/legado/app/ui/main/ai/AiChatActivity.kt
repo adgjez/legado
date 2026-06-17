@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -924,7 +925,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                             loadOnlyWifi = false,
                             preferThumb = true
                         )
-                    }
+                    },
+                    onRelease = { it.releaseComposeImage() }
                 )
                 Text(
                     text = group.bookName.ifBlank { group.label },
@@ -981,7 +983,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                             loadOnlyWifi = false,
                             preferThumb = true
                         )
-                    }
+                    },
+                    onRelease = { it.releaseComposeImage() }
                 )
                 Column(
                     modifier = Modifier
@@ -1281,7 +1284,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                             loadOnlyWifi = false,
                             preferThumb = true
                         )
-                    }
+                    },
+                    onRelease = { it.releaseComposeImage() }
                 )
                 Text(
                     text = group.bookName.ifBlank { group.label },
