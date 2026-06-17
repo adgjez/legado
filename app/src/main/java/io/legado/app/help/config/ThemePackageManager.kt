@@ -679,7 +679,7 @@ object ThemePackageManager {
                 zip.entries().asSequence().forEach { entry ->
                     if (entry.isDirectory) return@forEach
                     val target = File(unzipDir, entry.name)
-                    target.canonicalPath.takeIf { it.startsWith(unzipDir.canonicalPath) }
+                    target.canonicalPath.takeIf { it.startsWith(unzipDir.canonicalPath + File.separator) }
                         ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
                     target.parentFile?.mkdirs()
                     zip.getInputStream(entry).use { input ->

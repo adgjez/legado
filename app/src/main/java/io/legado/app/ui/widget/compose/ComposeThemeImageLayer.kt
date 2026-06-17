@@ -59,6 +59,10 @@ private fun ComposeThemeImage(
     alpha: Float,
     crop: ComposeThemeImageCrop?
 ) {
+    // 在 composition 内缓存 loadKey，避免每次重组都执行 file.lastModified() 磁盘 IO
+    val loadKey = remember(file.absolutePath, animate, crop) {
+        ComposeThemeImageLoadKey(file.absolutePath, file.lastModified(), animate, crop)
+    }
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -74,7 +78,6 @@ private fun ComposeThemeImage(
         update = { imageView ->
             imageView.alpha = alpha.coerceIn(0f, 1f)
             imageView.crop = crop
-            val loadKey = ComposeThemeImageLoadKey(file.absolutePath, file.lastModified(), animate, crop)
             if (imageView.loadKey == loadKey) {
                 (imageView.drawable as? Animatable)?.start()
                 return@AndroidView
@@ -99,6 +102,13 @@ private fun ComposeThemeImage(
                     Glide.with(imageView).asBitmap().load(file).centerCrop().into(imageView)
                 }
             }
+        },
+        onRelease = { imageView ->
+            // 离开 composition 时停止动画并取消/释放 Glide，防止 gif/webp 持续解码与 bitmap 泄漏
+            (imageView.drawable as? Animatable)?.stop()
+            Glide.with(imageView).clear(imageView)
+            imageView.setImageDrawable(null)
+            imageView.loadKey = null
         }
     )
 }

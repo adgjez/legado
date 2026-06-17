@@ -508,7 +508,7 @@ fun FetchedModelSelectorContent(
                     .heightIn(max = 360.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(filteredModels) { modelId ->
+                items(filteredModels, key = { it }) { modelId ->
                     val isExisting = modelId in existingIds
                     val isSelected = modelId in selectedIds
                     FetchedModelRow(

@@ -2,6 +2,8 @@ package io.legado.app.ui.config
 
 import android.os.Bundle
 import android.net.Uri
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.graphics.drawable.ColorDrawable
 import android.widget.ImageView
@@ -83,6 +85,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
+private const val MENU_IMPORT = 1
+private const val MENU_EXPORT = 2
+private const val MENU_SYNC_TASKS = 3
+
 class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
 
     override val binding: ActivityThemeManageBinding by lazy {
@@ -118,6 +124,25 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
         refreshKits()
     }
 
+    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, MENU_IMPORT, 0, R.string.appearance_kit_import)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_EXPORT, 1, R.string.appearance_kit_export)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_SYNC_TASKS, 2, R.string.package_sync_task_title)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        return true
+    }
+
+    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            MENU_IMPORT -> { selectImportPackage(); true }
+            MENU_EXPORT -> { exportCurrentKit(); true }
+            MENU_SYNC_TASKS -> { showSyncTasks(); true }
+            else -> super.onCompatOptionsItemSelected(item)
+        }
+    }
+
     private fun installComposeContent() {
         val composeView = ComposeView(this).apply {
             layoutParams = binding.recyclerView.layoutParams
@@ -129,14 +154,7 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
                     currentKitId = currentKitIdState,
                     onApply = ::applyKit,
                     onEdit = ::editKit,
-                    onDelete = ::confirmDeleteKit,
-                    onImport = ::selectImportPackage,
-                    onExport = ::exportCurrentKit,
-                    onOpenSyncTasks = ::showSyncTasks,
-                    onOpenTheme = { startActivity<ThemeManageActivity>() },
-                    onOpenNavigation = { startActivity<NavigationBarManageActivity>() },
-                    onOpenTopBar = { startActivity<TopBarManageActivity>() },
-                    onOpenCover = { startActivity<CoverCollectionManageActivity>() }
+                    onDelete = ::confirmDeleteKit
                 )
             }
         }
@@ -320,14 +338,7 @@ private fun AppearanceKitScreen(
     currentKitId: String,
     onApply: (AppearanceKit) -> Unit,
     onEdit: (AppearanceKit) -> Unit,
-    onDelete: (AppearanceKit) -> Unit,
-    onImport: () -> Unit,
-    onExport: () -> Unit,
-    onOpenSyncTasks: () -> Unit,
-    onOpenTheme: () -> Unit,
-    onOpenNavigation: () -> Unit,
-    onOpenTopBar: () -> Unit,
-    onOpenCover: () -> Unit
+    onDelete: (AppearanceKit) -> Unit
 ) {
     val palette = rememberAppManagementPalette()
     LazyColumn(
@@ -347,43 +358,7 @@ private fun AppearanceKitScreen(
                 onDelete = onDelete
             )
         }
-        item("actions") {
-            ActionSection(
-                palette = palette,
-                onImport = onImport,
-                onExport = onExport,
-                onOpenSyncTasks = onOpenSyncTasks
-            )
-        }
-        item("advanced") {
-            AdvancedSection(
-                palette = palette,
-                onOpenTheme = onOpenTheme,
-                onOpenNavigation = onOpenNavigation,
-                onOpenTopBar = onOpenTopBar,
-                onOpenCover = onOpenCover
-            )
-        }
     }
-}
-
-@Composable
-private fun ActionSection(
-    palette: AppManagementPalette,
-    onImport: () -> Unit,
-    onExport: () -> Unit,
-    onOpenSyncTasks: () -> Unit
-) {
-    val rows = listOf(
-        Triple(stringResourceCompat(R.string.appearance_kit_import), stringResourceCompat(R.string.appearance_kit_import_summary), onImport),
-        Triple(stringResourceCompat(R.string.appearance_kit_export), stringResourceCompat(R.string.appearance_kit_export_summary), onExport),
-        Triple(stringResourceCompat(R.string.package_sync_task_title), stringResourceCompat(R.string.appearance_kit_sync_summary), onOpenSyncTasks)
-    )
-    PanelRows(
-        title = stringResourceCompat(R.string.appearance_kit_actions),
-        palette = palette,
-        rows = rows
-    )
 }
 
 @Composable
@@ -427,27 +402,6 @@ private fun KitSection(
             }
         }
     }
-}
-
-@Composable
-private fun AdvancedSection(
-    palette: AppManagementPalette,
-    onOpenTheme: () -> Unit,
-    onOpenNavigation: () -> Unit,
-    onOpenTopBar: () -> Unit,
-    onOpenCover: () -> Unit
-) {
-    val rows = listOf(
-        Triple(stringResourceCompat(R.string.theme_manage_title), stringResourceCompat(R.string.theme_list_summary), onOpenTheme),
-        Triple(stringResourceCompat(R.string.navigation_bar_manage), stringResourceCompat(R.string.navigation_bar_manage_summary), onOpenNavigation),
-        Triple(stringResourceCompat(R.string.top_bar_manage), stringResourceCompat(R.string.top_bar_manage_summary), onOpenTopBar),
-        Triple(stringResourceCompat(R.string.cover_collection_manage), stringResourceCompat(R.string.appearance_kit_cover_summary), onOpenCover)
-    )
-    PanelRows(
-        title = stringResourceCompat(R.string.appearance_kit_advanced),
-        palette = palette,
-        rows = rows
-    )
 }
 
 @Composable

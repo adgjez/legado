@@ -308,8 +308,16 @@ object AppearanceKitManager {
             binding.preset?.takeIf { it.isNotBlank() } ?: MainLayoutPresetConfig.PRESET_REGULAR,
             notify = false
         )
-        applyThemeRef(context, false, binding.dayTheme)
-        applyThemeRef(context, true, binding.nightTheme)
+        // uiLayoutAlpha/dialogAlpha/uiCornerScale/字体等是全局(不分日夜)偏好，写在 applyConfig 内。
+        // 必须让“当前模式”的主题最后应用，否则另一模式的值会覆盖全局偏好，
+        // 表现为应用主题后界面不透明度不随当前模式变化(需进编辑弹窗才生效)。
+        if (AppConfig.isNightTheme) {
+            applyThemeRef(context, false, binding.dayTheme)
+            applyThemeRef(context, true, binding.nightTheme)
+        } else {
+            applyThemeRef(context, true, binding.nightTheme)
+            applyThemeRef(context, false, binding.dayTheme)
+        }
         applyTopBarRef(false, binding.dayTopBar)
         applyTopBarRef(true, binding.nightTopBar)
         applyNavigationRef(false, binding.dayNavigationBar)
