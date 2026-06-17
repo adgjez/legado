@@ -527,6 +527,23 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         dialog: androidx.appcompat.app.AlertDialog,
         binding: DialogThemePackageEditBinding
     ) {
+        val entry = editingEntry
+        binding.btnDelete.visibility =
+            if (entry?.source == ThemePackageManager.Source.LOCAL) View.VISIBLE else View.GONE
+        binding.btnDelete.setOnClickListener {
+            val localEntry = editingEntry?.takeIf { it.source == ThemePackageManager.Source.LOCAL }
+                ?: return@setOnClickListener
+            confirmDeleteTheme(
+                localEntry,
+                getString(R.string.theme_delete_local_confirm)
+            ) {
+                ThemePackageManager.deleteLocal(localEntry)
+                withContext(Dispatchers.Main) {
+                    dialog.dismiss()
+                    loadThemes()
+                }
+            }
+        }
         binding.btnCancel.setOnClickListener {
             dialog.dismiss()
         }

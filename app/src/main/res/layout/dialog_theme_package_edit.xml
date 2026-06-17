@@ -234,12 +234,27 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:gravity="center_vertical|end"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="2dp"
         android:paddingEnd="2dp"
         android:paddingTop="8dp"
         android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/btn_delete"
+            android:layout_width="96dp"
+            android:layout_height="40dp"
+            android:gravity="center"
+            android:text="@string/theme_delete_local"
+            android:textColor="@android:color/holo_red_light"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/btn_cancel"
