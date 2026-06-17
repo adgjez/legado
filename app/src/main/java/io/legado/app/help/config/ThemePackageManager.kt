@@ -50,7 +50,7 @@ object ThemePackageManager {
     private const val builtinDayName = "\u5185\u7f6e\u65e5\u95f4\u4e3b\u9898"
     private const val builtinNightName = "\u5185\u7f6e\u591c\u95f4\u4e3b\u9898"
     private const val RED10_RESOURCE_REF_MAX_DISTANCE = 256 * 1024
-    private const val RED10_IMAGE_GROUP_MAX_GAP = 512
+    private const val RED10_RESOURCE_GROUP_MAX_GAP = 512
     private val imageMagic = listOf(
         byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47) to ".png",
         byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) to ".jpg",
@@ -911,30 +911,36 @@ object ThemePackageManager {
     }
 
     private fun findRed10CoverImageGroup(images: List<PlainImageSegment>): List<PlainImageSegment>? {
-        return contiguousRed10Groups(images)
-            .filter { group ->
-                group.size >= 3 &&
-                    group.all { it.suffix == ".png" && it.width >= 600 && it.height >= 600 && it.aspectRatio in 0.60f..0.95f }
-            }
+        return contiguousRed10Groups(images) {
+            it.suffix == ".png" &&
+                it.width >= 600 &&
+                it.height >= 600 &&
+                it.aspectRatio in 0.60f..0.95f
+        }
+            .filter { group -> group.size >= 3 }
             .maxByOrNull { it.size }
     }
 
     private fun findRed10NavigationIconGroup(images: List<PlainImageSegment>): List<PlainImageSegment>? {
-        return contiguousRed10Groups(images)
-            .filter { group ->
-                group.size >= 5 &&
-                    group.all { it.suffix == ".png" && it.width in 96..600 && it.height in 96..600 && it.aspectRatio in 0.75f..1.35f }
+        return contiguousRed10Groups(images) {
+            it.suffix == ".png" &&
+                it.width in 96..1500 &&
+                it.height in 96..1500 &&
+                it.aspectRatio in 0.75f..1.35f
             }
-            .maxWithOrNull(compareBy<List<PlainImageSegment>> { it.size }.thenBy { group -> group.first().start })
+            .filter { group -> group.size >= 4 }
+            .maxByOrNull { it.size }
             ?.take(6)
     }
 
-    private fun contiguousRed10Groups(images: List<PlainImageSegment>): List<List<PlainImageSegment>> {
-        if (images.isEmpty()) return emptyList()
+    private fun contiguousRed10Groups(
+        images: List<PlainImageSegment>,
+        predicate: (PlainImageSegment) -> Boolean
+    ): List<List<PlainImageSegment>> {
         val groups = mutableListOf<MutableList<PlainImageSegment>>()
-        images.sortedBy { it.start }.forEach { image ->
+        images.sortedBy { it.start }.filter(predicate).forEach { image ->
             val current = groups.lastOrNull()
-            if (current != null && image.start - current.last().end <= RED10_IMAGE_GROUP_MAX_GAP) {
+            if (current != null && image.start - current.last().end in 0..RED10_RESOURCE_GROUP_MAX_GAP) {
                 current.add(image)
             } else {
                 groups.add(mutableListOf(image))
