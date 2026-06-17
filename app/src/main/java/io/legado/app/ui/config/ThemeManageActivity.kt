@@ -7,27 +7,56 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -69,9 +98,11 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.widget.ModernActionPopup
+import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
-import io.legado.app.ui.widget.compose.AppPackageManageItemCard
-import io.legado.app.ui.widget.compose.AppPackageManageScreen
+import io.legado.app.ui.widget.compose.AppManagementPalette
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
@@ -1564,6 +1595,9 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val config = kotlin.runCatching { ThemePackageManager.getConfig(entry) }
             .getOrElse { entry.packageInfo.config }
         val fallbackColor = config?.backgroundColor.toPreviewColor(entry.packageInfo.isNightTheme)
+        val primaryColor = config?.primaryColor.toPreviewColor(entry.packageInfo.isNightTheme)
+        val accentColor = config?.accentColor.toPreviewColor(entry.packageInfo.isNightTheme)
+        val bottomBackground = config?.bottomBackground.toPreviewColor(entry.packageInfo.isNightTheme)
         val backgroundPath = config?.backgroundImgPath?.takeIf { it.isNotBlank() }
         val previewSignature = backgroundPath
             ?.takeIf { !it.startsWith("http", ignoreCase = true) }
@@ -1577,6 +1611,13 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             }
         return ThemePreviewData(
             fallbackColor = fallbackColor,
+            primaryColor = primaryColor,
+            accentColor = accentColor,
+            bottomBackground = bottomBackground,
+            cardColor = config?.cardColor.toOptionalPreviewColor(),
+            mutedColor = config?.mutedColor.toOptionalPreviewColor(),
+            tabBackgroundColor = config?.tabBackgroundColor.toOptionalPreviewColor(),
+            uiLayoutAlpha = config?.uiLayoutAlpha?.coerceIn(0, 100) ?: 100,
             backgroundPath = backgroundPath,
             signature = previewSignature
         )
@@ -1590,6 +1631,14 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         }.getOrElse {
             if (isNightTheme) Color.BLACK else Color.WHITE
         }
+    }
+
+    private fun String?.toOptionalPreviewColor(): Int? {
+        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return kotlin.runCatching {
+            val normalized = if (value.startsWith("#")) value else "#$value"
+            normalized.toColorInt()
+        }.getOrNull()
     }
 
     private fun runAction(successMessage: String, block: suspend () -> Unit) {
@@ -1878,6 +1927,13 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
 private data class ThemePreviewData(
     val fallbackColor: Int,
+    val primaryColor: Int,
+    val accentColor: Int,
+    val bottomBackground: Int,
+    val cardColor: Int?,
+    val mutedColor: Int?,
+    val tabBackgroundColor: Int?,
+    val uiLayoutAlpha: Int,
     val backgroundPath: String?,
     val signature: ObjectKey?
 )
@@ -1896,52 +1952,297 @@ private fun ThemePackageManageScreen(
     entryActions: (ThemePackageManager.Entry) -> List<AppManagementMenuAction>,
     previewData: (ThemePackageManager.Entry) -> ThemePreviewData
 ) {
-    val applyText = stringResource(R.string.theme_apply)
-    val appliedText = stringResource(R.string.theme_applied_state)
-    val editText = stringResource(R.string.edit)
-    AppPackageManageScreen(
-        isNightMode = isNightTheme,
-        summaryText = summaryText,
-        addText = stringResource(R.string.theme_add),
-        onSwitchDayNight = onSwitchDayNight,
-        onAdd = onAdd
-    ) { palette ->
-        items(
-            entries,
-            key = { "${it.packageInfo.isNightTheme}_${it.dirName}" }
-        ) { entry ->
-            val active = isApplied(entry)
-            AppPackageManageItemCard(
-                title = entry.packageInfo.name,
-                info = entryInfo(entry),
-                isActive = active,
-                canEdit = entry.source != ThemePackageManager.Source.BUILTIN &&
-                    entry.source != ThemePackageManager.Source.REMOTE,
-                applyText = if (active) appliedText else applyText,
-                editText = editText,
-                moreActions = entryActions(entry),
-                palette = palette,
-                onApply = { onApply(entry) },
-                onEdit = { onEdit(entry) },
-                leadingContent = {
-                    ThemePackagePreview(
-                        preview = previewData(entry),
-                        radius = palette.miuix.panelRadius ?: 12.dp
-                    )
+    val palette = rememberAppManagementPalette()
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = palette.settings.bodyFontFamily)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = palette.settings.page,
+            contentColor = palette.settings.primaryText
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+            ) {
+                ThemePackageTabs(
+                    isNightTheme = isNightTheme,
+                    palette = palette,
+                    onSwitchDayNight = onSwitchDayNight
+                )
+                Text(
+                    text = summaryText,
+                    color = palette.settings.secondaryText,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 10.dp, end = 16.dp)
+                )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(
+                        entries,
+                        key = { "${it.packageInfo.isNightTheme}_${it.dirName}" }
+                    ) { entry ->
+                        val active = isApplied(entry)
+                        val editable = entry.source != ThemePackageManager.Source.BUILTIN &&
+                            entry.source != ThemePackageManager.Source.REMOTE
+                        ThemePackageGridCard(
+                            entry = entry,
+                            info = entryInfo(entry),
+                            preview = previewData(entry),
+                            isActive = active,
+                            canEdit = editable,
+                            actionsProvider = { entryActions(entry) },
+                            palette = palette,
+                            onApply = {
+                                if (!active) onApply(entry)
+                            },
+                            onEdit = { onEdit(entry) }
+                        )
+                    }
                 }
+                LegadoMiuixActionButton(
+                    text = stringResource(R.string.theme_add),
+                    palette = palette.miuix,
+                    onClick = onAdd,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    primary = false,
+                    cornerRadius = palette.miuix.actionRadius,
+                    minHeight = 46.dp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePackageTabs(
+    isNightTheme: Boolean,
+    palette: AppManagementPalette,
+    onSwitchDayNight: (Boolean) -> Unit
+) {
+    AppManagementCard(
+        palette = palette,
+        modifier = Modifier.fillMaxWidth(),
+        insidePadding = PaddingValues(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ThemePackageTabButton(
+                text = stringResource(R.string.theme_day),
+                selected = !isNightTheme,
+                palette = palette,
+                onClick = { onSwitchDayNight(false) },
+                modifier = Modifier.weight(1f)
+            )
+            ThemePackageTabButton(
+                text = stringResource(R.string.theme_night),
+                selected = isNightTheme,
+                palette = palette,
+                onClick = { onSwitchDayNight(true) },
+                modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
 @Composable
+private fun ThemePackageTabButton(
+    text: String,
+    selected: Boolean,
+    palette: AppManagementPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp))
+            .background(if (selected) palette.settings.accent.copy(alpha = 0.14f) else ComposeColor.Transparent),
+        shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
+        color = if (selected) palette.settings.accent.copy(alpha = 0.14f) else ComposeColor.Transparent,
+        contentColor = if (selected) palette.settings.accent else palette.settings.primaryText,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                color = if (selected) palette.settings.accent else palette.settings.primaryText,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemePackageGridCard(
+    entry: ThemePackageManager.Entry,
+    info: String,
+    preview: ThemePreviewData,
+    isActive: Boolean,
+    canEdit: Boolean,
+    actionsProvider: () -> List<AppManagementMenuAction>,
+    palette: AppManagementPalette,
+    onApply: () -> Unit,
+    onEdit: () -> Unit
+) {
+    AppManagementCard(
+        palette = palette,
+        modifier = Modifier.fillMaxWidth(),
+        insidePadding = PaddingValues(10.dp),
+        onClick = onApply,
+        onLongClick = if (canEdit) onEdit else null
+    ) {
+        ThemePackagePreview(
+            preview = preview,
+            active = isActive,
+            palette = palette,
+            radius = palette.miuix.panelRadius ?: 12.dp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.packageInfo.name,
+                    color = palette.settings.primaryText,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = info,
+                    color = palette.settings.secondaryText,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            ThemePackageMoreButton(
+                actionsProvider = actionsProvider,
+                palette = palette,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                preview.primaryColor,
+                preview.accentColor,
+                preview.bottomBackground,
+                preview.cardColor ?: preview.fallbackColor
+            ).forEach { color ->
+                ThemeColorDot(color = ComposeColor(color))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemePackageMoreButton(
+    actionsProvider: () -> List<AppManagementMenuAction>,
+    palette: AppManagementPalette,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var popupHandle by remember { mutableStateOf<ModernActionPopup.Handle?>(null) }
+    DisposableEffect(Unit) {
+        onDispose {
+            popupHandle?.dismiss()
+            popupHandle = null
+        }
+    }
+    AndroidView(
+        factory = { viewContext ->
+            TextView(viewContext).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                isSingleLine = true
+                textSize = 16f
+                text = "\u22EE"
+            }
+        },
+        update = { button ->
+            button.setTextColor(palette.settings.primaryText.toArgb())
+            button.background = UiCorner.actionSelector(
+                ComposeColor.Transparent.toArgb(),
+                palette.settings.rowPressed,
+                (12.dp.value * context.resources.displayMetrics.density)
+            )
+            button.setOnClickListener { view ->
+                val actions = actionsProvider().filter { it.text.isNotBlank() }
+                if (actions.isEmpty()) return@setOnClickListener
+                popupHandle = ModernActionPopup.show(
+                    anchor = view,
+                    actions = actions.map { action ->
+                        ModernActionPopup.Action(
+                            title = action.text.toString(),
+                            checked = action.checked,
+                            enabled = action.enabled,
+                            invoke = action.onClick
+                        )
+                    },
+                    previousPopup = popupHandle
+                )
+            }
+        },
+        modifier = modifier.size(32.dp)
+    )
+}
+
+@Composable
+private fun ThemeColorDot(color: ComposeColor) {
+    Box(
+        modifier = Modifier
+            .size(width = 18.dp, height = 8.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(color)
+    )
+}
+
+@Composable
 private fun ThemePackagePreview(
     preview: ThemePreviewData,
+    active: Boolean,
+    palette: AppManagementPalette,
     radius: androidx.compose.ui.unit.Dp
 ) {
     Box(
         modifier = Modifier
-            .size(width = 74.dp, height = 102.dp)
+            .fillMaxWidth()
+            .aspectRatio(1.18f)
             .clip(RoundedCornerShape(radius))
             .background(ComposeColor(preview.fallbackColor))
     ) {
@@ -1967,5 +2268,74 @@ private fun ThemePackagePreview(
             },
             modifier = Modifier.fillMaxSize()
         )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (active) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = palette.settings.accent.copy(alpha = 0.90f),
+                        contentColor = palette.settings.onAccent,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {
+                        Text(
+                            text = stringResource(R.string.theme_applied_state),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            color = palette.settings.onAccent,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val cardAlpha = (preview.uiLayoutAlpha.coerceIn(0, 100) / 100f).coerceIn(0.32f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.68f)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(radius / 1.6f))
+                        .background(ComposeColor(preview.cardColor ?: preview.bottomBackground).copy(alpha = cardAlpha))
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(ComposeColor(preview.tabBackgroundColor ?: preview.mutedColor ?: preview.cardColor ?: preview.bottomBackground).copy(alpha = 0.84f))
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Box(
+                        modifier = Modifier
+                            .width(42.dp)
+                            .height(18.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(ComposeColor(preview.accentColor).copy(alpha = 0.82f))
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .clip(RoundedCornerShape(radius / 1.8f))
+                        .background(ComposeColor(preview.bottomBackground).copy(alpha = 0.88f))
+                )
+            }
+        }
     }
 }
