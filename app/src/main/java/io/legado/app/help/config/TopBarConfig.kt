@@ -490,7 +490,7 @@ object TopBarConfig {
             ?.filter { it.isFile && it.name.startsWith("top_bar_wallpaper.") }
             ?.forEach { it.delete() }
         val suffix = when {
-            ImageTypeUtils.isGif(source) -> "gif"
+            ImageTypeUtils.isAnimatedImage(source) -> ImageTypeUtils.preferredRasterExtension(source)
             source.extension.isNotBlank() -> source.extension
             else -> "jpg"
         }

@@ -468,7 +468,7 @@ class MainTopBarView @JvmOverloads constructor(
             val alpha = config.wallpaperAlpha.coerceIn(0, 100) / 100f
             ComposeThemeImageState(
                 file = file,
-                animated = ImageTypeUtils.isGif(file),
+                animated = ImageTypeUtils.isAnimatedImage(file),
                 alpha = alpha,
                 crop = topBarWallpaperCrop(config),
                 fallbackColor = TopBarConfig.withOpacity(

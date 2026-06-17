@@ -704,13 +704,13 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private fun startWallpaperCrop(uri: Uri) {
         val metrics = resources.displayMetrics
         val sourceFile = copyWallpaperSource(uri) ?: return
-        val gifFile = sourceFile.takeIf(ImageTypeUtils::isGif)
-        if (gifFile == null) {
+        val animatedFile = sourceFile.takeIf(ImageTypeUtils::isAnimatedImage)
+        if (animatedFile == null) {
             sourceFile.delete()
         }
         val request = ImageCropHelper.buildRequest(
             context = this,
-            sourceUri = gifFile?.toUri() ?: uri,
+            sourceUri = animatedFile?.toUri() ?: uri,
             requestCode = REQUEST_WALLPAPER,
             aspectWidth = metrics.widthPixels.coerceAtLeast(1),
             aspectHeight = (220 * metrics.density).toInt().coerceAtLeast(1),
@@ -720,9 +720,9 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         )
         pendingWallpaperCropRequest = request
         cropWallpaper.launch(
-            if (gifFile != null) {
+            if (animatedFile != null) {
                 request.params.copy(
-                    outputPath = gifFile.absolutePath,
+                    outputPath = animatedFile.absolutePath,
                     viewportOnly = true
                 )
             } else {

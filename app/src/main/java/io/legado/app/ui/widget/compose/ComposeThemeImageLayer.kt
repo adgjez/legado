@@ -21,11 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.appcompat.widget.AppCompatImageView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.resource.gif.GifDrawable
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import io.legado.app.utils.ImageTypeUtils
 import java.io.File
 
 @Composable
@@ -83,8 +83,8 @@ private fun ComposeThemeImage(
             if (crop != null) {
                 imageView.scaleType = ImageView.ScaleType.MATRIX
                 if (animate) {
-                    Glide.with(imageView).asGif().load(file)
-                        .listener(imageView.gifStartListener())
+                    Glide.with(imageView).load(file)
+                        .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
                     Glide.with(imageView).asBitmap().load(file).into(imageView)
@@ -92,8 +92,8 @@ private fun ComposeThemeImage(
             } else {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                 if (animate) {
-                    Glide.with(imageView).asGif().load(file).centerCrop()
-                        .listener(imageView.gifStartListener())
+                    Glide.with(imageView).load(file).centerCrop()
+                        .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
                     Glide.with(imageView).asBitmap().load(file).centerCrop().into(imageView)
@@ -113,19 +113,19 @@ private class CropAwareImageView(context: Context) : AppCompatImageView(context)
             applyCropMatrixIfNeeded()
         }
 
-    fun gifStartListener(): RequestListener<GifDrawable> {
-        return object : RequestListener<GifDrawable> {
+    fun drawableStartListener(): RequestListener<Drawable> {
+        return object : RequestListener<Drawable> {
             override fun onLoadFailed(
                 e: GlideException?,
                 model: Any?,
-                target: Target<GifDrawable>,
+                target: Target<Drawable>,
                 isFirstResource: Boolean
             ): Boolean = false
 
             override fun onResourceReady(
-                resource: GifDrawable,
+                resource: Drawable,
                 model: Any,
-                target: Target<GifDrawable>?,
+                target: Target<Drawable>?,
                 dataSource: DataSource,
                 isFirstResource: Boolean
             ): Boolean {
@@ -176,7 +176,7 @@ private class CropAwareImageView(context: Context) : AppCompatImageView(context)
 
 data class ComposeThemeImageState(
     val file: File?,
-    val animated: Boolean = file?.extension.equals("gif", ignoreCase = true),
+    val animated: Boolean = ImageTypeUtils.isAnimatedImage(file),
     val alpha: Float = 1f,
     val crop: ComposeThemeImageCrop? = null,
     val fallbackColor: Int
