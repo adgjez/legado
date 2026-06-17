@@ -42,6 +42,7 @@ import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.rememberAppSettingPalette
 import io.legado.app.ui.widget.compose.showComposeChoiceListDialog
+import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
 
@@ -72,6 +73,7 @@ class AppearanceKitEditActivity : BaseActivity<ActivityThemeManageBinding>() {
                         nightOptions = nightOptions,
                         onKitChange = { kitState = it },
                         onSave = ::saveKit,
+                        onDelete = ::confirmDeleteKit,
                         onSelectPreset = ::showPresetSelector,
                         onSelect = ::showSelector
                     )
@@ -105,6 +107,34 @@ class AppearanceKitEditActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onSuccess {
                 toastOnUi(if (it) R.string.success else R.string.error)
                 if (it) finish()
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun confirmDeleteKit() {
+        val kit = kitState ?: return
+        showComposeConfirmDialog(
+            title = getString(R.string.delete),
+            message = getString(R.string.appearance_kit_delete_confirm, kit.name),
+            positiveText = getString(R.string.delete),
+            negativeText = getString(R.string.cancel),
+            dangerPositive = true,
+            onPositive = { deleteKit(kit) }
+        )
+    }
+
+    private fun deleteKit(kit: StoredAppearanceKit) {
+        lifecycleScope.launch {
+            runCatching {
+                AppearanceKitManager.deleteImportedTheme(
+                    this@AppearanceKitEditActivity,
+                    kit.toAppearanceKit()
+                )
+            }.onSuccess { deleted ->
+                toastOnUi(if (deleted) R.string.delete_success else R.string.error)
+                if (deleted) finish()
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: getString(R.string.error))
             }
@@ -160,6 +190,7 @@ private fun AppearanceKitEditScreen(
     nightOptions: AppearanceKitEditOptions,
     onKitChange: (StoredAppearanceKit) -> Unit,
     onSave: () -> Unit,
+    onDelete: () -> Unit,
     onSelectPreset: (String?, (String?) -> Unit) -> Unit,
     onSelect: (
         title: String,
@@ -208,6 +239,8 @@ private fun AppearanceKitEditScreen(
             }, onSelect)
             Spacer(Modifier.height(18.dp))
             SaveButton(palette, onSave)
+            Spacer(Modifier.height(10.dp))
+            DeleteButton(palette, onDelete)
         }
     }
 }
@@ -258,6 +291,21 @@ private fun SaveButton(palette: AppSettingPalette, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(vertical = 13.dp),
         color = palette.onAccent,
+        textAlign = TextAlign.Center
+    )
+}
+
+@Composable
+private fun DeleteButton(palette: AppSettingPalette, onClick: () -> Unit) {
+    Text(
+        text = "删除",
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(androidx.compose.ui.graphics.Color(palette.row))
+            .clickable(onClick = onClick)
+            .padding(vertical = 13.dp),
+        color = palette.danger,
         textAlign = TextAlign.Center
     )
 }
