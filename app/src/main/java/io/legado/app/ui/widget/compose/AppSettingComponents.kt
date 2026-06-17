@@ -71,6 +71,9 @@ import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.backgroundColor
+import io.legado.app.lib.theme.getPrimaryTextColor
+import io.legado.app.lib.theme.getSecondaryTextColor
+import io.legado.app.utils.ColorUtils
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.widget.ModernActionPopup
@@ -113,14 +116,18 @@ fun rememberAppSettingPalette(): AppSettingPalette {
     val context = LocalContext.current
     val dialogStyle = rememberAppDialogStyle()
     val rowBaseColor = ContextCompat.getColor(context, R.color.background_card)
-    val secondaryText = Color(ContextCompat.getColor(context, R.color.tv_text_summary))
+    // 文字/强调前景色按实际背景明暗推导，避免随 night 标志产生深底深字/浅底白字
+    val rowLight = ColorUtils.isColorLight(rowBaseColor)
+    val secondaryText = Color(context.getSecondaryTextColor(rowLight))
     val page = Color(context.backgroundColor)
     val row = UiCorner.surfaceColor(rowBaseColor)
     val rowPressed = UiCorner.surfaceColor(rowBaseColor, pressed = true)
     val divider = Color(ContextCompat.getColor(context, R.color.bg_divider_line))
     val border = UiCorner.panelBorderColor(context)
-    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
-    val accent = Color(context.accentColor)
+    val primaryText = Color(context.getPrimaryTextColor(rowLight))
+    val accentArgb = context.accentColor
+    val accent = Color(accentArgb)
+    val onAccent = if (ColorUtils.isColorLight(accentArgb)) Color.Black else Color.White
     val panelRadiusPx = UiCorner.panelRadius(context)
     return remember(
         page,
@@ -131,6 +138,7 @@ fun rememberAppSettingPalette(): AppSettingPalette {
         primaryText,
         secondaryText,
         accent,
+        onAccent,
         dialogStyle.danger,
         panelRadiusPx,
         dialogStyle.bodyFontFamily,
@@ -147,7 +155,7 @@ fun rememberAppSettingPalette(): AppSettingPalette {
             accent = accent,
             danger = dialogStyle.danger,
             disabledText = secondaryText.copy(alpha = 0.48f),
-            onAccent = Color.White,
+            onAccent = onAccent,
             panelRadiusPx = panelRadiusPx,
             bodyFontFamily = dialogStyle.bodyFontFamily,
             titleFontFamily = dialogStyle.titleFontFamily
