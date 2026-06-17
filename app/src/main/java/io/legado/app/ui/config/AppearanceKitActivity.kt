@@ -69,6 +69,7 @@ import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.book.cache.WebDavTaskType
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.compose.AppManagementPalette
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.AppSettingPalette
 import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -148,14 +149,16 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
             layoutParams = binding.recyclerView.layoutParams
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                AppearanceKitScreen(
-                    kits = kitsState,
-                    previews = kitPreviewsState,
-                    currentKitId = currentKitIdState,
-                    onApply = ::applyKit,
-                    onEdit = ::editKit,
-                    onDelete = ::confirmDeleteKit
-                )
+                LegadoComposeTheme {
+                    AppearanceKitScreen(
+                        kits = kitsState,
+                        previews = kitPreviewsState,
+                        currentKitId = currentKitIdState,
+                        onApply = ::applyKit,
+                        onEdit = ::editKit,
+                        onDelete = ::confirmDeleteKit
+                    )
+                }
             }
         }
         binding.root.addView(composeView, binding.root.indexOfChild(binding.recyclerView))

@@ -66,6 +66,7 @@ fun AppManagementScaffold(
     onInvertSelection: (() -> Unit)? = null,
     content: @Composable (AppManagementPalette) -> Unit
 ) {
+    LegadoComposeTheme {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -91,6 +92,7 @@ fun AppManagementScaffold(
             onSelectAll = onSelectAll,
             onInvertSelection = onInvertSelection
         )
+    }
     }
 }
 
