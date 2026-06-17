@@ -10,11 +10,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.help.update.AppUpdate
+import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.model.Download
 import io.legado.app.ui.widget.compose.AppDialogFrame
 import io.legado.app.ui.widget.compose.ComposeDialogFragment
@@ -69,16 +71,14 @@ class UpdateDialog() : ComposeDialogFragment() {
 
                 AppDialogFrame(
                     title = title,
-                    scrollContent = false,
                     content = {
                         AndroidView(
                             modifier = Modifier
                                 .fillMaxWidth(),
                             factory = { ctx ->
                                 TextView(ctx).apply {
-                                    setTextColor(
-                                        ContextCompat.getColor(ctx, R.color.secondaryText)
-                                    )
+                                    setTextColor(style.primaryText.toArgb())
+                                    typeface = ctx.uiTypeface()
                                     setTextIsSelectable(true)
                                     val pad = (12 * ctx.resources.displayMetrics.density).toInt()
                                     setPadding(pad, pad, pad, pad)
@@ -91,6 +91,12 @@ class UpdateDialog() : ComposeDialogFragment() {
                     },
                     actions = {
                         val palette = style.toMiuixPalette()
+                        LegadoMiuixActionButton(
+                            text = stringResource(R.string.cancel),
+                            palette = palette,
+                            onClick = { dismissAllowingStateLoss() },
+                            cornerRadius = style.actionRadius
+                        )
                         LegadoMiuixActionButton(
                             text = stringResource(R.string.action_download),
                             palette = palette,
