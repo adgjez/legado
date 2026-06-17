@@ -154,7 +154,13 @@ object ThemePackageManager {
             RedPackageFormat.RED04_ZIP,
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importPackageDetailed(file).themes
-            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+            RedPackageFormat.RED10_PRIVATE -> {
+                if (file.isArcRecoveryFile()) {
+                    importRed10ArcRecoveryDetailed(file).themes
+                } else {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+                }
+            }
             null -> listOf(importZip(file))
         }
     }
@@ -167,7 +173,13 @@ object ThemePackageManager {
                 val themes = importRedGzip(file)
                 ThemeImportResult(sourceName = themes.firstOrNull()?.packageInfo?.name.orEmpty(), themes = themes)
             }
-            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+            RedPackageFormat.RED10_PRIVATE -> {
+                if (file.isArcRecoveryFile()) {
+                    importRed10ArcRecoveryDetailed(file)
+                } else {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+                }
+            }
             null -> {
                 val theme = importZip(file)
                 ThemeImportResult(sourceName = theme.packageInfo.name, themes = listOf(theme))
@@ -556,9 +568,19 @@ object ThemePackageManager {
             RedPackageFormat.RED04_ZIP -> importRedZip(file)
             RedPackageFormat.RED_GZIP_JSON,
             RedPackageFormat.RAW_GZIP_JSON -> importRedGzip(file)
-            RedPackageFormat.RED10_PRIVATE -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+            RedPackageFormat.RED10_PRIVATE -> {
+                if (file.isArcRecoveryFile()) {
+                    importRed10ArcRecoveryDetailed(file).themes
+                } else {
+                    throw IllegalArgumentException(appCtx.getString(R.string.theme_red_private_encrypted_unsupported))
+                }
+            }
             null -> throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         }
+    }
+
+    private fun File.isArcRecoveryFile(): Boolean {
+        return extension.equals("arc", ignoreCase = true)
     }
 
     private fun importRedGzip(file: File): List<Entry> {
@@ -620,6 +642,292 @@ object ThemePackageManager {
 
     private fun importRedZip(file: File): List<Entry> {
         return importRedZipDetailed(file).themes
+    }
+
+    private fun importRed10ArcRecoveryDetailed(file: File): ThemeImportResult {
+        val recoveryDir = tempDir.getFile("red10_arc_${System.currentTimeMillis()}").apply {
+            if (exists()) FileUtils.delete(this, deleteRootDir = true)
+            mkdirs()
+        }
+        return try {
+            val bytes = file.readBytes()
+            validateRed10ArcHeader(bytes)
+            val redTheme = readRed10ArcTheme(bytes)
+            val images = scanPlainImageSegments(bytes)
+            val lightBackground = recoverRed10Background(
+                bytes = bytes,
+                images = images,
+                imageId = redTheme.light?.backgroundImage.orEmpty(),
+                target = File(recoveryDir, "light_background")
+            )
+            val darkBackground = recoverRed10Background(
+                bytes = bytes,
+                images = images,
+                imageId = redTheme.dark?.backgroundImage.orEmpty(),
+                target = File(recoveryDir, "dark_background")
+            )
+            val entries = listOfNotNull(
+                redTheme.light
+                    ?.takeIf { it.hasMeaningfulThemeContent(lightBackground?.absolutePath) }
+                    ?.toThemeConfig(redTheme.name, false, inlineBackground = null)
+                    ?.copy(backgroundImgPath = lightBackground?.absolutePath),
+                redTheme.dark
+                    ?.takeIf { it.hasMeaningfulThemeContent(darkBackground?.absolutePath) }
+                    ?.toThemeConfig(redTheme.name, true, inlineBackground = null)
+                    ?.copy(backgroundImgPath = darkBackground?.absolutePath)
+            ).map(::saveConfigReplacingLocal)
+            if (entries.isEmpty()) {
+                throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+            }
+            ThemeImportResult(sourceName = redTheme.name, themes = entries)
+        } catch (e: Throwable) {
+            if (e is IllegalArgumentException) throw e
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid), e)
+        } finally {
+            FileUtils.delete(recoveryDir, deleteRootDir = true)
+        }
+    }
+
+    private fun validateRed10ArcHeader(bytes: ByteArray) {
+        if (bytes.size < 12 ||
+            bytes[0] != 'R'.code.toByte() ||
+            bytes[1] != 'E'.code.toByte() ||
+            bytes[2] != 'D'.code.toByte() ||
+            bytes[3] != 0x10.toByte()
+        ) {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        }
+        val headerLength = ((bytes[4].toInt() and 0xFF) shl 24) or
+            ((bytes[5].toInt() and 0xFF) shl 16) or
+            ((bytes[6].toInt() and 0xFF) shl 8) or
+            (bytes[7].toInt() and 0xFF)
+        if (headerLength <= 0 || 8 + headerLength > bytes.size) {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        }
+        val header = bytes.decodeToString(8, 8 + headerLength)
+        if (!header.contains("\"resourceType\":\"themeBundle\"") ||
+            !header.contains("\"payloadType\":\"directory\"") ||
+            !header.contains("\"containerMode\":\"reedenPrivate\"") ||
+            !header.contains("\"assetMode\":\"plain-sequential\"")
+        ) {
+            throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        }
+    }
+
+    private fun readRed10ArcTheme(bytes: ByteArray): RedThemeV4 {
+        val scanSize = minOf(bytes.size, 4 * 1024 * 1024)
+        val offset = bytes.size - scanSize
+        val text = bytes.decodeToString(offset, bytes.size)
+        var start = text.lastIndexOf("{\"name\"")
+        while (start >= 0) {
+            val end = findBalancedJsonEnd(text, start)
+            if (end > start) {
+                val candidate = text.substring(start, end)
+                val parsed = GSON.fromJsonObject<RedThemeV4>(candidate).getOrNull()
+                if (parsed != null && parsed.name.isNotBlank() && (parsed.light != null || parsed.dark != null)) {
+                    return parsed
+                }
+            }
+            start = text.lastIndexOf("{\"name\"", start - 1)
+        }
+        throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+    }
+
+    private fun findBalancedJsonEnd(text: String, start: Int): Int {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (index in start until text.length) {
+            val char = text[index]
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == '"' -> inString = false
+                }
+                continue
+            }
+            when (char) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return index + 1
+                }
+            }
+        }
+        return -1
+    }
+
+    private fun recoverRed10Background(
+        bytes: ByteArray,
+        images: List<PlainImageSegment>,
+        imageId: String,
+        target: File
+    ): File? {
+        if (imageId.isBlank() || images.isEmpty()) return null
+        val idBytes = imageId.encodeToByteArray()
+        val idPositions = findAllBytePositions(bytes, idBytes)
+        if (idPositions.isEmpty()) return null
+        val segment = idPositions.asSequence()
+            .flatMap { position ->
+                images.asSequence()
+                    .filter { it.end <= position }
+                    .map { it to position - it.end }
+            }
+            .minByOrNull { it.second }
+            ?.first
+            ?: return null
+        val file = File(target.parentFile, "${target.name}${segment.suffix}")
+        FileOutputStream(file).use { output ->
+            output.write(bytes, segment.start, segment.end - segment.start)
+        }
+        return file
+    }
+
+    private fun findAllBytePositions(bytes: ByteArray, pattern: ByteArray): List<Int> {
+        if (pattern.isEmpty() || bytes.size < pattern.size) return emptyList()
+        val positions = mutableListOf<Int>()
+        var index = 0
+        while (index <= bytes.size - pattern.size) {
+            var matched = true
+            for (offset in pattern.indices) {
+                if (bytes[index + offset] != pattern[offset]) {
+                    matched = false
+                    break
+                }
+            }
+            if (matched) {
+                positions.add(index)
+                index += pattern.size
+            } else {
+                index++
+            }
+        }
+        return positions
+    }
+
+    private fun scanPlainImageSegments(bytes: ByteArray): List<PlainImageSegment> {
+        val segments = mutableListOf<PlainImageSegment>()
+        var index = 0
+        while (index < bytes.size - 12) {
+            val segment = when {
+                isPngAt(bytes, index) -> pngSegment(bytes, index)
+                isJpegAt(bytes, index) -> jpegSegment(bytes, index)
+                isWebpAt(bytes, index) -> riffSegment(bytes, index, ".webp")
+                isGifAt(bytes, index) -> gifSegment(bytes, index)
+                else -> null
+            }
+            if (segment != null && segment.end > segment.start) {
+                segments.add(segment)
+                index = segment.end
+            } else {
+                index++
+            }
+        }
+        return segments
+    }
+
+    private fun isPngAt(bytes: ByteArray, index: Int): Boolean {
+        return index + 8 < bytes.size &&
+            bytes[index] == 0x89.toByte() &&
+            bytes[index + 1] == 0x50.toByte() &&
+            bytes[index + 2] == 0x4E.toByte() &&
+            bytes[index + 3] == 0x47.toByte() &&
+            bytes[index + 4] == 0x0D.toByte() &&
+            bytes[index + 5] == 0x0A.toByte() &&
+            bytes[index + 6] == 0x1A.toByte() &&
+            bytes[index + 7] == 0x0A.toByte()
+    }
+
+    private fun pngSegment(bytes: ByteArray, start: Int): PlainImageSegment? {
+        var index = start + 8
+        while (index + 12 <= bytes.size) {
+            val length = readIntBigEndian(bytes, index)
+            if (length < 0 || index + 12 + length > bytes.size) return null
+            val typeStart = index + 4
+            val isEnd = bytes[typeStart] == 'I'.code.toByte() &&
+                bytes[typeStart + 1] == 'E'.code.toByte() &&
+                bytes[typeStart + 2] == 'N'.code.toByte() &&
+                bytes[typeStart + 3] == 'D'.code.toByte()
+            index += 12 + length
+            if (isEnd) return PlainImageSegment(start, index, ".png")
+        }
+        return null
+    }
+
+    private fun isJpegAt(bytes: ByteArray, index: Int): Boolean {
+        return index + 2 < bytes.size &&
+            bytes[index] == 0xFF.toByte() &&
+            bytes[index + 1] == 0xD8.toByte() &&
+            bytes[index + 2] == 0xFF.toByte()
+    }
+
+    private fun jpegSegment(bytes: ByteArray, start: Int): PlainImageSegment? {
+        var index = start + 2
+        while (index + 1 < bytes.size) {
+            if (bytes[index] == 0xFF.toByte() && bytes[index + 1] == 0xD9.toByte()) {
+                return PlainImageSegment(start, index + 2, ".jpg")
+            }
+            index++
+        }
+        return null
+    }
+
+    private fun isWebpAt(bytes: ByteArray, index: Int): Boolean {
+        return index + 12 < bytes.size &&
+            bytes[index] == 'R'.code.toByte() &&
+            bytes[index + 1] == 'I'.code.toByte() &&
+            bytes[index + 2] == 'F'.code.toByte() &&
+            bytes[index + 3] == 'F'.code.toByte() &&
+            bytes[index + 8] == 'W'.code.toByte() &&
+            bytes[index + 9] == 'E'.code.toByte() &&
+            bytes[index + 10] == 'B'.code.toByte() &&
+            bytes[index + 11] == 'P'.code.toByte()
+    }
+
+    private fun riffSegment(bytes: ByteArray, start: Int, suffix: String): PlainImageSegment? {
+        val length = readIntLittleEndian(bytes, start + 4)
+        val end = start + 8 + length
+        if (length <= 4 || end > bytes.size) return null
+        return PlainImageSegment(start, end, suffix)
+    }
+
+    private fun isGifAt(bytes: ByteArray, index: Int): Boolean {
+        return index + 6 < bytes.size &&
+            bytes[index] == 'G'.code.toByte() &&
+            bytes[index + 1] == 'I'.code.toByte() &&
+            bytes[index + 2] == 'F'.code.toByte() &&
+            bytes[index + 3] == '8'.code.toByte() &&
+            (bytes[index + 4] == '7'.code.toByte() || bytes[index + 4] == '9'.code.toByte()) &&
+            bytes[index + 5] == 'a'.code.toByte()
+    }
+
+    private fun gifSegment(bytes: ByteArray, start: Int): PlainImageSegment? {
+        var index = start + 6
+        while (index < bytes.size) {
+            if (bytes[index] == 0x3B.toByte()) {
+                return PlainImageSegment(start, index + 1, ".gif")
+            }
+            index++
+        }
+        return null
+    }
+
+    private fun readIntBigEndian(bytes: ByteArray, index: Int): Int {
+        if (index + 4 > bytes.size) return -1
+        return ((bytes[index].toInt() and 0xFF) shl 24) or
+            ((bytes[index + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[index + 2].toInt() and 0xFF) shl 8) or
+            (bytes[index + 3].toInt() and 0xFF)
+    }
+
+    private fun readIntLittleEndian(bytes: ByteArray, index: Int): Int {
+        if (index + 4 > bytes.size) return -1
+        return (bytes[index].toInt() and 0xFF) or
+            ((bytes[index + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[index + 2].toInt() and 0xFF) shl 16) or
+            ((bytes[index + 3].toInt() and 0xFF) shl 24)
     }
 
     private fun importRedZipDetailed(file: File): ThemeImportResult {
@@ -1324,9 +1632,12 @@ object ThemePackageManager {
         val mutedForegroundColor: String = "",
         val cardColor: String = "",
         val cardForegroundColor: String = "",
+        val popoverColor: String = "",
+        val dialogBackgroundColor: String = "",
         val cardBackgroundImage: String = "",
         val mutedColor: String = "",
         val borderColor: String = "",
+        val dividerColor: String = "",
         val accentColor: String = "",
         val backgroundImage: String = "",
         val backgroundImageFit: String = "",
@@ -1343,6 +1654,12 @@ object ThemePackageManager {
         val tabBorder: Boolean = false,
         val tabBackgroundColor: String = "",
         val shelfColor: String = ""
+    )
+
+    private data class PlainImageSegment(
+        val start: Int,
+        val end: Int,
+        val suffix: String
     )
 
     private enum class RedPackageFormat {
