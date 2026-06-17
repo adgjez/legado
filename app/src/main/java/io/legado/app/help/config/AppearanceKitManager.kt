@@ -435,7 +435,7 @@ object AppearanceKitManager {
         if (kits.isNotEmpty()) saveIndex(kits)
     }
 
-    private fun currentBinding(context: Context): KitBinding {
+    private suspend fun currentBinding(context: Context): KitBinding {
         return KitBinding(
             preset = MainLayoutPresetConfig.currentPreset(),
             dayTheme = currentThemeRef(context, false),
@@ -467,8 +467,8 @@ object AppearanceKitManager {
         return ComponentRef(entry.dirName, entry.config.name)
     }
 
-    private fun currentCoverRef(isNight: Boolean): ComponentRef? {
-        val entry = kotlinx.coroutines.runBlocking { CoverCollectionManager.selectedEntry(isNight) } ?: return null
+    private suspend fun currentCoverRef(isNight: Boolean): ComponentRef? {
+        val entry = CoverCollectionManager.selectedEntry(isNight) ?: return null
         return ComponentRef(entry.collection.id, entry.collection.name)
     }
 

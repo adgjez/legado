@@ -177,7 +177,7 @@ object ThemePackageManager {
         }
     }
 
-    private fun importRedAssetZipDetailed(file: File): ThemeImportResult {
+    private suspend fun importRedAssetZipDetailed(file: File): ThemeImportResult {
         val zipFile = RedAssetPackage.zipPayload(file, tempDir)
             ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
         return try {
@@ -190,9 +190,7 @@ object ThemePackageManager {
                     )
                 }
                 RedAssetPackage.Kind.CoverCollection -> {
-                    val collection = kotlinx.coroutines.runBlocking {
-                        CoverCollectionManager.importPackage(appCtx, file, AppConfig.isNightTheme)
-                    }
+                    val collection = CoverCollectionManager.importPackage(appCtx, file, AppConfig.isNightTheme)
                     ThemeImportResult(
                         sourceName = collection.name,
                         coverCollections = listOf(collection)
@@ -582,7 +580,7 @@ object ThemePackageManager {
         }
     }
 
-    private fun importRed(file: File): List<Entry> {
+    private suspend fun importRed(file: File): List<Entry> {
         return when (detectRedPackageFormat(file)) {
             RedPackageFormat.RED04_ZIP -> importRedZip(file)
             RedPackageFormat.RED_ASSET_ZIP -> importRedAssetZipDetailed(file).themes
@@ -657,11 +655,11 @@ object ThemePackageManager {
         }
     }
 
-    private fun importRedZip(file: File): List<Entry> {
+    private suspend fun importRedZip(file: File): List<Entry> {
         return importRedZipDetailed(file).themes
     }
 
-    private fun importRedZipDetailed(file: File): ThemeImportResult {
+    private suspend fun importRedZipDetailed(file: File): ThemeImportResult {
         val zipFile = tempDir.getFile("red_${System.currentTimeMillis()}.zip")
         val unzipDir = tempDir.getFile("red_${System.currentTimeMillis()}").apply {
             if (exists()) FileUtils.delete(this, deleteRootDir = true)
@@ -792,7 +790,7 @@ object ThemePackageManager {
         }
     }
 
-    private fun importRedCoverGallery(
+    private suspend fun importRedCoverGallery(
         root: File,
         colors: RedThemeColors?,
         isNightTheme: Boolean
@@ -829,9 +827,7 @@ object ThemePackageManager {
             )
             File(packageDir, "collection.json").writeText(GSON.toJson(collection))
             ZipUtils.zipFile(packageDir, zipFile)
-            return kotlinx.coroutines.runBlocking {
-                CoverCollectionManager.importZip(appCtx, zipFile, isNightTheme)
-            }
+            return CoverCollectionManager.importZip(appCtx, zipFile, isNightTheme)
         } finally {
             zipFile.delete()
             FileUtils.delete(packageDir, deleteRootDir = true)
