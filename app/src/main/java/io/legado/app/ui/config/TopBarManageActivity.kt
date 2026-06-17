@@ -705,20 +705,12 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         val metrics = resources.displayMetrics
         val sourceFile = copyWallpaperSource(uri) ?: return
         val gifFile = sourceFile.takeIf(ImageTypeUtils::isGif)
-        if (gifFile != null) {
-            pendingWallpaperCropRequest = null
-            pendingConfig?.let { config ->
-                config.wallpaperPath = gifFile.absolutePath
-                clearPendingWallpaperCrop()
-            }
-            refreshEditDialog()
-            return
-        } else {
+        if (gifFile == null) {
             sourceFile.delete()
         }
         val request = ImageCropHelper.buildRequest(
             context = this,
-            sourceUri = uri,
+            sourceUri = gifFile?.toUri() ?: uri,
             requestCode = REQUEST_WALLPAPER,
             aspectWidth = metrics.widthPixels.coerceAtLeast(1),
             aspectHeight = (220 * metrics.density).toInt().coerceAtLeast(1),
@@ -727,8 +719,17 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
             targetWidth = 1600
         )
         pendingWallpaperCropRequest = request
-        clearPendingWallpaperCrop()
-        cropWallpaper.launch(request.params)
+        cropWallpaper.launch(
+            if (gifFile != null) {
+                request.params.copy(
+                    outputPath = gifFile.absolutePath,
+                    viewportOnly = true
+                )
+            } else {
+                clearPendingWallpaperCrop()
+                request.params
+            }
+        )
     }
 
     private fun copyWallpaperSource(uri: Uri): File? {
