@@ -60,6 +60,10 @@ class PageKeyDialog(private val context: Context) : ComponentDialog(context) {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(
             ComposeView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
                 setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
                 setContent {
                     PageKeyContent(
