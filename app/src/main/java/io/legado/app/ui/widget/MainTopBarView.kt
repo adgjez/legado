@@ -29,6 +29,7 @@ import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
 import io.legado.app.ui.widget.compose.ComposeThemeImageCrop
 import io.legado.app.ui.widget.compose.ComposeThemeImageState
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.StatusBarInsetAware
 
 class MainTopBarView @JvmOverloads constructor(
@@ -467,7 +468,7 @@ class MainTopBarView @JvmOverloads constructor(
             val alpha = config.wallpaperAlpha.coerceIn(0, 100) / 100f
             ComposeThemeImageState(
                 file = file,
-                animated = file?.extension.equals("gif", ignoreCase = true),
+                animated = ImageTypeUtils.isGif(file),
                 alpha = alpha,
                 crop = topBarWallpaperCrop(config),
                 fallbackColor = TopBarConfig.withOpacity(

@@ -21,6 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.appcompat.widget.AppCompatImageView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.resource.gif.GifDrawable
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import java.io.File
 
 @Composable
@@ -69,17 +74,27 @@ private fun ComposeThemeImage(
         update = { imageView ->
             imageView.alpha = alpha.coerceIn(0f, 1f)
             imageView.crop = crop
+            val loadKey = ComposeThemeImageLoadKey(file.absolutePath, file.lastModified(), animate, crop)
+            if (imageView.loadKey == loadKey) {
+                (imageView.drawable as? Animatable)?.start()
+                return@AndroidView
+            }
+            imageView.loadKey = loadKey
             if (crop != null) {
                 imageView.scaleType = ImageView.ScaleType.MATRIX
                 if (animate) {
-                    Glide.with(imageView).asGif().load(file).into(imageView)
+                    Glide.with(imageView).asGif().load(file)
+                        .listener(imageView.gifStartListener())
+                        .into(imageView)
                 } else {
                     Glide.with(imageView).asBitmap().load(file).into(imageView)
                 }
             } else {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                 if (animate) {
-                    Glide.with(imageView).asGif().load(file).centerCrop().into(imageView)
+                    Glide.with(imageView).asGif().load(file).centerCrop()
+                        .listener(imageView.gifStartListener())
+                        .into(imageView)
                 } else {
                     Glide.with(imageView).asBitmap().load(file).centerCrop().into(imageView)
                 }
@@ -90,11 +105,39 @@ private fun ComposeThemeImage(
 
 private class CropAwareImageView(context: Context) : AppCompatImageView(context) {
 
+    var loadKey: ComposeThemeImageLoadKey? = null
+
     var crop: ComposeThemeImageCrop? = null
         set(value) {
             field = value
             applyCropMatrixIfNeeded()
         }
+
+    fun gifStartListener(): RequestListener<GifDrawable> {
+        return object : RequestListener<GifDrawable> {
+            override fun onLoadFailed(
+                e: GlideException?,
+                model: Any?,
+                target: Target<GifDrawable>,
+                isFirstResource: Boolean
+            ): Boolean = false
+
+            override fun onResourceReady(
+                resource: GifDrawable,
+                model: Any,
+                target: Target<GifDrawable>?,
+                dataSource: DataSource,
+                isFirstResource: Boolean
+            ): Boolean {
+                post {
+                    applyCropMatrixIfNeeded()
+                    (drawable as? Animatable)?.start()
+                    (resource as? Animatable)?.start()
+                }
+                return false
+            }
+        }
+    }
 
     override fun setImageDrawable(drawable: Drawable?) {
         super.setImageDrawable(drawable)
@@ -137,6 +180,13 @@ data class ComposeThemeImageState(
     val alpha: Float = 1f,
     val crop: ComposeThemeImageCrop? = null,
     val fallbackColor: Int
+)
+
+private data class ComposeThemeImageLoadKey(
+    val path: String,
+    val lastModified: Long,
+    val animated: Boolean,
+    val crop: ComposeThemeImageCrop?
 )
 
 data class ComposeThemeImageCrop(
