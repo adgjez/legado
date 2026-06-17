@@ -695,10 +695,27 @@ class BookInfoActivity :
                 }
                 startActivity<LibraryContainerManageActivity>()
             },
+            onAllowUpdateChanged = ::setBookCanUpdate,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onSetupWebIntro = ::setupComposeWebIntro
         )
+    }
+
+    private fun setBookCanUpdate(enabled: Boolean) {
+        viewModel.getBook()?.let { book ->
+            book.canUpdate = enabled
+            if (!enabled) {
+                book.removeType(BookType.updateError)
+            }
+            if (viewModel.inBookshelf) {
+                viewModel.saveBook(book) {
+                    updateComposeBookInfoState()
+                }
+            } else {
+                updateComposeBookInfoState()
+            }
+        }
     }
 
     private fun openSourceLogin() {
@@ -819,6 +836,8 @@ class BookInfoActivity :
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
             hasSourceLogin = !viewModel.bookSource?.loginUrl.isNullOrBlank(),
+            hasBookSource = viewModel.bookSource != null,
+            canUpdate = safeBook.canUpdate,
             loading = false
         )
     }

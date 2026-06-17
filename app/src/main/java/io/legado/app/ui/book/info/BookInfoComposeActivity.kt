@@ -41,6 +41,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
+import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.webView.WebJsExtensions
@@ -385,6 +386,7 @@ class BookInfoComposeActivity :
                 }
                 startActivity(Intent(this, LibraryContainerManageActivity::class.java))
             },
+            onAllowUpdateChanged = ::setBookCanUpdate,
             onSetSourceVariable = ::setSourceVariable,
             onSetBookVariable = ::setBookVariable,
             onCopyBookUrl = ::copyBookUrl,
@@ -397,6 +399,22 @@ class BookInfoComposeActivity :
                 }
             }
         )
+    }
+
+    private fun setBookCanUpdate(enabled: Boolean) {
+        viewModel.getBook()?.let { book ->
+            book.canUpdate = enabled
+            if (!enabled) {
+                book.removeType(BookType.updateError)
+            }
+            if (viewModel.inBookshelf) {
+                viewModel.saveBook(book) {
+                    updateUiState()
+                }
+            } else {
+                updateUiState()
+            }
+        }
     }
 
     private fun copyBookUrl() {
@@ -521,6 +539,8 @@ class BookInfoComposeActivity :
             inBookshelf = viewModel.inBookshelf,
             hasCustomButton = viewModel.hasCustomBtn,
             hasSourceLogin = !viewModel.bookSource?.loginUrl.isNullOrBlank(),
+            hasBookSource = viewModel.bookSource != null,
+            canUpdate = book.canUpdate,
             loading = false
         )
         if (::refreshLayout.isInitialized) {

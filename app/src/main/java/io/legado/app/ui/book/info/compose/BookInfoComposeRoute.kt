@@ -138,6 +138,8 @@ data class BookInfoUiState(
     val inBookshelf: Boolean = false,
     val hasCustomButton: Boolean = false,
     val hasSourceLogin: Boolean = false,
+    val hasBookSource: Boolean = false,
+    val canUpdate: Boolean = true,
     val loading: Boolean = false
 )
 
@@ -165,6 +167,7 @@ data class BookInfoActions(
     val onLogin: () -> Unit = {},
     val onCloudBackup: () -> Unit = {},
     val onOpenLibraryContainer: () -> Unit = {},
+    val onAllowUpdateChanged: (Boolean) -> Unit = {},
     val onSetSourceVariable: () -> Unit = {},
     val onSetBookVariable: () -> Unit = {},
     val onCopyBookUrl: () -> Unit = {},
@@ -874,6 +877,7 @@ private fun BookInfoMoreActionSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showCloudOptions by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -888,62 +892,80 @@ private fun BookInfoMoreActionSheet(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = stringResource(R.string.more),
+                text = stringResource(if (showCloudOptions) R.string.book_cloud_entry_mode else R.string.more),
                 color = style.colors.primaryText,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(bottom = 6.dp)
             )
-            if (state.hasSourceLogin) {
-                BookInfoMoreActionItem(stringResource(R.string.login), style) {
+            if (showCloudOptions) {
+                BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), style) {
                     onDismiss()
-                    actions.onLogin()
+                    actions.onCloudBackup()
                 }
-            }
-            BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), style) {
-                onDismiss()
-                actions.onCloudBackup()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), style) {
-                onDismiss()
-                actions.onOpenLibraryContainer()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
-                onDismiss()
-                actions.onChangeGroup()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
-                onDismiss()
-                actions.onEditBookInfo()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
-                onDismiss()
-                actions.onCopyBookUrl()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.copy_toc_url), style) {
-                onDismiss()
-                actions.onCopyTocUrl()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.set_source_variable), style) {
-                onDismiss()
-                actions.onSetSourceVariable()
-            }
-            BookInfoMoreActionItem(stringResource(R.string.set_book_variable), style) {
-                onDismiss()
-                actions.onSetBookVariable()
-            }
-            BookInfoMoreActionItem(
-                text = stringResource(R.string.clear_cache),
-                style = style,
-                danger = true
-            ) {
-                onDismiss()
-                actions.onClearCache()
-            }
-            if (state.hasCustomButton) {
-                BookInfoMoreActionItem(stringResource(R.string.custom_button), style) {
+                BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), style) {
                     onDismiss()
-                    actions.onCustomButton()
+                    actions.onOpenLibraryContainer()
+                }
+                if (state.hasBookSource) {
+                    BookInfoToggleActionItem(
+                        text = stringResource(R.string.allow_update),
+                        checked = state.canUpdate,
+                        style = style
+                    ) {
+                        actions.onAllowUpdateChanged(!state.canUpdate)
+                    }
+                }
+                BookInfoMoreActionItem(stringResource(R.string.back), style) {
+                    showCloudOptions = false
+                }
+            } else {
+                if (state.hasSourceLogin) {
+                    BookInfoMoreActionItem(stringResource(R.string.login), style) {
+                        onDismiss()
+                        actions.onLogin()
+                    }
+                }
+                BookInfoMoreActionItem(stringResource(R.string.book_cloud_entry_mode), style) {
+                    showCloudOptions = true
+                }
+                BookInfoMoreActionItem(stringResource(R.string.group_select), style) {
+                    onDismiss()
+                    actions.onChangeGroup()
+                }
+                BookInfoMoreActionItem(stringResource(R.string.book_info_edit), style) {
+                    onDismiss()
+                    actions.onEditBookInfo()
+                }
+                BookInfoMoreActionItem(stringResource(R.string.copy_book_url), style) {
+                    onDismiss()
+                    actions.onCopyBookUrl()
+                }
+                BookInfoMoreActionItem(stringResource(R.string.copy_toc_url), style) {
+                    onDismiss()
+                    actions.onCopyTocUrl()
+                }
+                BookInfoMoreActionItem(stringResource(R.string.set_source_variable), style) {
+                    onDismiss()
+                    actions.onSetSourceVariable()
+                }
+                BookInfoMoreActionItem(stringResource(R.string.set_book_variable), style) {
+                    onDismiss()
+                    actions.onSetBookVariable()
+                }
+                BookInfoMoreActionItem(
+                    text = stringResource(R.string.clear_cache),
+                    style = style,
+                    danger = true
+                ) {
+                    onDismiss()
+                    actions.onClearCache()
+                }
+                if (state.hasCustomButton) {
+                    BookInfoMoreActionItem(stringResource(R.string.custom_button), style) {
+                        onDismiss()
+                        actions.onCustomButton()
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
@@ -970,6 +992,54 @@ private fun BookInfoMoreActionItem(
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 13.dp)
     )
+}
+
+@Composable
+private fun BookInfoToggleActionItem(
+    text: String,
+    checked: Boolean,
+    style: BookInfoComposeStyle,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(style.metrics.actionRadius))
+            .background(style.colors.surfaceVariant.copy(alpha = 0.72f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            color = style.colors.primaryText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .then(
+                    if (checked) {
+                        Modifier.background(style.colors.accent)
+                    } else {
+                        Modifier.background(style.colors.secondaryText.copy(alpha = 0.22f))
+                    }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (checked) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.94f))
+                )
+            }
+        }
+    }
 }
 
 @Composable
