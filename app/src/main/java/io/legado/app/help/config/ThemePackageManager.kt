@@ -49,6 +49,8 @@ object ThemePackageManager {
     private const val builtinNightDirName = "builtin_night"
     private const val builtinDayName = "\u5185\u7f6e\u65e5\u95f4\u4e3b\u9898"
     private const val builtinNightName = "\u5185\u7f6e\u591c\u95f4\u4e3b\u9898"
+    private const val RED10_RESOURCE_REF_MAX_DISTANCE = 256 * 1024
+    private const val RED10_IMAGE_GROUP_MAX_GAP = 512
     private val imageMagic = listOf(
         byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47) to ".png",
         byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) to ".jpg",
@@ -652,18 +654,19 @@ object ThemePackageManager {
         return try {
             val bytes = file.readBytes()
             validateRed10ArcHeader(bytes)
-            val redTheme = readRed10ArcTheme(bytes)
+            val arcResources = readRed10ArcResources(bytes)
+            val redTheme = arcResources.theme
             val images = scanPlainImageSegments(bytes)
-            val lightBackground = recoverRed10Background(
+            val lightBackground = recoverRed10BackgroundFromSchema(
                 bytes = bytes,
                 images = images,
-                imageId = redTheme.light?.backgroundImage.orEmpty(),
+                schema = arcResources.lightSchema,
                 target = File(recoveryDir, "light_background")
             )
-            val darkBackground = recoverRed10Background(
+            val darkBackground = recoverRed10BackgroundFromSchema(
                 bytes = bytes,
                 images = images,
-                imageId = redTheme.dark?.backgroundImage.orEmpty(),
+                schema = arcResources.darkSchema,
                 target = File(recoveryDir, "dark_background")
             )
             val entries = listOfNotNull(
@@ -679,7 +682,14 @@ object ThemePackageManager {
             if (entries.isEmpty()) {
                 throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
             }
-            ThemeImportResult(sourceName = redTheme.name, themes = entries)
+            val navigationBars = recoverRed10NavigationBars(redTheme, images, bytes, recoveryDir)
+            val coverCollections = recoverRed10CoverCollections(redTheme, images, bytes, recoveryDir)
+            ThemeImportResult(
+                sourceName = redTheme.name,
+                themes = entries,
+                navigationBars = navigationBars,
+                coverCollections = coverCollections
+            )
         } catch (e: Throwable) {
             if (e is IllegalArgumentException) throw e
             throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid), e)
@@ -714,23 +724,35 @@ object ThemePackageManager {
         }
     }
 
-    private fun readRed10ArcTheme(bytes: ByteArray): RedThemeV4 {
+    private fun readRed10ArcResources(bytes: ByteArray): Red10ArcResources {
         val scanSize = minOf(bytes.size, 4 * 1024 * 1024)
         val offset = bytes.size - scanSize
         val text = bytes.decodeToString(offset, bytes.size)
-        var start = text.lastIndexOf("{\"name\"")
+        val schemas = mutableListOf<Red10ColorSchema>()
+        var theme: RedThemeV4? = null
+        var start = text.indexOf("{\"name\"")
         while (start >= 0) {
             val end = findBalancedJsonEnd(text, start)
             if (end > start) {
                 val candidate = text.substring(start, end)
-                val parsed = GSON.fromJsonObject<RedThemeV4>(candidate).getOrNull()
-                if (parsed != null && parsed.name.isNotBlank() && (parsed.light != null || parsed.dark != null)) {
-                    return parsed
+                val themeCandidate = GSON.fromJsonObject<RedThemeV4>(candidate).getOrNull()
+                if (themeCandidate != null &&
+                    themeCandidate.name.isNotBlank() &&
+                    (themeCandidate.light != null || themeCandidate.dark != null)
+                ) {
+                    theme = themeCandidate
+                }
+                val schema = GSON.fromJsonObject<Red10ColorSchema>(candidate).getOrNull()
+                if (schema != null && schema.name.isNotBlank() && schema.backgroundImageUrl.isNotBlank()) {
+                    schemas.add(schema)
                 }
             }
-            start = text.lastIndexOf("{\"name\"", start - 1)
+            start = text.indexOf("{\"name\"", start + 1)
         }
-        throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        val redTheme = theme ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+        val lightSchema = schemas.firstOrNull { !it.looksNightMode() } ?: schemas.firstOrNull()
+        val darkSchema = schemas.firstOrNull { it.looksNightMode() } ?: schemas.drop(1).firstOrNull()
+        return Red10ArcResources(redTheme, lightSchema, darkSchema)
     }
 
     private fun findBalancedJsonEnd(text: String, start: Int): Int {
@@ -759,30 +781,173 @@ object ThemePackageManager {
         return -1
     }
 
-    private fun recoverRed10Background(
+    private fun recoverRed10BackgroundFromSchema(
         bytes: ByteArray,
         images: List<PlainImageSegment>,
-        imageId: String,
+        schema: Red10ColorSchema?,
         target: File
     ): File? {
+        schema ?: return null
+        val imageId = schema.backgroundImageUrl
         if (imageId.isBlank() || images.isEmpty()) return null
         val idBytes = imageId.encodeToByteArray()
-        val idPositions = findAllBytePositions(bytes, idBytes)
-        if (idPositions.isEmpty()) return null
-        val segment = idPositions.asSequence()
-            .flatMap { position ->
-                images.asSequence()
-                    .filter { it.end <= position }
-                    .map { it to position - it.end }
-            }
+        val position = findAllBytePositions(bytes, idBytes)
+            .minOrNull()
+            ?: return null
+        val segment = images.asSequence()
+            .filter { it.end <= position }
+            .map { it to position - it.end }
+            .filter { it.second in 0..RED10_RESOURCE_REF_MAX_DISTANCE }
             .minByOrNull { it.second }
             ?.first
             ?: return null
         val file = File(target.parentFile, "${target.name}${segment.suffix}")
+        writeImageSegment(bytes, segment, file)
+        return file
+    }
+
+    private fun recoverRed10NavigationBars(
+        redTheme: RedThemeV4,
+        images: List<PlainImageSegment>,
+        bytes: ByteArray,
+        recoveryDir: File
+    ): List<NavigationBarIconConfig.Entry> {
+        if (redTheme.light?.navbarPackId.isNullOrBlank() && redTheme.dark?.navbarPackId.isNullOrBlank()) {
+            return emptyList()
+        }
+        val iconGroup = findRed10NavigationIconGroup(images) ?: return emptyList()
+        return listOfNotNull(
+            importRed10NavigationBar(bytes, iconGroup, redTheme.name, false, recoveryDir),
+            importRed10NavigationBar(bytes, iconGroup, redTheme.name, true, recoveryDir)
+        )
+    }
+
+    private fun importRed10NavigationBar(
+        bytes: ByteArray,
+        iconGroup: List<PlainImageSegment>,
+        themeName: String,
+        isNightTheme: Boolean,
+        recoveryDir: File
+    ): NavigationBarIconConfig.Entry? {
+        val packageDir = recoveryDir.getFile("nav_${if (isNightTheme) "night" else "day"}").apply { mkdirs() }
+        val zipFile = recoveryDir.getFile("nav_${if (isNightTheme) "night" else "day"}.zip")
+        return try {
+            val itemMap = listOf("discovery", "bookshelf", "rss", "readRecord", "my", "ai")
+            val icons = linkedMapOf<String, String>()
+            iconGroup.take(itemMap.size).forEachIndexed { index, segment ->
+                val itemKey = itemMap[index]
+                val fileName = "${itemKey}_normal${segment.suffix}"
+                val target = File(packageDir, fileName)
+                writeImageSegment(bytes, segment, target)
+                icons["${itemKey}_normal"] = fileName
+                icons["${itemKey}_selected"] = fileName
+            }
+            if (icons.size < 5) return null
+            val config = NavigationBarIconConfig.Config(
+                name = "${themeName.ifBlank { "ARC" }} ${if (isNightTheme) "Night" else "Day"}",
+                isNightMode = isNightTheme,
+                layoutMode = "floating",
+                effectMode = "glass",
+                opacity = 72,
+                icons = icons
+            )
+            File(packageDir, "navigation.json").writeText(GSON.toJson(config))
+            if (!ZipUtils.zipFile(packageDir, zipFile)) return null
+            NavigationBarIconConfig.importZip(zipFile)
+        } finally {
+            zipFile.delete()
+        }
+    }
+
+    private fun recoverRed10CoverCollections(
+        redTheme: RedThemeV4,
+        images: List<PlainImageSegment>,
+        bytes: ByteArray,
+        recoveryDir: File
+    ): List<CoverCollectionManager.Collection> {
+        if (redTheme.light?.coverGalleryId.isNullOrBlank() && redTheme.dark?.coverGalleryId.isNullOrBlank()) {
+            return emptyList()
+        }
+        val coverGroup = findRed10CoverImageGroup(images) ?: return emptyList()
+        return listOfNotNull(
+            importRed10CoverCollection(bytes, coverGroup, redTheme.name, false, recoveryDir),
+            importRed10CoverCollection(bytes, coverGroup, redTheme.name, true, recoveryDir)
+        )
+    }
+
+    private fun importRed10CoverCollection(
+        bytes: ByteArray,
+        coverGroup: List<PlainImageSegment>,
+        themeName: String,
+        isNightTheme: Boolean,
+        recoveryDir: File
+    ): CoverCollectionManager.Collection? {
+        val packageDir = recoveryDir.getFile("cover_${if (isNightTheme) "night" else "day"}").apply { mkdirs() }
+        val imagesDir = packageDir.getFile("images").apply { mkdirs() }
+        val zipFile = recoveryDir.getFile("cover_${if (isNightTheme) "night" else "day"}.zip")
+        return try {
+            val imageRefs = coverGroup.mapIndexed { index, segment ->
+                val fileName = "cover_${index + 1}${segment.suffix}"
+                writeImageSegment(bytes, segment, File(imagesDir, fileName))
+                "images/$fileName"
+            }
+            if (imageRefs.size < 3) return null
+            val collection = CoverCollectionManager.Collection(
+                id = UUID.randomUUID().toString(),
+                name = "${themeName.ifBlank { "ARC" }} ${if (isNightTheme) "Night" else "Day"}",
+                dirName = "${themeName}_${if (isNightTheme) "night" else "day"}_covers".normalizeFileName(),
+                isNight = isNightTheme,
+                images = imageRefs,
+                updatedAt = System.currentTimeMillis()
+            )
+            File(packageDir, "collection.json").writeText(GSON.toJson(collection))
+            if (!ZipUtils.zipFile(packageDir, zipFile)) return null
+            kotlinx.coroutines.runBlocking {
+                CoverCollectionManager.importZip(appCtx, zipFile, isNightTheme)
+            }
+        } finally {
+            zipFile.delete()
+        }
+    }
+
+    private fun findRed10CoverImageGroup(images: List<PlainImageSegment>): List<PlainImageSegment>? {
+        return contiguousRed10Groups(images)
+            .filter { group ->
+                group.size >= 3 &&
+                    group.all { it.suffix == ".png" && it.width >= 600 && it.height >= 600 && it.aspectRatio in 0.60f..0.95f }
+            }
+            .maxByOrNull { it.size }
+    }
+
+    private fun findRed10NavigationIconGroup(images: List<PlainImageSegment>): List<PlainImageSegment>? {
+        return contiguousRed10Groups(images)
+            .filter { group ->
+                group.size >= 5 &&
+                    group.all { it.suffix == ".png" && it.width in 96..600 && it.height in 96..600 && it.aspectRatio in 0.75f..1.35f }
+            }
+            .maxWithOrNull(compareBy<List<PlainImageSegment>> { it.size }.thenBy { group -> group.first().start })
+            ?.take(6)
+    }
+
+    private fun contiguousRed10Groups(images: List<PlainImageSegment>): List<List<PlainImageSegment>> {
+        if (images.isEmpty()) return emptyList()
+        val groups = mutableListOf<MutableList<PlainImageSegment>>()
+        images.sortedBy { it.start }.forEach { image ->
+            val current = groups.lastOrNull()
+            if (current != null && image.start - current.last().end <= RED10_IMAGE_GROUP_MAX_GAP) {
+                current.add(image)
+            } else {
+                groups.add(mutableListOf(image))
+            }
+        }
+        return groups
+    }
+
+    private fun writeImageSegment(bytes: ByteArray, segment: PlainImageSegment, file: File) {
+        file.parentFile?.mkdirs()
         FileOutputStream(file).use { output ->
             output.write(bytes, segment.start, segment.end - segment.start)
         }
-        return file
     }
 
     private fun findAllBytePositions(bytes: ByteArray, pattern: ByteArray): List<Int> {
@@ -851,7 +1016,15 @@ object ThemePackageManager {
                 bytes[typeStart + 2] == 'N'.code.toByte() &&
                 bytes[typeStart + 3] == 'D'.code.toByte()
             index += 12 + length
-            if (isEnd) return PlainImageSegment(start, index, ".png")
+            if (isEnd) {
+                return PlainImageSegment(
+                    start = start,
+                    end = index,
+                    suffix = ".png",
+                    width = readIntBigEndian(bytes, start + 16).takeIf { it > 0 } ?: 0,
+                    height = readIntBigEndian(bytes, start + 20).takeIf { it > 0 } ?: 0
+                )
+            }
         }
         return null
     }
@@ -867,7 +1040,9 @@ object ThemePackageManager {
         var index = start + 2
         while (index + 1 < bytes.size) {
             if (bytes[index] == 0xFF.toByte() && bytes[index + 1] == 0xD9.toByte()) {
-                return PlainImageSegment(start, index + 2, ".jpg")
+                val end = index + 2
+                val (width, height) = readJpegSize(bytes, start, end)
+                return PlainImageSegment(start, end, ".jpg", width, height)
             }
             index++
         }
@@ -890,7 +1065,8 @@ object ThemePackageManager {
         val length = readIntLittleEndian(bytes, start + 4)
         val end = start + 8 + length
         if (length <= 4 || end > bytes.size) return null
-        return PlainImageSegment(start, end, suffix)
+        val (width, height) = readWebpSize(bytes, start, end)
+        return PlainImageSegment(start, end, suffix, width, height)
     }
 
     private fun isGifAt(bytes: ByteArray, index: Int): Boolean {
@@ -907,11 +1083,76 @@ object ThemePackageManager {
         var index = start + 6
         while (index < bytes.size) {
             if (bytes[index] == 0x3B.toByte()) {
-                return PlainImageSegment(start, index + 1, ".gif")
+                val width = readUnsignedShortLittleEndian(bytes, start + 6)
+                val height = readUnsignedShortLittleEndian(bytes, start + 8)
+                return PlainImageSegment(start, index + 1, ".gif", width, height)
             }
             index++
         }
         return null
+    }
+
+    private fun readJpegSize(bytes: ByteArray, start: Int, end: Int): Pair<Int, Int> {
+        var index = start + 2
+        while (index + 9 < end) {
+            if (bytes[index] != 0xFF.toByte()) {
+                index++
+                continue
+            }
+            while (index < end && bytes[index] == 0xFF.toByte()) index++
+            if (index >= end) break
+            val marker = bytes[index].toInt() and 0xFF
+            index++
+            if (marker == 0xD8 || marker == 0xD9 || marker == 0x01) continue
+            if (index + 2 > end) break
+            val segmentLength = readUnsignedShortBigEndian(bytes, index)
+            if (segmentLength < 2 || index + segmentLength > end) break
+            if (marker in setOf(0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF) &&
+                index + 7 <= end
+            ) {
+                val height = readUnsignedShortBigEndian(bytes, index + 3)
+                val width = readUnsignedShortBigEndian(bytes, index + 5)
+                return width to height
+            }
+            index += segmentLength
+        }
+        return 0 to 0
+    }
+
+    private fun readWebpSize(bytes: ByteArray, start: Int, end: Int): Pair<Int, Int> {
+        if (start + 30 > end) return 0 to 0
+        return when (bytes.decodeToString(start + 12, start + 16)) {
+            "VP8X" -> {
+                val width = 1 + readUInt24LittleEndian(bytes, start + 24)
+                val height = 1 + readUInt24LittleEndian(bytes, start + 27)
+                width to height
+            }
+
+            "VP8 " -> {
+                val frame = start + 20
+                if (frame + 10 <= end) {
+                    val width = readUnsignedShortLittleEndian(bytes, frame + 6) and 0x3FFF
+                    val height = readUnsignedShortLittleEndian(bytes, frame + 8) and 0x3FFF
+                    width to height
+                } else {
+                    0 to 0
+                }
+            }
+
+            "VP8L" -> {
+                val frame = start + 20
+                if (frame + 5 <= end && bytes[frame] == 0x2F.toByte()) {
+                    val bits = readIntLittleEndian(bytes, frame + 1)
+                    val width = (bits and 0x3FFF) + 1
+                    val height = ((bits shr 14) and 0x3FFF) + 1
+                    width to height
+                } else {
+                    0 to 0
+                }
+            }
+
+            else -> 0 to 0
+        }
     }
 
     private fun readIntBigEndian(bytes: ByteArray, index: Int): Int {
@@ -928,6 +1169,25 @@ object ThemePackageManager {
             ((bytes[index + 1].toInt() and 0xFF) shl 8) or
             ((bytes[index + 2].toInt() and 0xFF) shl 16) or
             ((bytes[index + 3].toInt() and 0xFF) shl 24)
+    }
+
+    private fun readUnsignedShortBigEndian(bytes: ByteArray, index: Int): Int {
+        if (index + 2 > bytes.size) return -1
+        return ((bytes[index].toInt() and 0xFF) shl 8) or
+            (bytes[index + 1].toInt() and 0xFF)
+    }
+
+    private fun readUnsignedShortLittleEndian(bytes: ByteArray, index: Int): Int {
+        if (index + 2 > bytes.size) return -1
+        return (bytes[index].toInt() and 0xFF) or
+            ((bytes[index + 1].toInt() and 0xFF) shl 8)
+    }
+
+    private fun readUInt24LittleEndian(bytes: ByteArray, index: Int): Int {
+        if (index + 3 > bytes.size) return 0
+        return (bytes[index].toInt() and 0xFF) or
+            ((bytes[index + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[index + 2].toInt() and 0xFF) shl 16)
     }
 
     private fun importRedZipDetailed(file: File): ThemeImportResult {
@@ -1659,8 +1919,35 @@ object ThemePackageManager {
     private data class PlainImageSegment(
         val start: Int,
         val end: Int,
-        val suffix: String
+        val suffix: String,
+        val width: Int = 0,
+        val height: Int = 0
+    ) {
+        val aspectRatio: Float
+            get() = if (height > 0) width.toFloat() / height.toFloat() else 0f
+    }
+
+    private data class Red10ArcResources(
+        val theme: RedThemeV4,
+        val lightSchema: Red10ColorSchema?,
+        val darkSchema: Red10ColorSchema?
     )
+
+    @Keep
+    private data class Red10ColorSchema(
+        val name: String = "",
+        val backgroundImageUrl: String = "",
+        val themeMode: String? = null
+    ) {
+        fun looksNightMode(): Boolean {
+            val mode = themeMode.orEmpty()
+            return mode.equals("dark", ignoreCase = true) ||
+                mode.equals("night", ignoreCase = true) ||
+                name.contains("夜") ||
+                name.contains("dark", ignoreCase = true) ||
+                name.contains("night", ignoreCase = true)
+        }
+    }
 
     private enum class RedPackageFormat {
         RED04_ZIP,
