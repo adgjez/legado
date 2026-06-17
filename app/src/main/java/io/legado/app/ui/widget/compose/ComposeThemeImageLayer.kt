@@ -3,6 +3,7 @@ package io.legado.app.ui.widget.compose
 import android.content.Context
 import android.graphics.Matrix
 import android.graphics.RectF
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -68,17 +69,20 @@ private fun ComposeThemeImage(
         update = { imageView ->
             imageView.alpha = alpha.coerceIn(0f, 1f)
             imageView.crop = crop
-            val request = if (animate) {
-                Glide.with(imageView).load(file)
-            } else {
-                Glide.with(imageView).asBitmap().load(file)
-            }
             if (crop != null) {
                 imageView.scaleType = ImageView.ScaleType.MATRIX
-                request.into(imageView)
+                if (animate) {
+                    Glide.with(imageView).asGif().load(file).into(imageView)
+                } else {
+                    Glide.with(imageView).asBitmap().load(file).into(imageView)
+                }
             } else {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-                request.centerCrop().into(imageView)
+                if (animate) {
+                    Glide.with(imageView).asGif().load(file).centerCrop().into(imageView)
+                } else {
+                    Glide.with(imageView).asBitmap().load(file).centerCrop().into(imageView)
+                }
             }
         }
     )
@@ -95,6 +99,12 @@ private class CropAwareImageView(context: Context) : AppCompatImageView(context)
     override fun setImageDrawable(drawable: Drawable?) {
         super.setImageDrawable(drawable)
         post { applyCropMatrixIfNeeded() }
+        (drawable as? Animatable)?.start()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        (drawable as? Animatable)?.start()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
