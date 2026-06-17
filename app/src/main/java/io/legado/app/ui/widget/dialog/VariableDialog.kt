@@ -2,25 +2,40 @@ package io.legado.app.ui.widget.dialog
 
 import android.app.Application
 import android.os.Bundle
-import android.view.MenuItem
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.widget.Toolbar
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import io.legado.app.R
-import io.legado.app.base.BaseDialogFragment
 import io.legado.app.base.BaseViewModel
-import io.legado.app.databinding.DialogVariableBinding
-import io.legado.app.lib.theme.primaryColor
-import io.legado.app.utils.applyTint
-import io.legado.app.utils.setLayout
-import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.ui.widget.compose.AppDialogFrame
+import io.legado.app.ui.widget.compose.ComposeDialogFragment
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
+import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
+import io.legado.app.ui.widget.compose.rememberAppDialogStyle
+import io.legado.app.ui.widget.compose.toMiuixPalette
 
-class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
-    Toolbar.OnMenuItemClickListener {
-
-    private val binding by viewBinding(DialogVariableBinding::bind)
-    private val viewModel by viewModels<ViewModel>()
+class VariableDialog() : ComposeDialogFragment() {
 
     constructor(title: String, key: String, variable: String?, comment: String) : this() {
         arguments = Bundle().apply {
@@ -31,61 +46,85 @@ class VariableDialog() : BaseDialogFragment(R.layout.dialog_variable, true),
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    }
-
-    override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        binding.toolBar.setBackgroundColor(primaryColor)
-        arguments?.let {
-            binding.toolBar.title = it.getString("title")
-            viewModel.init(it) {
-                binding.tvComment.text = viewModel.comment
-                binding.tvVariable.setText(viewModel.variable)
-            }
-        } ?: let {
-            dismiss()
-            return
-        }
-        binding.toolBar.inflateMenu(R.menu.save)
-        binding.toolBar.menu.applyTint(requireContext())
-        binding.toolBar.setOnMenuItemClickListener(this)
-    }
-
-    override fun onMenuItemClick(item: MenuItem?): Boolean {
-        when (item?.itemId) {
-            R.id.menu_save -> {
-                callback?.setVariable(
-                    viewModel.key ?: "",
-                    binding.tvVariable.text?.toString()
-                )
-                dismissAllowingStateLoss()
-            }
-        }
-        return true
-    }
+    override val widthFraction: Float = 0.92f
 
     val callback get() = (parentFragment as? Callback) ?: (activity as? Callback)
 
-    class ViewModel(application: Application) : BaseViewModel(application) {
-
-        var key: String? = null
-        var comment: String? = null
-        var variable: String? = null
-
-        fun init(arguments: Bundle, onFinally: () -> Unit) {
-            if (key != null) return
-            execute {
-                key = arguments.getString("key")
-                comment = arguments.getString("comment")
-                variable = arguments.getString("variable")
-            }.onFinally {
-                onFinally.invoke()
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val arguments = arguments ?: run {
+            dismiss()
+            return View(requireContext())
+        }
+        return ComposeView(requireContext()).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                LegadoComposeTheme {
+                    val key = arguments.getString("key").orEmpty()
+                    val title = arguments.getString("title").orEmpty()
+                    val comment = arguments.getString("comment").orEmpty()
+                    var variable by remember {
+                        mutableStateOf(arguments.getString("variable").orEmpty())
+                    }
+                    val style = rememberAppDialogStyle()
+                    val palette = style.toMiuixPalette()
+                    AppDialogFrame(
+                        title = title,
+                        content = {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                if (comment.isNotBlank()) {
+                                    Text(text = comment, color = style.secondaryText)
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                }
+                                OutlinedTextField(
+                                    value = variable,
+                                    onValueChange = { variable = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(style.actionRadius),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = style.primaryText,
+                                        unfocusedTextColor = style.primaryText,
+                                        focusedContainerColor = style.fieldSurface,
+                                        unfocusedContainerColor = style.fieldSurface,
+                                        cursorColor = style.accent,
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent
+                                    ),
+                                    textStyle = LocalTextStyle.current.copy(
+                                        color = style.primaryText,
+                                        fontFamily = style.bodyFontFamily
+                                    )
+                                )
+                            }
+                        },
+                        actions = {
+                            LegadoMiuixActionButton(
+                                text = stringResource(R.string.cancel),
+                                palette = palette,
+                                onClick = { dismiss() },
+                                cornerRadius = style.actionRadius
+                            )
+                            LegadoMiuixActionButton(
+                                text = stringResource(R.string.ok),
+                                palette = palette,
+                                onClick = {
+                                    callback?.setVariable(key, variable)
+                                    dismissAllowingStateLoss()
+                                },
+                                primary = true,
+                                cornerRadius = style.actionRadius
+                            )
+                        }
+                    )
+                }
             }
         }
-
     }
+
+    class ViewModel(application: Application) : BaseViewModel(application)
 
     interface Callback {
 
