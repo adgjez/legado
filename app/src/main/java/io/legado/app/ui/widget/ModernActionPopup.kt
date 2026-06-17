@@ -498,7 +498,7 @@ object ModernActionPopup {
                                 },
                                 minHeight = 42.dp,
                                 compact = true,
-                                showSelectedMark = action.persistent,
+                                showSelectedMark = action.checked || action.persistent,
                                 enabled = action.enabled,
                                 description = action.description,
                                 leadingIconName = action.iconName,

@@ -664,19 +664,19 @@ fun LegadoMiuixChoiceRow(
                 Box(
                     modifier = Modifier
                         .size(18.dp)
-                        .clip(RoundedCornerShape(3.dp))
+                        .clip(CircleShape)
                         .then(
                             if (selected) Modifier.background(selectedColor)
-                            else Modifier.border(1.5.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                            else Modifier.border(1.5.dp, primaryColor.copy(alpha = 0.4f), CircleShape)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (selected) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_check),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.94f))
                         )
                     }
                 }

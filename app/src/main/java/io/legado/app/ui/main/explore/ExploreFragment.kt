@@ -1633,8 +1633,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoverMajorGroups.forEach { group ->
                 add(
                     ModernActionPopup.Action(
-                        (if (group == current) "> " else "") + group.limitDiscoverText(10)
+                        title = group.limitDiscoverText(10),
+                        checked = group == current
                     ) {
+                        if (group == selectedDiscoverMajorGroup) return@Action
                         selectedDiscoverMajorGroup = group
                         applyDiscoverTagFilterAndSelect(preferredUrl = discoverCurrentUrl)
                     }
