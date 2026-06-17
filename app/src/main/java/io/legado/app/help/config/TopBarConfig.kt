@@ -10,6 +10,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
@@ -488,7 +489,11 @@ object TopBarConfig {
         dir.listFiles()
             ?.filter { it.isFile && it.name.startsWith("top_bar_wallpaper.") }
             ?.forEach { it.delete() }
-        val suffix = source.extension.takeIf { it.isNotBlank() } ?: "jpg"
+        val suffix = when {
+            ImageTypeUtils.isGif(source) -> "gif"
+            source.extension.isNotBlank() -> source.extension
+            else -> "jpg"
+        }
         val target = File(dir, "top_bar_wallpaper.$suffix")
         if (source.absolutePath != target.absolutePath) {
             source.copyTo(target, overwrite = true)

@@ -42,6 +42,7 @@ import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
 import io.legado.app.ui.widget.compose.showComposeSingleChoiceDialog
 import io.legado.app.utils.ImageCropHelper
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
@@ -702,13 +703,11 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
 
     private fun startWallpaperCrop(uri: Uri) {
         val metrics = resources.displayMetrics
-        val isGif = isGifUri(uri)
-        val gifFile = if (isGif) {
-            copyWallpaperGif(uri)
-        } else {
-            null
+        val sourceFile = copyWallpaperSource(uri) ?: return
+        val gifFile = sourceFile.takeIf(ImageTypeUtils::isGif)
+        if (gifFile == null) {
+            sourceFile.delete()
         }
-        if (isGif && gifFile == null) return
         val request = ImageCropHelper.buildRequest(
             context = this,
             sourceUri = gifFile?.toUri() ?: uri,
@@ -733,16 +732,18 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         )
     }
 
-    private fun isGifUri(uri: Uri): Boolean {
-        val mime = contentResolver.getType(uri)
-        if (mime.equals("image/gif", ignoreCase = true)) return true
-        return uri.lastPathSegment?.substringBefore('?')?.endsWith(".gif", ignoreCase = true) == true
-    }
-
-    private fun copyWallpaperGif(uri: Uri): File? {
+    private fun copyWallpaperSource(uri: Uri): File? {
         return kotlin.runCatching {
             val dir = externalFiles.getFile("topBarWallpapers").apply { mkdirs() }
-            val file = File(dir, "top_bar_${System.currentTimeMillis()}.gif")
+            val suffix = if (
+                contentResolver.getType(uri).equals("image/gif", ignoreCase = true) ||
+                uri.lastPathSegment?.substringBefore('?')?.endsWith(".gif", ignoreCase = true) == true
+            ) {
+                "gif"
+            } else {
+                "img"
+            }
+            val file = File(dir, "top_bar_source_${System.currentTimeMillis()}.$suffix")
             contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(file).use { output -> input.copyTo(output) }
             } ?: error(getString(R.string.error_image_url_empty))
