@@ -2002,9 +2002,9 @@ private fun ThemePackageManageScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(start = 6.dp, top = 8.dp, end = 6.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(
                         entries,
@@ -2050,30 +2050,29 @@ private fun ThemePackageTabs(
     palette: AppManagementPalette,
     onSwitchDayNight: (Boolean) -> Unit
 ) {
-    AppManagementCard(
-        palette = palette,
-        modifier = Modifier.fillMaxWidth(),
-        insidePadding = PaddingValues(4.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp))
+            .background(ComposeColor(palette.settings.row))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            ThemePackageTabButton(
-                text = stringResource(R.string.theme_day),
-                selected = !isNightTheme,
-                palette = palette,
-                onClick = { onSwitchDayNight(false) },
-                modifier = Modifier.weight(1f)
-            )
-            ThemePackageTabButton(
-                text = stringResource(R.string.theme_night),
-                selected = isNightTheme,
-                palette = palette,
-                onClick = { onSwitchDayNight(true) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+        ThemePackageTabButton(
+            text = stringResource(R.string.theme_day),
+            selected = !isNightTheme,
+            palette = palette,
+            onClick = { onSwitchDayNight(false) },
+            modifier = Modifier.weight(1f)
+        )
+        ThemePackageTabButton(
+            text = stringResource(R.string.theme_night),
+            selected = isNightTheme,
+            palette = palette,
+            onClick = { onSwitchDayNight(true) },
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -2087,11 +2086,11 @@ private fun ThemePackageTabButton(
 ) {
     Surface(
         modifier = modifier
-            .height(34.dp)
+            .height(32.dp)
             .clip(RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp))
-            .background(if (selected) palette.settings.accent.copy(alpha = 0.14f) else ComposeColor.Transparent),
+            .background(if (selected) ComposeColor(palette.settings.rowPressed) else ComposeColor.Transparent),
         shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp),
-        color = if (selected) palette.settings.accent.copy(alpha = 0.14f) else ComposeColor.Transparent,
+        color = if (selected) ComposeColor(palette.settings.rowPressed) else ComposeColor.Transparent,
         contentColor = if (selected) palette.settings.accent else palette.settings.primaryText,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
@@ -2128,8 +2127,10 @@ private fun ThemePackageGridCard(
 ) {
     AppManagementCard(
         palette = palette,
-        modifier = Modifier.fillMaxWidth(),
-        insidePadding = PaddingValues(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(198.dp),
+        insidePadding = PaddingValues(8.dp),
         onClick = onApply,
         onLongClick = if (canEdit) onEdit else null
     ) {
@@ -2137,9 +2138,10 @@ private fun ThemePackageGridCard(
             preview = preview,
             active = isActive,
             palette = palette,
-            radius = palette.miuix.panelRadius ?: 12.dp
+            radius = palette.miuix.panelRadius ?: 12.dp,
+            modifier = Modifier.height(96.dp)
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
@@ -2151,10 +2153,10 @@ private fun ThemePackageGridCard(
                     fontSize = 14.sp,
                     lineHeight = 18.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = info,
                     color = palette.settings.secondaryText,
@@ -2170,7 +2172,7 @@ private fun ThemePackageGridCard(
                 modifier = Modifier.padding(start = 4.dp)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(7.dp))
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2254,12 +2256,12 @@ private fun ThemePackagePreview(
     preview: ThemePreviewData,
     active: Boolean,
     palette: AppManagementPalette,
-    radius: androidx.compose.ui.unit.Dp
+    radius: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1.18f)
             .clip(RoundedCornerShape(radius))
             .background(ComposeColor(preview.fallbackColor))
     ) {
