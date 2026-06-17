@@ -27,6 +27,7 @@ import io.legado.app.ui.widget.compose.ComposeDialogFragment
 import io.legado.app.ui.widget.compose.LegadoMiuixActionButton
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
+import io.legado.app.utils.FileDoc
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import kotlinx.coroutines.Dispatchers
@@ -114,7 +115,13 @@ class ImportRedThemeDialog() : ComposeDialogFragment() {
 
     private suspend fun importRedTheme(uri: Uri): Int = withContext(Dispatchers.IO) {
         val tempDir = requireContext().externalFiles.getFile("themePackageImports").apply { mkdirs() }
-        val file = File(tempDir, "import_${System.currentTimeMillis()}.red")
+        val extension = FileDoc.fromUri(uri, false)
+            .name
+            .substringAfterLast('.', "red")
+            .lowercase()
+            .takeIf { it == "red" || it == "arc" }
+            ?: "red"
+        val file = File(tempDir, "import_${System.currentTimeMillis()}.$extension")
         try {
             requireContext().contentResolver.openInputStream(uri)?.use { input ->
                 file.outputStream().use { output -> input.copyTo(output) }

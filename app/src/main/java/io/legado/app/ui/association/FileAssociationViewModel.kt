@@ -23,13 +23,15 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             if (uri.isContentScheme() || uri.isFileScheme()) {
                 val fileDoc = FileDoc.fromUri(uri, false)
                 val fileName = fileDoc.name
-                if (fileName.endsWith(".red", ignoreCase = true)) {
+                if (fileName.endsWith(".red", ignoreCase = true) || fileName.endsWith(".arc", ignoreCase = true)) {
                     importRedThemeLiveData.postValue(fileDoc.uri)
                     return@execute
                 }
                 if (fileName.matches(AppPattern.archiveFileRegex)) {
                     ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
-                        it.matches(bookFileRegex) || it.endsWith(".red", ignoreCase = true)
+                        it.matches(bookFileRegex) ||
+                            it.endsWith(".red", ignoreCase = true) ||
+                            it.endsWith(".arc", ignoreCase = true)
                     }.forEach {
                         dispatch(FileDoc.fromFile(it))
                     }
@@ -57,7 +59,7 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             it.printOnDebug()
             AppLog.put("尝试导入为JSON文件失败\n${it.localizedMessage}", it)
         }
-        if (fileDoc.name.endsWith(".red", ignoreCase = true)) {
+        if (fileDoc.name.endsWith(".red", ignoreCase = true) || fileDoc.name.endsWith(".arc", ignoreCase = true)) {
             importRedThemeLiveData.postValue(fileDoc.uri)
             return
         }
