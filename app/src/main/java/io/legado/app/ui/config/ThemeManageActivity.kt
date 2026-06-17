@@ -77,6 +77,7 @@ import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.ImageCropHelper
+import io.legado.app.utils.ImageTypeUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
@@ -1324,6 +1325,12 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     }
 
     private fun startImageCrop(uri: Uri, requestCode: Int) {
+        val sourceFile = copyThemeImageSource(uri) ?: return
+        if (ImageTypeUtils.isGif(sourceFile)) {
+            setPendingImagePath(requestCode, sourceFile.absolutePath)
+            return
+        }
+        sourceFile.delete()
         val aspect = if (requestCode == requestPanelBackground) 1 to 1 else ImageCropHelper.screenAspect(this)
         val prefix = when (requestCode) {
             requestMainBackground -> "main"
@@ -1342,6 +1349,45 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
         )
         pendingImageCropRequest = request
         cropImage.launch(request.params)
+    }
+
+    private fun copyThemeImageSource(uri: Uri): File? {
+        return kotlin.runCatching {
+            val dir = externalFiles.getFile("themePackageTemp").apply { mkdirs() }
+            val suffix = if (
+                contentResolver.getType(uri).equals("image/gif", ignoreCase = true) ||
+                uri.lastPathSegment?.substringBefore('?')?.endsWith(".gif", ignoreCase = true) == true
+            ) {
+                "gif"
+            } else {
+                "img"
+            }
+            val file = File(dir, "theme_source_${System.currentTimeMillis()}.$suffix")
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(file).use { output -> input.copyTo(output) }
+            } ?: error(getString(R.string.error_image_url_empty))
+            file.takeIf { it.exists() && it.length() > 0L }
+                ?: error(getString(R.string.error_decode_bitmap))
+        }.onFailure {
+            toastOnUi(getString(R.string.image_crop_failed, it.localizedMessage ?: getString(R.string.unknown)))
+        }.getOrNull()
+    }
+
+    private fun setPendingImagePath(requestCode: Int, path: String) {
+        when (requestCode) {
+            requestMainBackground -> {
+                pendingMainBackgroundPath = path
+                editDialogBinding?.let { updateImageRow(it.rowMainBackground, ThemeImageTarget.MAIN) }
+            }
+            requestBookInfoBackground -> {
+                pendingBookInfoBackgroundPath = path
+                editDialogBinding?.let { updateImageRow(it.rowBookInfoBackground, ThemeImageTarget.BOOK_INFO) }
+            }
+            requestPanelBackground -> {
+                pendingPanelBackgroundPath = path
+                editDialogBinding?.let { updateImageRow(it.rowPanelBackground, ThemeImageTarget.PANEL) }
+            }
+        }
     }
 
     private fun entryActions(entry: ThemePackageManager.Entry): List<AppManagementMenuAction> {
