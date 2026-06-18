@@ -877,6 +877,7 @@ class TextChapterLayout(
         book: Book,
         htmlContent: String,
     ) {
+        val isEpubTextContent = htmlContent.contains(EpubFile.TEXT_CONTENT_VERSION_FLAG)
         val htmlBuffer = StringBuilder()
         suspend fun flushHtmlBuffer() {
             if (htmlBuffer.isBlank()) {
@@ -961,6 +962,9 @@ class TextChapterLayout(
         }
 
         val body = Jsoup.parseBodyFragment(htmlContent.escapeUseHtmlParagraphBubbleSrc()).body()
+        if (isEpubTextContent) {
+            body.applyEpubTextModeParagraphIndent()
+        }
         prepareEpubPageBackground(body, book)
         body.childNodes().forEach { node ->
             renderNode(node)
@@ -1579,6 +1583,30 @@ class TextChapterLayout(
 
     private fun Element.isParagraphBubbleImg(): Boolean {
         return normalName() == "img" && attr("src").trim().startsWith(PARAGRAPH_BUBBLE_PREFIX)
+    }
+
+    private fun Element.applyEpubTextModeParagraphIndent() {
+        val indent = paragraphIndent
+        if (indent.isBlank()) return
+        select("p,div,blockquote,li").forEach { block ->
+            if (block.shouldApplyEpubTextModeIndent()) {
+                block.prependText(indent)
+            }
+        }
+    }
+
+    private fun Element.shouldApplyEpubTextModeIndent(): Boolean {
+        if (text().isBlank()) return false
+        val align = htmlAlignOrNull()
+        if (align == "center" || align == "right") return false
+        if (children().any { it.isHtmlBlock() }) return false
+        if (childNodes().firstOrNull()?.let { node ->
+                node is TextNode && node.text().startsWith(paragraphIndent)
+            } == true
+        ) {
+            return false
+        }
+        return true
     }
 
     private fun String.escapeUseHtmlParagraphBubbleSrc(): String {
