@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,6 +73,12 @@ data class ReadRecordRankUi(
     val dimmed: Boolean,
     val book: Book?,
     val snapshot: ReadRecentVisualSnapshot?
+)
+
+@Immutable
+data class ReadRecordCoverUi(
+    val book: Book?,
+    val snapshot: ReadRecentVisualSnapshot
 )
 
 @Composable
@@ -172,6 +180,30 @@ fun ReadRecordRankList(
             if (index < items.lastIndex) {
                 ReadRecordDivider()
             }
+        }
+    }
+}
+
+@Composable
+fun ReadRecordCoverRow(
+    items: List<ReadRecordCoverUi>,
+    onClick: (Int) -> Unit,
+    onLongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        itemsIndexed(
+            items = items,
+            key = { _, item -> item.snapshot.bookUrl }
+        ) { index, item ->
+            ReadRecordCoverItem(
+                item = item,
+                onClick = { onClick(index) },
+                onLongClick = { onLongClick(index) }
+            )
         }
     }
 }
@@ -353,6 +385,28 @@ private fun ReadRecordRankRow(
             modifier = Modifier.padding(start = 12.dp)
         )
     }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ReadRecordCoverItem(
+    item: ReadRecordCoverUi,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val context = LocalContext.current
+    AndroidView(
+        modifier = Modifier
+            .width(78.dp)
+            .height(108.dp)
+            .clip(RoundedCornerShape(context.composeReadRecordPanelRadius()))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        factory = { CoverImageView(it) },
+        update = { cover ->
+            cover.loadReadRecordCover(item.book, item.snapshot)
+        },
+        onRelease = { it.releaseComposeImage() }
+    )
 }
 
 @Composable

@@ -255,15 +255,13 @@
                         android:textSize="16sp"
                         android:textStyle="bold" />
 
-                    <androidx.recyclerview.widget.RecyclerView
+                    <androidx.compose.ui.platform.ComposeView
                         android:id="@+id/rv_recent_covers"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
                         android:clipToPadding="false"
-                        android:overScrollMode="never"
-                        android:paddingEnd="4dp"
-                        android:scrollbars="none" />
+                        android:paddingEnd="4dp" />
 
                     <TextView
                         android:id="@+id/tv_recent_covers_empty"

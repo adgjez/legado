@@ -15,7 +15,6 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.data.entities.Book
-import io.legado.app.databinding.ItemReadRecordCoverBinding
 import io.legado.app.databinding.ItemReadRecordRankBinding
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
@@ -126,39 +125,6 @@ fun ImageView.loadReadRecordAvatar(path: String?) {
         .error(R.drawable.ic_read_record_default_avatar)
         .centerCrop()
         .into(this)
-}
-
-class ReadRecordCoverAdapter(
-    private val context: Context,
-    private val items: List<ReadRecentVisualItem>,
-    private val onClick: (ReadRecentVisualItem) -> Unit,
-    private val onLongClick: ((ReadRecentVisualItem) -> Unit)? = null
-) : RecyclerView.Adapter<ReadRecordCoverAdapter.CoverHolder>() {
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CoverHolder {
-        return CoverHolder(
-            ItemReadRecordCoverBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        )
-    }
-
-    override fun getItemCount(): Int = items.size
-
-    override fun onBindViewHolder(holder: CoverHolder, position: Int) {
-        holder.bind(items[position])
-    }
-
-    inner class CoverHolder(private val binding: ItemReadRecordCoverBinding) :
-        RecyclerView.ViewHolder(binding.root) {
-        fun bind(item: ReadRecentVisualItem) {
-            binding.ivCover.loadReadRecordCover(item.book, item.snapshot)
-            binding.root.setOnClickListener { onClick(item) }
-            binding.root.setOnLongClickListener {
-                onLongClick?.invoke(item)
-                onLongClick != null
-            }
-            binding.root.alpha = if (item.book == null) 0.72f else 1f
-        }
-    }
 }
 
 class ReadRecordRankAdapter(

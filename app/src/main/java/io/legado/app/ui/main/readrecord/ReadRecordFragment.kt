@@ -14,7 +14,6 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.BaseFragment
 import io.legado.app.constant.EventBus
@@ -30,10 +29,11 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.about.ReadHeatmapCell
+import io.legado.app.ui.about.ReadRecordCoverRow
+import io.legado.app.ui.about.ReadRecordCoverUi
 import io.legado.app.ui.about.ReadRecordComponentConfigDialog
 import io.legado.app.ui.about.ReadRecordComponentType
 import io.legado.app.ui.about.ReadRecordComponents
-import io.legado.app.ui.about.ReadRecordCoverAdapter
 import io.legado.app.ui.about.ReadRecordGoalConfig
 import io.legado.app.ui.about.ReadRecordRankDialog
 import io.legado.app.ui.about.ReadRecordRankItem
@@ -120,9 +120,11 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private val recentBooksUiState = mutableStateOf<List<ReadRecordRecentBookUi>>(emptyList())
     private val dailyRecordsUiState = mutableStateOf<List<ReadRecordDayUi>>(emptyList())
     private val rankUiState = mutableStateOf<List<ReadRecordRankUi>>(emptyList())
+    private val recentCoversUiState = mutableStateOf<List<ReadRecordCoverUi>>(emptyList())
     private var currentRecentBooks: List<RecentReadBook> = emptyList()
     private var currentDailyTimeline: List<DailyReadSummary> = emptyList()
     private var currentVisibleRankItems: List<ReadRecordRankItem> = emptyList()
+    private var currentRecentCovers: List<ReadRecentVisualItem> = emptyList()
     private var recordDaysExpanded = false
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
@@ -258,8 +260,18 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                 renderGoalCard(currentTodayTime, currentTotalTime, currentReadBookCount)
             }
         }
-        binding.rvRecentCovers.layoutManager =
-            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvRecentCovers.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.rvRecentCovers.setContent {
+            LegadoComposeTheme {
+                ReadRecordCoverRow(
+                    items = recentCoversUiState.value,
+                    onClick = { index -> openRecentCover(index) },
+                    onLongClick = { index -> showRecentCoverActions(index) }
+                )
+            }
+        }
         applyComponentLayout()
         preloadData()
     }
@@ -642,35 +654,40 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     }
 
     private fun renderRecentCovers(items: List<ReadRecentVisualItem>) {
+        currentRecentCovers = items
+        recentCoversUiState.value = items.map {
+            ReadRecordCoverUi(book = it.book, snapshot = it.snapshot)
+        }
         binding.tvRecentCoversEmpty.isVisible = items.isEmpty()
         binding.rvRecentCovers.isVisible = items.isNotEmpty()
-        binding.rvRecentCovers.adapter = ReadRecordCoverAdapter(
-            context = requireContext(),
-            items = items,
-            onClick = {
-                requireContext().openReadRecordBook(it.book, it.snapshot.name)
-            },
-            onLongClick = { item ->
-                requireContext().showReadRecordBookActionDialog(
-                    title = item.book?.name ?: item.snapshot.name,
-                    book = item.book,
-                    fallbackName = item.snapshot.name
-                ) {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        withContext(IO) {
-                            item.book?.let { book ->
-                                appDb.readRecentBookDao.deleteSameBook(book.name, book.author)
-                                ReadRecordWidgetStore.removeRecentSnapshot(book)
-                            } ?: run {
-                                appDb.readRecentBookDao.delete(item.snapshot.bookUrl)
-                                ReadRecordWidgetStore.removeRecentSnapshot(item.snapshot.bookUrl)
-                            }
-                        }
-                        loadData(force = true)
+    }
+
+    private fun openRecentCover(index: Int) {
+        currentRecentCovers.getOrNull(index)?.let {
+            requireContext().openReadRecordBook(it.book, it.snapshot.name)
+        }
+    }
+
+    private fun showRecentCoverActions(index: Int) {
+        val item = currentRecentCovers.getOrNull(index) ?: return
+        requireContext().showReadRecordBookActionDialog(
+            title = item.book?.name ?: item.snapshot.name,
+            book = item.book,
+            fallbackName = item.snapshot.name
+        ) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                withContext(IO) {
+                    item.book?.let { book ->
+                        appDb.readRecentBookDao.deleteSameBook(book.name, book.author)
+                        ReadRecordWidgetStore.removeRecentSnapshot(book)
+                    } ?: run {
+                        appDb.readRecentBookDao.delete(item.snapshot.bookUrl)
+                        ReadRecordWidgetStore.removeRecentSnapshot(item.snapshot.bookUrl)
                     }
                 }
+                loadData(force = true)
             }
-        )
+        }
     }
 
     private fun renderReadRank(items: List<ReadRecordRankItem>, allItems: List<ReadRecordRankItem>) {
