@@ -104,6 +104,7 @@ fun TocComposeScreen(
         var selectedPage by remember { mutableStateOf(TocPage.Chapters) }
         var searchQuery by remember { mutableStateOf("") }
         var refreshTick by remember { mutableIntStateOf(0) }
+        var bookLoaded by remember { mutableStateOf(false) }
         var chaptersLoaded by remember { mutableStateOf(false) }
         var bookmarksLoaded by remember { mutableStateOf(false) }
         val chapterList = remember { mutableStateListOf<BookChapter>() }
@@ -129,9 +130,11 @@ fun TocComposeScreen(
         )
 
         val book by produceState<Book?>(initialValue = null, bookUrl, refreshTick, contentRefreshTick) {
+            bookLoaded = false
             value = withContext(Dispatchers.IO) {
                 bookUrl.takeIf { it.isNotBlank() }?.let { appDb.bookDao.getBook(it) }
             }
+            bookLoaded = true
         }
 
         LaunchedEffect(book) {
@@ -299,6 +302,7 @@ fun TocComposeScreen(
                                     }
                                 )
                             }
+                            bookLoaded && book == null -> TocEmptyState(text = stringResource(R.string.empty))
                             chaptersLoaded -> TocEmptyState(text = stringResource(R.string.empty))
                             else -> TocEmptyState(text = stringResource(R.string.loading))
                         }
@@ -324,6 +328,7 @@ fun TocComposeScreen(
                                     onLongClick = onEditBookmark
                                 )
                             }
+                            bookLoaded && book == null -> TocEmptyState(text = stringResource(R.string.empty))
                             bookmarksLoaded -> TocEmptyState(text = stringResource(R.string.empty))
                             else -> TocEmptyState(text = stringResource(R.string.loading))
                         }
