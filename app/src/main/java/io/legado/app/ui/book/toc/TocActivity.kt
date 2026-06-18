@@ -3,7 +3,9 @@ package io.legado.app.ui.book.toc
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.viewModels
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import io.legado.app.constant.EventBus
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -16,6 +18,7 @@ import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
@@ -29,6 +32,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
     override val viewModel by viewModels<TocViewModel>()
 
     private val waitDialog by lazy { WaitDialog(this) }
+    private var cacheRefreshTick = mutableIntStateOf(0)
     private val exportDir = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             when (it.requestCode) {
@@ -49,8 +53,12 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         binding.composeView.setContent {
             TocComposeScreen(
                 bookUrl = bookUrl,
+                cacheRefreshTick = cacheRefreshTick.intValue,
                 viewModel = viewModel,
                 onBack = { finish() },
+                onBookLoaded = { book ->
+                    viewModel.bookData.value = book
+                },
                 onOpenChapter = ::openChapter,
                 onEditBookmark = ::editBookmark,
                 onShowTocRule = { book ->
@@ -67,6 +75,14 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
                     showDialogFragment<AppLogDialog>()
                 }
             )
+        }
+    }
+
+    override fun observeLiveBus() {
+        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, _) ->
+            if (book.bookUrl == viewModel.bookUrl) {
+                cacheRefreshTick.intValue++
+            }
         }
     }
 

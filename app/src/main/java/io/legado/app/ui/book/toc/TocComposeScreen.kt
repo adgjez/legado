@@ -82,8 +82,10 @@ private enum class TocPage {
 @Composable
 fun TocComposeScreen(
     bookUrl: String,
+    cacheRefreshTick: Int,
     viewModel: TocViewModel,
     onBack: () -> Unit,
+    onBookLoaded: (Book) -> Unit,
     onOpenChapter: (Book, List<BookChapter>, BookChapter) -> Unit,
     onEditBookmark: (Bookmark, Int) -> Unit,
     onShowTocRule: (Book?) -> Unit,
@@ -125,6 +127,10 @@ fun TocComposeScreen(
             }
         }
 
+        LaunchedEffect(book) {
+            book?.let(onBookLoaded)
+        }
+
         LaunchedEffect(book, searchQuery, refreshTick) {
             val currentBook = book ?: return@LaunchedEffect
             val end = currentBook.simulatedTotalChapterNum() - 1
@@ -158,7 +164,7 @@ fun TocComposeScreen(
             }
         }
 
-        LaunchedEffect(book) {
+        LaunchedEffect(book, cacheRefreshTick) {
             val currentBook = book ?: return@LaunchedEffect
             cacheFileNames.clear()
             cacheFileNames.addAll(withContext(Dispatchers.IO) { BookHelp.getChapterFiles(currentBook) })
