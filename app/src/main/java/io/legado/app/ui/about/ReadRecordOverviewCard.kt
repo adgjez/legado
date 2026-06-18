@@ -6,10 +6,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -40,6 +43,7 @@ import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.releaseComposeImage
+import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.ui.widget.image.CoverImageView
 
 @Immutable
@@ -82,6 +86,17 @@ data class ReadRecordRankUi(
 data class ReadRecordCoverUi(
     val book: Book?,
     val snapshot: ReadRecentVisualSnapshot
+)
+
+@Immutable
+data class ReadRecordGoalUi(
+    val userName: String,
+    val avatar: String?,
+    val todayText: String,
+    val totalText: String,
+    val booksText: String,
+    val progressText: String,
+    val progressPercent: Int
 )
 
 @Composable
@@ -274,6 +289,106 @@ fun ReadRecordCoverRow(
                 item = item,
                 onClick = { onClick(index) },
                 onLongClick = { onLongClick(index) }
+            )
+        }
+    }
+}
+
+@Composable
+fun ReadRecordGoalCardContent(
+    ui: ReadRecordGoalUi,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val titleFont = FontFamily(context.titleTypeface())
+    val bodyFont = FontFamily(context.uiTypeface())
+    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
+    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
+    val accent = Color(context.accentColor)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AndroidView(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(32.dp)),
+                factory = { CircleImageView(it) },
+                update = { avatar ->
+                    avatar.loadReadRecordAvatar(ui.avatar)
+                },
+                onRelease = { it.releaseComposeImage() }
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp)
+            ) {
+                if (ui.userName.isNotBlank()) {
+                    Text(
+                        text = ui.userName,
+                        color = secondaryText,
+                        fontSize = 12.sp,
+                        fontFamily = bodyFont,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = ui.todayText,
+                    color = primaryText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = titleFont,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = if (ui.userName.isBlank()) 0.dp else 4.dp)
+                )
+                Text(
+                    text = ui.progressText,
+                    color = secondaryText,
+                    fontSize = 13.sp,
+                    fontFamily = bodyFont,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { ui.progressPercent.coerceIn(0, 100) / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                        .height(8.dp),
+                    color = accent,
+                    trackColor = secondaryText.copy(alpha = 0.18f),
+                    strokeCap = StrokeCap.Round
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = ui.totalText,
+                color = secondaryText,
+                fontSize = 13.sp,
+                fontFamily = bodyFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = ui.booksText,
+                color = secondaryText,
+                fontSize = 13.sp,
+                fontFamily = bodyFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

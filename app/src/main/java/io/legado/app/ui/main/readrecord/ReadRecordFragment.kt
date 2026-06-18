@@ -35,6 +35,8 @@ import io.legado.app.ui.about.ReadRecordComponentConfigDialog
 import io.legado.app.ui.about.ReadRecordComponentType
 import io.legado.app.ui.about.ReadRecordComponents
 import io.legado.app.ui.about.ReadRecordGoalConfig
+import io.legado.app.ui.about.ReadRecordGoalCardContent
+import io.legado.app.ui.about.ReadRecordGoalUi
 import io.legado.app.ui.about.ReadRecordRankDialog
 import io.legado.app.ui.about.ReadRecordRankItem
 import io.legado.app.ui.about.ReadRecordWidgetStore
@@ -47,7 +49,6 @@ import io.legado.app.ui.about.ReadRecordRankList
 import io.legado.app.ui.about.ReadRecordRankUi
 import io.legado.app.ui.about.ReadRecordRecentBookUi
 import io.legado.app.ui.about.ReadRecordRecentBooksList
-import io.legado.app.ui.about.loadReadRecordAvatar
 import io.legado.app.ui.about.openReadRecordBook
 import io.legado.app.ui.about.showReadRecordBookActionDialog
 import io.legado.app.ui.about.showReadRecordGoalDialog
@@ -121,6 +122,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private val dailyRecordsUiState = mutableStateOf<List<ReadRecordDayUi>>(emptyList())
     private val rankUiState = mutableStateOf<List<ReadRecordRankUi>>(emptyList())
     private val recentCoversUiState = mutableStateOf<List<ReadRecordCoverUi>>(emptyList())
+    private val goalUiState = mutableStateOf<ReadRecordGoalUi?>(null)
     private var currentRecentBooks: List<RecentReadBook> = emptyList()
     private var currentDailyTimeline: List<DailyReadSummary> = emptyList()
     private var currentVisibleRankItems: List<ReadRecordRankItem> = emptyList()
@@ -270,6 +272,16 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                     onClick = { index -> openRecentCover(index) },
                     onLongClick = { index -> showRecentCoverActions(index) }
                 )
+            }
+        }
+        binding.goalCardContent.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.goalCardContent.setContent {
+            LegadoComposeTheme {
+                goalUiState.value?.let { ui ->
+                    ReadRecordGoalCardContent(ui = ui)
+                }
             }
         }
         applyComponentLayout()
@@ -738,20 +750,21 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private fun renderGoalCard(todayTime: Long, totalTime: Long, readBookCount: Int) {
         val todayText = formatDuring(todayTime)
         val totalText = formatDuring(totalTime)
-        binding.ivGoalAvatar.loadReadRecordAvatar(currentGoalConfig.avatar)
-        binding.tvGoalUserName.text = currentGoalConfig.userName.orEmpty()
-        binding.tvGoalUserName.isVisible = !currentGoalConfig.userName.isNullOrBlank()
-        binding.tvGoalToday.text = getString(R.string.read_record_goal_today, todayText)
-        binding.tvGoalTotal.text = getString(R.string.read_record_goal_total, totalText)
-        binding.tvGoalBooks.text = getString(R.string.read_record_goal_books, readBookCount)
         val goalMs = currentGoalConfig.dailyGoalMinutes * 60L * 1000L
         val percent = if (goalMs <= 0L) 0 else ((todayTime * 100) / goalMs).toInt().coerceIn(0, 100)
-        binding.tvGoalProgress.text = getString(
-            R.string.read_record_goal_target_progress,
-            todayText,
-            formatDuring(goalMs)
+        goalUiState.value = ReadRecordGoalUi(
+            userName = currentGoalConfig.userName.orEmpty(),
+            avatar = currentGoalConfig.avatar,
+            todayText = getString(R.string.read_record_goal_today, todayText),
+            totalText = getString(R.string.read_record_goal_total, totalText),
+            booksText = getString(R.string.read_record_goal_books, readBookCount),
+            progressText = getString(
+                R.string.read_record_goal_target_progress,
+                todayText,
+                formatDuring(goalMs)
+            ),
+            progressPercent = percent
         )
-        binding.progressGoal.progress = percent
     }
 
     private fun buildRecentBookMeta(book: Book): String {

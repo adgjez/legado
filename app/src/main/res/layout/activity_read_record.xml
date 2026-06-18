@@ -359,105 +359,11 @@
 
                     </LinearLayout>
 
-                    <LinearLayout
+                    <androidx.compose.ui.platform.ComposeView
+                        android:id="@+id/goal_card_content"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <androidx.cardview.widget.CardView
-                            android:layout_width="64dp"
-                            android:layout_height="64dp"
-                            app:cardCornerRadius="32dp"
-                            app:cardElevation="0dp"
-                            app:cardPreventCornerOverlap="false"
-                            app:cardUseCompatPadding="false">
-
-                            <io.legado.app.ui.widget.image.CircleImageView
-                                android:id="@+id/iv_goal_avatar"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:contentDescription="@string/img_cover"
-                                android:scaleType="centerCrop"
-                                android:src="@drawable/ic_read_record_default_avatar" />
-
-                        </androidx.cardview.widget.CardView>
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="14dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:id="@+id/tv_goal_user_name"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:ellipsize="end"
-                                android:maxLines="1"
-                                android:textColor="@color/secondaryText"
-                                android:textSize="12sp" />
-
-                            <TextView
-                                android:id="@+id/tv_goal_today"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="4dp"
-                                android:textColor="@color/primaryText"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/tv_goal_progress"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="6dp"
-                                android:textColor="@color/secondaryText"
-                                android:textSize="13sp" />
-
-                            <ProgressBar
-                                android:id="@+id/progress_goal"
-                                style="?android:attr/progressBarStyleHorizontal"
-                                android:layout_width="match_parent"
-                                android:layout_height="8dp"
-                                android:layout_marginTop="10dp"
-                                android:max="100"
-                                android:progress="0" />
-
-                        </LinearLayout>
-
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/tv_goal_total"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:textColor="@color/secondaryText"
-                            android:textSize="13sp" />
-
-                        <Space
-                            android:layout_width="12dp"
-                            android:layout_height="1dp" />
-
-                        <TextView
-                            android:id="@+id/tv_goal_books"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:gravity="end"
-                            android:textColor="@color/secondaryText"
-                            android:textSize="13sp" />
-
-                    </LinearLayout>
+                        android:layout_marginTop="14dp" />
 
                 </LinearLayout>
 
