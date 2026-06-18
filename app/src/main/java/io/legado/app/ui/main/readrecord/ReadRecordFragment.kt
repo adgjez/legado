@@ -10,6 +10,8 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -40,6 +42,8 @@ import io.legado.app.ui.about.ReadRecordRankDialog
 import io.legado.app.ui.about.ReadRecordRankItem
 import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.about.ReadRecentVisualItem
+import io.legado.app.ui.about.ReadRecordOverviewCard
+import io.legado.app.ui.about.ReadRecordOverviewUi
 import io.legado.app.ui.about.loadReadRecordAvatar
 import io.legado.app.ui.about.loadReadRecordCover
 import io.legado.app.ui.about.openReadRecordBook
@@ -50,6 +54,7 @@ import io.legado.app.ui.image.ImageCropContract
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.widget.MainTopBarView
 import io.legado.app.ui.widget.RoundedTagBarView
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.applyMainBottomBarPadding
@@ -109,6 +114,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private var currentTotalTime: Long = 0L
     private var currentReadBookCount: Int = 0
     private var currentDashboard: ReadRecordDashboard? = null
+    private val overviewUiState = mutableStateOf<ReadRecordOverviewUi?>(null)
     private var recordDaysExpanded = false
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
@@ -172,6 +178,16 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         }
         binding.ivComponentMenu.setOnClickListener {
             showComponentConfigDialog()
+        }
+        binding.panelOverview.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.panelOverview.setContent {
+            LegadoComposeTheme {
+                overviewUiState.value?.let { ui ->
+                    ReadRecordOverviewCard(ui = ui)
+                }
+            }
         }
         binding.ivRankMore.setOnClickListener {
             ReadRecordRankDialog.show(requireContext(), currentRankItems, ::formatDuring) { item ->
@@ -357,24 +373,7 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                 R.string.read_record_stats_waiting
             }
         )
-        binding.tvTodayValue.text = if (dashboard.hasDailyStats) {
-            formatDuring(dashboard.todayTime)
-        } else {
-            getString(R.string.read_record_placeholder)
-        }
-        binding.tvTodayLabel.text = if (dashboard.today == LocalDate.now()) {
-            getString(R.string.read_record_today_label)
-        } else {
-            getString(R.string.read_record_selected_day_label)
-        }
-        binding.tvMonthValue.text = if (dashboard.hasDailyStats) {
-            formatDuring(dashboard.monthTime)
-        } else {
-            getString(R.string.read_record_placeholder)
-        }
-        binding.tvTotalValue.text = formatDuring(dashboard.totalTime)
-        binding.tvActiveDaysValue.text =
-            getString(R.string.read_record_active_days_value, dashboard.activeDays)
+        overviewUiState.value = dashboard.toOverviewUi()
 
         val startDate = dashboard.heatmapCells.firstOrNull()?.date ?: dashboard.today
         val centerDate = dashboard.heatmapCells.getOrNull(dashboard.heatmapCells.size / 2)?.date
@@ -397,6 +396,24 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         currentGoalConfig = dashboard.goalConfig
         renderGoalCard(dashboard.todayTime, dashboard.totalTime, dashboard.readBookCount)
         applyPageChrome()
+    }
+
+    private fun ReadRecordDashboard.toOverviewUi(): ReadRecordOverviewUi {
+        val placeholder = getString(R.string.read_record_placeholder)
+        return ReadRecordOverviewUi(
+            todayValue = if (hasDailyStats) formatDuring(todayTime) else placeholder,
+            todayLabel = if (today == LocalDate.now()) {
+                getString(R.string.read_record_today_label)
+            } else {
+                getString(R.string.read_record_selected_day_label)
+            },
+            monthValue = if (hasDailyStats) formatDuring(monthTime) else placeholder,
+            monthLabel = getString(R.string.read_record_month_label),
+            totalValue = formatDuring(totalTime),
+            totalLabel = getString(R.string.read_record_total_label),
+            activeDaysValue = getString(R.string.read_record_active_days_value, activeDays),
+            activeDaysLabel = getString(R.string.read_record_active_days_label)
+        )
     }
 
     private fun renderDateTopBar(dashboard: ReadRecordDashboard) {
@@ -703,15 +720,9 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
 
     private fun applyPageChrome() {
         val panelSurfaceColor = ContextCompat.getColor(requireContext(), R.color.background_card)
-        val cardSurfaceColor = ContextCompat.getColor(requireContext(), R.color.background_card)
         val strokeColor = ColorUtils.adjustAlpha(
             primaryTextColor,
             0.08f
-        )
-        val accentSurfaceColor = ColorUtils.blendColors(
-            panelSurfaceColor,
-            accentColor,
-            0.16f
         )
 
         binding.panelOverview.background = null
@@ -722,23 +733,6 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
         ).forEach { panel ->
             panel.background = createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
         }
-        listOf(
-            binding.cardToday,
-            binding.cardMonth,
-            binding.cardActiveDays
-        ).forEach { card ->
-            card.background = createSurfaceDrawable(cardSurfaceColor, strokeColor, 12f)
-        }
-        binding.cardTotal.background =
-            createSurfaceDrawable(accentSurfaceColor, ColorUtils.adjustAlpha(accentColor, 0.2f), 12f)
-
-        val accentTextColor = if (ColorUtils.isColorLight(accentSurfaceColor)) {
-            primaryTextColor
-        } else {
-            ContextCompat.getColor(requireContext(), R.color.white)
-        }
-        binding.tvTotalValue.setTextColor(accentTextColor)
-        binding.tvTotalLabel.setTextColor(ColorUtils.adjustAlpha(accentTextColor, 0.72f))
         binding.tvRecordDate.setTextColor(primaryTextColor)
         binding.tvRecordDateHint.setTextColor(secondaryTextColor)
         binding.tvHeatmapSubtitle.setTextColor(secondaryTextColor)

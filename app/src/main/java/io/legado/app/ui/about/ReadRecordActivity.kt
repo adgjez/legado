@@ -10,6 +10,8 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -30,6 +32,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.image.ImageCropContract
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ImageCropHelper
 import io.legado.app.utils.applyNavigationBarPadding
@@ -74,6 +77,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private var currentTodayTime: Long = 0L
     private var currentTotalTime: Long = 0L
     private var currentReadBookCount: Int = 0
+    private val overviewUiState = mutableStateOf<ReadRecordOverviewUi?>(null)
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
     private val selectGoalAvatar = registerForActivityResult(HandleFileContract()) {
@@ -149,6 +153,16 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun initView() {
         binding.scrollView.applyNavigationBarPadding()
+        binding.panelOverview.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.panelOverview.setContent {
+            LegadoComposeTheme {
+                overviewUiState.value?.let { ui ->
+                    ReadRecordOverviewCard(ui = ui)
+                }
+            }
+        }
         binding.tvRecordDate.setOnClickListener {
             showDatePicker()
         }
@@ -264,24 +278,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 R.string.read_record_stats_waiting
             }
         )
-        binding.tvTodayValue.text = if (dashboard.hasDailyStats) {
-            formatDuring(dashboard.todayTime)
-        } else {
-            getString(R.string.read_record_placeholder)
-        }
-        binding.tvTodayLabel.text = if (dashboard.today == LocalDate.now()) {
-            getString(R.string.read_record_today_label)
-        } else {
-            getString(R.string.read_record_selected_day_label)
-        }
-        binding.tvMonthValue.text = if (dashboard.hasDailyStats) {
-            formatDuring(dashboard.monthTime)
-        } else {
-            getString(R.string.read_record_placeholder)
-        }
-        binding.tvTotalValue.text = formatDuring(dashboard.totalTime)
-        binding.tvActiveDaysValue.text =
-            getString(R.string.read_record_active_days_value, dashboard.activeDays)
+        overviewUiState.value = dashboard.toOverviewUi()
 
         val startDate = dashboard.heatmapCells.firstOrNull()?.date ?: dashboard.today
         val centerDate = dashboard.heatmapCells.getOrNull(dashboard.heatmapCells.size / 2)?.date
@@ -302,6 +299,24 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         currentGoalConfig = dashboard.goalConfig
         renderGoalCard(dashboard.todayTime, dashboard.totalTime, dashboard.readBookCount)
         applyPageChrome()
+    }
+
+    private fun ReadRecordDashboard.toOverviewUi(): ReadRecordOverviewUi {
+        val placeholder = getString(R.string.read_record_placeholder)
+        return ReadRecordOverviewUi(
+            todayValue = if (hasDailyStats) formatDuring(todayTime) else placeholder,
+            todayLabel = if (today == LocalDate.now()) {
+                getString(R.string.read_record_today_label)
+            } else {
+                getString(R.string.read_record_selected_day_label)
+            },
+            monthValue = if (hasDailyStats) formatDuring(monthTime) else placeholder,
+            monthLabel = getString(R.string.read_record_month_label),
+            totalValue = formatDuring(totalTime),
+            totalLabel = getString(R.string.read_record_total_label),
+            activeDaysValue = getString(R.string.read_record_active_days_value, activeDays),
+            activeDaysLabel = getString(R.string.read_record_active_days_label)
+        )
     }
 
     private fun showComponentConfigDialog() {
@@ -546,15 +561,9 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun applyPageChrome() {
         val panelSurfaceColor = ContextCompat.getColor(this, R.color.background_card)
-        val cardSurfaceColor = ContextCompat.getColor(this, R.color.background_card)
         val strokeColor = ColorUtils.adjustAlpha(
             primaryTextColor,
             0.08f
-        )
-        val accentSurfaceColor = ColorUtils.blendColors(
-            panelSurfaceColor,
-            accentColor,
-            0.16f
         )
 
         binding.panelOverview.background = null
@@ -565,23 +574,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         ).forEach { panel ->
             panel.background = createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
         }
-        listOf(
-            binding.cardToday,
-            binding.cardMonth,
-            binding.cardActiveDays
-        ).forEach { card ->
-            card.background = createSurfaceDrawable(cardSurfaceColor, strokeColor, 12f)
-        }
-        binding.cardTotal.background =
-            createSurfaceDrawable(accentSurfaceColor, ColorUtils.adjustAlpha(accentColor, 0.2f), 12f)
-
-        val accentTextColor = if (ColorUtils.isColorLight(accentSurfaceColor)) {
-            primaryTextColor
-        } else {
-            ContextCompat.getColor(this, R.color.white)
-        }
-        binding.tvTotalValue.setTextColor(accentTextColor)
-        binding.tvTotalLabel.setTextColor(ColorUtils.adjustAlpha(accentTextColor, 0.72f))
         binding.tvRecordDate.setTextColor(primaryTextColor)
         binding.tvRecordDateHint.setTextColor(secondaryTextColor)
         binding.tvHeatmapSubtitle.setTextColor(secondaryTextColor)
