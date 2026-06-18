@@ -1078,8 +1078,10 @@
     <string name="read_record_select_date">Select date</string>
     <string name="read_record_selected_day_label">Selected day</string>
     <string name="read_record_customize_components">Customize stats widgets</string>
-    <string name="read_record_components_hint">Check to show widgets, drag to reorder</string>
-    <string name="read_record_drag_sort">Drag to reorder</string>
+    <string name="read_record_components_hint">Check to show widgets, use move controls to reorder</string>
+    <string name="read_record_drag_sort">Adjust order</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
     <string name="read_record_component_overview">Overview cards</string>
     <string name="read_record_component_heatmap">Reading heatmap</string>
     <string name="read_record_component_recent_books">Recent list</string>
