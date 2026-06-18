@@ -77,8 +77,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private val overviewUiState = mutableStateOf<ReadRecordOverviewUi?>(null)
     private val recentBooksUiState = mutableStateOf<List<ReadRecordRecentBookUi>>(emptyList())
     private val dailyRecordsUiState = mutableStateOf<List<ReadRecordDayUi>>(emptyList())
+    private val rankUiState = mutableStateOf<List<ReadRecordRankUi>>(emptyList())
     private var currentRecentBooks: List<RecentReadBook> = emptyList()
     private var currentDailyTimeline: List<DailyReadSummary> = emptyList()
+    private var currentVisibleRankItems: List<ReadRecordRankItem> = emptyList()
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
     private val selectGoalAvatar = registerForActivityResult(HandleFileContract()) {
@@ -184,6 +186,18 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 ReadRecordDailyList(
                     items = dailyRecordsUiState.value,
                     onLongClick = { index -> confirmDeleteDailyRecord(index) }
+                )
+            }
+        }
+        binding.llReadRank.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.llReadRank.setContent {
+            LegadoComposeTheme {
+                ReadRecordRankList(
+                    items = rankUiState.value,
+                    onClick = { index -> openRankBook(index) },
+                    onLongClick = { index -> showRankBookActions(index) }
                 )
             }
         }
@@ -497,44 +511,45 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun renderReadRank(items: List<ReadRecordRankItem>, allItems: List<ReadRecordRankItem>) {
         currentRankItems = allItems
-        binding.llReadRank.removeAllViews()
+        currentVisibleRankItems = items
+        rankUiState.value = items.mapIndexed { index, item ->
+            val name = item.book?.name ?: item.snapshot?.name ?: item.displayName
+            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
+            ReadRecordRankUi(
+                name = name,
+                meta = if (author.isBlank()) {
+                    getString(R.string.read_record_rank_number, index + 1)
+                } else {
+                    "${index + 1}. $author"
+                },
+                readTime = formatDuring(item.readTime),
+                dimmed = item.book == null,
+                book = item.book,
+                snapshot = item.snapshot
+            )
+        }
         binding.tvReadRankEmpty.isVisible = items.isEmpty()
         binding.ivRankMore.isVisible = allItems.isNotEmpty()
-        if (items.isEmpty()) return
-        items.forEachIndexed { index, item ->
-            val rowBinding =
-                io.legado.app.databinding.ItemReadRecordRankBinding.inflate(layoutInflater, binding.llReadRank, false)
-            rowBinding.ivCover.loadReadRecordCover(item.book, item.snapshot)
-            rowBinding.tvName.text = item.book?.name ?: item.snapshot?.name ?: item.displayName
-            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
-            rowBinding.tvMeta.text = if (author.isBlank()) {
-                getString(R.string.read_record_rank_number, index + 1)
-            } else {
-                "${index + 1}. $author"
-            }
-            rowBinding.tvTime.text = formatDuring(item.readTime)
-            rowBinding.root.alpha = if (item.book == null) 0.72f else 1f
-            rowBinding.root.setOnClickListener {
-                openReadRecordBook(item.book, item.displayName)
-            }
-            rowBinding.root.setOnLongClickListener {
-                showReadRecordBookActionDialog(
-                    title = item.book?.name ?: item.snapshot?.name ?: item.displayName,
-                    book = item.book,
-                    fallbackName = item.displayName
-                ) {
-                    lifecycleScope.launch {
-                        withContext(IO) {
-                            appDb.readRecordDao.deleteByName(item.displayName)
-                        }
-                        loadData()
-                    }
+    }
+
+    private fun openRankBook(index: Int) {
+        currentVisibleRankItems.getOrNull(index)?.let {
+            openReadRecordBook(it.book, it.displayName)
+        }
+    }
+
+    private fun showRankBookActions(index: Int) {
+        val item = currentVisibleRankItems.getOrNull(index) ?: return
+        showReadRecordBookActionDialog(
+            title = item.book?.name ?: item.snapshot?.name ?: item.displayName,
+            book = item.book,
+            fallbackName = item.displayName
+        ) {
+            lifecycleScope.launch {
+                withContext(IO) {
+                    appDb.readRecordDao.deleteByName(item.displayName)
                 }
-                true
-            }
-            binding.llReadRank.addView(rowBinding.root)
-            if (index < items.lastIndex) {
-                binding.llReadRank.addView(createDivider())
+                loadData()
             }
         }
     }

@@ -43,10 +43,11 @@ import io.legado.app.ui.about.ReadRecordDailyList
 import io.legado.app.ui.about.ReadRecordDayUi
 import io.legado.app.ui.about.ReadRecordOverviewCard
 import io.legado.app.ui.about.ReadRecordOverviewUi
+import io.legado.app.ui.about.ReadRecordRankList
+import io.legado.app.ui.about.ReadRecordRankUi
 import io.legado.app.ui.about.ReadRecordRecentBookUi
 import io.legado.app.ui.about.ReadRecordRecentBooksList
 import io.legado.app.ui.about.loadReadRecordAvatar
-import io.legado.app.ui.about.loadReadRecordCover
 import io.legado.app.ui.about.openReadRecordBook
 import io.legado.app.ui.about.showReadRecordBookActionDialog
 import io.legado.app.ui.about.showReadRecordGoalDialog
@@ -118,8 +119,10 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
     private val overviewUiState = mutableStateOf<ReadRecordOverviewUi?>(null)
     private val recentBooksUiState = mutableStateOf<List<ReadRecordRecentBookUi>>(emptyList())
     private val dailyRecordsUiState = mutableStateOf<List<ReadRecordDayUi>>(emptyList())
+    private val rankUiState = mutableStateOf<List<ReadRecordRankUi>>(emptyList())
     private var currentRecentBooks: List<RecentReadBook> = emptyList()
     private var currentDailyTimeline: List<DailyReadSummary> = emptyList()
+    private var currentVisibleRankItems: List<ReadRecordRankItem> = emptyList()
     private var recordDaysExpanded = false
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
@@ -214,6 +217,18 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
                 ReadRecordDailyList(
                     items = dailyRecordsUiState.value,
                     onLongClick = { index -> confirmDeleteDailyRecord(index) }
+                )
+            }
+        }
+        binding.llReadRank.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.llReadRank.setContent {
+            LegadoComposeTheme {
+                ReadRecordRankList(
+                    items = rankUiState.value,
+                    onClick = { index -> openRankBook(index) },
+                    onLongClick = { index -> showRankBookActions(index) }
                 )
             }
         }
@@ -660,44 +675,45 @@ class ReadRecordFragment() : BaseFragment(R.layout.activity_read_record), MainFr
 
     private fun renderReadRank(items: List<ReadRecordRankItem>, allItems: List<ReadRecordRankItem>) {
         currentRankItems = allItems
-        binding.llReadRank.removeAllViews()
+        currentVisibleRankItems = items
+        rankUiState.value = items.mapIndexed { index, item ->
+            val name = item.book?.name ?: item.snapshot?.name ?: item.displayName
+            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
+            ReadRecordRankUi(
+                name = name,
+                meta = if (author.isBlank()) {
+                    getString(R.string.read_record_rank_number, index + 1)
+                } else {
+                    "${index + 1}. $author"
+                },
+                readTime = formatDuring(item.readTime),
+                dimmed = item.book == null,
+                book = item.book,
+                snapshot = item.snapshot
+            )
+        }
         binding.tvReadRankEmpty.isVisible = items.isEmpty()
         binding.ivRankMore.isVisible = allItems.isNotEmpty()
-        if (items.isEmpty()) return
-        items.forEachIndexed { index, item ->
-            val rowBinding =
-                io.legado.app.databinding.ItemReadRecordRankBinding.inflate(layoutInflater, binding.llReadRank, false)
-            rowBinding.ivCover.loadReadRecordCover(item.book, item.snapshot)
-            rowBinding.tvName.text = item.book?.name ?: item.snapshot?.name ?: item.displayName
-            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
-            rowBinding.tvMeta.text = if (author.isBlank()) {
-                getString(R.string.read_record_rank_number, index + 1)
-            } else {
-                "${index + 1}. $author"
-            }
-            rowBinding.tvTime.text = formatDuring(item.readTime)
-            rowBinding.root.alpha = if (item.book == null) 0.72f else 1f
-            rowBinding.root.setOnClickListener {
-                requireContext().openReadRecordBook(item.book, item.displayName)
-            }
-            rowBinding.root.setOnLongClickListener {
-                requireContext().showReadRecordBookActionDialog(
-                    title = item.book?.name ?: item.snapshot?.name ?: item.displayName,
-                    book = item.book,
-                    fallbackName = item.displayName
-                ) {
-                    viewLifecycleOwner.lifecycleScope.launch {
-                        withContext(IO) {
-                            appDb.readRecordDao.deleteByName(item.displayName)
-                        }
-                        loadData(force = true)
-                    }
+    }
+
+    private fun openRankBook(index: Int) {
+        currentVisibleRankItems.getOrNull(index)?.let {
+            requireContext().openReadRecordBook(it.book, it.displayName)
+        }
+    }
+
+    private fun showRankBookActions(index: Int) {
+        val item = currentVisibleRankItems.getOrNull(index) ?: return
+        requireContext().showReadRecordBookActionDialog(
+            title = item.book?.name ?: item.snapshot?.name ?: item.displayName,
+            book = item.book,
+            fallbackName = item.displayName
+        ) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                withContext(IO) {
+                    appDb.readRecordDao.deleteByName(item.displayName)
                 }
-                true
-            }
-            binding.llReadRank.addView(rowBinding.root)
-            if (index < items.lastIndex) {
-                binding.llReadRank.addView(createDivider())
+                loadData(force = true)
             }
         }
     }

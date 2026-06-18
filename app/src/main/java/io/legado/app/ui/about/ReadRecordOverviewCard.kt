@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -23,13 +25,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import io.legado.app.R
+import io.legado.app.data.entities.Book
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
+import io.legado.app.ui.widget.compose.releaseComposeImage
+import io.legado.app.ui.widget.image.CoverImageView
 
 @Immutable
 data class ReadRecordOverviewUi(
@@ -55,6 +61,16 @@ data class ReadRecordDayUi(
     val title: String,
     val subtitle: String,
     val readTime: String
+)
+
+@Immutable
+data class ReadRecordRankUi(
+    val name: String,
+    val meta: String,
+    val readTime: String,
+    val dimmed: Boolean,
+    val book: Book?,
+    val snapshot: ReadRecentVisualSnapshot?
 )
 
 @Composable
@@ -130,6 +146,27 @@ fun ReadRecordDailyList(
         items.forEachIndexed { index, item ->
             ReadRecordDayRow(
                 item = item,
+                onLongClick = { onLongClick(index) }
+            )
+            if (index < items.lastIndex) {
+                ReadRecordDivider()
+            }
+        }
+    }
+}
+
+@Composable
+fun ReadRecordRankList(
+    items: List<ReadRecordRankUi>,
+    onClick: (Int) -> Unit,
+    onLongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        items.forEachIndexed { index, item ->
+            ReadRecordRankRow(
+                item = item,
+                onClick = { onClick(index) },
                 onLongClick = { onLongClick(index) }
             )
             if (index < items.lastIndex) {
@@ -248,6 +285,80 @@ private fun ReadRecordDayRow(
         )
     }
 }
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ReadRecordRankRow(
+    item: ReadRecordRankUi,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val titleFont = FontFamily(context.titleTypeface())
+    val bodyFont = FontFamily(context.uiTypeface())
+    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
+    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
+    val alpha = if (item.dimmed) 0.72f else 1f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 78.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AndroidView(
+            modifier = Modifier
+                .width(54.dp)
+                .height(74.dp)
+                .clip(RoundedCornerShape(context.composeReadRecordPanelRadius())),
+            factory = { CoverImageView(it) },
+            update = { cover ->
+                cover.alpha = alpha
+                cover.loadReadRecordCover(item.book, item.snapshot)
+            },
+            onRelease = { it.releaseComposeImage() }
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp)
+        ) {
+            Text(
+                text = item.name,
+                color = primaryText.copy(alpha = alpha),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = titleFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = item.meta,
+                color = secondaryText.copy(alpha = alpha),
+                fontSize = 12.sp,
+                fontFamily = bodyFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        Text(
+            text = item.readTime,
+            color = secondaryText.copy(alpha = alpha),
+            fontSize = 12.sp,
+            fontFamily = bodyFont,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+    }
+}
+
+@Composable
+private fun android.content.Context.composeReadRecordPanelRadius() = androidx.compose.ui.unit.Dp(
+    UiCorner.panelRadius(this) / resources.displayMetrics.density
+)
 
 @Composable
 private fun ReadRecordDivider() {
