@@ -22,6 +22,11 @@ import android.widget.AutoCompleteTextView
 import android.view.SubMenu
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.core.widget.NestedScrollView
@@ -83,6 +88,7 @@ import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.ui.widget.SourceSelectDialog
+import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.applyTint
@@ -157,6 +163,13 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val discoverMajorGroups = mutableListOf<String>()
     private val discoverBookshelf = linkedSetOf<String>()
     private val discoverBooks = linkedSetOf<SearchBook>()
+    private val composeDiscoverBooks = mutableStateListOf<SearchBook>()
+    private val composeDiscoverLoading = mutableStateOf(false)
+    private val composeDiscoverHasMore = mutableStateOf(true)
+    private val composeDiscoverBookshelfVersion = mutableIntStateOf(0)
+    private val composeDiscoverTopPadding = mutableIntStateOf(0)
+    private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
+    private var composeDiscoverCanScrollBackward = false
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
     private var selectedDiscoverSource: BookSource? = null
@@ -204,6 +217,29 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.rvFind.applyMainBottomBarPadding()
         binding.rvDiscoverBooks.clipToPadding = false
         binding.rvDiscoverBooks.applyMainBottomBarPadding(withInitialPadding = true)
+        binding.composeDiscoverBooks.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeDiscoverBooks.setContent {
+            LegadoComposeTheme {
+                ExploreModernListScreen(
+                    books = composeDiscoverBooks,
+                    listItemStyle = composeDiscoverListStyle.intValue,
+                    topPadding = composeDiscoverTopPadding.intValue.dp,
+                    isLoading = composeDiscoverLoading.value,
+                    hasMore = composeDiscoverHasMore.value,
+                    isInBookshelf = { book ->
+                        composeDiscoverBookshelfVersion.intValue
+                        isInBookshelf(book)
+                    },
+                    onBookClick = ::showBookInfo,
+                    onLoadMore = { loadDiscoverBooks(reset = false) },
+                    onCanScrollBackwardChanged = { composeDiscoverCanScrollBackward = it },
+                    fragment = this@ExploreFragment,
+                    lifecycle = viewLifecycleOwner.lifecycle
+                )
+            }
+        }
         applyDiscoveryMode(loadData = false)
         scheduleDiscoveryWarmup()
     }
@@ -247,6 +283,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     private fun currentDiscoverScrollTarget(): View? {
+        if (usingModernDiscovery && binding.composeDiscoverBooks.isVisible) {
+            return if (composeDiscoverCanScrollBackward) binding.composeDiscoverBooks else null
+        }
         return when {
             usingModernDiscovery -> binding.rvDiscoverBooks
             else -> binding.rvFind
@@ -305,6 +344,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverSourceVersion += 1
         discoverRequestVersion += 1
         discoverLoading = false
+        syncDiscoverComposeState()
         binding.pbDiscoverLoading.gone()
         discoverAllTagItems.clear()
         discoverMajorGroups.clear()
@@ -369,6 +409,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val topSpace = binding.topBar.height
         if (modernTopOverlaySpace != topSpace) {
             modernTopOverlaySpace = topSpace
+            composeDiscoverTopPadding.intValue = topSpace
             binding.rvDiscoverBooks.clipToPadding = true
             binding.rvDiscoverBooks.setPadding(
                 binding.rvDiscoverBooks.paddingLeft,
@@ -387,6 +428,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun applyDiscoverBookLayout(force: Boolean = false) {
         val layoutMode = AppConfig.discoveryPageLayout
+        composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
+        val useComposeList = layoutMode == 1
+        binding.composeDiscoverBooks.isVisible = useComposeList
+        binding.rvDiscoverBooks.isGone = useComposeList
+        if (useComposeList) {
+            discoverBookLayoutMode = layoutMode
+            discoverBookAdapter = null
+            binding.rvDiscoverBooks.adapter = null
+            syncDiscoverComposeState()
+            return
+        }
         if (!force && discoverBookLayoutMode == layoutMode && discoverBookAdapter != null) return
         discoverBookLayoutMode = layoutMode
         binding.rvDiscoverBooks.layoutManager = when (layoutMode) {
@@ -404,6 +456,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 adapter.setItems(discoverBooks.toList())
             }
         }
+    }
+
+    private fun syncDiscoverComposeState() {
+        composeDiscoverLoading.value = discoverLoading
+        composeDiscoverHasMore.value = discoverHasMore
+        composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
+        composeDiscoverBooks.clear()
+        composeDiscoverBooks.addAll(discoverBooks)
     }
 
     private fun bindDiscoverSourceSelector() {
@@ -570,6 +630,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                             discoverBookshelf.add(it.name)
                             discoverBookshelf.add(it.bookUrl)
                         }
+                    composeDiscoverBookshelfVersion.intValue += 1
                     val bookAdapter = discoverBookAdapter
                     if ((bookAdapter?.itemCount ?: 0) > 0) {
                         bookAdapter?.notifyItemRangeChanged(
@@ -1210,6 +1271,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.pbDiscoverLoading.gone()
         discoverCurrentUrl = null
         discoverBooks.clear()
+        syncDiscoverComposeState()
         discoverBookAdapter?.clearItems()
         binding.tvDiscoverEmpty.gone()
         discoverAllTagItems.clear()
@@ -1873,6 +1935,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         discoverHasMore = false
         discoverPage = 1
         discoverBooks.clear()
+        syncDiscoverComposeState()
         discoverBookAdapter?.clearItems()
         binding.tvDiscoverEmpty.text = message
         binding.tvDiscoverEmpty.visible()
@@ -1899,10 +1962,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 discoverPage = 1
                 discoverHasMore = true
                 discoverBooks.clear()
+                syncDiscoverComposeState()
                 discoverBookAdapter?.clearItems()
                 binding.tvDiscoverEmpty.gone()
             }
             discoverLoading = true
+            syncDiscoverComposeState()
             binding.pbDiscoverLoading.visible()
             try {
                 val newBooks = withContext(IO) {
@@ -1928,6 +1993,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     }
                     discoverPage += 1
                     discoverBooks.addAll(newBooks)
+                    syncDiscoverComposeState()
                     discoverBookAdapter?.setItems(discoverBooks.toList())
                     binding.tvDiscoverEmpty.gone()
                 }
@@ -1947,6 +2013,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     binding.pbDiscoverLoading.gone()
                     binding.swipeRefreshLayout.isRefreshing = false
                     discoverLoading = false
+                    syncDiscoverComposeState()
                 }
             }
         }
@@ -2024,6 +2091,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             discoveryModeLoaded = true
         } else if (usingModernDiscovery) {
             applyDiscoverBookLayout()
+            syncDiscoverComposeState()
         }
         if (!usingModernDiscovery) {
             adapter.upResumed(true)
@@ -2043,6 +2111,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             binding.pbDiscoverLoading.gone()
             binding.swipeRefreshLayout.isRefreshing = false
             discoverRequestVersion += 1
+            syncDiscoverComposeState()
         }
         WebViewPool.scheduleDestroyScope(WebViewPool.Scope.DISCOVERY)
         super.onPause()

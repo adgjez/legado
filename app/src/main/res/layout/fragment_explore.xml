@@ -51,6 +51,12 @@
                         android:paddingBottom="14dp"
                         tools:listitem="@layout/item_search" />
 
+                    <androidx.compose.ui.platform.ComposeView
+                        android:id="@+id/compose_discover_books"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="gone" />
+
                     <TextView
                         android:id="@+id/tv_discover_empty"
                         android:layout_width="match_parent"
