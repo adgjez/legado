@@ -31,6 +31,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
 import io.legado.app.help.book.BookCloudEntryMode
@@ -520,7 +521,7 @@ class BookInfoComposeActivity :
             originName = getString(R.string.origin_show, book.originName),
             latestChapterTitle = getString(R.string.lasted_show, book.latestChapterTitle),
             readTimeText = readTimeText,
-            coverPath = book.getDisplayCover(),
+            coverPath = CoverDisplayResolver.resolve(book).path,
             intro = intro,
             kinds = book.getKindList(),
             groupText = groupText,

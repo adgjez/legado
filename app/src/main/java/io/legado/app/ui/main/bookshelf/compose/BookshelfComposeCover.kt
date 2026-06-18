@@ -34,10 +34,10 @@ import com.bumptech.glide.request.target.Target
 import com.bumptech.glide.request.transition.Transition
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.CoverThumbnailCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.CoverCollectionManager
-import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.glide.OkHttpModelLoader
 import io.legado.app.model.BookCover
@@ -171,6 +171,7 @@ private data class BookshelfCoverRequest(
     val sourceOrigin: String?,
     val preferThumb: Boolean,
     val forcePath: Boolean,
+    val displayKey: String,
     val loadKey: String,
     val thumbKey: String
 )
@@ -183,19 +184,15 @@ private fun BookshelfItemUi.toCoverRequest(): BookshelfCoverRequest {
 }
 
 private fun Book.toCoverRequest(): BookshelfCoverRequest {
-    val collectionCover = CoverCollectionManager.selectedCollectionCover(this)
-    val originalCover = getDisplayCover()
-    val usingCollectionCover = collectionCover != null
-    val forceOriginalCover = collectionCover == null &&
-            CoverCollectionManager.isMixedMode() &&
-            originalCover.isRealCoverPath()
+    val display = CoverDisplayResolver.resolve(this)
     return buildCoverRequest(
-        path = collectionCover ?: originalCover,
-        name = name,
-        author = author,
-        sourceOrigin = origin,
+        path = display.path,
+        name = display.name,
+        author = display.author,
+        sourceOrigin = display.sourceOrigin,
         preferThumb = true,
-        forcePath = usingCollectionCover || forceOriginalCover
+        forcePath = display.forcePath,
+        displayKey = display.loadKey
     )
 }
 
@@ -206,7 +203,8 @@ private fun BookGroup.toCoverRequest(): BookshelfCoverRequest {
         author = null,
         sourceOrigin = null,
         preferThumb = true,
-        forcePath = false
+        forcePath = false,
+        displayKey = listOf(cover.orEmpty(), groupName, AppConfig.useDefaultCover.toString()).joinToString("|")
     )
 }
 
@@ -216,16 +214,12 @@ private fun buildCoverRequest(
     author: String?,
     sourceOrigin: String?,
     preferThumb: Boolean,
-    forcePath: Boolean
+    forcePath: Boolean,
+    displayKey: String
 ): BookshelfCoverRequest {
     val useThumb = preferThumb && !AppConfig.loadCoverHighQuality
     val loadKey = listOf(
-        path.orEmpty(),
-        name.orEmpty(),
-        author.orEmpty(),
-        sourceOrigin.orEmpty(),
-        AppConfig.useDefaultCover.toString(),
-        CoverCollectionManager.selectionKey(),
+        displayKey,
         useThumb.toString(),
         forcePath.toString()
     ).joinToString("|")
@@ -236,6 +230,7 @@ private fun buildCoverRequest(
         sourceOrigin = sourceOrigin,
         preferThumb = preferThumb,
         forcePath = forcePath,
+        displayKey = displayKey,
         loadKey = loadKey,
         thumbKey = "$sourceOrigin|$path|$name|$author"
     )

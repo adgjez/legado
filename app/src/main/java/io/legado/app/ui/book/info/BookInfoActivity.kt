@@ -62,6 +62,7 @@ import io.legado.app.databinding.ActivityBookInfoBinding
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.GlideImageGetter
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.WebCacheManager
 import io.legado.app.help.ai.AiImageGalleryManager
@@ -817,7 +818,7 @@ class BookInfoActivity :
             originName = getString(R.string.origin_show, safeBook.originName),
             latestChapterTitle = getString(R.string.lasted_show, safeBook.latestChapterTitle),
             readTimeText = composeReadTimeText,
-            coverPath = safeBook.getDisplayCover(),
+            coverPath = CoverDisplayResolver.resolve(safeBook).path,
             intro = intro,
             kinds = safeBook.getKindList(),
             groupText = composeGroupText,

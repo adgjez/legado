@@ -36,6 +36,7 @@ import androidx.collection.LruCache
 import androidx.core.graphics.createBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.CoverCollectionManager
 import io.legado.app.help.config.CoverCollectionManager.isRealCoverPath
 import io.legado.app.lib.theme.backgroundColor
@@ -283,22 +284,17 @@ class CoverImageView @JvmOverloads constructor(
         fragment: Fragment? = null,
         lifecycle: Lifecycle? = null
     ) {
-        val collectionCover = CoverCollectionManager.selectedCollectionCover(searchBook)
-        val originalCover = searchBook.coverUrl
-        val usingCollectionCover = collectionCover != null
-        val forceOriginalCover = collectionCover == null &&
-            CoverCollectionManager.isMixedMode() &&
-            originalCover.isRealCoverPath()
+        val display = CoverDisplayResolver.resolve(searchBook)
         load(
-            collectionCover ?: originalCover,
-            searchBook.name,
-            searchBook.author,
+            display.path,
+            display.name,
+            display.author,
             loadOnlyWifi,
-            searchBook.origin,
+            display.sourceOrigin,
             fragment,
             lifecycle,
-            forcePath = usingCollectionCover || forceOriginalCover,
-            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
+            forcePath = display.forcePath,
+            allowNameOverlay = display.allowNameOverlay
         )
     }
 
@@ -309,23 +305,18 @@ class CoverImageView @JvmOverloads constructor(
         lifecycle: Lifecycle? = null,
         onLoadFinish: (() -> Unit)? = null
     ) {
-        val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
-        val originalCover = book.getDisplayCover()
-        val usingCollectionCover = collectionCover != null
-        val forceOriginalCover = collectionCover == null &&
-            CoverCollectionManager.isMixedMode() &&
-            originalCover.isRealCoverPath()
+        val display = CoverDisplayResolver.resolve(book)
         load(
-            collectionCover ?: originalCover,
-            book.name,
-            book.author,
+            display.path,
+            display.name,
+            display.author,
             loadOnlyWifi,
-            book.origin,
+            display.sourceOrigin,
             fragment,
             lifecycle,
             onLoadFinish,
-            forcePath = usingCollectionCover || forceOriginalCover,
-            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
+            forcePath = display.forcePath,
+            allowNameOverlay = display.allowNameOverlay
         )
     }
 
@@ -335,24 +326,19 @@ class CoverImageView @JvmOverloads constructor(
         fragment: Fragment? = null,
         lifecycle: Lifecycle? = null
     ) {
-        val collectionCover = CoverCollectionManager.selectedCollectionCover(book)
-        val originalCover = book.getDisplayCover()
-        val usingCollectionCover = collectionCover != null
-        val forceOriginalCover = collectionCover == null &&
-            CoverCollectionManager.isMixedMode() &&
-            originalCover.isRealCoverPath()
+        val display = CoverDisplayResolver.resolve(book)
         load(
-            collectionCover ?: originalCover,
-            book.name,
-            book.author,
+            display.path,
+            display.name,
+            display.author,
             loadOnlyWifi,
-            book.origin,
+            display.sourceOrigin,
             fragment,
             lifecycle,
             null,
             true,
-            forcePath = usingCollectionCover || forceOriginalCover,
-            allowNameOverlay = usingCollectionCover || !originalCover.isRealCoverPath()
+            forcePath = display.forcePath,
+            allowNameOverlay = display.allowNameOverlay
         )
     }
 
