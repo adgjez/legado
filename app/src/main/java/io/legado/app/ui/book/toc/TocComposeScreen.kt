@@ -165,7 +165,11 @@ fun TocComposeScreen(
             visibleChapters.clear()
             visibleChapters.addAll(visibleChapters(chapters, searchQuery, collapsedVolumeIndexes))
             if (selectedPage == TocPage.Chapters && visibleChapters.isNotEmpty()) {
-                val pos = visiblePositionOf(visibleChapters, currentBook.durChapterIndex)
+                val pos = if (searchQuery.isBlank()) {
+                    visiblePositionOf(visibleChapters, currentBook.durChapterIndex)
+                } else {
+                    0
+                }
                 chapterListState.scrollToItem(pos.coerceIn(0, visibleChapters.lastIndex))
             }
         }
@@ -201,9 +205,13 @@ fun TocComposeScreen(
             }
             bookmarks.clear()
             bookmarks.addAll(result)
-            val pos = bookmarks.indexOfLast { it.chapterIndex < currentBook.durChapterIndex }
-                .coerceAtLeast(0)
             if (bookmarks.isNotEmpty()) {
+                val pos = if (searchQuery.isBlank()) {
+                    bookmarks.indexOfLast { it.chapterIndex < currentBook.durChapterIndex }
+                        .coerceAtLeast(0)
+                } else {
+                    0
+                }
                 bookmarkListState.scrollToItem(pos.coerceIn(0, bookmarks.lastIndex))
             }
         }
@@ -262,43 +270,55 @@ fun TocComposeScreen(
 
             Box(modifier = Modifier.weight(1f)) {
                 when (selectedPage) {
-                    TocPage.Chapters -> TocChapterList(
-                        book = book,
-                        chapters = visibleChapters,
-                        displayTitles = displayTitles,
-                        collapsedVolumeIndexes = collapsedVolumeIndexes,
-                        chapterCacheMap = chapterCacheMap,
-                        listState = chapterListState,
-                        onToggleVolume = { chapter ->
-                            if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
-                            if (!collapsedVolumeIndexes.add(chapter.index)) {
-                                collapsedVolumeIndexes.remove(chapter.index)
-                            }
-                            val updated = visibleChapters(chapterList, searchQuery, collapsedVolumeIndexes)
-                            visibleChapters.clear()
-                            visibleChapters.addAll(updated)
-                        },
-                        onOpenChapter = { chapter ->
-                            book?.let { onOpenChapter(it, chapterList, chapter) }
+                    TocPage.Chapters -> {
+                        if (visibleChapters.isEmpty()) {
+                            TocEmptyState(text = stringResource(R.string.empty))
+                        } else {
+                            TocChapterList(
+                                book = book,
+                                chapters = visibleChapters,
+                                displayTitles = displayTitles,
+                                collapsedVolumeIndexes = collapsedVolumeIndexes,
+                                chapterCacheMap = chapterCacheMap,
+                                listState = chapterListState,
+                                onToggleVolume = { chapter ->
+                                    if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
+                                    if (!collapsedVolumeIndexes.add(chapter.index)) {
+                                        collapsedVolumeIndexes.remove(chapter.index)
+                                    }
+                                    val updated = visibleChapters(chapterList, searchQuery, collapsedVolumeIndexes)
+                                    visibleChapters.clear()
+                                    visibleChapters.addAll(updated)
+                                },
+                                onOpenChapter = { chapter ->
+                                    book?.let { onOpenChapter(it, chapterList, chapter) }
+                                }
+                            )
                         }
-                    )
+                    }
 
-                    TocPage.Bookmarks -> TocBookmarkList(
-                        bookmarks = bookmarks,
-                        listState = bookmarkListState,
-                        onClick = { bookmark ->
-                            (context as? android.app.Activity)?.run {
-                                setResult(
-                                    android.app.Activity.RESULT_OK,
-                                    android.content.Intent()
-                                        .putExtra("index", bookmark.chapterIndex)
-                                        .putExtra("chapterPos", bookmark.chapterPos)
-                                )
-                                finish()
-                            }
-                        },
-                        onLongClick = onEditBookmark
-                    )
+                    TocPage.Bookmarks -> {
+                        if (bookmarks.isEmpty()) {
+                            TocEmptyState(text = stringResource(R.string.empty))
+                        } else {
+                            TocBookmarkList(
+                                bookmarks = bookmarks,
+                                listState = bookmarkListState,
+                                onClick = { bookmark ->
+                                    (context as? android.app.Activity)?.run {
+                                        setResult(
+                                            android.app.Activity.RESULT_OK,
+                                            android.content.Intent()
+                                                .putExtra("index", bookmark.chapterIndex)
+                                                .putExtra("chapterPos", bookmark.chapterPos)
+                                        )
+                                        finish()
+                                    }
+                                },
+                                onLongClick = onEditBookmark
+                            )
+                        }
+                    }
                 }
             }
 
@@ -326,6 +346,32 @@ fun TocComposeScreen(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TocEmptyState(text: String) {
+    val palette = rememberAppManagementPalette()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AppManagementCard(
+            palette = palette,
+            insidePadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+            drawPanelImage = true
+        ) {
+            Text(
+                text = text,
+                color = palette.settings.secondaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = palette.settings.bodyFontFamily,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
