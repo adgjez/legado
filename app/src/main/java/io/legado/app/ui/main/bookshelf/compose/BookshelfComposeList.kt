@@ -4,7 +4,6 @@ import android.graphics.drawable.Drawable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,7 +50,6 @@ import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.ui.widget.compose.appSettingPanelBackground
 
 object BookshelfListItemStyle {
     const val Classic = 0
@@ -197,22 +195,19 @@ private fun BookshelfClassicListItem(
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
     val palette = renderConfig.palette
-    Row(
+    BookListCardSurface(
+        rounded = false,
+        compact = compact,
+        renderConfig = renderConfig,
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = if (compact) renderConfig.classicCompactMinHeight else renderConfig.classicMinHeight)
-            .clip(RoundedCornerShape(2.dp))
-            .combinedClickable(
-                onClick = { onClick(item) },
-                onLongClick = { onLongClick(item) }
-            )
-            .padding(horizontal = 8.dp, vertical = if (compact) 4.dp else 5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+            .fillMaxWidth(),
+        onClick = { onClick(item) },
+        onLongClick = { onLongClick(item) }
+    ) { metrics ->
         BookshelfCoverBlock(
             item = item,
-            width = renderConfig.classicCoverWidth(compact),
-            cornerRadius = 2.dp,
+            width = metrics.coverWidth,
+            cornerRadius = metrics.cornerRadius,
             palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
@@ -244,32 +239,19 @@ private fun BookshelfRoundedCardListItem(
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
     val palette = renderConfig.palette
-    val shape = RoundedCornerShape(palette.panelRadius)
-    Row(
+    BookListCardSurface(
+        rounded = true,
+        compact = compact,
+        renderConfig = renderConfig,
         modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .appSettingPanelBackground(
-                normalColor = palette.rowColor,
-                panelImage = renderConfig.panelImage,
-                borderColor = palette.borderColor,
-                radiusPx = palette.panelRadiusPx
-            )
-            .heightIn(min = if (compact) renderConfig.roundedCompactMinHeight else renderConfig.roundedMinHeight)
-            .combinedClickable(
-                onClick = { onClick(item) },
-                onLongClick = { onLongClick(item) }
-            )
-            .padding(
-                horizontal = if (compact) 10.dp else 12.dp,
-                vertical = if (compact) 8.dp else 10.dp
-            ),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+            .fillMaxWidth(),
+        onClick = { onClick(item) },
+        onLongClick = { onLongClick(item) }
+    ) { metrics ->
         BookshelfCoverBlock(
             item = item,
-            width = renderConfig.cardCoverWidth(compact),
-            cornerRadius = palette.actionRadius,
+            width = metrics.coverWidth,
+            cornerRadius = metrics.cornerRadius,
             palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
@@ -286,14 +268,6 @@ private fun BookshelfRoundedCardListItem(
         )
         BookshelfListStatus(item = item, palette = palette)
     }
-}
-
-private fun BookshelfListRenderConfig.classicCoverWidth(compact: Boolean): Dp {
-    return if (compact) classicCompactCoverWidth else classicCoverWidth
-}
-
-private fun BookshelfListRenderConfig.cardCoverWidth(compact: Boolean): Dp {
-    return if (compact) cardCompactCoverWidth else cardCoverWidth
 }
 
 @Composable

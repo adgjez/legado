@@ -440,6 +440,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         val useComposeList = layoutMode == 1 || layoutMode == 3
         binding.composeDiscoverBooks.isVisible = useComposeList
         binding.rvDiscoverBooks.isGone = useComposeList
+        applyDiscoverBookContainerMargins(useComposeList)
         if (useComposeList) {
             discoverBookLayoutMode = layoutMode
             discoverBookAdapter = null
@@ -464,6 +465,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 adapter.setItems(discoverBooks.toList())
             }
         }
+    }
+
+    private fun applyDiscoverBookContainerMargins(useComposeList: Boolean) {
+        val margin = if (useComposeList) 0 else resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
+        val params = binding.flDiscoverBooks.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        if (params.marginStart == margin && params.marginEnd == margin) return
+        params.marginStart = margin
+        params.marginEnd = margin
+        binding.flDiscoverBooks.layoutParams = params
     }
 
     private fun syncDiscoverComposeState(forceBooks: Boolean = false) {

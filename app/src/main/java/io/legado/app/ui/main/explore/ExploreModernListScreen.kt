@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,11 +51,11 @@ import androidx.lifecycle.Lifecycle
 import io.legado.app.R
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.main.bookshelf.compose.BookListCardSurface
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItemStyle
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
-import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
 
@@ -130,14 +129,12 @@ fun ExploreModernListScreen(
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 0.dp,
+            start = 8.dp,
             top = topPadding + 8.dp,
-            end = 0.dp,
+            end = 8.dp,
             bottom = 86.dp
         ),
-        verticalArrangement = Arrangement.spacedBy(
-            if (listItemStyle == BookshelfListItemStyle.RoundedCard) 10.dp else 2.dp
-        )
+        verticalArrangement = Arrangement.spacedBy(if (listItemStyle == BookshelfListItemStyle.RoundedCard) 4.dp else 2.dp)
     ) {
         lazyColumnItems(
             items = books,
@@ -225,9 +222,9 @@ private fun ExploreModernGridScreen(
         state = gridState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 0.dp,
+            start = 8.dp,
             top = topPadding + 8.dp,
-            end = 0.dp,
+            end = 8.dp,
             bottom = 86.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -331,36 +328,17 @@ private fun ExploreBookListItem(
 ) {
     val palette = renderConfig.palette
     val rounded = listItemStyle == BookshelfListItemStyle.RoundedCard
-    val shape = RoundedCornerShape(if (rounded) palette.panelRadius else 2.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .then(
-                if (rounded) {
-                    Modifier.appSettingPanelBackground(
-                        normalColor = palette.rowColor,
-                        panelImage = renderConfig.panelImage,
-                        borderColor = palette.borderColor,
-                        radiusPx = palette.panelRadiusPx
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .heightIn(min = if (rounded) 154.dp else 112.dp)
-            .combinedClickable(onClick = { onClick(book) })
-            .padding(
-                horizontal = if (rounded) 12.dp else 8.dp,
-                vertical = if (rounded) 10.dp else 5.dp
-            ),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    BookListCardSurface(
+        rounded = rounded,
+        compact = false,
+        renderConfig = renderConfig,
+        onClick = { onClick(book) }
+    ) { metrics ->
         ExploreCoverBlock(
             book = book,
             inBookshelf = inBookshelf,
-            width = if (rounded) 94.dp else 78.dp,
-            cornerRadius = if (rounded) palette.actionRadius else 2.dp,
+            width = metrics.coverWidth,
+            cornerRadius = metrics.cornerRadius,
             palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
@@ -443,15 +421,17 @@ private fun ExploreBookTextContent(
             },
             palette = palette
         )
-        Text(
-            text = book.trimIntro(context),
-            color = palette.secondaryText,
-            fontSize = 12.sp,
-            fontFamily = palette.bodyFontFamily,
-            maxLines = if (rounded) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 4.dp)
-        )
+        book.trimIntroOrNull(context)?.let { intro ->
+            Text(
+                text = intro,
+                color = palette.secondaryText,
+                fontSize = 12.sp,
+                fontFamily = palette.bodyFontFamily,
+                maxLines = if (rounded) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
         if (rounded) {
             val kinds = remember(book.kind) { book.getKindList() }
             if (kinds.isNotEmpty()) {
@@ -523,4 +503,9 @@ private fun ExploreTagChips(
             )
         }
     }
+}
+
+private fun SearchBook.trimIntroOrNull(context: android.content.Context): String? {
+    val introText = intro?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return context.getString(R.string.intro_show, introText)
 }
