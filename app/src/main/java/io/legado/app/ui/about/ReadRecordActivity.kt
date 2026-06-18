@@ -1,7 +1,6 @@
 package io.legado.app.ui.about
 
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.app.DatePickerDialog
@@ -21,8 +20,6 @@ import io.legado.app.base.BaseActivity
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityReadRecordBinding
-import io.legado.app.databinding.ItemReadRecordDaySummaryBinding
-import io.legado.app.databinding.ItemReadRecordRecentBookBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
@@ -78,6 +75,10 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     private var currentTotalTime: Long = 0L
     private var currentReadBookCount: Int = 0
     private val overviewUiState = mutableStateOf<ReadRecordOverviewUi?>(null)
+    private val recentBooksUiState = mutableStateOf<List<ReadRecordRecentBookUi>>(emptyList())
+    private val dailyRecordsUiState = mutableStateOf<List<ReadRecordDayUi>>(emptyList())
+    private var currentRecentBooks: List<RecentReadBook> = emptyList()
+    private var currentDailyTimeline: List<DailyReadSummary> = emptyList()
     private var pendingAvatarUpdate: ((String) -> Unit)? = null
     private var pendingAvatarCropRequest: ImageCropHelper.Request? = null
     private val selectGoalAvatar = registerForActivityResult(HandleFileContract()) {
@@ -161,6 +162,29 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
                 overviewUiState.value?.let { ui ->
                     ReadRecordOverviewCard(ui = ui)
                 }
+            }
+        }
+        binding.llRecentBooks.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.llRecentBooks.setContent {
+            LegadoComposeTheme {
+                ReadRecordRecentBooksList(
+                    items = recentBooksUiState.value,
+                    onClick = { index -> openRecentBook(index) },
+                    onLongClick = { index -> showRecentBookActions(index) }
+                )
+            }
+        }
+        binding.llDailyRecords.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.llDailyRecords.setContent {
+            LegadoComposeTheme {
+                ReadRecordDailyList(
+                    items = dailyRecordsUiState.value,
+                    onLongClick = { index -> confirmDeleteDailyRecord(index) }
+                )
             }
         }
         binding.tvRecordDate.setOnClickListener {
@@ -378,68 +402,64 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
     }
 
     private fun renderRecentBooks(items: List<RecentReadBook>) {
-        binding.llRecentBooks.removeAllViews()
+        currentRecentBooks = items
+        recentBooksUiState.value = items.map {
+            ReadRecordRecentBookUi(
+                name = it.book.name,
+                meta = buildRecentBookMeta(it.book),
+                readTime = formatDuring(it.totalReadTime)
+            )
+        }
         binding.tvRecentBooksEmpty.isVisible = items.isEmpty()
-        if (items.isEmpty()) return
+    }
 
-        items.forEachIndexed { index, item ->
-            val itemBinding =
-                ItemReadRecordRecentBookBinding.inflate(layoutInflater, binding.llRecentBooks, false)
-            itemBinding.vAccent.background = createFillDrawable(accentColor, 3f)
-            itemBinding.tvBookName.text = item.book.name
-            itemBinding.tvBookMeta.text = buildRecentBookMeta(item.book)
-            itemBinding.tvBookTime.text = formatDuring(item.totalReadTime)
-            itemBinding.root.setOnClickListener {
-                startActivityForBook(item.book)
+    private fun renderDailyTimeline(items: List<DailyReadSummary>, hasDailyStats: Boolean) {
+        currentDailyTimeline = items
+        dailyRecordsUiState.value = if (hasDailyStats) {
+            items.map {
+                ReadRecordDayUi(
+                    title = it.date.format(fullDayFormatter),
+                    subtitle = buildDaySubtitle(it.date),
+                    readTime = formatDuring(it.readTime)
+                )
             }
-            itemBinding.root.setOnLongClickListener {
-                showReadRecordBookActionDialog(item.book.name, item.book, item.book.name) {
-                    lifecycleScope.launch {
-                        withContext(IO) {
-                            appDb.readRecentBookDao.deleteSameBook(item.book.name, item.book.author)
-                            ReadRecordWidgetStore.removeRecentSnapshot(item.book)
-                        }
-                        loadData()
-                    }
+        } else {
+            emptyList()
+        }
+        binding.tvDailyRecordsEmpty.isVisible = !hasDailyStats || items.isEmpty()
+    }
+
+    private fun openRecentBook(index: Int) {
+        currentRecentBooks.getOrNull(index)?.let {
+            startActivityForBook(it.book)
+        }
+    }
+
+    private fun showRecentBookActions(index: Int) {
+        val item = currentRecentBooks.getOrNull(index) ?: return
+        showReadRecordBookActionDialog(item.book.name, item.book, item.book.name) {
+            lifecycleScope.launch {
+                withContext(IO) {
+                    appDb.readRecentBookDao.deleteSameBook(item.book.name, item.book.author)
+                    ReadRecordWidgetStore.removeRecentSnapshot(item.book)
                 }
-                true
-            }
-            binding.llRecentBooks.addView(itemBinding.root)
-            if (index < items.lastIndex) {
-                binding.llRecentBooks.addView(createDivider())
+                loadData()
             }
         }
     }
 
-    private fun renderDailyTimeline(items: List<DailyReadSummary>, hasDailyStats: Boolean) {
-        binding.llDailyRecords.removeAllViews()
-        binding.tvDailyRecordsEmpty.isVisible = !hasDailyStats || items.isEmpty()
-        if (!hasDailyStats || items.isEmpty()) return
-
-        items.forEachIndexed { index, item ->
-            val itemBinding =
-                ItemReadRecordDaySummaryBinding.inflate(layoutInflater, binding.llDailyRecords, false)
-            itemBinding.tvDayTitle.text = item.date.format(fullDayFormatter)
-            itemBinding.tvDaySubtitle.text = buildDaySubtitle(item.date)
-            itemBinding.tvDayTime.text = formatDuring(item.readTime)
-            itemBinding.root.setOnLongClickListener {
-                alert(getString(R.string.delete), item.date.format(fullDayFormatter)) {
-                    yesButton {
-                        lifecycleScope.launch {
-                            withContext(IO) {
-                                appDb.readRecordDailyDao.delete(item.date.toString())
-                            }
-                            loadData()
-                        }
+    private fun confirmDeleteDailyRecord(index: Int) {
+        val item = currentDailyTimeline.getOrNull(index) ?: return
+        alert(getString(R.string.delete), item.date.format(fullDayFormatter)) {
+            yesButton {
+                lifecycleScope.launch {
+                    withContext(IO) {
+                        appDb.readRecordDailyDao.delete(item.date.toString())
                     }
-                    noButton()
+                    loadData()
                 }
-                true
             }
-            binding.llDailyRecords.addView(itemBinding.root)
-            if (index < items.lastIndex) {
-                binding.llDailyRecords.addView(createDivider())
-            }
+            noButton()
         }
     }
 
@@ -626,14 +646,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             )
         } else {
             UiCorner.panelRounded(this, fillColor, UiCorner.scaledDp(radiusDp))
-        }
-    }
-
-    private fun createFillDrawable(fillColor: Int, radiusDp: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = UiCorner.scaledDp(radiusDp)
-            setColor(UiCorner.surfaceColor(fillColor))
         }
     }
 

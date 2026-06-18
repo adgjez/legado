@@ -1,15 +1,22 @@
 package io.legado.app.ui.about
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -19,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import io.legado.app.R
 import io.legado.app.lib.theme.UiCorner
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
@@ -33,6 +41,20 @@ data class ReadRecordOverviewUi(
     val totalLabel: String,
     val activeDaysValue: String,
     val activeDaysLabel: String
+)
+
+@Immutable
+data class ReadRecordRecentBookUi(
+    val name: String,
+    val meta: String,
+    val readTime: String
+)
+
+@Immutable
+data class ReadRecordDayUi(
+    val title: String,
+    val subtitle: String,
+    val readTime: String
 )
 
 @Composable
@@ -75,6 +97,167 @@ fun ReadRecordOverviewCard(
             )
         }
     }
+}
+
+@Composable
+fun ReadRecordRecentBooksList(
+    items: List<ReadRecordRecentBookUi>,
+    onClick: (Int) -> Unit,
+    onLongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        items.forEachIndexed { index, item ->
+            ReadRecordRecentBookRow(
+                item = item,
+                onClick = { onClick(index) },
+                onLongClick = { onLongClick(index) }
+            )
+            if (index < items.lastIndex) {
+                ReadRecordDivider()
+            }
+        }
+    }
+}
+
+@Composable
+fun ReadRecordDailyList(
+    items: List<ReadRecordDayUi>,
+    onLongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        items.forEachIndexed { index, item ->
+            ReadRecordDayRow(
+                item = item,
+                onLongClick = { onLongClick(index) }
+            )
+            if (index < items.lastIndex) {
+                ReadRecordDivider()
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ReadRecordRecentBookRow(
+    item: ReadRecordRecentBookUi,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val titleFont = FontFamily(context.titleTypeface())
+    val bodyFont = FontFamily(context.uiTypeface())
+    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
+    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 68.dp)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(38.dp)
+                .background(Color(context.accentColor))
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp)
+        ) {
+            Text(
+                text = item.name,
+                color = primaryText,
+                fontSize = 15.sp,
+                fontFamily = titleFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = item.meta,
+                color = secondaryText,
+                fontSize = 12.sp,
+                fontFamily = bodyFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        Text(
+            text = item.readTime,
+            color = secondaryText,
+            fontSize = 12.sp,
+            fontFamily = bodyFont,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ReadRecordDayRow(
+    item: ReadRecordDayUi,
+    onLongClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val titleFont = FontFamily(context.titleTypeface())
+    val bodyFont = FontFamily(context.uiTypeface())
+    val primaryText = Color(ContextCompat.getColor(context, R.color.primaryText))
+    val secondaryText = Color(ContextCompat.getColor(context, R.color.secondaryText))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 62.dp)
+            .combinedClickable(onClick = {}, onLongClick = onLongClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                color = primaryText,
+                fontSize = 15.sp,
+                fontFamily = titleFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = item.subtitle,
+                color = secondaryText,
+                fontSize = 12.sp,
+                fontFamily = bodyFont,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+        Text(
+            text = item.readTime,
+            color = primaryText,
+            fontSize = 14.sp,
+            fontFamily = bodyFont,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun ReadRecordDivider() {
+    val color = Color(ContextCompat.getColor(LocalContext.current, R.color.divider))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(0.5.dp)
+            .background(color)
+    )
 }
 
 @Composable
