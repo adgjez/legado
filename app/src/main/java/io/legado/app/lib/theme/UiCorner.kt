@@ -134,6 +134,19 @@ object UiCorner {
         return LayerDrawable(arrayOf(base, image, strokeOnly(radius, strokeWidth, border)))
     }
 
+    fun panelInsetStrokeDrawable(
+        context: Context,
+        color: Int,
+        radius: Float
+    ): Drawable {
+        return PanelInsetStrokeDrawable(
+            color = surfaceColor(color),
+            radius = radius,
+            panelImage = panelImageDrawable(context, radius),
+            strokeColor = panelBorderColor(context)
+        )
+    }
+
     fun panelImageDrawable(context: Context, radius: Float): Drawable? {
         val path = context.getPrefString(
             if (AppConfig.isNightTheme) PreferKey.panelBgImageN else PreferKey.panelBgImage
@@ -280,6 +293,60 @@ object UiCorner {
 
         override fun setColorFilter(colorFilter: ColorFilter?) {
             paint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
+    private class PanelInsetStrokeDrawable(
+        color: Int,
+        private val radius: Float,
+        private val panelImage: Drawable?,
+        strokeColor: Int?
+    ) : Drawable() {
+
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            this.color = color
+        }
+        private val strokePaint = strokeColor?.let {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1f
+                this.color = it
+            }
+        }
+        private val rect = RectF()
+
+        override fun draw(canvas: Canvas) {
+            val bounds = bounds
+            if (bounds.isEmpty) return
+            val strokeInset = 0.5f
+            rect.set(
+                bounds.left + strokeInset,
+                bounds.top + strokeInset,
+                bounds.right - strokeInset,
+                bounds.bottom - strokeInset
+            )
+            canvas.drawRoundRect(rect, radius, radius, fillPaint)
+            panelImage?.let {
+                it.bounds = bounds
+                it.draw(canvas)
+            }
+            strokePaint?.let {
+                canvas.drawRoundRect(rect, radius, radius, it)
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            fillPaint.alpha = alpha
+            strokePaint?.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            fillPaint.colorFilter = colorFilter
+            strokePaint?.colorFilter = colorFilter
         }
 
         @Deprecated("Deprecated in Java")

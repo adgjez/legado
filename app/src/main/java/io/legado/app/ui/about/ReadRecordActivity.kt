@@ -624,10 +624,6 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun applyPageChrome() {
         val panelSurfaceColor = ContextCompat.getColor(this, R.color.background_card)
-        val strokeColor = ColorUtils.adjustAlpha(
-            primaryTextColor,
-            0.08f
-        )
 
         binding.panelOverview.background = null
         listOf(
@@ -635,7 +631,7 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
             binding.panelRecentBooks,
             binding.panelDailyRecords
         ).forEach { panel ->
-            panel.background = createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
+            panel.background = createSurfaceDrawable(panelSurfaceColor, 14f)
         }
         binding.tvRecordDate.setTextColor(primaryTextColor)
         binding.tvRecordDateHint.setTextColor(secondaryTextColor)
@@ -647,11 +643,11 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
         binding.tvHeatmapMonthCenter.setTextColor(secondaryTextColor)
         binding.tvHeatmapMonthEnd.setTextColor(secondaryTextColor)
         binding.panelRecentCovers.background =
-            createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
+            createSurfaceDrawable(panelSurfaceColor, 14f)
         binding.panelReadRank.background =
-            createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
+            createSurfaceDrawable(panelSurfaceColor, 14f)
         binding.panelGoalCard.background =
-            createSurfaceDrawable(panelSurfaceColor, strokeColor, 14f)
+            createSurfaceDrawable(panelSurfaceColor, 14f)
         binding.ivComponentMenu.background = null
         binding.ivComponentMenu.setColorFilter(primaryTextColor)
         binding.ivRankMore.background = null
@@ -675,21 +671,13 @@ class ReadRecordActivity : BaseActivity<ActivityReadRecordBinding>() {
 
     private fun createSurfaceDrawable(
         fillColor: Int,
-        strokeColor: Int,
         radiusDp: Float
     ): Drawable {
-        val borderColor = UiCorner.panelBorderColor(this)
-        return if (borderColor != null) {
-            UiCorner.panelRoundedStroke(
-                this,
-                fillColor,
-                UiCorner.scaledDp(radiusDp),
-                1.dpToPx(),
-                borderColor
-            )
-        } else {
-            UiCorner.panelRounded(this, fillColor, UiCorner.scaledDp(radiusDp))
-        }
+        return UiCorner.panelInsetStrokeDrawable(
+            this,
+            fillColor,
+            UiCorner.scaledDp(radiusDp)
+        )
     }
 
     private fun formatDuring(mss: Long): String {
