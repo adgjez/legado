@@ -466,13 +466,15 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
-    private fun syncDiscoverComposeState() {
+    private fun syncDiscoverComposeState(forceBooks: Boolean = false) {
         composeDiscoverLoading.value = discoverLoading
         composeDiscoverHasMore.value = discoverHasMore
         composeDiscoverLayoutMode.intValue = AppConfig.discoveryPageLayout
         composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
-        composeDiscoverBooks.clear()
-        composeDiscoverBooks.addAll(discoverBooks)
+        if (forceBooks || composeDiscoverBooks.size != discoverBooks.size || composeDiscoverBooks != discoverBooks) {
+            composeDiscoverBooks.clear()
+            composeDiscoverBooks.addAll(discoverBooks)
+        }
     }
 
     private fun bindDiscoverSourceSelector() {
