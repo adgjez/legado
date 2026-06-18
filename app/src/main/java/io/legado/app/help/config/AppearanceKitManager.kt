@@ -303,11 +303,8 @@ object AppearanceKitManager {
     }
 
     private suspend fun applyBinding(context: Context, binding: KitBinding) {
-        MainLayoutPresetConfig.apply(
-            context,
-            binding.preset?.takeIf { it.isNotBlank() } ?: MainLayoutPresetConfig.PRESET_REGULAR,
-            notify = false
-        )
+        val resolvedPreset = binding.preset?.takeIf { it.isNotBlank() } ?: MainLayoutPresetConfig.PRESET_REGULAR
+        MainLayoutPresetConfig.apply(context, resolvedPreset, notify = false)
         // uiLayoutAlpha/dialogAlpha/uiCornerScale/字体等是全局(不分日夜)偏好，写在 applyConfig 内。
         // 必须让“当前模式”的主题最后应用，否则另一模式的值会覆盖全局偏好，
         // 表现为应用主题后界面不透明度不随当前模式变化(需进编辑弹窗才生效)。
@@ -318,8 +315,8 @@ object AppearanceKitManager {
             applyThemeRef(context, true, binding.nightTheme)
             applyThemeRef(context, false, binding.dayTheme)
         }
-        applyTopBarRef(false, binding.dayTopBar)
-        applyTopBarRef(true, binding.nightTopBar)
+        applyTopBarRef(false, binding.dayTopBar, resolvedPreset)
+        applyTopBarRef(true, binding.nightTopBar, resolvedPreset)
         applyNavigationRef(false, binding.dayNavigationBar)
         applyNavigationRef(true, binding.nightNavigationBar)
         CoverCollectionManager.setSelected(false, binding.dayCoverCollection?.dirName)
@@ -334,12 +331,12 @@ object AppearanceKitManager {
         ThemePackageManager.apply(context, entry, switchNightMode = false, notify = false)
     }
 
-    private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?) {
+    private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?, preset: String) {
         val entry = when (ref?.dirName) {
             TopBarConfig.DEFAULT_DIR_NAME -> TopBarConfig.defaultEntryForKit(appCtx, isNight)
             else -> ref?.let { findTopBarEntry(isNight, it) }
         }
-        TopBarConfig.apply(entry ?: TopBarConfig.regularEntryForKit(appCtx, isNight))
+        TopBarConfig.apply(entry ?: defaultTopBarEntryForPreset(isNight, preset))
     }
 
     private suspend fun applyNavigationRef(isNight: Boolean, ref: ComponentRef?) {
@@ -348,6 +345,14 @@ object AppearanceKitManager {
             NavigationBarIconConfig.select(entry)
         } else {
             NavigationBarIconConfig.select(NavigationBarIconConfig.standardEntryForKit(isNight))
+        }
+    }
+
+    private fun defaultTopBarEntryForPreset(isNight: Boolean, preset: String): TopBarConfig.Entry {
+        return if (preset == MainLayoutPresetConfig.PRESET_REGULAR) {
+            TopBarConfig.regularEntryForKit(appCtx, isNight)
+        } else {
+            TopBarConfig.defaultEntryForKit(appCtx, isNight)
         }
     }
 

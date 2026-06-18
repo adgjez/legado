@@ -564,6 +564,10 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         return AppConfig.bottomBarLayoutMode == "standard"
     }
 
+    private fun isFloatingSearchHidden(): Boolean {
+        return AppConfig.bottomBarLayoutMode == "floating" && AppConfig.floatingBottomBarHideSearch
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (handleSidebarSwipe(ev)) {
             return true
@@ -676,7 +680,8 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun applyBottomNavigationShape(standardMode: Boolean) = binding.run {
-        searchButtonContainer.isVisible = !standardMode
+        val searchHidden = isFloatingSearchHidden()
+        searchButtonContainer.isVisible = !standardMode && !searchHidden
         val horizontalPadding = resources.getDimensionPixelSize(R.dimen.main_bottom_nav_horizontal_padding)
         val standardContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_standard_height)
         val floatingContentHeight = resources.getDimensionPixelSize(R.dimen.main_bottom_bar_height)
@@ -721,6 +726,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 setMargin(R.id.bottom_navigation_glass, ConstraintSet.END, 0)
                 connect(R.id.bottom_navigation_glass, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM)
                 connect(R.id.bottom_navigation_glass, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP)
+            } else if (searchHidden) {
+                connect(R.id.bottom_navigation_glass, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END)
+                setMargin(R.id.bottom_navigation_glass, ConstraintSet.END, 0)
+                connect(R.id.bottom_navigation_glass, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM)
+                connect(R.id.bottom_navigation_glass, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP)
             } else {
                 connect(R.id.bottom_navigation_glass, ConstraintSet.END, R.id.search_button_container, ConstraintSet.START)
                 setMargin(R.id.bottom_navigation_glass, ConstraintSet.END, resources.getDimensionPixelSize(R.dimen.main_bottom_bar_gap))
@@ -747,7 +757,9 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     }
 
     private fun shouldShowAiFloatingBall(): Boolean {
-        return isStandardBottomMode() && AppConfig.aiAssistantEnabled && !isSidebarMode()
+        return (isStandardBottomMode() || isFloatingSearchHidden()) &&
+                AppConfig.aiAssistantEnabled &&
+                !isSidebarMode()
     }
 
     private fun createAiFloatingBall(): FrameLayout {

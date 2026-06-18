@@ -4,6 +4,7 @@ import android.content.Context
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
@@ -40,6 +41,14 @@ object MainLayoutPresetConfig {
             }
     }
 
+    fun defaultTopBarShowSearch(): Boolean {
+        return appCtx.getPrefBoolean(PreferKey.defaultTopBarShowSearch, false)
+    }
+
+    fun floatingBottomBarHideSearch(): Boolean {
+        return appCtx.getPrefBoolean(PreferKey.floatingBottomBarHideSearch, false)
+    }
+
     fun apply(context: Context, preset: String, notify: Boolean = true) {
         val nextPreset = preset.takeIf { it in validPresets } ?: PRESET_DEFAULT
         val topBarStyle = when (nextPreset) {
@@ -57,6 +66,8 @@ object MainLayoutPresetConfig {
         context.putPrefString(PreferKey.navigationBarPackageNight, NavigationBarIconConfig.DEFAULT_DIR_NAME)
         context.putPrefString(PreferKey.topBarPackageDay, TopBarConfig.DEFAULT_DIR_NAME)
         context.putPrefString(PreferKey.topBarPackageNight, TopBarConfig.DEFAULT_DIR_NAME)
+        context.putPrefBoolean(PreferKey.defaultTopBarShowSearch, false)
+        context.putPrefBoolean(PreferKey.floatingBottomBarHideSearch, false)
         AppConfig.bottomBarLayoutMode = bottomLayoutMode
         AppConfig.bottomBarSidebarGravity = "start"
         AppConfig.bottomBarEffectMode = if (bottomLayoutMode == "standard") "solid" else "glass"

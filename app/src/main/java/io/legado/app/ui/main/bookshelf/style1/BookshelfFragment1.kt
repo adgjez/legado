@@ -88,6 +88,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         binding.topBar.moreButton.setOnClickListener {
             showModernBookshelfMenu(it)
         }
+        binding.topBar.searchButton.setOnClickListener {
+            startActivity(android.content.Intent(requireContext(), SearchActivity::class.java))
+        }
         binding.topBar.setSearchHint(getString(R.string.search_book_key))
         binding.topBar.searchEntry.setOnClickListener {
             startActivity(android.content.Intent(requireContext(), SearchActivity::class.java))

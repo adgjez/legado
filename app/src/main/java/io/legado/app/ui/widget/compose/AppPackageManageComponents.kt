@@ -52,6 +52,7 @@ fun AppPackageManageScreen(
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    headerContent: LazyListScope.(AppManagementPalette) -> Unit = {},
     listContent: LazyListScope.(AppManagementPalette) -> Unit
 ) {
     val palette = rememberAppManagementPalette()
@@ -89,6 +90,7 @@ fun AppPackageManageScreen(
                     contentPadding = PaddingValues(vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    headerContent(palette)
                     listContent(palette)
                 }
                 LegadoMiuixActionButton(
@@ -103,6 +105,53 @@ fun AppPackageManageScreen(
                     minHeight = 46.dp
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun AppPackageManageSettingCard(
+    title: String,
+    info: String,
+    valueText: String,
+    palette: AppManagementPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AppManagementCard(
+        palette = palette,
+        modifier = modifier.fillMaxWidth(),
+        insidePadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = palette.settings.primaryText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = info,
+                    color = palette.settings.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            AppPackageManageActionButton(
+                text = valueText,
+                palette = palette.miuix,
+                selected = false,
+                onClick = onClick
+            )
         }
     }
 }
@@ -185,7 +234,7 @@ fun AppPackageManageItemCard(
 }
 
 @Composable
-private fun AppPackageManageActionButton(
+fun AppPackageManageActionButton(
     text: String,
     palette: LegadoMiuixPalette,
     modifier: Modifier = Modifier,

@@ -193,6 +193,8 @@ object PreferKey {
     const val mainLayoutPreset = "mainLayoutPreset"
     const val currentAppearanceKitId = "currentAppearanceKitId"
     const val defaultTopBarStyle = "defaultTopBarStyle"
+    const val defaultTopBarShowSearch = "defaultTopBarShowSearch"
+    const val floatingBottomBarHideSearch = "floatingBottomBarHideSearch"
     const val aiFloatingBallSide = "aiFloatingBallSide"
     const val aiFloatingBallYPercent = "aiFloatingBallYPercent"
     const val navigationBarPackageDay = "navigationBarPackageDay"

@@ -2104,6 +2104,14 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             )
         }
 
+    var defaultTopBarShowSearch: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.defaultTopBarShowSearch, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.defaultTopBarShowSearch, value)
+
+    var floatingBottomBarHideSearch: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.floatingBottomBarHideSearch, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.floatingBottomBarHideSearch, value)
+
     var readUrlInBrowser: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.readUrlOpenInBrowser)
         set(value) {

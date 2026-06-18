@@ -49,6 +49,7 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppPackageManageItemCard
 import io.legado.app.ui.widget.compose.AppPackageManageScreen
+import io.legado.app.ui.widget.compose.AppPackageManageSettingCard
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ImageCropHelper
@@ -77,6 +78,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var activeDirNameState by mutableStateOf(NavigationBarIconConfig.DEFAULT_DIR_NAME)
     private var summaryTextState by mutableStateOf("")
     private var isNightMode by mutableStateOf(false)
+    private var floatingSearchHiddenState by mutableStateOf(AppConfig.floatingBottomBarHideSearch)
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
     private var pendingConfig: NavigationBarIconConfig.Config? = null
@@ -234,6 +236,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     activeDirName = activeDirNameState,
                     isNightMode = isNightMode,
                     summaryText = summaryTextState,
+                    floatingSearchHidden = floatingSearchHiddenState,
                     onSwitchDayNight = { night ->
                         if (night != isNightMode) {
                             isNightMode = night
@@ -241,6 +244,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                         }
                     },
                     onAdd = ::showAddDialog,
+                    onToggleFloatingSearch = ::toggleFloatingSearch,
                     onApply = ::applyPackage,
                     onEdit = { entry -> showEditDialog(entry) },
                     entryInfo = ::entryInfo,
@@ -367,6 +371,14 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 entriesState = it
                 activeDirNameState = NavigationBarIconConfig.activeDirName(isNightMode)
+                val activeEntry = it.firstOrNull { entry ->
+                    entry.dirName == activeDirNameState
+                }
+                floatingSearchHiddenState = if (activeEntry == null || activeEntry.config.layoutMode == "floating") {
+                    activeEntry?.config?.hideSearchInFloatingStyle ?: AppConfig.floatingBottomBarHideSearch
+                } else {
+                    false
+                }
                 summaryTextState = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
                 } else {
@@ -376,6 +388,43 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 summaryTextState = it.localizedMessage.orEmpty()
             }
+        }
+    }
+
+    private fun toggleFloatingSearch() {
+        val hidden = !floatingSearchHiddenState
+        floatingSearchHiddenState = hidden
+        val current = entriesState.firstOrNull { it.dirName == activeDirNameState }
+        if (current != null && current.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME && current.source != NavigationBarIconConfig.Source.REMOTE) {
+            if (current.config.layoutMode != "floating") {
+                floatingSearchHiddenState = false
+                toastOnUi(getString(R.string.bottom_bar_layout_floating))
+                return
+            }
+            lifecycleScope.launch {
+                kotlin.runCatching {
+                    withContext(Dispatchers.IO) {
+                        NavigationBarIconConfig.addOrUpdate(
+                            current.config.copy(hideSearchInFloatingStyle = hidden),
+                            current
+                        )
+                    }
+                }.onSuccess {
+                    if (activeDirNameState == it.dirName) {
+                        NavigationBarIconConfig.apply(it)
+                        postEvent(EventBus.NAVIGATION_BAR_CHANGED, it.config.isNightMode)
+                        postEvent(EventBus.NOTIFY_MAIN, false)
+                    }
+                    loadPackages()
+                }.onFailure {
+                    floatingSearchHiddenState = current.config.hideSearchInFloatingStyle
+                    toastOnUi(it.localizedMessage ?: getString(R.string.error))
+                }
+            }
+        } else {
+            AppConfig.floatingBottomBarHideSearch = hidden
+            postEvent(EventBus.NAVIGATION_BAR_CHANGED, AppConfig.isNightTheme)
+            postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
 
@@ -496,6 +545,13 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                             }
                             refreshEditDialog()
                         }
+                    })
+                    addView(optionRow(
+                        getString(R.string.search),
+                        if (config.hideSearchInFloatingStyle) "Off" else "On"
+                    ) {
+                        config.hideSearchInFloatingStyle = !config.hideSearchInFloatingStyle
+                        refreshEditDialog()
                     })
                 }
                 if (config.layoutMode == "standard") {
@@ -1114,8 +1170,10 @@ private fun NavigationBarPackageManageScreen(
     activeDirName: String,
     isNightMode: Boolean,
     summaryText: String,
+    floatingSearchHidden: Boolean,
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
+    onToggleFloatingSearch: () -> Unit,
     onApply: (NavigationBarIconConfig.Entry) -> Unit,
     onEdit: (NavigationBarIconConfig.Entry) -> Unit,
     entryInfo: (NavigationBarIconConfig.Entry) -> String,
@@ -1129,7 +1187,18 @@ private fun NavigationBarPackageManageScreen(
         summaryText = summaryText,
         addText = stringResource(R.string.theme_add),
         onSwitchDayNight = onSwitchDayNight,
-        onAdd = onAdd
+        onAdd = onAdd,
+        headerContent = { palette ->
+            item(key = "floating_bottom_bar_search") {
+                AppPackageManageSettingCard(
+                    title = stringResource(R.string.search),
+                    info = stringResource(R.string.bottom_bar_layout_floating),
+                    valueText = if (floatingSearchHidden) "Off" else "On",
+                    palette = palette,
+                    onClick = onToggleFloatingSearch
+                )
+            }
+        }
     ) { palette ->
         items(
             entries,

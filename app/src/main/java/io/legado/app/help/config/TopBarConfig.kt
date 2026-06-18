@@ -62,6 +62,7 @@ object TopBarConfig {
         var backgroundColor: Int? = null,
         var cornerScale: Float? = null,
         var expandFiltersByDefault: Boolean = false,
+        var showSearchInDefaultStyle: Boolean = false,
         var updatedAt: Long = System.currentTimeMillis()
     )
 
@@ -94,6 +95,7 @@ object TopBarConfig {
             tagSelectedColor = ContextCompat.getColor(context, R.color.background_card),
             backgroundColor = defaultBackgroundColor(isNight),
             cornerScale = 1f,
+            showSearchInDefaultStyle = MainLayoutPresetConfig.defaultTopBarShowSearch(),
             updatedAt = 0L
         )
     }
@@ -111,7 +113,7 @@ object TopBarConfig {
     fun currentSignature(isNight: Boolean): String {
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) {
-            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}"
+            return "$isNight|$DEFAULT_DIR_NAME|${MainLayoutPresetConfig.defaultTopBarStyle()}|${MainLayoutPresetConfig.defaultTopBarShowSearch()}"
         }
         val configFile = File(localDir(isNight, dirName), packageFileName)
         return "$isNight|$dirName|${configFile.lastModified()}"

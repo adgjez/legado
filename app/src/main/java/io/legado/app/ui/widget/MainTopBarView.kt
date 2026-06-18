@@ -162,6 +162,17 @@ class MainTopBarView @JvmOverloads constructor(
         applyTopBarStyle(force = true)
     }
 
+    fun setDefaultStyleSearchVisible(visible: Boolean) {
+        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+        if (config.style != TopBarConfig.STYLE_DEFAULT) return
+        if (config.showSearchInDefaultStyle == visible) return
+        config.showSearchInDefaultStyle = visible
+        if (TopBarConfig.activeDirName(AppConfig.isNightTheme) == TopBarConfig.DEFAULT_DIR_NAME) {
+            AppConfig.defaultTopBarShowSearch = visible
+        }
+        applyTopBarStyle(force = true)
+    }
+
     fun setPrimaryItems(items: List<RoundedTagBarView.Item>, selectedIndex: Int) {
         primaryBarRequested = items.isNotEmpty()
         primaryBar.submitItems(items, selectedIndex)
@@ -285,9 +296,13 @@ class MainTopBarView @JvmOverloads constructor(
         titleRow.background = null
         titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
         updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.bookshelf_title_select_height))
+        val showSearch = TopBarConfig.currentConfig(context, AppConfig.isNightTheme).showSearchInDefaultStyle
         searchEntry.isVisible = false
         titleSelect.isVisible = true
         titleSpacer.isVisible = true
+        if (mode == Mode.BOOKSHELF) {
+            searchButton.isVisible = showSearch
+        }
         titleSelect.background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
         listOf(moreButton, searchButton, filterButton, starButton, refreshButton, loginButton, filterToggleButton).forEach {
             it.background = ContextCompat.getDrawable(context, R.drawable.bg_discover_embedded_action)
