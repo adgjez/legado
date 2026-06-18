@@ -71,7 +71,6 @@ import io.legado.app.ui.widget.compose.AppManagementIconAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
-import io.legado.app.ui.widget.compose.LegadoMiuixCard
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import kotlinx.coroutines.Dispatchers
@@ -463,13 +462,22 @@ private fun TocSearchField(
     query: String,
     onQueryChange: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val palette = rememberAppManagementPalette()
-    LegadoMiuixCard(
-        modifier = Modifier.fillMaxWidth(),
-        color = Color(palette.settings.row),
-        contentColor = palette.settings.primaryText,
-        cornerRadius = palette.miuix.actionRadius ?: 12.dp,
-        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    val panelRadiusPx = palette.settings.panelRadiusPx
+    val panelImage = remember(context, panelRadiusPx) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .appSettingPanelBackground(
+                normalColor = palette.settings.row,
+                panelImage = panelImage,
+                borderColor = palette.settings.border,
+                radiusPx = panelRadiusPx
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -536,14 +544,32 @@ private fun TocTabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val palette = rememberAppManagementPalette()
-    val shape = RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val panelRadiusPx = palette.settings.panelRadiusPx
+    val panelImage = remember(context, panelRadiusPx) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    }
     Box(
         modifier = modifier
             .height(36.dp)
-            .clip(shape)
-            .background(if (selected) palette.settings.accent.copy(alpha = 0.18f) else Color(palette.settings.row))
-            .clickable(onClick = onClick),
+            .appSettingPanelBackground(
+                normalColor = when {
+                    pressed -> palette.settings.rowPressed
+                    selected -> palette.settings.rowPressed
+                    else -> palette.settings.row
+                },
+                panelImage = panelImage,
+                borderColor = palette.settings.border,
+                radiusPx = panelRadiusPx
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(
