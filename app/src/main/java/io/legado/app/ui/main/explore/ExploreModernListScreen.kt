@@ -331,9 +331,11 @@ private fun ExploreBookListItem(
 ) {
     val palette = renderConfig.palette
     val rounded = listItemStyle == BookshelfListItemStyle.RoundedCard
+    val shape = RoundedCornerShape(if (rounded) palette.panelRadius else 2.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(shape)
             .then(
                 if (rounded) {
                     Modifier.appSettingPanelBackground(
@@ -343,7 +345,7 @@ private fun ExploreBookListItem(
                         radiusPx = palette.panelRadiusPx
                     )
                 } else {
-                    Modifier.clip(RoundedCornerShape(2.dp))
+                    Modifier
                 }
             )
             .heightIn(min = if (rounded) 154.dp else 112.dp)

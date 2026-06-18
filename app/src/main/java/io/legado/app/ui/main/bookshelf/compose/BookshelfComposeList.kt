@@ -244,9 +244,11 @@ private fun BookshelfRoundedCardListItem(
     onLongClick: (BookshelfItemUi) -> Unit
 ) {
     val palette = renderConfig.palette
+    val shape = RoundedCornerShape(palette.panelRadius)
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(shape)
             .appSettingPanelBackground(
                 normalColor = palette.rowColor,
                 panelImage = renderConfig.panelImage,

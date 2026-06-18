@@ -598,7 +598,9 @@ fun Modifier.appSettingPanelBackground(
 ): Modifier {
     return drawWithCache {
         val path = Path()
-        val rect = RectF(0f, 0f, size.width, size.height)
+        val strokeWidth = 1f
+        val inset = strokeWidth / 2f
+        val rect = RectF(inset, inset, size.width - inset, size.height - inset)
         path.addRoundRect(rect, radiusPx, radiusPx, Path.Direction.CW)
         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -607,7 +609,7 @@ fun Modifier.appSettingPanelBackground(
         val strokePaint = borderColor?.let { color ->
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                strokeWidth = 1f
+                this.strokeWidth = strokeWidth
                 this.color = color
             }
         }
