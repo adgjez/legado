@@ -2,6 +2,8 @@ package io.legado.app.ui.book.toc
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,7 +27,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -63,12 +65,14 @@ import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.AppManagementIconAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.LegadoMiuixCard
+import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,6 +110,7 @@ fun TocComposeScreen(
         val bookmarks = remember { mutableStateListOf<Bookmark>() }
         val displayTitles = remember { mutableStateMapOf<String, String>() }
         val cacheFileNames = remember { mutableStateListOf<String>() }
+        val chapterCacheMap = remember { mutableStateMapOf<String, Boolean>() }
         val collapsedVolumeIndexes = remember { linkedSetOf<Int>() }
         val chapterListState = rememberLazyListState()
         val bookmarkListState = rememberLazyListState()
@@ -169,6 +174,19 @@ fun TocComposeScreen(
             val currentBook = book ?: return@LaunchedEffect
             cacheFileNames.clear()
             cacheFileNames.addAll(withContext(Dispatchers.IO) { BookHelp.getChapterFiles(currentBook) })
+        }
+
+        LaunchedEffect(book, visibleChapters.toList(), cacheFileNames.toList(), cacheRefreshTick) {
+            val currentBook = book ?: return@LaunchedEffect
+            val visibleSnapshot = visibleChapters.toList()
+            val cacheSnapshot = cacheFileNames.toSet()
+            val cached = withContext(Dispatchers.IO) {
+                visibleSnapshot.associate { chapter ->
+                    chapter.primaryStr() to isChapterCached(currentBook, chapter, cacheSnapshot)
+                }
+            }
+            chapterCacheMap.clear()
+            chapterCacheMap.putAll(cached)
         }
 
         LaunchedEffect(book, searchQuery, selectedPage, refreshTick, contentRefreshTick) {
@@ -249,7 +267,7 @@ fun TocComposeScreen(
                         chapters = visibleChapters,
                         displayTitles = displayTitles,
                         collapsedVolumeIndexes = collapsedVolumeIndexes,
-                        cacheFileNames = cacheFileNames,
+                        chapterCacheMap = chapterCacheMap,
                         listState = chapterListState,
                         onToggleVolume = { chapter ->
                             if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
@@ -345,14 +363,8 @@ private fun TocTopBar(
                 tint = palette.settings.primaryText,
                 onClick = onBack
             )
-            Text(
+            TocHeaderTitle(
                 text = book?.name ?: stringResource(R.string.chapter_list),
-                color = palette.settings.primaryText,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = palette.settings.titleFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 8.dp)
@@ -372,6 +384,30 @@ private fun TocTopBar(
         TocTabs(
             selectedPage = selectedPage,
             onSelectPage = onSelectPage
+        )
+    }
+}
+
+@Composable
+private fun TocHeaderTitle(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    val palette = rememberAppManagementPalette()
+    AppManagementCard(
+        palette = palette,
+        modifier = modifier,
+        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        drawPanelImage = true
+    ) {
+        Text(
+            text = text,
+            color = palette.settings.primaryText,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = palette.settings.titleFontFamily,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -481,7 +517,7 @@ private fun TocChapterList(
     chapters: List<BookChapter>,
     displayTitles: Map<String, String>,
     collapsedVolumeIndexes: Set<Int>,
-    cacheFileNames: List<String>,
+    chapterCacheMap: Map<String, Boolean>,
     listState: LazyListState,
     onToggleVolume: (BookChapter) -> Unit,
     onOpenChapter: (BookChapter) -> Unit
@@ -501,7 +537,7 @@ private fun TocChapterList(
                 chapter = chapter,
                 title = displayTitles[chapter.primaryStr()] ?: chapter.title,
                 collapsed = collapsedVolumeIndexes.contains(chapter.index),
-                cached = isChapterCached(book, chapter, cacheFileNames),
+                cached = chapterCacheMap[chapter.primaryStr()] ?: true,
                 onClick = {
                     if (chapter.isVolume) {
                         onToggleVolume(chapter)
@@ -695,20 +731,58 @@ private fun TocBottomBar(
                 overflow = TextOverflow.MiddleEllipsis
             )
         }
-        IconButton(onClick = onTopClick) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_arrow_drop_up),
-                contentDescription = stringResource(R.string.go_to_top),
-                tint = palette.settings.primaryText
+        TocBottomIconButton(
+            iconRes = R.drawable.ic_arrow_drop_up,
+            contentDescription = stringResource(R.string.go_to_top),
+            onClick = onTopClick
+        )
+        TocBottomIconButton(
+            iconRes = R.drawable.ic_arrow_drop_down,
+            contentDescription = stringResource(R.string.go_to_bottom),
+            onClick = onBottomClick
+        )
+    }
+}
+
+@Composable
+private fun TocBottomIconButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val palette = rememberAppManagementPalette()
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val panelRadiusPx = palette.settings.panelRadiusPx
+    val panelImage = remember(context, panelRadiusPx) {
+        UiCorner.panelImageDrawable(context, panelRadiusPx)
+    }
+    Box(
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .defaultMinSize(minWidth = 42.dp, minHeight = 42.dp)
+            .clip(RoundedCornerShape(palette.miuix.actionRadius ?: 12.dp))
+            .appSettingPanelBackground(
+                normalColor = if (pressed) palette.settings.rowPressed else palette.settings.row,
+                panelImage = panelImage,
+                borderColor = palette.settings.border,
+                radiusPx = panelRadiusPx
             )
-        }
-        IconButton(onClick = onBottomClick) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_arrow_drop_down),
-                contentDescription = stringResource(R.string.go_to_bottom),
-                tint = palette.settings.primaryText
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
             )
-        }
+            .padding(9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(id = iconRes),
+            contentDescription = contentDescription,
+            tint = palette.settings.primaryText,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 
@@ -829,7 +903,7 @@ private fun buildChapterDisplayTitles(
 private fun isChapterCached(
     book: Book?,
     chapter: BookChapter,
-    cacheFileNames: List<String>
+    cacheFileNames: Set<String>
 ): Boolean {
     if (book == null) return false
     return book.isLocal ||
