@@ -12,6 +12,7 @@ import androidx.annotation.MenuRes
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -411,6 +412,7 @@ object ModernActionPopup {
     ) {
         val style = rememberAppDialogStyle()
         val palette = style.toMiuixPalette()
+        val panelShape = RoundedCornerShape(style.panelRadius)
         // 跟踪 persistent 项的 checked 状态
         var checkedStates by remember { mutableStateOf(actions.map { it.checked }) }
         val density = LocalDensity.current
@@ -451,6 +453,7 @@ object ModernActionPopup {
                         .heightIn(max = maxHeightDp)
                         .onSizeChanged { panelSize = it }
                         .onGloballyPositioned { panelBounds = it.boundsInRoot() }
+                        .border(1.dp, style.stroke, panelShape)
                         .graphicsLayer {
                             alpha = progress
                             transformOrigin = panelTransformOrigin
@@ -459,7 +462,7 @@ object ModernActionPopup {
                             translationY = (if (panelOffset.y >= snapshot.anchorBottom) -6f else 6f) *
                                 (1f - progress)
                         },
-                    shape = RoundedCornerShape(style.panelRadius),
+                    shape = panelShape,
                     color = style.surface,
                     contentColor = style.primaryText,
                     tonalElevation = 0.dp,

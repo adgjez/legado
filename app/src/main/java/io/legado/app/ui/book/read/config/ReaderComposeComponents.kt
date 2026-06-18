@@ -33,13 +33,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.toColorInt
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.widget.compose.AppDialogStyle
 import io.legado.app.ui.widget.compose.AppThemedStepperSlider
@@ -54,6 +58,34 @@ object ReaderSheetDefaults {
     val SectionPadding = PaddingValues(horizontal = 10.dp, vertical = 9.dp)
     val SectionGap = 8.dp
     val ActionHeight = 38.dp
+}
+
+@Composable
+fun rememberReaderMenuDialogStyle(): AppDialogStyle {
+    val context = LocalContext.current
+    val bgColor = if (AppConfig.readBarStyleFollowPage && ReadBookConfig.durConfig.curBgType() == 0) {
+        runCatching {
+            ReadBookConfig.durConfig.curBgStr().toColorInt()
+        }.getOrDefault(context.bottomBackground)
+    } else {
+        context.bottomBackground
+    }
+    return rememberReaderMenuDialogStyle(bgColor)
+}
+
+@Composable
+fun rememberReaderMenuDialogStyle(bgColor: Int): AppDialogStyle {
+    val context = LocalContext.current
+    val base = rememberAppDialogStyle()
+    val palette = ReaderSheetStyle.resolve(context, bgColor)
+    return base.copy(
+        surface = Color(palette.surface),
+        fieldSurface = Color(palette.panel),
+        primaryText = Color(palette.textColor),
+        secondaryText = Color(palette.secondaryTextColor),
+        accent = Color(palette.accentColor),
+        stroke = Color(palette.stroke)
+    )
 }
 
 abstract class ReaderBottomSheetComposeDialogFragment : ComposeDialogFragment() {
@@ -111,7 +143,7 @@ fun ReaderBottomSheetFrame(
     contentPadding: PaddingValues = ReaderSheetDefaults.ContentPadding,
     content: @Composable (AppDialogStyle) -> Unit
 ) {
-    val style = rememberAppDialogStyle()
+    val style = rememberReaderMenuDialogStyle()
     val maxHeight = (LocalConfiguration.current.screenHeightDp * maxHeightFraction)
         .toInt()
         .coerceAtLeast(280)

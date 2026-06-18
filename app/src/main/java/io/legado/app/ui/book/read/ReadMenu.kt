@@ -45,7 +45,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -69,17 +68,14 @@ import io.legado.app.help.source.getSourceType
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.titleTypeface
 import io.legado.app.lib.theme.uiTypeface
-import io.legado.app.ui.book.read.config.ReaderSheetStyle
+import io.legado.app.ui.book.read.config.rememberReaderMenuDialogStyle
 import io.legado.app.model.ReadBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppDialogStyle
-import io.legado.app.ui.widget.compose.rememberAppDialogStyle
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.activity
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.getPrefBoolean
@@ -575,7 +571,6 @@ class ReadMenu @JvmOverloads constructor(
 
     @Composable
     private fun rememberReadMenuStyle(): AppDialogStyle {
-        val base = rememberAppDialogStyle()
         val bgColor = if (immersiveMenu) {
             runCatching {
                 ReadBookConfig.durConfig.curBgStr().toColorInt()
@@ -583,15 +578,7 @@ class ReadMenu @JvmOverloads constructor(
         } else {
             context.bottomBackground
         }
-        val palette = ReaderSheetStyle.resolve(context, bgColor)
-        return base.copy(
-            surface = Color(palette.surface),
-            fieldSurface = Color(palette.panel),
-            primaryText = Color(palette.textColor),
-            secondaryText = Color(palette.secondaryTextColor),
-            accent = Color(palette.accentColor),
-            stroke = Color(palette.stroke)
-        )
+        return rememberReaderMenuDialogStyle(bgColor)
     }
     // endregion
 
