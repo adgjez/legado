@@ -18,8 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.items as lazyColumnItems
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +62,7 @@ import io.legado.app.ui.widget.image.CoverImageView
 @Composable
 fun ExploreModernListScreen(
     books: List<SearchBook>,
+    layoutMode: Int,
     listItemStyle: Int,
     topPadding: Dp,
     isLoading: Boolean,
@@ -70,6 +75,22 @@ fun ExploreModernListScreen(
     lifecycle: Lifecycle,
     modifier: Modifier = Modifier
 ) {
+    if (layoutMode == 3) {
+        ExploreModernGridScreen(
+            books = books,
+            topPadding = topPadding,
+            isLoading = isLoading,
+            hasMore = hasMore,
+            isInBookshelf = isInBookshelf,
+            onBookClick = onBookClick,
+            onLoadMore = onLoadMore,
+            onCanScrollBackwardChanged = onCanScrollBackwardChanged,
+            fragment = fragment,
+            lifecycle = lifecycle,
+            modifier = modifier
+        )
+        return
+    }
     val listState = rememberLazyListState()
     val shouldLoadMore by remember(books, hasMore, isLoading) {
         derivedStateOf {
@@ -105,7 +126,7 @@ fun ExploreModernListScreen(
             if (listItemStyle == BookshelfListItemStyle.RoundedCard) 10.dp else 2.dp
         )
     ) {
-        items(
+        lazyColumnItems(
             items = books,
             key = { book -> "${book.origin}|${book.bookUrl}|${book.name}|${book.author}" },
             contentType = { "discover_book_$listItemStyle" }
@@ -136,6 +157,140 @@ fun ExploreModernListScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ExploreModernGridScreen(
+    books: List<SearchBook>,
+    topPadding: Dp,
+    isLoading: Boolean,
+    hasMore: Boolean,
+    isInBookshelf: (SearchBook) -> Boolean,
+    onBookClick: (SearchBook) -> Unit,
+    onLoadMore: () -> Unit,
+    onCanScrollBackwardChanged: (Boolean) -> Unit,
+    fragment: Fragment,
+    lifecycle: Lifecycle,
+    modifier: Modifier = Modifier
+) {
+    val gridState = rememberLazyGridState()
+    val shouldLoadMore by remember(books, hasMore, isLoading) {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            books.isNotEmpty() && hasMore && !isLoading && lastVisible >= books.lastIndex - 6
+        }
+    }
+    val canScrollBackward by remember {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex > 0 ||
+                    gridState.firstVisibleItemScrollOffset > 0
+        }
+    }
+    val renderConfig = rememberBookshelfListRenderConfig()
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) onLoadMore()
+    }
+    LaunchedEffect(canScrollBackward) {
+        onCanScrollBackwardChanged(canScrollBackward)
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        state = gridState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 8.dp,
+            top = topPadding + 8.dp,
+            end = 8.dp,
+            bottom = 86.dp
+        ),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(
+            items = books,
+            key = { book -> "${book.origin}|${book.bookUrl}|${book.name}|${book.author}" },
+            contentType = { "discover_grid_book" }
+        ) { book ->
+            ExploreGridBookItem(
+                book = book,
+                inBookshelf = isInBookshelf(book),
+                renderConfig = renderConfig,
+                fragment = fragment,
+                lifecycle = lifecycle,
+                onClick = onBookClick
+            )
+        }
+        if (isLoading && books.isNotEmpty()) {
+            item(key = "discover_grid_loading_footer", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = renderConfig.palette.accent
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ExploreGridBookItem(
+    book: SearchBook,
+    inBookshelf: Boolean,
+    renderConfig: BookshelfListRenderConfig,
+    fragment: Fragment,
+    lifecycle: Lifecycle,
+    onClick: (SearchBook) -> Unit
+) {
+    val palette = renderConfig.palette
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = { onClick(book) })
+    ) {
+        Box {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.72f)
+                    .clip(RoundedCornerShape(palette.actionRadius)),
+                factory = { context -> CoverImageView(context) },
+                update = { view ->
+                    view.load(book, AppConfig.loadCoverOnlyWifi, fragment, lifecycle)
+                },
+                onRelease = { it.releaseComposeImage() }
+            )
+            if (inBookshelf) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(5.dp)
+                        .clip(CircleShape)
+                        .background(palette.accent)
+                        .size(10.dp)
+                )
+            }
+        }
+        Text(
+            text = book.name,
+            color = palette.primaryText,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = palette.titleFontFamily,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 

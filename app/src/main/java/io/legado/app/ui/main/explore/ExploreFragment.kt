@@ -168,6 +168,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverHasMore = mutableStateOf(true)
     private val composeDiscoverBookshelfVersion = mutableIntStateOf(0)
     private val composeDiscoverTopPadding = mutableIntStateOf(0)
+    private val composeDiscoverLayoutMode = mutableIntStateOf(AppConfig.discoveryPageLayout)
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
     private var composeDiscoverCanScrollBackward = false
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
@@ -224,6 +225,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             LegadoComposeTheme {
                 ExploreModernListScreen(
                     books = composeDiscoverBooks,
+                    layoutMode = composeDiscoverLayoutMode.intValue,
                     listItemStyle = composeDiscoverListStyle.intValue,
                     topPadding = composeDiscoverTopPadding.intValue.dp,
                     isLoading = composeDiscoverLoading.value,
@@ -428,8 +430,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     private fun applyDiscoverBookLayout(force: Boolean = false) {
         val layoutMode = AppConfig.discoveryPageLayout
+        composeDiscoverLayoutMode.intValue = layoutMode
         composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
-        val useComposeList = layoutMode == 1
+        val useComposeList = layoutMode == 1 || layoutMode == 3
         binding.composeDiscoverBooks.isVisible = useComposeList
         binding.rvDiscoverBooks.isGone = useComposeList
         if (useComposeList) {
@@ -461,6 +464,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun syncDiscoverComposeState() {
         composeDiscoverLoading.value = discoverLoading
         composeDiscoverHasMore.value = discoverHasMore
+        composeDiscoverLayoutMode.intValue = AppConfig.discoveryPageLayout
         composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
         composeDiscoverBooks.clear()
         composeDiscoverBooks.addAll(discoverBooks)
