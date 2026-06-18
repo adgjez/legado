@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -182,6 +185,74 @@ fun ReadRecordRankList(
             }
         }
     }
+}
+
+@Composable
+fun ReadRecordRankLazyList(
+    items: List<ReadRecordRankUi>,
+    onClick: (Int) -> Unit,
+    onLongClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(modifier = modifier.fillMaxWidth()) {
+        itemsIndexed(
+            items = items,
+            key = { index, item -> item.snapshot?.bookUrl ?: item.book?.bookUrl ?: "${item.name}-$index" }
+        ) { index, item ->
+            ReadRecordRankRow(
+                item = item,
+                onClick = { onClick(index) },
+                onLongClick = { onLongClick(index) }
+            )
+            if (index < items.lastIndex) {
+                ReadRecordDivider()
+            }
+        }
+    }
+}
+
+@Composable
+fun ReadRecordRankDialogContent(
+    items: List<ReadRecordRankItem>,
+    formatDuring: (Long) -> String,
+    onClick: (ReadRecordRankItem) -> Unit,
+    onLongClick: (ReadRecordRankItem, () -> Unit) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val rankItems = remember(items) {
+        mutableStateListOf<ReadRecordRankItem>().apply {
+            addAll(items)
+        }
+    }
+    ReadRecordRankLazyList(
+        items = rankItems.mapIndexed { index, item ->
+            val author = item.book?.author ?: item.snapshot?.author ?: item.displayAuthor
+            ReadRecordRankUi(
+                name = item.book?.name ?: item.snapshot?.name ?: item.displayName,
+                meta = if (author.isBlank()) {
+                    context.getString(R.string.read_record_rank_number, index + 1)
+                } else {
+                    "${index + 1}. $author"
+                },
+                readTime = formatDuring(item.readTime),
+                dimmed = item.book == null,
+                book = item.book,
+                snapshot = item.snapshot
+            )
+        },
+        onClick = { index ->
+            rankItems.getOrNull(index)?.let(onClick)
+        },
+        onLongClick = { index ->
+            rankItems.getOrNull(index)?.let { item ->
+                onLongClick(item) {
+                    rankItems.remove(item)
+                }
+            }
+        },
+        modifier = modifier
+    )
 }
 
 @Composable
