@@ -33,6 +33,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
 
     private val waitDialog by lazy { WaitDialog(this) }
     private var cacheRefreshTick = mutableIntStateOf(0)
+    private var contentRefreshTick = mutableIntStateOf(0)
     private val exportDir = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             when (it.requestCode) {
@@ -53,6 +54,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         binding.composeView.setContent {
             TocComposeScreen(
                 bookUrl = bookUrl,
+                contentRefreshTick = contentRefreshTick.intValue,
                 cacheRefreshTick = cacheRefreshTick.intValue,
                 viewModel = viewModel,
                 onBack = { finish() },
@@ -86,6 +88,11 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        contentRefreshTick.intValue++
+    }
+
     override fun onTocRegexDialogResult(tocRegex: String) {
         viewModel.bookData.value?.let { book ->
             book.tocUrl = tocRegex
@@ -97,6 +104,7 @@ class TocActivity : VMBaseActivity<ActivityChapterListBinding, TocViewModel>(),
         waitDialog.show()
         viewModel.upBookTocRule(book) {
             waitDialog.dismiss()
+            contentRefreshTick.intValue++
             if (ReadBook.book == book) {
                 if (it == null) {
                     ReadBook.upMsg(null)
