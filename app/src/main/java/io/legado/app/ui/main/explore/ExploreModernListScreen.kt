@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,7 +65,8 @@ fun ExploreModernListScreen(
     books: List<SearchBook>,
     layoutMode: Int,
     listItemStyle: Int,
-    topPadding: Dp,
+    topPaddingPx: Int,
+    scrollToTopSignal: Int,
     isLoading: Boolean,
     hasMore: Boolean,
     isInBookshelf: (SearchBook) -> Boolean,
@@ -78,7 +80,8 @@ fun ExploreModernListScreen(
     if (layoutMode == 3) {
         ExploreModernGridScreen(
             books = books,
-            topPadding = topPadding,
+            topPaddingPx = topPaddingPx,
+            scrollToTopSignal = scrollToTopSignal,
             isLoading = isLoading,
             hasMore = hasMore,
             isInBookshelf = isInBookshelf,
@@ -92,6 +95,7 @@ fun ExploreModernListScreen(
         return
     }
     val listState = rememberLazyListState()
+    val topPadding = with(LocalDensity.current) { topPaddingPx.toDp() }
     val shouldLoadMore by remember(books, hasMore, isLoading) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -112,14 +116,23 @@ fun ExploreModernListScreen(
     LaunchedEffect(canScrollBackward) {
         onCanScrollBackwardChanged(canScrollBackward)
     }
+    LaunchedEffect(scrollToTopSignal) {
+        if (scrollToTopSignal > 0) {
+            if (AppConfig.isEInkMode) {
+                listState.scrollToItem(0)
+            } else {
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
 
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 8.dp,
+            start = 0.dp,
             top = topPadding + 8.dp,
-            end = 8.dp,
+            end = 0.dp,
             bottom = 86.dp
         ),
         verticalArrangement = Arrangement.spacedBy(
@@ -163,7 +176,8 @@ fun ExploreModernListScreen(
 @Composable
 private fun ExploreModernGridScreen(
     books: List<SearchBook>,
-    topPadding: Dp,
+    topPaddingPx: Int,
+    scrollToTopSignal: Int,
     isLoading: Boolean,
     hasMore: Boolean,
     isInBookshelf: (SearchBook) -> Boolean,
@@ -175,6 +189,7 @@ private fun ExploreModernGridScreen(
     modifier: Modifier = Modifier
 ) {
     val gridState = rememberLazyGridState()
+    val topPadding = with(LocalDensity.current) { topPaddingPx.toDp() }
     val shouldLoadMore by remember(books, hasMore, isLoading) {
         derivedStateOf {
             val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -195,15 +210,24 @@ private fun ExploreModernGridScreen(
     LaunchedEffect(canScrollBackward) {
         onCanScrollBackwardChanged(canScrollBackward)
     }
+    LaunchedEffect(scrollToTopSignal) {
+        if (scrollToTopSignal > 0) {
+            if (AppConfig.isEInkMode) {
+                gridState.scrollToItem(0)
+            } else {
+                gridState.animateScrollToItem(0)
+            }
+        }
+    }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         state = gridState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 8.dp,
+            start = 0.dp,
             top = topPadding + 8.dp,
-            end = 8.dp,
+            end = 0.dp,
             bottom = 86.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(10.dp),

@@ -26,7 +26,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.AppCompatSpinner
 import androidx.core.widget.NestedScrollView
@@ -170,6 +169,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverTopPadding = mutableIntStateOf(0)
     private val composeDiscoverLayoutMode = mutableIntStateOf(AppConfig.discoveryPageLayout)
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
+    private val composeDiscoverScrollToTopSignal = mutableIntStateOf(0)
     private var composeDiscoverCanScrollBackward = false
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
@@ -193,7 +193,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         binding.swipeRefreshLayout.setColorSchemeColors(accentColor)
         binding.swipeRefreshLayout.setProgressViewOffset(true, (-28).dpToPx(), 56.dpToPx())
         binding.swipeRefreshLayout.setOnChildScrollUpCallback { _, _ ->
-            currentDiscoverScrollTarget()?.canScrollVertically(-1) == true
+            if (usingModernDiscovery && binding.composeDiscoverBooks.isVisible) {
+                composeDiscoverCanScrollBackward
+            } else {
+                currentDiscoverScrollTarget()?.canScrollVertically(-1) == true
+            }
         }
         binding.swipeRefreshLayout.setOnRefreshListener {
             if (usingModernDiscovery) {
@@ -227,7 +231,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     books = composeDiscoverBooks,
                     layoutMode = composeDiscoverLayoutMode.intValue,
                     listItemStyle = composeDiscoverListStyle.intValue,
-                    topPadding = composeDiscoverTopPadding.intValue.dp,
+                    topPaddingPx = composeDiscoverTopPadding.intValue,
+                    scrollToTopSignal = composeDiscoverScrollToTopSignal.intValue,
                     isLoading = composeDiscoverLoading.value,
                     hasMore = composeDiscoverHasMore.value,
                     isInBookshelf = { book ->
@@ -2262,6 +2267,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     fun compressExplore() {
         if (usingModernDiscovery) {
+            if (binding.composeDiscoverBooks.isVisible) {
+                composeDiscoverScrollToTopSignal.intValue++
+                return
+            }
             if (binding.rvDiscoverBooks.canScrollVertically(-1)) {
                 if (AppConfig.isEInkMode) {
                     binding.rvDiscoverBooks.scrollToPosition(0)
