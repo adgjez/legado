@@ -270,7 +270,10 @@ class ImportBookSourceDialog() : ComposeDialogFragment(),
                                 .heightIn(max = 420.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            itemsIndexed(allSources) { index, item ->
+                            itemsIndexed(
+                                allSources,
+                                key = { index, it -> "${it.bookSourceUrl}#$index" }
+                            ) { index, item ->
                                 val isChecked = selectStatus.getOrNull(index) ?: false
                                 val localSource = checkSources.getOrNull(index)
                                 val stateText = when {

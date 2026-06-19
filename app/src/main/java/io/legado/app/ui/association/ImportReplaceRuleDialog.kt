@@ -249,7 +249,10 @@ class ImportReplaceRuleDialog() : ComposeDialogFragment(),
                                 .heightIn(max = 420.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            itemsIndexed(allRules) { index, item ->
+                            itemsIndexed(
+                                allRules,
+                                key = { index, it -> "${it.id}#$index" }
+                            ) { index, item ->
                                 val isChecked = selectStatus.getOrNull(index) ?: false
                                 val localRule = checkRules.getOrNull(index)
                                 val nameText = if (item.group.isNullOrBlank()) {
