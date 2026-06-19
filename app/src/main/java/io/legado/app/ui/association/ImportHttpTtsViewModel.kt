@@ -28,7 +28,7 @@ class ImportHttpTtsViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<HttpTTS>()
     val checkSources = arrayListOf<HttpTTS?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

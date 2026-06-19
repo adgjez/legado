@@ -3050,19 +3050,15 @@ class ReadBookActivity : BaseReadBookActivity(),
             return
         }
         lifecycleScope.launch {
-            val (rules, enabledIds) = withContext(IO) {
-                appDb.paragraphRuleDao.all() to
-                        appDb.paragraphRuleDao.enabledRuleIdsForBook(book.bookUrl).toMutableSet()
+            val isEmpty = withContext(IO) {
+                appDb.paragraphRuleDao.all().isEmpty()
             }
-            if (rules.isEmpty()) {
+            if (isEmpty) {
                 toastOnUi(R.string.paragraph_rule_empty)
                 return@launch
             }
-            ParagraphRuleQuickDialog.create(
-                bookUrl = book.bookUrl,
-                rules = rules,
-                enabledIds = enabledIds.toSet()
-            ).show(supportFragmentManager, "paragraphRuleQuick")
+            ParagraphRuleQuickDialog.create(book.bookUrl)
+                .show(supportFragmentManager, "paragraphRuleQuick")
         }
     }
 

@@ -68,6 +68,7 @@ class ComposeChoiceListDialog : ComposeDialogFragment() {
                                 LegadoMiuixChoiceRow(
                                     text = label,
                                     selected = selectedIndex == index,
+                                    showSelectedMark = selectedIndex >= 0,
                                     palette = palette,
                                     onClick = {
                                         dismissAllowingStateLoss()

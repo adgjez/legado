@@ -32,7 +32,7 @@ class ImportReplaceRuleViewModel(app: Application) : BaseViewModel(app) {
 
     val allRules = arrayListOf<ReplaceRule>()
     val checkRules = arrayListOf<ReplaceRule?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

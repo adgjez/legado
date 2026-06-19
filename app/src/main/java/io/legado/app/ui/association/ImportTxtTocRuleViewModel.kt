@@ -31,7 +31,7 @@ class ImportTxtTocRuleViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<TxtTocRule>()
     val checkSources = arrayListOf<TxtTocRule?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

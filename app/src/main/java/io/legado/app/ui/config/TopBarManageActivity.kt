@@ -37,7 +37,6 @@ import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppPackageManageItemCard
 import io.legado.app.ui.widget.compose.AppPackageManageScreen
-import io.legado.app.ui.widget.compose.AppPackageManageSettingCard
 import io.legado.app.ui.widget.compose.showComposeActionListDialog
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.ui.widget.compose.showComposeNumberPickerDialog
@@ -71,7 +70,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
     private var activeDirNameState by mutableStateOf(TopBarConfig.DEFAULT_DIR_NAME)
     private var isNightMode by mutableStateOf(false)
     private var summaryTextState by mutableStateOf("")
-    private var defaultSearchEnabledState by mutableStateOf(AppConfig.defaultTopBarShowSearch)
     private var editingEntry: TopBarConfig.Entry? = null
     private var pendingConfig: TopBarConfig.Config? = null
     private var pendingColorTarget = 0
@@ -151,7 +149,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                     isNightMode = isNightMode,
                     summaryText = summaryTextState,
                     dateFormat = dateFormat,
-                    defaultSearchEnabled = defaultSearchEnabledState,
                     onSwitchDayNight = { night ->
                         if (night != isNightMode) {
                             isNightMode = night
@@ -159,7 +156,6 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                         }
                     },
                     onAdd = ::showAddDialog,
-                    onToggleDefaultSearch = ::toggleDefaultSearch,
                     onApply = ::applyPackage,
                     onEdit = { entry -> showEditDialog(entry) },
                     entryActions = ::entryActions
@@ -283,46 +279,11 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 if (version != loadVersion || isFinishing || isDestroyed) return@onSuccess
                 entriesState = it
                 activeDirNameState = TopBarConfig.activeDirName(isNightMode)
-                defaultSearchEnabledState = it.firstOrNull { entry ->
-                    entry.dirName == activeDirNameState
-                }?.config?.showSearchInDefaultStyle ?: AppConfig.defaultTopBarShowSearch
                 summaryTextState = getString(R.string.top_bar_manage_summary)
             }.onFailure {
                 if (version != loadVersion || isFinishing || isDestroyed) return@onFailure
                 summaryTextState = it.localizedMessage.orEmpty()
             }
-        }
-    }
-
-    private fun toggleDefaultSearch() {
-        val enabled = !defaultSearchEnabledState
-        defaultSearchEnabledState = enabled
-        val current = entriesState.firstOrNull { it.dirName == activeDirNameState }
-        if (current != null && current.dirName != TopBarConfig.DEFAULT_DIR_NAME && current.source != TopBarConfig.Source.REMOTE) {
-            lifecycleScope.launch {
-                kotlin.runCatching {
-                    withContext(Dispatchers.IO) {
-                        TopBarConfig.addOrUpdate(
-                            current.config.copy(showSearchInDefaultStyle = enabled),
-                            current
-                        )
-                    }
-                }.onSuccess {
-                    if (activeDirNameState == it.dirName) {
-                        TopBarConfig.apply(it)
-                        postEvent(EventBus.TOP_BAR_CHANGED, it.config.isNightMode)
-                        postEvent(EventBus.NOTIFY_MAIN, false)
-                    }
-                    loadPackages()
-                }.onFailure {
-                    defaultSearchEnabledState = current.config.showSearchInDefaultStyle
-                    toastOnUi(it.localizedMessage ?: getString(R.string.error))
-                }
-            }
-        } else {
-            AppConfig.defaultTopBarShowSearch = enabled
-            postEvent(EventBus.TOP_BAR_CHANGED, AppConfig.isNightTheme)
-            postEvent(EventBus.NOTIFY_MAIN, false)
         }
     }
 
@@ -494,6 +455,10 @@ class TopBarManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                             refreshEditDialog()
                         }
                     )
+                },
+                onToggleSearchInDefaultStyle = { enabled ->
+                    pendingConfig?.showSearchInDefaultStyle = enabled
+                    refreshEditDialog()
                 },
                 onSave = { name ->
                     pendingConfig?.name = name.trim()
@@ -885,10 +850,8 @@ private fun TopBarManageScreen(
     isNightMode: Boolean,
     summaryText: String,
     dateFormat: SimpleDateFormat,
-    defaultSearchEnabled: Boolean,
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
-    onToggleDefaultSearch: () -> Unit,
     onApply: (TopBarConfig.Entry) -> Unit,
     onEdit: (TopBarConfig.Entry) -> Unit,
     entryActions: (TopBarConfig.Entry) -> List<AppManagementMenuAction>
@@ -902,17 +865,6 @@ private fun TopBarManageScreen(
         addText = stringResource(R.string.theme_add),
         onSwitchDayNight = onSwitchDayNight,
         onAdd = onAdd,
-        headerContent = { palette ->
-            item(key = "default_top_bar_search") {
-                AppPackageManageSettingCard(
-                    title = stringResource(R.string.search),
-                    info = stringResource(R.string.top_bar_style_default),
-                    valueText = if (defaultSearchEnabled) "On" else "Off",
-                    palette = palette,
-                    onClick = onToggleDefaultSearch
-                )
-            }
-        }
     ) { palette ->
         items(
             entries,

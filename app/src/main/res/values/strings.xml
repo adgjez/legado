@@ -414,6 +414,8 @@
     <string name="status_bar_immersion">The status bar color becomes transparent</string>
     <string name="main_immersion_status_bar">Hide main screen status bar</string>
     <string name="main_status_bar_immersion">Use fullscreen mode on the main screen</string>
+    <string name="manage_bar_immersion">Immersive management bar</string>
+    <string name="manage_bar_immersion_summary">Blend the top bar of book source / subscription / bookmark and other management pages into the background instead of using the accent color</string>
     <string name="imm_navigation_bar">immersion navigation bar</string>
     <string name="imm_navigation_bar_s">The navigation bar becomes transparent</string>
     <string name="add_to_bookshelf">Add to Bookshelf</string>

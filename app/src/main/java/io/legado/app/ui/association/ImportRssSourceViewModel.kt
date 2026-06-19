@@ -38,7 +38,7 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<RssSource>()
     val checkSources = arrayListOf<RssSource?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

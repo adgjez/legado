@@ -412,6 +412,8 @@
     <string name="status_bar_immersion">状态栏颜色透明</string>
     <string name="main_immersion_status_bar">隐藏主界面状态栏</string>
     <string name="main_status_bar_immersion">开启后主界面进入全屏模式</string>
+    <string name="manage_bar_immersion">管理页沉浸顶栏</string>
+    <string name="manage_bar_immersion_summary">开启后书源、订阅源、书签等管理页顶栏与背景融为一体，不再使用强调色</string>
     <string name="imm_navigation_bar">沉浸式导航栏</string>
     <string name="imm_navigation_bar_s">导航栏颜色透明</string>
     <string name="add_to_bookshelf">放入书架</string>

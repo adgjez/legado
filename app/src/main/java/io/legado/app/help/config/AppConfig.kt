@@ -71,6 +71,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
     var loadCoverHighQuality = appCtx.getPrefBoolean(PreferKey.loadCoverHighQuality, false)
+
+    val immersiveManageBar: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.immersiveManageBar, true)
     var optimizeRender = CanvasRecorderFactory.isSupport
             && appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)

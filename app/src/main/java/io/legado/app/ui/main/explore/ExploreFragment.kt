@@ -171,6 +171,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private val composeDiscoverListStyle = mutableIntStateOf(AppConfig.bookshelfListItemStyle)
     private val composeDiscoverScrollToTopSignal = mutableIntStateOf(0)
     private var composeDiscoverCanScrollBackward = false
+    private var composeDiscoverBooksSignature = ""
     private val blockedButtonActions = hashMapOf<String, MutableSet<String>>()
     private var selectedDiscoverSourcePart: BookSourcePart? = null
     private var selectedDiscoverSource: BookSource? = null
@@ -213,6 +214,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
         }
         binding.topBar.setMode(io.legado.app.ui.widget.MainTopBarView.Mode.DISCOVERY)
+        // 发现页顶栏浮在列表之上(覆盖式)，需不透明背景，避免滚动书籍从顶栏后透出。
+        binding.topBar.overlayOpaqueBackground = true
         binding.topBar.setSearchEntryVisible(true)
         binding.topBar.applyStatusBarPadding(withInitialPadding = true)
         binding.topBar.doOnLayout {
@@ -481,9 +484,28 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         composeDiscoverHasMore.value = discoverHasMore
         composeDiscoverLayoutMode.intValue = AppConfig.discoveryPageLayout
         composeDiscoverListStyle.intValue = AppConfig.bookshelfListItemStyle
-        if (forceBooks || composeDiscoverBooks.size != discoverBooks.size || composeDiscoverBooks != discoverBooks) {
+        // SearchBook.equals 仅比较 bookUrl，直接用 != 无法识别封面/最新章节等内容更新，
+        // 且 composeDiscoverBooks(List) 与 discoverBooks(Set) 类型不同，比较恒不相等。
+        // 这里用渲染相关字段构造内容签名，只有真正变化时才重建列表，避免无谓重组 churn。
+        val signature = discoverBooksSignature()
+        if (forceBooks || signature != composeDiscoverBooksSignature) {
+            composeDiscoverBooksSignature = signature
             composeDiscoverBooks.clear()
             composeDiscoverBooks.addAll(discoverBooks)
+        }
+    }
+
+    private fun discoverBooksSignature(): String {
+        return buildString {
+            discoverBooks.forEach { book ->
+                append(book.bookUrl).append('#')
+                append(book.name).append('#')
+                append(book.author).append('#')
+                append(book.coverUrl ?: "").append('#')
+                append(book.latestChapterTitle ?: "").append('#')
+                append(book.kind ?: "").append('#')
+                append(book.intro?.hashCode() ?: 0).append(';')
+            }
         }
     }
 

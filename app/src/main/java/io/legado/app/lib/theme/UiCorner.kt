@@ -342,11 +342,13 @@ object UiCorner {
         override fun setAlpha(alpha: Int) {
             fillPaint.alpha = alpha
             strokePaint?.alpha = alpha
+            panelImage?.alpha = alpha
         }
 
         override fun setColorFilter(colorFilter: ColorFilter?) {
             fillPaint.colorFilter = colorFilter
             strokePaint?.colorFilter = colorFilter
+            panelImage?.colorFilter = colorFilter
         }
 
         @Deprecated("Deprecated in Java")

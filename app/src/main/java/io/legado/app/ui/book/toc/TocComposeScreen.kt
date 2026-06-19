@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.toc
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -30,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -45,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -70,6 +73,7 @@ import io.legado.app.ui.widget.compose.AppManagementCard
 import io.legado.app.ui.widget.compose.AppManagementIconAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
+import io.legado.app.ui.widget.compose.AppManagementPalette
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -104,6 +108,9 @@ fun TocComposeScreen(
         var selectedPage by remember { mutableStateOf(TocPage.Chapters) }
         var searchQuery by remember { mutableStateOf("") }
         var refreshTick by remember { mutableIntStateOf(0) }
+        // 字数仅是显示开关(值已在解析时入库到 chapter.wordCount)，用 Compose 状态即时切换，
+        // 避免像替换/翻转那样触发整页 DB 重查 + 全量标题重建。
+        var countWords by remember { mutableStateOf(AppConfig.tocCountWords) }
         var bookLoaded by remember { mutableStateOf(false) }
         var chaptersLoaded by remember { mutableStateOf(false) }
         var bookmarksLoaded by remember { mutableStateOf(false) }
@@ -117,6 +124,9 @@ fun TocComposeScreen(
         val chapterListState = rememberLazyListState()
         val bookmarkListState = rememberLazyListState()
         val scope = rememberCoroutineScope()
+        // 卷标题吸顶后会盖住其下章节，定位当前章时上移一个标题高度，让当前章露在标题下方。
+        val volumeHeaderOffsetPx = with(LocalDensity.current) { -42.dp.roundToPx() }
+        val hasVolumes by remember { derivedStateOf { chapterList.any { it.isVolume } } }
         val exportText = stringResource(R.string.export)
         val exportMdText = stringResource(R.string.export_md)
         val logText = stringResource(R.string.log)
@@ -171,12 +181,15 @@ fun TocComposeScreen(
             visibleChapters.addAll(visibleChapters(chapters, searchQuery, collapsedVolumeIndexes))
             chaptersLoaded = true
             if (selectedPage == TocPage.Chapters && visibleChapters.isNotEmpty()) {
-                val pos = if (searchQuery.isBlank()) {
-                    visiblePositionOf(visibleChapters, currentBook.durChapterIndex)
+                if (searchQuery.isBlank()) {
+                    val pos = visiblePositionOf(visibleChapters, currentBook.durChapterIndex)
+                    chapterListState.scrollToItem(
+                        pos.coerceIn(0, visibleChapters.lastIndex),
+                        if (hasVolumes) volumeHeaderOffsetPx else 0
+                    )
                 } else {
-                    0
+                    chapterListState.scrollToItem(0)
                 }
-                chapterListState.scrollToItem(pos.coerceIn(0, visibleChapters.lastIndex))
             }
         }
 
@@ -230,7 +243,6 @@ fun TocComposeScreen(
                 .background(Color.Transparent)
         ) {
             TocTopBar(
-                book = book,
                 selectedPage = selectedPage,
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
@@ -252,13 +264,14 @@ fun TocComposeScreen(
                                 )
                                 scope.launch {
                                     chapterListState.scrollToItem(
-                                        visiblePositionOf(visibleChapters, it.durChapterIndex)
+                                        visiblePositionOf(visibleChapters, it.durChapterIndex),
+                                        if (hasVolumes) volumeHeaderOffsetPx else 0
                                     )
                                 }
                             }
                         },
                         onToggleUseReplace = { refreshTick++ },
-                        onToggleWordCount = { refreshTick++ },
+                        onToggleWordCount = { countWords = AppConfig.tocCountWords },
                         onToggleSplitLongChapter = { targetBook ->
                             targetBook.setSplitLongChapter(!targetBook.getSplitLongChapter())
                             onUpdateToc(targetBook)
@@ -287,6 +300,7 @@ fun TocComposeScreen(
                                     displayTitles = displayTitles,
                                     collapsedVolumeIndexes = collapsedVolumeIndexes,
                                     chapterCacheMap = chapterCacheMap,
+                                    countWords = countWords,
                                     listState = chapterListState,
                                     onToggleVolume = { chapter ->
                                         if (!chapter.isVolume || searchQuery.isNotBlank()) return@TocChapterList
@@ -343,7 +357,8 @@ fun TocComposeScreen(
                         book?.let {
                             scope.launch {
                                 chapterListState.scrollToItem(
-                                    visiblePositionOf(visibleChapters, it.durChapterIndex)
+                                    visiblePositionOf(visibleChapters, it.durChapterIndex),
+                                    if (hasVolumes) volumeHeaderOffsetPx else 0
                                 )
                             }
                         }
@@ -392,7 +407,6 @@ private fun TocEmptyState(text: String) {
 
 @Composable
 private fun TocTopBar(
-    book: Book?,
     selectedPage: TocPage,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
@@ -411,7 +425,7 @@ private fun TocTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -423,51 +437,22 @@ private fun TocTopBar(
                 tint = palette.settings.primaryText,
                 onClick = onBack
             )
-            TocHeaderTitle(
-                text = book?.name ?: stringResource(R.string.chapter_list),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-            )
+            Spacer(modifier = Modifier.weight(1f))
             AppManagementMoreActionButton(
                 actionsProvider = { moreActions },
                 palette = palette,
                 contentDescription = stringResource(R.string.more_menu)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         TocSearchField(
             query = searchQuery,
             onQueryChange = onSearchQueryChange
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         TocTabs(
             selectedPage = selectedPage,
             onSelectPage = onSelectPage
-        )
-    }
-}
-
-@Composable
-private fun TocHeaderTitle(
-    text: String,
-    modifier: Modifier = Modifier
-) {
-    val palette = rememberAppManagementPalette()
-    AppManagementCard(
-        palette = palette,
-        modifier = modifier,
-        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        drawPanelImage = true
-    ) {
-        Text(
-            text = text,
-            color = palette.settings.primaryText,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = palette.settings.titleFontFamily,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -477,22 +462,13 @@ private fun TocSearchField(
     query: String,
     onQueryChange: (String) -> Unit
 ) {
-    val context = LocalContext.current
     val palette = rememberAppManagementPalette()
-    val panelRadiusPx = palette.settings.panelRadiusPx
-    val panelImage = remember(context, panelRadiusPx) {
-        UiCorner.panelImageDrawable(context, panelRadiusPx)
-    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .appSettingPanelBackground(
-                normalColor = palette.settings.row,
-                panelImage = panelImage,
-                borderColor = palette.settings.border,
-                radiusPx = panelRadiusPx
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(palette.settings.row))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -536,7 +512,14 @@ private fun TocTabs(
     onSelectPage: (TocPage) -> Unit
 ) {
     val palette = rememberAppManagementPalette()
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(palette.settings.row))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
         TocTabButton(
             text = stringResource(R.string.chapter_list),
             selected = selectedPage == TocPage.Chapters,
@@ -559,26 +542,14 @@ private fun TocTabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val palette = rememberAppManagementPalette()
     val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val panelRadiusPx = palette.settings.panelRadiusPx
-    val panelImage = remember(context, panelRadiusPx) {
-        UiCorner.panelImageDrawable(context, panelRadiusPx)
-    }
     Box(
         modifier = modifier
-            .height(36.dp)
-            .appSettingPanelBackground(
-                normalColor = when {
-                    pressed -> palette.settings.rowPressed
-                    selected -> palette.settings.rowPressed
-                    else -> palette.settings.row
-                },
-                panelImage = panelImage,
-                borderColor = palette.settings.border,
-                radiusPx = panelRadiusPx
+            .height(34.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(
+                if (selected) palette.settings.accent.copy(alpha = 0.16f) else Color.Transparent
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -598,6 +569,7 @@ private fun TocTabButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TocChapterList(
     book: Book?,
@@ -605,110 +577,182 @@ private fun TocChapterList(
     displayTitles: Map<String, String>,
     collapsedVolumeIndexes: Set<Int>,
     chapterCacheMap: Map<String, Boolean>,
+    countWords: Boolean,
     listState: LazyListState,
     onToggleVolume: (BookChapter) -> Unit,
     onOpenChapter: (BookChapter) -> Unit
 ) {
+    val palette = rememberAppManagementPalette()
+    // 仅当存在分卷时才缩进章节，纯平铺目录保持齐头。
+    val hasVolumes = chapters.any { it.isVolume }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 12.dp)
     ) {
-        itemsIndexed(
-            items = chapters,
-            key = { _, chapter -> "${chapter.bookUrl}\u0000${chapter.index}\u0000${chapter.url}" },
-            contentType = { _, chapter -> if (chapter.isVolume) "volume" else "chapter" }
-        ) { _, chapter ->
-            TocChapterRow(
-                book = book,
-                chapter = chapter,
-                title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                collapsed = collapsedVolumeIndexes.contains(chapter.index),
-                cached = chapterCacheMap[chapter.primaryStr()] ?: true,
-                onClick = {
-                    if (chapter.isVolume) {
-                        onToggleVolume(chapter)
-                    } else {
-                        onOpenChapter(chapter)
-                    }
+        // 卷与章节按原 visibleChapters 顺序逐项发射(卷→stickyHeader, 章→item)，
+        // 每项仍是一个 lazy item，故索引与 visibleChapters 一一对应，滚动定位逻辑无需改动。
+        chapters.forEach { chapter ->
+            val key = "${chapter.bookUrl}|${chapter.index}|${chapter.url}"
+            if (chapter.isVolume) {
+                stickyHeader(key = key, contentType = "volume") {
+                    TocVolumeHeaderRow(
+                        palette = palette,
+                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                        collapsed = collapsedVolumeIndexes.contains(chapter.index),
+                        onClick = { onToggleVolume(chapter) }
+                    )
                 }
-            )
+            } else {
+                item(key = key, contentType = "chapter") {
+                    TocChapterRow(
+                        palette = palette,
+                        book = book,
+                        chapter = chapter,
+                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                        cached = chapterCacheMap[chapter.primaryStr()] ?: true,
+                        countWords = countWords,
+                        indented = hasVolumes,
+                        onClick = { onOpenChapter(chapter) }
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
+private fun TocVolumeHeaderRow(
+    palette: AppManagementPalette,
+    title: String,
+    collapsed: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 吸顶标题必须不透明，否则下方章节会从标题后透出；先铺不透明 page 底再叠强调色薄染。
+            .background(palette.settings.page)
+            .background(palette.settings.accent.copy(alpha = 0.08f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(end = 10.dp)
+                .size(width = 3.dp, height = 16.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(palette.settings.accent)
+        )
+        Text(
+            text = title,
+            color = palette.settings.primaryText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = palette.settings.titleFontFamily,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(
+            painter = painterResource(
+                id = if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
+            ),
+            contentDescription = null,
+            tint = palette.settings.secondaryText,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
 private fun TocChapterRow(
+    palette: AppManagementPalette,
     book: Book?,
     chapter: BookChapter,
     title: String,
-    collapsed: Boolean,
     cached: Boolean,
+    countWords: Boolean,
+    indented: Boolean,
     onClick: () -> Unit
 ) {
-    val palette = rememberAppManagementPalette()
     val isCurrent = book?.durChapterIndex == chapter.index
-    AppManagementCard(
-        palette = palette,
-        insidePadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-        drawPanelImage = true,
-        onClick = onClick
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val rowBackground = when {
+        isCurrent -> palette.settings.accent.copy(alpha = 0.14f)
+        pressed -> Color(palette.settings.rowPressed)
+        else -> Color.Transparent
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            // 当前章/按压态做成内缩圆角药丸，避免整行通栏色块显得生硬。
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(rowBackground)
+            .padding(
+                start = if (indented) 22.dp else 10.dp,
+                end = 10.dp,
+                top = 10.dp,
+                bottom = 10.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (chapter.isVip && !chapter.isPay) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_lock_outline),
-                    contentDescription = null,
-                    tint = palette.settings.secondaryText,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .padding(end = 4.dp)
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
+        if (chapter.isVip && !chapter.isPay) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_lock_outline),
+                contentDescription = null,
+                tint = palette.settings.secondaryText,
+                modifier = Modifier
+                    .size(18.dp)
+                    .padding(end = 4.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (isCurrent) palette.settings.accent else palette.settings.primaryText,
+                fontSize = 14.sp,
+                fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                fontFamily = palette.settings.bodyFontFamily,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val meta = listOfNotNull(
+                chapter.tag?.takeIf { it.isNotBlank() },
+                chapter.wordCount?.takeIf { countWords && it.isNotBlank() }
+            ).joinToString("  ")
+            if (meta.isNotBlank()) {
                 Text(
-                    text = title,
-                    color = when {
-                        isCurrent -> palette.settings.accent
-                        chapter.isVolume -> palette.settings.primaryText
-                        else -> palette.settings.primaryText
-                    },
-                    fontSize = if (chapter.isVolume) 15.sp else 14.sp,
-                    fontWeight = if (chapter.isVolume || isCurrent) FontWeight.SemiBold else FontWeight.Medium,
+                    text = meta,
+                    color = palette.settings.secondaryText,
+                    fontSize = 12.sp,
                     fontFamily = palette.settings.bodyFontFamily,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val meta = listOfNotNull(
-                    chapter.tag?.takeIf { it.isNotBlank() },
-                    chapter.wordCount?.takeIf { AppConfig.tocCountWords && it.isNotBlank() && !chapter.isVolume }
-                ).joinToString("  ")
-                if (meta.isNotBlank()) {
-                    Text(
-                        text = meta,
-                        color = palette.settings.secondaryText,
-                        fontSize = 12.sp,
-                        fontFamily = palette.settings.bodyFontFamily,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 3.dp)
-                    )
-                }
-            }
-            val iconRes = when {
-                chapter.isVolume -> if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
-                isCurrent -> R.drawable.ic_check
-                !cached -> R.drawable.ic_outline_cloud_24
-                else -> null
-            }
-            iconRes?.let {
-                Icon(
-                    painter = painterResource(id = it),
-                    contentDescription = null,
-                    tint = if (isCurrent) palette.settings.accent else palette.settings.secondaryText,
-                    modifier = Modifier.size(20.dp)
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 3.dp)
                 )
             }
+        }
+        val iconRes = when {
+            isCurrent -> R.drawable.ic_check
+            !cached -> R.drawable.ic_outline_cloud_24
+            else -> null
+        }
+        iconRes?.let {
+            Icon(
+                painter = painterResource(id = it),
+                contentDescription = null,
+                tint = if (isCurrent) palette.settings.accent else palette.settings.secondaryText,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

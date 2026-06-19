@@ -32,6 +32,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.ActivityThemeManageBinding
 import io.legado.app.help.AppCloudStorage
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.MainLayoutPresetConfig
 import io.legado.app.help.config.NavigationBarIconConfig
 import io.legado.app.lib.cloud.CloudStorageType
 import io.legado.app.lib.dialogs.alert
@@ -79,6 +80,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     private var summaryTextState by mutableStateOf("")
     private var isNightMode by mutableStateOf(false)
     private var floatingSearchHiddenState by mutableStateOf(AppConfig.floatingBottomBarHideSearch)
+    private var floatingSearchToggleVisibleState by mutableStateOf(
+        MainLayoutPresetConfig.defaultBottomLayoutMode() == "floating"
+    )
     private var editingEntry: NavigationBarIconConfig.Entry? = null
     private var editingDialog: LinearLayout? = null
     private var pendingConfig: NavigationBarIconConfig.Config? = null
@@ -237,6 +241,7 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                     isNightMode = isNightMode,
                     summaryText = summaryTextState,
                     floatingSearchHidden = floatingSearchHiddenState,
+                    searchToggleVisible = floatingSearchToggleVisibleState,
                     onSwitchDayNight = { night ->
                         if (night != isNightMode) {
                             isNightMode = night
@@ -379,6 +384,9 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
                 } else {
                     false
                 }
+                // 隐藏搜索开关只对悬浮底栏有意义，其它布局下隐藏卡片，避免哑开关。
+                floatingSearchToggleVisibleState =
+                    (activeEntry?.config?.layoutMode ?: MainLayoutPresetConfig.defaultBottomLayoutMode()) == "floating"
                 summaryTextState = if (it.size <= 1) {
                     getString(R.string.navigation_bar_package_empty)
                 } else {
@@ -392,15 +400,15 @@ class NavigationBarManageActivity : BaseActivity<ActivityThemeManageBinding>(), 
     }
 
     private fun toggleFloatingSearch() {
+        val current = entriesState.firstOrNull { it.dirName == activeDirNameState }
+        val activeLayoutMode = current?.config?.layoutMode ?: MainLayoutPresetConfig.defaultBottomLayoutMode()
+        if (activeLayoutMode != "floating") {
+            toastOnUi(getString(R.string.bottom_bar_layout_floating))
+            return
+        }
         val hidden = !floatingSearchHiddenState
         floatingSearchHiddenState = hidden
-        val current = entriesState.firstOrNull { it.dirName == activeDirNameState }
         if (current != null && current.dirName != NavigationBarIconConfig.DEFAULT_DIR_NAME && current.source != NavigationBarIconConfig.Source.REMOTE) {
-            if (current.config.layoutMode != "floating") {
-                floatingSearchHiddenState = false
-                toastOnUi(getString(R.string.bottom_bar_layout_floating))
-                return
-            }
             lifecycleScope.launch {
                 kotlin.runCatching {
                     withContext(Dispatchers.IO) {
@@ -1171,6 +1179,7 @@ private fun NavigationBarPackageManageScreen(
     isNightMode: Boolean,
     summaryText: String,
     floatingSearchHidden: Boolean,
+    searchToggleVisible: Boolean,
     onSwitchDayNight: (Boolean) -> Unit,
     onAdd: () -> Unit,
     onToggleFloatingSearch: () -> Unit,
@@ -1189,14 +1198,16 @@ private fun NavigationBarPackageManageScreen(
         onSwitchDayNight = onSwitchDayNight,
         onAdd = onAdd,
         headerContent = { palette ->
-            item(key = "floating_bottom_bar_search") {
-                AppPackageManageSettingCard(
-                    title = stringResource(R.string.search),
-                    info = stringResource(R.string.bottom_bar_layout_floating),
-                    valueText = if (floatingSearchHidden) "Off" else "On",
-                    palette = palette,
-                    onClick = onToggleFloatingSearch
-                )
+            if (searchToggleVisible) {
+                item(key = "floating_bottom_bar_search") {
+                    AppPackageManageSettingCard(
+                        title = stringResource(R.string.search),
+                        info = stringResource(R.string.bottom_bar_layout_floating),
+                        valueText = if (floatingSearchHidden) "Off" else "On",
+                        palette = palette,
+                        onClick = onToggleFloatingSearch
+                    )
+                }
             }
         }
     ) { palette ->

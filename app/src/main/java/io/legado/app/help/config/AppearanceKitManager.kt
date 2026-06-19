@@ -27,6 +27,7 @@ import java.util.zip.ZipFile
 object AppearanceKitManager {
 
     const val KIT_FLOATING = "builtin_floating"
+    const val KIT_FLOATING_NO_SEARCH = "builtin_floating_no_search"
     const val KIT_REGULAR = "builtin_regular"
     const val KIT_SIDEBAR = "builtin_sidebar"
     private const val kitManifestName = "appearance_kit.json"
@@ -45,21 +46,34 @@ object AppearanceKitManager {
         return listOf(
             AppearanceKit(
                 id = KIT_FLOATING,
-                name = "悬浮",
+                name = "悬浮底栏",
                 summary = "悬浮底栏 + 默认顶栏",
                 type = AppearanceKitType.BUILTIN,
-                binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_DEFAULT)
+                binding = KitBinding(
+                    preset = MainLayoutPresetConfig.PRESET_DEFAULT,
+                    floatingBottomBarHideSearch = false
+                )
+            ),
+            AppearanceKit(
+                id = KIT_FLOATING_NO_SEARCH,
+                name = "无搜索悬浮底栏",
+                summary = "悬浮底栏(隐藏搜索) + 顶栏显示搜索",
+                type = AppearanceKitType.BUILTIN,
+                binding = KitBinding(
+                    preset = MainLayoutPresetConfig.PRESET_DEFAULT,
+                    floatingBottomBarHideSearch = true
+                )
             ),
             AppearanceKit(
                 id = KIT_REGULAR,
-                name = "常规",
+                name = "常规底栏",
                 summary = "常规底栏 + 常规顶栏",
                 type = AppearanceKitType.BUILTIN,
                 binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_REGULAR)
             ),
             AppearanceKit(
                 id = KIT_SIDEBAR,
-                name = "侧栏",
+                name = "侧边栏",
                 summary = "侧边栏 + 默认顶栏",
                 type = AppearanceKitType.BUILTIN,
                 binding = KitBinding(preset = MainLayoutPresetConfig.PRESET_SIDEBAR)
@@ -105,7 +119,7 @@ object AppearanceKitManager {
             ?: when (MainLayoutPresetConfig.currentPreset()) {
                 MainLayoutPresetConfig.PRESET_REGULAR -> KIT_REGULAR
                 MainLayoutPresetConfig.PRESET_SIDEBAR -> KIT_SIDEBAR
-                else -> KIT_FLOATING
+                else -> if (AppConfig.floatingBottomBarHideSearch) KIT_FLOATING_NO_SEARCH else KIT_FLOATING
             }
     }
 
@@ -315,13 +329,15 @@ object AppearanceKitManager {
             applyThemeRef(context, true, binding.nightTheme)
             applyThemeRef(context, false, binding.dayTheme)
         }
-        applyTopBarRef(false, binding.dayTopBar, resolvedPreset)
-        applyTopBarRef(true, binding.nightTopBar, resolvedPreset)
+        applyTopBarRef(false, binding.dayTopBar)
+        applyTopBarRef(true, binding.nightTopBar)
         applyNavigationRef(false, binding.dayNavigationBar)
         applyNavigationRef(true, binding.nightNavigationBar)
         CoverCollectionManager.setSelected(false, binding.dayCoverCollection?.dirName)
         CoverCollectionManager.setSelected(true, binding.nightCoverCollection?.dirName)
         NavigationBarIconConfig.applyCurrentBottomConfig(AppConfig.isNightTheme)
+        // 主题包显式携带的"底栏隐藏悬浮搜索"覆盖在底栏配置之后生效(隐藏时顶栏会自动显示搜索)。
+        binding.floatingBottomBarHideSearch?.let { AppConfig.floatingBottomBarHideSearch = it }
         ThemeConfig.applyTheme(context)
         BookCover.upDefaultCover()
     }
@@ -331,12 +347,14 @@ object AppearanceKitManager {
         ThemePackageManager.apply(context, entry, switchNightMode = false, notify = false)
     }
 
-    private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?, preset: String) {
+    private suspend fun applyTopBarRef(isNight: Boolean, ref: ComponentRef?) {
         val entry = when (ref?.dirName) {
             TopBarConfig.DEFAULT_DIR_NAME -> TopBarConfig.defaultEntryForKit(appCtx, isNight)
             else -> ref?.let { findTopBarEntry(isNight, it) }
         }
-        TopBarConfig.apply(entry ?: defaultTopBarEntryForPreset(isNight, preset))
+        // 缺省顶栏样式由 MainLayoutPresetConfig.apply 写入的 defaultTopBarStyle 决定，
+        // apply() 仅持久化 dirName(=DEFAULT)，故无需按 preset 区分 fallback entry。
+        TopBarConfig.apply(entry ?: TopBarConfig.defaultEntryForKit(appCtx, isNight))
     }
 
     private suspend fun applyNavigationRef(isNight: Boolean, ref: ComponentRef?) {
@@ -345,14 +363,6 @@ object AppearanceKitManager {
             NavigationBarIconConfig.select(entry)
         } else {
             NavigationBarIconConfig.select(NavigationBarIconConfig.standardEntryForKit(isNight))
-        }
-    }
-
-    private fun defaultTopBarEntryForPreset(isNight: Boolean, preset: String): TopBarConfig.Entry {
-        return if (preset == MainLayoutPresetConfig.PRESET_REGULAR) {
-            TopBarConfig.regularEntryForKit(appCtx, isNight)
-        } else {
-            TopBarConfig.defaultEntryForKit(appCtx, isNight)
         }
     }
 
@@ -450,7 +460,8 @@ object AppearanceKitManager {
             dayNavigationBar = currentNavigationRef(false),
             nightNavigationBar = currentNavigationRef(true),
             dayCoverCollection = currentCoverRef(false),
-            nightCoverCollection = currentCoverRef(true)
+            nightCoverCollection = currentCoverRef(true),
+            floatingBottomBarHideSearch = AppConfig.floatingBottomBarHideSearch
         )
     }
 
@@ -681,7 +692,9 @@ data class KitBinding(
     var dayNavigationBar: ComponentRef? = null,
     var nightNavigationBar: ComponentRef? = null,
     var dayCoverCollection: ComponentRef? = null,
-    var nightCoverCollection: ComponentRef? = null
+    var nightCoverCollection: ComponentRef? = null,
+    // 悬浮底栏是否隐藏搜索按钮(隐藏时顶栏自动显示搜索)。可空：旧主题包无此字段时不改变现状。
+    var floatingBottomBarHideSearch: Boolean? = null
 ) {
     fun mergeImported(imported: KitBinding): KitBinding {
         return copy(
@@ -692,7 +705,8 @@ data class KitBinding(
             dayNavigationBar = imported.dayNavigationBar ?: dayNavigationBar,
             nightNavigationBar = imported.nightNavigationBar ?: nightNavigationBar,
             dayCoverCollection = imported.dayCoverCollection ?: dayCoverCollection,
-            nightCoverCollection = imported.nightCoverCollection ?: nightCoverCollection
+            nightCoverCollection = imported.nightCoverCollection ?: nightCoverCollection,
+            floatingBottomBarHideSearch = imported.floatingBottomBarHideSearch ?: floatingBottomBarHideSearch
         )
     }
 

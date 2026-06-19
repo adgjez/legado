@@ -14,17 +14,16 @@ import android.widget.TextView
 import android.widget.LinearLayout
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
-import androidx.core.os.bundleOf
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.flexbox.FlexboxLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.AppLog
@@ -43,7 +42,6 @@ import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.ui.about.AppLogDialog
@@ -53,7 +51,6 @@ import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.widget.ModernActionPopup
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.applyNavigationBarMargin
-import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
@@ -63,7 +60,6 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.navigationBarHeight
 import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
@@ -81,25 +77,18 @@ import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 
 class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel>(),
-    BookAdapter.CallBack,
-    HistoryKeyAdapter.CallBack,
-    SearchScopeDialog.Callback,
-    SearchAdapter.CallBack {
+    SearchScopeDialog.Callback {
 
     override val binding by viewBinding(ActivityBookSearchBinding::inflate)
     override val viewModel by viewModels<SearchViewModel>()
 
-    private val adapter by lazy { SearchAdapter(this, this) }
-    private val bookAdapter by lazy {
-        BookAdapter(this, this).apply {
-            setHasStableIds(true)
-        }
-    }
-    private val historyKeyAdapter by lazy {
-        HistoryKeyAdapter(this, this).apply {
-            setHasStableIds(true)
-        }
-    }
+    // 搜索结果列表已 Compose 化(SearchResultScreen)，用快照状态驱动，替代原 SearchAdapter。
+    private val searchResults = mutableStateListOf<SearchBook>()
+    private val bookshelfTick = mutableIntStateOf(0)
+    private val resultScrollToTopSignal = mutableIntStateOf(0)
+    // 输入帮助区(书架命中 + 搜索历史)已 Compose 化，用快照状态驱动，替代原 BookAdapter/HistoryKeyAdapter。
+    private val bookshelfHintBooks = mutableStateListOf<Book>()
+    private val historyKeywords = mutableStateListOf<SearchKeyword>()
     private val searchView: SearchView by lazy { binding.searchView }
     private var groups: List<String>? = null
     private var historyFlowJob: Job? = null
@@ -158,41 +147,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     private fun initTopBar() {
         rootBaseTopPadding = binding.root.paddingTop
         binding.btnMenu.setColorFilter(secondaryTextColor)
-        val isNight = AppConfig.isNightTheme
-        val cardColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(44, 44, 46), 0.45f)
-        } else {
-            ContextCompat.getColor(this, R.color.background_menu)
-        }
-        val chipColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(58, 58, 62), 0.32f)
-        } else {
-            ContextCompat.getColor(this, R.color.background_card)
-        }
-        val chipPressedColor = if (isNight) {
-            ColorUtils.adjustAlpha(Color.rgb(82, 82, 86), 0.45f)
-        } else {
-            ContextCompat.getColor(this, R.color.background_menu)
-        }
-        val strokeColor = TopBarSearchStyle.strokeColor(this)
         TopBarSearchStyle.apply(binding.searchView)
-        binding.llBookshelfHintCard.background = UiCorner.opaqueRoundedStroke(
-            cardColor,
-            UiCorner.searchRadius(20f),
-            1.dpToPx(),
-            strokeColor
-        )
-        binding.llHistoryCard.background = UiCorner.opaqueRoundedStroke(
-            cardColor,
-            UiCorner.searchRadius(20f),
-            1.dpToPx(),
-            strokeColor
-        )
-        binding.tvClearHistory.background = UiCorner.actionSelector(
-            chipColor,
-            chipPressedColor,
-            UiCorner.searchRadius(14f)
-        )
         updateSourceGroupTags()
         binding.btnMenu.setOnClickListener {
             showSearchMenu(it)
@@ -294,7 +249,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         })
         searchView.setOnQueryTextFocusChangeListener { _, hasFocus ->
             updateKeyboardGroupBarVisible()
-            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && adapter.isNotEmpty() && searchView.query.isNotBlank())) {
+            if (binding.refreshProgressBar.isAutoLoading || (!hasFocus && searchResults.isNotEmpty() && searchView.query.isNotBlank())) {
                 visibleInputHelp(false)
             } else {
                 visibleInputHelp(true)
@@ -304,49 +259,43 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     }
 
     private fun initRecyclerView() {
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelfSearch.setEdgeEffectColor(primaryColor)
-        binding.rvHistoryKey.setEdgeEffectColor(primaryColor)
-        binding.rvBookshelfSearch.layoutManager = FlexboxLayoutManager(this)
-        binding.rvBookshelfSearch.adapter = bookAdapter
-        binding.rvHistoryKey.layoutManager = FlexboxLayoutManager(this)
-        binding.rvHistoryKey.adapter = historyKeyAdapter
-        binding.llHistoryCard.applyNavigationBarMargin()
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
-        binding.recyclerView.itemAnimator = null
-        binding.recyclerView.applyNavigationBarPadding()
-        adapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
-            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
-                super.onItemRangeInserted(positionStart, itemCount)
-                if (positionStart == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
+        initInputHelpCompose()
+        initResultsCompose()
+    }
 
-            override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
-                super.onItemRangeMoved(fromPosition, toPosition, itemCount)
-                if (toPosition == 0) {
-                    binding.recyclerView.scrollToPosition(0)
-                }
-            }
-        })
-        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                super.onScrolled(recyclerView, dx, dy)
-                if (dy < 0) {
-                    return
-                }
-                val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-                val lastPosition = layoutManager.findLastVisibleItemPosition()
-                if (lastPosition == RecyclerView.NO_POSITION) {
-                    return
-                }
-                if (adapter.itemCount - lastPosition <= 3 || !recyclerView.canScrollVertically(1)) {
-                    scrollToBottom()
-                }
-            }
-        })
+    private fun initResultsCompose() {
+        binding.composeResults.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeResults.setContent {
+            SearchResultScreen(
+                books = searchResults,
+                isLoading = viewModel.isSearchLiveData.value == true,
+                hasMore = viewModel.hasMore,
+                scrollToTopSignal = resultScrollToTopSignal.intValue,
+                bookshelfTick = bookshelfTick.intValue,
+                isInBookshelf = { isInBookshelf(it) },
+                lifecycle = lifecycle,
+                onBookClick = { showBookInfo(it) },
+                onLoadMore = { scrollToBottom() }
+            )
+        }
+    }
+
+    private fun initInputHelpCompose() {
+        binding.composeInputHelp.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeInputHelp.setContent {
+            SearchInputHelpScreen(
+                bookshelfBooks = bookshelfHintBooks,
+                historyKeywords = historyKeywords,
+                onBookClick = { showBookInfo(it) },
+                onHistoryClick = { searchHistory(it) },
+                onHistoryDelete = { deleteHistory(it) },
+                onClearHistory = { alertClearHistory() }
+            )
+        }
     }
 
     private fun initOtherView() {
@@ -365,7 +314,6 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         }
         binding.fbStartStop.applyNavigationBarMargin(true)
-        binding.tvClearHistory.setOnClickListener { alertClearHistory() }
         sourceGroupBarBaseBottomMargin =
             (binding.hsvSourceGroupBar.layoutParams as? ViewGroup.MarginLayoutParams)
                 ?.bottomMargin ?: 0
@@ -407,7 +355,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }
         }
         viewModel.searchBookLiveData.observe(this) {
-            adapter.setItems(it)
+            // 新搜索会以更短的列表重置(流式追加则只增长)，据此判断是否需要回到顶部。
+            val isFreshSearch = it.size < searchResults.size ||
+                (it.isNotEmpty() && searchResults.isNotEmpty() && it.first().bookUrl != searchResults.first().bookUrl)
+            searchResults.clear()
+            searchResults.addAll(it)
+            if (isFreshSearch) {
+                resultScrollToTopSignal.intValue++
+            }
         }
         lifecycleScope.launch {
             appDb.bookSourceDao.flowEnabledGroups().collect {
@@ -575,22 +530,12 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
             if (key.isNullOrBlank()) {
-                binding.llBookshelfHintCard.gone()
-                binding.tvBookShow.gone()
-                binding.rvBookshelfSearch.gone()
+                bookshelfHintBooks.clear()
             } else {
                 appDb.bookDao.flowSearchDisplayInfos(key).conflate().collect { displayInfos ->
                     val books = displayInfos.map { it.toBook() }
-                    if (books.isEmpty()) {
-                        binding.llBookshelfHintCard.gone()
-                        binding.tvBookShow.gone()
-                        binding.rvBookshelfSearch.gone()
-                    } else {
-                        binding.llBookshelfHintCard.visible()
-                        binding.tvBookShow.visible()
-                        binding.rvBookshelfSearch.visible()
-                    }
-                    bookAdapter.setItems(books)
+                    bookshelfHintBooks.clear()
+                    bookshelfHintBooks.addAll(books)
                 }
             }
         }
@@ -602,16 +547,8 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
             }.catch {
                 AppLog.put("搜索界面获取搜索历史数据失败\n${it.localizedMessage}", it)
             }.flowOn(IO).conflate().collect {
-                historyKeyAdapter.setItems(it)
-                if (it.isEmpty()) {
-                    binding.tvClearHistory.invisible()
-                    binding.tvHistoryEmpty.visible()
-                    binding.rvHistoryKey.gone()
-                } else {
-                    binding.tvClearHistory.visible()
-                    binding.tvHistoryEmpty.gone()
-                    binding.rvHistoryKey.visible()
-                }
+                historyKeywords.clear()
+                historyKeywords.addAll(it)
             }
         }
     }
@@ -641,7 +578,8 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
 
     override fun observeLiveBus() {
         viewModel.upAdapterLiveData.observe(this) {
-            adapter.notifyItemRangeChanged(0, adapter.itemCount, bundleOf(it to null))
+            // 书架状态等变化：触发结果项重算 isInBookshelf。
+            bookshelfTick.intValue++
         }
         viewModel.searchFinishLiveData.observe(this) { isEmpty ->
             if (!isEmpty || viewModel.searchScope.isAll()) return@observe
@@ -669,7 +607,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: SearchBook) {
+    private fun showBookInfo(book: SearchBook) {
         lifecycleScope.launch {
             val isVideo = withContext(IO) {
                 SearchBookOpenHelper.isVideoResult(
@@ -688,14 +626,14 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 是否已经加入书架
      */
-    override fun isInBookshelf(book: SearchBook): Boolean {
+    private fun isInBookshelf(book: SearchBook): Boolean {
         return viewModel.isInBookShelf(book)
     }
 
     /**
      * 显示书籍详情
      */
-    override fun showBookInfo(book: Book) {
+    private fun showBookInfo(book: Book) {
         if (book.isVideo) {
             startActivityForBook(book)
             return
@@ -706,7 +644,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 点击历史关键字
      */
-    override fun searchHistory(key: String) {
+    private fun searchHistory(key: String) {
         lifecycleScope.launch {
             when {
                 searchView.query.toString() == key -> {
@@ -727,7 +665,7 @@ class SearchActivity : VMBaseActivity<ActivityBookSearchBinding, SearchViewModel
     /**
      * 删除搜索记录
      */
-    override fun deleteHistory(searchKeyword: SearchKeyword) {
+    private fun deleteHistory(searchKeyword: SearchKeyword) {
         viewModel.deleteHistory(searchKeyword)
     }
 

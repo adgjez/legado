@@ -29,3 +29,7 @@ package-lock.json
 /legado_epubnewcore_*.apk
 /replay_pid*.log
 /temp*.txt
+
+# local build logs (Claude)
+/rb*.log
+/release-build*.log

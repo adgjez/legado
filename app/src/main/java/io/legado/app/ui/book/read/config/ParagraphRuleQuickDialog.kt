@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,18 +59,6 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
     private val bookUrl: String
         get() = requireArguments().getString(ARG_BOOK_URL).orEmpty()
 
-    @Suppress("DEPRECATION")
-    private val rules: List<ParagraphRule>
-        get() = requireArguments()
-            .getParcelableArrayList<ParagraphRule>(ARG_RULES)
-            .orEmpty()
-
-    private val initialEnabledIds: Set<Long>
-        get() = requireArguments()
-            .getLongArray(ARG_ENABLED_IDS)
-            ?.toSet()
-            .orEmpty()
-
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -85,7 +74,16 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
 
     @Composable
     private fun ParagraphRuleQuickContent() {
-        var enabledIds by remember { mutableStateOf(initialEnabledIds) }
+        var rules by remember { mutableStateOf<List<ParagraphRule>>(emptyList()) }
+        var enabledIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+        LaunchedEffect(bookUrl) {
+            val (loadedRules, loadedIds) = withContext(Dispatchers.IO) {
+                appDb.paragraphRuleDao.all() to
+                        appDb.paragraphRuleDao.enabledRuleIdsForBook(bookUrl).toSet()
+            }
+            rules = loadedRules
+            enabledIds = loadedIds
+        }
         ReaderBottomSheetFrame(maxHeightFraction = maxSheetHeightFraction) { style ->
             Column(
                 modifier = Modifier
@@ -245,19 +243,11 @@ class ParagraphRuleQuickDialog : ReaderBottomSheetComposeDialogFragment() {
 
     companion object {
         private const val ARG_BOOK_URL = "bookUrl"
-        private const val ARG_RULES = "rules"
-        private const val ARG_ENABLED_IDS = "enabledIds"
 
-        fun create(
-            bookUrl: String,
-            rules: List<ParagraphRule>,
-            enabledIds: Set<Long>
-        ): ParagraphRuleQuickDialog {
+        fun create(bookUrl: String): ParagraphRuleQuickDialog {
             return ParagraphRuleQuickDialog().apply {
                 arguments = Bundle().apply {
                     putString(ARG_BOOK_URL, bookUrl)
-                    putParcelableArrayList(ARG_RULES, ArrayList(rules))
-                    putLongArray(ARG_ENABLED_IDS, enabledIds.toLongArray())
                 }
             }
         }

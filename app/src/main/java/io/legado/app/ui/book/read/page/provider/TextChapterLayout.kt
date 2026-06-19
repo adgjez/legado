@@ -1588,7 +1588,8 @@ class TextChapterLayout(
     private fun Element.applyEpubTextModeParagraphIndent() {
         val indent = paragraphIndent
         if (indent.isBlank()) return
-        select("p,div,blockquote,li").forEach { block ->
+        // 列表项(li)有自身的项目符号与缩进，不应再加段首缩进，故不纳入选择器。
+        select("p,div,blockquote").forEach { block ->
             if (block.shouldApplyEpubTextModeIndent()) {
                 block.prependText(indent)
             }

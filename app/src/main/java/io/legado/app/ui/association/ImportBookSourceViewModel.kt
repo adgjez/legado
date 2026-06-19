@@ -39,7 +39,7 @@ class ImportBookSourceViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<BookSource>()
     val checkSources = arrayListOf<BookSourcePart?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
     val newSourceStatus = arrayListOf<Boolean>()
     val updateSourceStatus = arrayListOf<Boolean>()
 

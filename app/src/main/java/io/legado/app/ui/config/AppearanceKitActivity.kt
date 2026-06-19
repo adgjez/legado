@@ -395,7 +395,7 @@ private fun KitSection(
                     preview = previews[kit.id] ?: KitPreviewData.default(),
                     active = kit.id == currentKitId,
                     palette = palette,
-                    onClick = { onApply(kit) },
+                    onClick = { if (kit.id != currentKitId) onApply(kit) },
                     onLongClick = if (kit.type == AppearanceKitType.IMPORTED_THEME) {
                         { onEdit(kit) }
                     } else {

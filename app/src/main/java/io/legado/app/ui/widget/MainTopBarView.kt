@@ -2,6 +2,7 @@ package io.legado.app.ui.widget
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.Gravity
@@ -25,6 +26,7 @@ import io.legado.app.help.config.TopBarConfig
 import io.legado.app.lib.theme.TopBarSearchStyle
 import io.legado.app.lib.theme.UiCorner
 import io.legado.app.lib.theme.applyUiTitleTypeface
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.ui.widget.compose.ComposeThemeImageLayer
 import io.legado.app.ui.widget.compose.ComposeThemeImageCrop
@@ -80,6 +82,13 @@ class MainTopBarView @JvmOverloads constructor(
     private var onHeightChanged: (() -> Unit)? = null
     private var onFilterExpandedChanged: ((Boolean) -> Unit)? = null
     private var statusBarInsetTop: Int = 0
+    /** 覆盖式宿主(顶栏浮在列表之上，如发现页)置 true，使默认样式顶栏不透明，避免列表透出。 */
+    var overlayOpaqueBackground = false
+        set(value) {
+            if (field == value) return
+            field = value
+            applyTopBarStyle(force = true, resetFilters = false)
+        }
 
     init {
         orientation = VERTICAL
@@ -162,17 +171,6 @@ class MainTopBarView @JvmOverloads constructor(
         applyTopBarStyle(force = true)
     }
 
-    fun setDefaultStyleSearchVisible(visible: Boolean) {
-        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
-        if (config.style != TopBarConfig.STYLE_DEFAULT) return
-        if (config.showSearchInDefaultStyle == visible) return
-        config.showSearchInDefaultStyle = visible
-        if (TopBarConfig.activeDirName(AppConfig.isNightTheme) == TopBarConfig.DEFAULT_DIR_NAME) {
-            AppConfig.defaultTopBarShowSearch = visible
-        }
-        applyTopBarStyle(force = true)
-    }
-
     fun setPrimaryItems(items: List<RoundedTagBarView.Item>, selectedIndex: Int) {
         primaryBarRequested = items.isNotEmpty()
         primaryBar.submitItems(items, selectedIndex)
@@ -181,6 +179,10 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun isRegularStyle(): Boolean {
         return TopBarConfig.currentConfig(context, AppConfig.isNightTheme).style == TopBarConfig.STYLE_REGULAR
+    }
+
+    private fun isFloatingSearchHidden(): Boolean {
+        return AppConfig.bottomBarLayoutMode == "floating" && AppConfig.floatingBottomBarHideSearch
     }
 
     fun isOverlayMode(): Boolean {
@@ -291,12 +293,15 @@ class MainTopBarView @JvmOverloads constructor(
     private fun applyDefaultStyle() {
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         contentLayout.setPadding(horizontal, statusBarInsetTop, horizontal, 0)
-        background = null
+        // 覆盖式场景(如发现页顶栏浮在列表之上)需要不透明底，否则滚动的书籍会从透明顶栏后透出。
+        background = if (overlayOpaqueBackground) ColorDrawable(context.backgroundColor) else null
         renderBackgroundLayer(null, 0f)
         titleRow.background = null
         titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
         updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.bookshelf_title_select_height))
-        val showSearch = TopBarConfig.currentConfig(context, AppConfig.isNightTheme).showSearchInDefaultStyle
+        val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+        // 顶栏搜索按钮：包自身开启，或悬浮底栏隐藏了搜索时自动顶上来，保证搜索始终可达。
+        val showSearch = config.showSearchInDefaultStyle || isFloatingSearchHidden()
         searchEntry.isVisible = false
         titleSelect.isVisible = true
         titleSpacer.isVisible = true

@@ -4,9 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,8 +25,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
+import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.book.BookTagHelper
@@ -141,6 +141,7 @@ fun BookshelfGridItem(
 ) {
     val showBookName = AppConfig.showBookname
     val titleFontFamily = FontFamily(LocalContext.current.titleTypeface())
+    val titleColor = Color(ContextCompat.getColor(LocalContext.current, R.color.primaryText))
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -167,7 +168,19 @@ fun BookshelfGridItem(
                 BookshelfStatusBadge(item)
             }
             if (showBookName == 2) {
-                BookshelfOverlayTitle(item)
+                Text(
+                    text = item.displayName,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontFamily = titleFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (showBookName == 0) {
@@ -176,7 +189,7 @@ fun BookshelfGridItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 6.dp),
-                color = Color(LocalContext.current.accentColor).copy(alpha = 0.92f),
+                color = titleColor,
                 fontSize = 12.sp,
                 fontFamily = titleFontFamily,
                 fontWeight = FontWeight.Medium,
@@ -236,31 +249,6 @@ private fun BookshelfStatusBadge(item: BookshelfBookItemUi) {
         textAlign = TextAlign.Center,
         maxLines = 1
     )
-}
-
-@Composable
-private fun BoxScope.BookshelfOverlayTitle(item: BookshelfItemUi) {
-    val titleFontFamily = FontFamily(LocalContext.current.titleTypeface())
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.22f)),
-        contentAlignment = Alignment.BottomStart
-    ) {
-        Text(
-            text = item.displayName,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.32f))
-                .padding(start = 5.dp, end = 5.dp, top = 8.dp, bottom = 5.dp),
-            color = Color.White,
-            fontSize = 11.sp,
-            fontFamily = titleFontFamily,
-            maxLines = 2,
-            minLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
 }
 
 private val BookshelfItemUi.displayName: String

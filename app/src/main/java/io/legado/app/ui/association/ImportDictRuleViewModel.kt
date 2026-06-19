@@ -31,7 +31,7 @@ class ImportDictRuleViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<DictRule>()
     val checkSources = arrayListOf<DictRule?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

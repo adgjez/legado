@@ -30,7 +30,7 @@ class ImportThemeViewModel(app: Application) : BaseViewModel(app) {
 
     val allSources = arrayListOf<ThemeConfig.Config>()
     val checkSources = arrayListOf<ThemeConfig.Config?>()
-    val selectStatus = arrayListOf<Boolean>()
+    val selectStatus = androidx.compose.runtime.mutableStateListOf<Boolean>()
 
     val isSelectAll: Boolean
         get() {

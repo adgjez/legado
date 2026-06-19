@@ -57,6 +57,15 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
                                 updateBooleanSetting(PreferKey.mainTransparentStatusBar, it)
                             }
                         ),
+                        SettingSwitchSpec(
+                            key = PreferKey.immersiveManageBar,
+                            title = getString(R.string.manage_bar_immersion),
+                            summary = getString(R.string.manage_bar_immersion_summary),
+                            checked = booleanSetting(PreferKey.immersiveManageBar, true),
+                            onCheckedChange = {
+                                updateBooleanSetting(PreferKey.immersiveManageBar, it)
+                            }
+                        ),
                         SettingActionSpec(
                             key = KEY_THEME_MANAGE,
                             title = getString(R.string.theme_list),
@@ -129,6 +138,7 @@ class ThemeConfigFragment : ComposeSettingFragment(), MenuProvider {
 
             PreferKey.mainTransparentStatusBar,
             PreferKey.transparentStatusBar,
+            PreferKey.immersiveManageBar,
             PreferKey.immNavigationBar -> recreateActivities()
         }
     }

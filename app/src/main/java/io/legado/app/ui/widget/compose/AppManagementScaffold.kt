@@ -37,6 +37,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
+import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 
@@ -107,10 +109,15 @@ private fun AppManagementTopBar(
     onBack: (() -> Unit)?
 ) {
     val context = LocalContext.current
+    val topBarColor = if (AppConfig.immersiveManageBar) {
+        Color(context.backgroundColor)
+    } else {
+        Color(context.primaryColor)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(context.primaryColor))
+            .background(topBarColor)
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         Row(

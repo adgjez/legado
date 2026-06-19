@@ -56,13 +56,11 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
     private fun initComposeContent() {
         val container = binding.recyclerView.parent as? ViewGroup ?: return
         val index = container.indexOfChild(binding.recyclerView)
+        val params = binding.recyclerView.layoutParams
         container.removeView(binding.recyclerView)
         val cv = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = params
             setContent {
                 AllBookmarkScreen(
                     bookmarks = bookmarksState.value,
@@ -80,7 +78,7 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
                 appDb.bookDao.getBook(bookmark.bookName, bookmark.bookAuthor)
             }
             if (book == null) {
-                showDialogFragment(BookmarkComposeDialog.create(bookmark, position))
+                showDialogFragment(BookmarkDialog(bookmark, position))
             } else {
                 startActivityForBook(book) {
                     putExtra("index", bookmark.chapterIndex)
@@ -91,7 +89,7 @@ class AllBookmarkActivity : VMBaseActivity<ActivityAllBookmarkBinding, AllBookma
     }
 
     private fun onItemLongClick(bookmark: Bookmark, position: Int) {
-        showDialogFragment(BookmarkComposeDialog.create(bookmark, position))
+        showDialogFragment(BookmarkDialog(bookmark, position))
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {

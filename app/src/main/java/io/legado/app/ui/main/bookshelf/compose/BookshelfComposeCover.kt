@@ -171,7 +171,6 @@ private data class BookshelfCoverRequest(
     val sourceOrigin: String?,
     val preferThumb: Boolean,
     val forcePath: Boolean,
-    val displayKey: String,
     val loadKey: String,
     val thumbKey: String
 )
@@ -230,7 +229,6 @@ private fun buildCoverRequest(
         sourceOrigin = sourceOrigin,
         preferThumb = preferThumb,
         forcePath = forcePath,
-        displayKey = displayKey,
         loadKey = loadKey,
         thumbKey = "$sourceOrigin|$path|$name|$author"
     )
