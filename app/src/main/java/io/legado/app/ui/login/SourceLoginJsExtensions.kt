@@ -111,16 +111,23 @@ class SourceLoginJsExtensions(
         }
         activity.runOnUiThread {
             if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-            activity.showDialogFragment(
-                BottomWebViewDialog(
-                    source.getKey(),
-                    bookType,
-                    url,
-                    html,
-                    preloadJs,
-                    config
+            // 从弹出菜单等瞬时上下文触发时活动可能不在 STARTED，提交 DialogFragment 事务会异常退出；
+            // 加生命周期守卫 + 兜底捕获，避免崩溃。
+            if (!activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                return@runOnUiThread
+            }
+            runCatching {
+                activity.showDialogFragment(
+                    BottomWebViewDialog(
+                        source.getKey(),
+                        bookType,
+                        url,
+                        html,
+                        preloadJs,
+                        config
+                    )
                 )
-            )
+            }
         }
     }
 
