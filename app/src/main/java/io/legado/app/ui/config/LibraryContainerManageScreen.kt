@@ -46,6 +46,7 @@ internal fun LibraryContainerManageScreen(
     onBack: () -> Unit,
     onAdd: () -> Unit,
     onItemClick: (LibraryContainerConfig) -> Unit,
+    pageMenuActions: () -> List<AppManagementMenuAction>,
     onMoreActions: (LibraryContainerConfig) -> List<AppManagementMenuAction>
 ) {
     val palette = rememberAppManagementPalette()
@@ -63,7 +64,10 @@ internal fun LibraryContainerManageScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                LibraryContainerTopBar(onBack = onBack)
+                LibraryContainerTopBar(
+                    onBack = onBack,
+                    pageMenuActions = pageMenuActions
+                )
                 Text(
                     text = "书库容器只用于同步阅读章节缓存，不参与备份、主题、气泡或缓存包同步。阅读时会先读取目录索引，只有命中缓存章节才请求正文。",
                     color = palette.settings.secondaryText,
@@ -106,7 +110,10 @@ internal fun LibraryContainerManageScreen(
 }
 
 @Composable
-private fun LibraryContainerTopBar(onBack: () -> Unit) {
+private fun LibraryContainerTopBar(
+    onBack: () -> Unit,
+    pageMenuActions: () -> List<AppManagementMenuAction>
+) {
     val palette = rememberAppManagementPalette()
     Row(
         modifier = Modifier
@@ -147,7 +154,11 @@ private fun LibraryContainerTopBar(onBack: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        Spacer(modifier = Modifier.width(42.dp))
+        AppManagementMoreActionButton(
+            actionsProvider = pageMenuActions,
+            palette = palette,
+            contentDescription = "更多"
+        )
     }
 }
 

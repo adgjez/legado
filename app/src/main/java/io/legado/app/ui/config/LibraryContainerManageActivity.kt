@@ -95,6 +95,7 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                     onBack = { finish() },
                     onAdd = { showEditDialog(null) },
                     onItemClick = { showEditDialog(it) },
+                    pageMenuActions = ::pageMenuActions,
                     onMoreActions = ::containerActions
                 )
             }
@@ -143,6 +144,17 @@ class LibraryContainerManageActivity : BaseActivity<ActivityS3ContainerManageBin
                     }
                     1 -> showImportUrlDialog()
                 }
+            }
+        )
+    }
+
+    private fun pageMenuActions(): List<AppManagementMenuAction> {
+        return listOf(
+            AppManagementMenuAction(getString(R.string.import_str)) {
+                showImportActions()
+            },
+            AppManagementMenuAction("导出全部") {
+                exportContainers(LibraryContainerManager.containers(), "library-containers.json")
             }
         )
     }

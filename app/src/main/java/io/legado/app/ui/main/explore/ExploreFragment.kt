@@ -2034,8 +2034,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     withContext(IO) {
                         appDb.searchBookDao.insert(*newBooks.toTypedArray())
                     }
-                    discoverPage += 1
+                    val oldSize = discoverBooks.size
                     discoverBooks.addAll(newBooks)
+                    val hasNewBooks = discoverBooks.size > oldSize
+                    if (hasNewBooks) {
+                        discoverPage += 1
+                    } else {
+                        discoverHasMore = false
+                    }
                     syncDiscoverComposeState()
                     discoverBookAdapter?.setItems(discoverBooks.toList())
                     binding.tvDiscoverEmpty.gone()

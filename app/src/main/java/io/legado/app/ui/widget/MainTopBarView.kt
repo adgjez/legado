@@ -337,8 +337,11 @@ class MainTopBarView @JvmOverloads constructor(
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 5.dp
         contentLayout.setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
-        background = null
-        renderBackgroundLayer(config, TopBarConfig.cornerRadius(context, config))
+        background = if (overlayOpaqueBackground) ColorDrawable(context.backgroundColor) else null
+        renderBackgroundLayer(
+            config.takeUnless { overlayOpaqueBackground },
+            if (overlayOpaqueBackground) 0f else TopBarConfig.cornerRadius(context, config)
+        )
         titleRow.background = null
         titleRow.setPadding(0, 0, 0, 0)
         updateTitleRowControlHeight(resources.getDimensionPixelSize(R.dimen.top_bar_regular_action_size))
