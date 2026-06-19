@@ -693,15 +693,13 @@ private fun TocChapterRow(
                 indication = null,
                 onClick = onClick
             )
-            // 当前章/按压态做成内缩圆角药丸，避免整行通栏色块显得生硬。
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(12.dp))
+            // 当前章/按压态整行通栏高亮（去掉内缩圆角药丸，看着更清爽）。
             .background(rowBackground)
             .padding(
-                start = if (indented) 22.dp else 10.dp,
-                end = 10.dp,
-                top = 10.dp,
-                bottom = 10.dp
+                start = if (indented) 22.dp else 14.dp,
+                end = 12.dp,
+                top = 11.dp,
+                bottom = 11.dp
             ),
         verticalAlignment = Alignment.CenterVertically
     ) {
