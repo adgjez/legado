@@ -30,6 +30,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import androidx.activity.ComponentDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -581,49 +583,73 @@ class BottomWebViewDialog() : BottomSheetDialogFragment(R.layout.dialog_web_view
         }
         dialog?.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                if (binding.customWebView.size > 0) { //网页全屏
-                    customWebViewCallback?.onCustomViewHidden()
-                    return@setOnKeyListener true
-                }
-                if (currentWebView.canGoBack()) {
-                    val list = currentWebView.copyBackForwardList()
-                    val size = list.size
-                    if (size == 1) {
-                        dismiss()
-                        return@setOnKeyListener true
-                    }
-                    val currentIndex = list.currentIndex
-                    val currentItem = list.currentItem
-                    val currentUrl = currentItem?.originalUrl ?: BLANK_HTML
-                    val currentTitle = currentItem?.title
-                    var steps = 1
-                    for (i in currentIndex - 1 downTo 0) {
-                        val item = list.getItemAtIndex(i)
-                        val itemUrl = item.originalUrl
-                        if (itemUrl == BLANK_HTML) {
-                            dismiss()
-                            return@setOnKeyListener true
-                        }
-                        if (itemUrl != currentUrl || currentTitle != item.title) {
-                            break
-                        }
-                        if (currentUrl == DATA_HTML) {
-                            break
-                        }
-                        steps++
-                    }
-                    if (steps == size) {
-                        dismiss()
-                        return@setOnKeyListener true
-                    }
-                    currentWebView.goBackOrForward(-steps)
-                    return@setOnKeyListener true
-                }
-                dismiss()
-                return@setOnKeyListener true
+                return@setOnKeyListener handleBackPressed()
             }
             false
         }
+        registerBackPressedCallbacks()
+    }
+
+    private fun registerBackPressedCallbacks() {
+        (dialog as? ComponentDialog)?.onBackPressedDispatcher?.addCallback(
+            viewLifecycleOwner,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleBackPressed()
+                }
+            }
+        )
+        activity?.onBackPressedDispatcher?.addCallback(
+            viewLifecycleOwner,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleBackPressed()
+                }
+            }
+        )
+    }
+
+    private fun handleBackPressed(): Boolean {
+        if (binding.customWebView.size > 0) { //网页全屏
+            customWebViewCallback?.onCustomViewHidden()
+            return true
+        }
+        if (currentWebView.canGoBack()) {
+            val list = currentWebView.copyBackForwardList()
+            val size = list.size
+            if (size == 1) {
+                dismiss()
+                return true
+            }
+            val currentIndex = list.currentIndex
+            val currentItem = list.currentItem
+            val currentUrl = currentItem?.originalUrl ?: BLANK_HTML
+            val currentTitle = currentItem?.title
+            var steps = 1
+            for (i in currentIndex - 1 downTo 0) {
+                val item = list.getItemAtIndex(i)
+                val itemUrl = item.originalUrl
+                if (itemUrl == BLANK_HTML) {
+                    dismiss()
+                    return true
+                }
+                if (itemUrl != currentUrl || currentTitle != item.title) {
+                    break
+                }
+                if (currentUrl == DATA_HTML) {
+                    break
+                }
+                steps++
+            }
+            if (steps == size) {
+                dismiss()
+                return true
+            }
+            currentWebView.goBackOrForward(-steps)
+            return true
+        }
+        dismiss()
+        return true
     }
 
     private fun shouldLoadUrlDirectly(rawUrl: String, html: String?, preloadJs: String?): Boolean {
