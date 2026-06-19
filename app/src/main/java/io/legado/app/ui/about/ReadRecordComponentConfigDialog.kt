@@ -89,6 +89,10 @@ object ReadRecordComponentConfigDialog {
             dialog.setLayout(0.9f, 0.68f)
         }
         dialog.applyModernWindowStyle()
+        // AppDialogFrame 自带圆角面板背景，清掉 AlertDialog 自身窗口背景，避免双层背景。
+        dialog.window?.setBackgroundDrawable(
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        )
         dialog.show()
     }
 }
