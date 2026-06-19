@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.UiCorner
 import io.legado.app.ui.widget.compose.LegadoMiuixChoiceRow
 import io.legado.app.ui.widget.compose.rememberAppDialogStyle
 import io.legado.app.ui.widget.compose.toMiuixPalette
@@ -413,6 +415,9 @@ object ModernActionPopup {
         val style = rememberAppDialogStyle()
         val palette = style.toMiuixPalette()
         val panelShape = RoundedCornerShape(style.panelRadius)
+        val context = LocalContext.current
+        // 仅当主题确实设置了面板边框色才画边框；无边框主题不应再显描边线。
+        val hasPanelBorder = remember { UiCorner.panelBorderColor(context) != null }
         // 跟踪 persistent 项的 checked 状态
         var checkedStates by remember { mutableStateOf(actions.map { it.checked }) }
         val density = LocalDensity.current
@@ -453,7 +458,6 @@ object ModernActionPopup {
                         .heightIn(max = maxHeightDp)
                         .onSizeChanged { panelSize = it }
                         .onGloballyPositioned { panelBounds = it.boundsInRoot() }
-                        .border(1.dp, style.stroke, panelShape)
                         .graphicsLayer {
                             alpha = progress
                             transformOrigin = panelTransformOrigin
@@ -461,7 +465,12 @@ object ModernActionPopup {
                             scaleY = 0.96f + 0.04f * progress
                             translationY = (if (panelOffset.y >= snapshot.anchorBottom) -6f else 6f) *
                                 (1f - progress)
-                        },
+                        }
+                        // 边框放在 graphicsLayer 之后，随弹出动画一起淡入，不再先于动画整条显示。
+                        .then(
+                            if (hasPanelBorder) Modifier.border(1.dp, style.stroke, panelShape)
+                            else Modifier
+                        ),
                     shape = panelShape,
                     color = style.surface,
                     contentColor = style.primaryText,
