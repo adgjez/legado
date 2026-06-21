@@ -34,22 +34,28 @@ class HandleFileViewModel(application: Application) : BaseViewModel(application)
 
     fun saveToLocal(uri: Uri, fileName: String, data: Any, success: (uri: Uri) -> Unit) {
         execute {
-            val bytes = when (data) {
-                is File -> data.readBytes()
-                is ByteArray -> data
-                is String -> data.toByteArray()
-                else -> GSON.toJson(data).toByteArray()
-            }
             return@execute if (uri.isContentScheme()) {
                 val doc = DocumentFile.fromTreeUri(context, uri)!!
                 doc.findFile(fileName)?.delete()
-                val newDoc = doc.createFile("", fileName)
-                newDoc!!.writeBytes(context, bytes)
+                val newDoc = doc.createFile("", fileName) ?: error("Create file failed")
+                if (data is File) {
+                    newDoc.openOutputStream()!!.use { output ->
+                        data.inputStream().use { input -> input.copyTo(output) }
+                    }
+                } else {
+                    newDoc.writeBytes(context, data.toSaveBytes())
+                }
                 newDoc.uri
             } else {
                 val file = File(uri.path ?: uri.toString())
                 val newFile = FileUtils.createFileIfNotExist(file, fileName)
-                newFile.writeBytes(bytes)
+                if (data is File) {
+                    newFile.outputStream().use { output ->
+                        data.inputStream().use { input -> input.copyTo(output) }
+                    }
+                } else {
+                    newFile.writeBytes(data.toSaveBytes())
+                }
                 Uri.fromFile(newFile)
             }
         }.onError {
@@ -57,6 +63,14 @@ class HandleFileViewModel(application: Application) : BaseViewModel(application)
             errorLiveData.postValue(it.localizedMessage)
         }.onSuccess {
             success.invoke(it)
+        }
+    }
+
+    private fun Any.toSaveBytes(): ByteArray {
+        return when (this) {
+            is ByteArray -> this
+            is String -> toByteArray()
+            else -> GSON.toJson(this).toByteArray()
         }
     }
 
