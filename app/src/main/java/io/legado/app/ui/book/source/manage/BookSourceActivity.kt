@@ -268,6 +268,17 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
                         sourceHostHeaders = sourceHostHeaders,
                         debugMessages = debugMessagesState,
                         isChecking = isCheckingState.value,
+                        reorderEnabled = sort == BookSourceSort.Default &&
+                            searchQueryState.value.isBlank() &&
+                            !groupSourcesByDomain,
+                        onReorder = { reordered ->
+                            val ordered = if (sortAscending) reordered else reordered.asReversed()
+                            viewModel.upOrder(
+                                ordered.mapIndexed { index, source ->
+                                    source.copy(customOrder = index)
+                                }
+                            )
+                        },
                         onToggleSelect = ::toggleSourceSelection,
                         onToggleEnabled = ::toggleSourceEnabled,
                         onEdit = ::edit,
