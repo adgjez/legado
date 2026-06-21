@@ -41,6 +41,8 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
     override val binding by viewBinding(ActivityParagraphRuleEditBinding::inflate)
     private var rule = ParagraphRule()
     private var focusedEditText: EditText? = null
+    private var bindToken = 0
+    private var bindingLargeRuleFields = false
 
     private val textEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -63,10 +65,20 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.paragraph_rule_edit, menu)
+        updateActionItems(menu)
         return super.onCompatCreateOptionsMenu(menu)
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        updateActionItems(menu)
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
+        if (bindingLargeRuleFields && item.itemId != R.id.menu_help) {
+            toastOnUi(R.string.data_loading)
+            return true
+        }
         when (item.itemId) {
             R.id.menu_fullscreen_edit -> onFullEditClicked()
             R.id.menu_save -> save()
@@ -76,6 +88,19 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
             R.id.menu_help -> showHelp("paragraphRuleHelp")
         }
         return true
+    }
+
+    private fun updateActionItems(menu: Menu) {
+        val enabled = !bindingLargeRuleFields
+        listOf(
+            R.id.menu_fullscreen_edit,
+            R.id.menu_save,
+            R.id.menu_debug_rule,
+            R.id.menu_copy_rule,
+            R.id.menu_paste_rule
+        ).forEach { id ->
+            menu.findItem(id)?.isEnabled = enabled
+        }
     }
 
     private fun initView() = binding.run {
@@ -94,13 +119,39 @@ class ParagraphRuleEditActivity : BaseActivity<ActivityParagraphRuleEditBinding>
     }
 
     private fun bindRule() = binding.run {
+        val token = ++bindToken
+        bindingLargeRuleFields = true
+        setLargeEditorsEnabled(false)
+        invalidateOptionsMenu()
         etName.setText(rule.name)
         etLoginUrl.setText(rule.loginUrl)
         etLoginUi.setText(rule.loginUi)
         cbIsEnableCookie.isChecked = rule.enabledCookieJar
         etTimeout.setText(rule.validTimeout().toString())
-        etScript.setText(rule.script)
-        etJsLib.setText(rule.jsLib)
+        etScript.setText("")
+        etJsLib.setText("")
+        val script = rule.script
+        val jsLib = rule.jsLib
+        root.post {
+            if (!isActiveBind(token)) return@post
+            etScript.setText(script)
+            etScript.post {
+                if (!isActiveBind(token)) return@post
+                etJsLib.setText(jsLib)
+                bindingLargeRuleFields = false
+                setLargeEditorsEnabled(true)
+                invalidateOptionsMenu()
+            }
+        }
+    }
+
+    private fun isActiveBind(token: Int): Boolean {
+        return token == bindToken && !isFinishing && !isDestroyed
+    }
+
+    private fun setLargeEditorsEnabled(enabled: Boolean) = binding.run {
+        etScript.isEnabled = enabled
+        etJsLib.isEnabled = enabled
     }
 
     private fun onFullEditClicked() {
