@@ -2,7 +2,9 @@ package io.legado.app.utils
 
 import android.util.Base64
 
-fun String.decodeBase64DataUrlBytes(): ByteArray? {
+const val MAX_DATA_URL_BYTES = 32 * 1024 * 1024
+
+fun String.decodeBase64DataUrlBytes(maxBytes: Long = MAX_DATA_URL_BYTES.toLong()): ByteArray? {
     val clean = trim()
         .trimMatchingDataUrlWrapper()
         .replace("&amp;", "&")
@@ -26,6 +28,7 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
         .let { it.decodePercentEscapesPreservingPlus() }
         .filterNot { it.isWhitespace() }
     if (payload.isBlank()) return null
+    if (payload.estimatedBase64Bytes() > maxBytes) return null
     val paddedPayload = payload.padBase64()
     fun decode(payload: String): ByteArray? {
         return runCatching {
@@ -36,12 +39,28 @@ fun String.decodeBase64DataUrlBytes(): ByteArray? {
             }.getOrNull()
         }
     }
-    decode(paddedPayload)?.let { return it }
+    decode(paddedPayload)?.takeIf { it.size.toLong() <= maxBytes }?.let { return it }
     val sanitizedPayload = payload
         .replace(Regex("[^A-Za-z0-9+/=_-]"), "")
         .padBase64()
     if (sanitizedPayload.isBlank()) return null
-    return decode(sanitizedPayload)
+    if (sanitizedPayload.estimatedBase64Bytes() > maxBytes) return null
+    return decode(sanitizedPayload)?.takeIf { it.size.toLong() <= maxBytes }
+}
+
+fun String.estimateBase64DataUrlBytes(): Long? {
+    val clean = trim().trimMatchingDataUrlWrapper()
+    val payload = when {
+        clean.startsWith("data:", ignoreCase = true) -> {
+            val commaIndex = clean.indexOf(',')
+            if (commaIndex < 0 || !clean.substring(0, commaIndex).contains(";base64", true)) return null
+            clean.substring(commaIndex + 1).substringBefore(",{")
+        }
+        clean.startsWith("data64:", ignoreCase = true) -> clean.substringAfter(':').substringBefore(",{")
+        else -> return null
+    }.filterNot { it.isWhitespace() }
+    if (payload.isBlank()) return null
+    return payload.estimatedBase64Bytes()
 }
 
 private fun String.decodePercentEscapesPreservingPlus(): String {
@@ -85,4 +104,9 @@ private fun String.trimMatchingDataUrlWrapper(): String {
 private fun String.padBase64(): String {
     val remainder = length % 4
     return if (remainder == 0) this else this + "=".repeat(4 - remainder)
+}
+
+private fun String.estimatedBase64Bytes(): Long {
+    val padding = takeLastWhile { it == '=' }.length.coerceAtMost(2)
+    return (length.toLong() * 3L / 4L - padding).coerceAtLeast(0L)
 }

@@ -12,12 +12,14 @@ import io.legado.app.help.AppCloudStorage
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.ImageTypeUtils
+import io.legado.app.utils.MAX_DATA_URL_BYTES
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.normalizeFileName
+import io.legado.app.utils.readBytesLimited
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.compress.ZipUtils
@@ -891,9 +893,13 @@ object ThemePackageManager {
     private fun writeInlineRedImage(encoded: String, prefix: String, dir: File): String? {
         if (encoded.isBlank()) return null
         return runCatching {
+            if (encoded.length.toLong() * 3L / 4L > MAX_DATA_URL_BYTES) return@runCatching null
             val decoded = Base64.decode(encoded, Base64.DEFAULT)
+            if (decoded.size > MAX_DATA_URL_BYTES) return@runCatching null
             val bytes = if (decoded.size >= 2 && decoded[0] == 0x1F.toByte() && decoded[1] == 0x8B.toByte()) {
-                GZIPInputStream(ByteArrayInputStream(decoded)).use { it.readBytes() }
+                GZIPInputStream(ByteArrayInputStream(decoded)).use {
+                    it.readBytesLimited(MAX_DATA_URL_BYTES.toLong())
+                }
             } else {
                 decoded
             }
