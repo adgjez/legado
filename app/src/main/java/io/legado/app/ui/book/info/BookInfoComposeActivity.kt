@@ -69,7 +69,6 @@ import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
-import io.legado.app.ui.config.LibraryContainerManageActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
@@ -374,6 +373,7 @@ class BookInfoComposeActivity :
             onCloudBackup = {
                 viewModel.getBook(false)?.let { book ->
                     BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.CACHE_PACKAGE)
+                    updateUiState()
                     startActivity(
                         Intent(this, CacheManageActivity::class.java).apply {
                             putExtra(CacheManageActivity.EXTRA_INITIAL_SEARCH_KEY, book.name)
@@ -384,8 +384,8 @@ class BookInfoComposeActivity :
             onOpenLibraryContainer = {
                 viewModel.getBook(false)?.let { book ->
                     BookCloudEntryModeStore.set(book.bookUrl, BookCloudEntryMode.LIBRARY_CHAPTER)
+                    updateUiState()
                 }
-                startActivity(Intent(this, LibraryContainerManageActivity::class.java))
             },
             onAllowUpdateChanged = ::setBookCanUpdate,
             onSetSourceVariable = ::setSourceVariable,
@@ -542,6 +542,7 @@ class BookInfoComposeActivity :
             hasSourceLogin = !viewModel.bookSource?.loginUrl.isNullOrBlank(),
             hasBookSource = viewModel.bookSource != null,
             canUpdate = book.canUpdate,
+            cloudEntryMode = BookCloudEntryModeStore.get(book.bookUrl),
             loading = false
         )
         if (::refreshLayout.isInitialized) {

@@ -92,6 +92,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.text.HtmlCompat
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.book.BookCloudEntryMode
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
 import io.legado.app.lib.theme.accentColor
@@ -141,6 +142,7 @@ data class BookInfoUiState(
     val hasSourceLogin: Boolean = false,
     val hasBookSource: Boolean = false,
     val canUpdate: Boolean = true,
+    val cloudEntryMode: BookCloudEntryMode = BookCloudEntryMode.CACHE_PACKAGE,
     val loading: Boolean = false
 )
 
@@ -900,11 +902,19 @@ private fun BookInfoMoreActionSheet(
                 modifier = Modifier.padding(bottom = 6.dp)
             )
             if (showCloudOptions) {
-                BookInfoMoreActionItem(stringResource(R.string.book_cloud_cache_package_mode), style) {
+                BookInfoToggleActionItem(
+                    text = stringResource(R.string.book_cloud_cache_package_mode),
+                    checked = state.cloudEntryMode == BookCloudEntryMode.CACHE_PACKAGE,
+                    style = style
+                ) {
                     onDismiss()
                     actions.onCloudBackup()
                 }
-                BookInfoMoreActionItem(stringResource(R.string.book_cloud_library_chapter_mode), style) {
+                BookInfoToggleActionItem(
+                    text = stringResource(R.string.book_cloud_library_chapter_mode),
+                    checked = state.cloudEntryMode == BookCloudEntryMode.LIBRARY_CHAPTER,
+                    style = style
+                ) {
                     onDismiss()
                     actions.onOpenLibraryContainer()
                 }
