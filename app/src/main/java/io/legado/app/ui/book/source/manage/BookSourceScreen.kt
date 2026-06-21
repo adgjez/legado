@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,7 +73,7 @@ internal fun BookSourceScreen(
         ).joinToString(separator = "\u001E")
     }
     // 拖拽过程的本地顺序;sources 内容变化(落库后重新发射)时重置同步。
-    var orderedSources by remember { mutableStateOf(sourceSnapshot) }
+    var orderedSources by remember { mutableStateOf(sourceSnapshot, neverEqualPolicy()) }
     LaunchedEffect(reorderEnabled, sourcesSignature) {
         orderedSources = sourceSnapshot
     }

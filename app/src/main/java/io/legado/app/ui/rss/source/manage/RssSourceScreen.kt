@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -54,7 +55,7 @@ internal fun RssSourceScreen(
             it.type
         ).joinToString(separator = "\u001E")
     }
-    var orderedSources by remember { mutableStateOf(sourceSnapshot) }
+    var orderedSources by remember { mutableStateOf(sourceSnapshot, neverEqualPolicy()) }
     LaunchedEffect(reorderEnabled, sourcesSignature) {
         orderedSources = sourceSnapshot
     }
