@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.RssSource
@@ -127,6 +128,16 @@ interface RssSourceDao {
 
     @Query("update rssSources set enabled = :enable where sourceUrl = :sourceUrl")
     fun enable(sourceUrl: String, enable: Boolean)
+
+    @Query("update rssSources set customOrder = :customOrder where sourceUrl = :sourceUrl")
+    fun upOrder(sourceUrl: String, customOrder: Int)
+
+    @Transaction
+    fun upOrder(sources: List<RssSource>) {
+        sources.forEachIndexed { index, source ->
+            upOrder(source.sourceUrl, index)
+        }
+    }
 
     private fun dealGroups(list: List<String>): List<String> {
         val groups = linkedSetOf<String>()
