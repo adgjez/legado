@@ -328,6 +328,7 @@ class ExportBookService : BaseService() {
                 val matcher = AppPattern.imgPattern.matcher(text)
                 while (matcher.find()) {
                     matcher.group(1)?.let {
+                        if (AppPattern.isVirtualImageSrc(it)) return@let
                         val src = NetworkUtils.getAbsoluteURL(chapter.url, it)
                         srcList.add(SrcData(chapter.title, index, src))
                     }
@@ -604,6 +605,7 @@ class ExportBookService : BaseService() {
             val matcher = AppPattern.imgPattern.matcher(text)
             while (matcher.find()) {
                 matcher.group(1)?.let {
+                    if (AppPattern.isVirtualImageSrc(it)) return@let
                     val src = NetworkUtils.getAbsoluteURL(chapter.url, it)
                     val originalHref =
                         "${MD5Utils.md5Encode16(src)}.${BookHelp.getImageSuffix(src)}"

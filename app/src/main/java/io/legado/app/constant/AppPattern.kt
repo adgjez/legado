@@ -13,6 +13,12 @@ object AppPattern {
     //匹配格式化后的图片格式
     val imgPattern: Pattern = Pattern.compile("<img[^>]*src=\"([^\"]*(?:\"[^>]+\\})?)\"[^>]*>")
 
+    fun isVirtualImageSrc(src: String?): Boolean {
+        val value = src?.trim() ?: return false
+        return value.startsWith("dp:", ignoreCase = true) ||
+                value.startsWith("bubble://paragraph", ignoreCase = true)
+    }
+
     //匹配自定义html格式字符串
     val useHtmlRegex = Regex("<usehtml>.*?</usehtml>", RegexOption.DOT_MATCHES_ALL) //.包含换行
 

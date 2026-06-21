@@ -150,6 +150,7 @@ object BookHelp {
                 val matcher = AppPattern.imgPattern.matcher(content)
                 while (matcher.find()) {
                     val src = matcher.group(1) ?: continue
+                    if (AppPattern.isVirtualImageSrc(src)) continue
                     val mSrc = NetworkUtils.getAbsoluteURL(it.url, src)
                     imgNames.add("${MD5Utils.md5Encode16(mSrc)}.${getImageSuffix(mSrc)}")
                 }
@@ -229,6 +230,7 @@ object BookHelp {
             val matcher = AppPattern.imgPattern.matcher(content)
             while (matcher.find()) {
                 val src = matcher.group(1) ?: continue
+                if (AppPattern.isVirtualImageSrc(src)) continue
                 val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
                 emit(mSrc)
             }
@@ -253,6 +255,9 @@ object BookHelp {
         src: String,
         chapter: BookChapter? = null
     ) {
+        if (AppPattern.isVirtualImageSrc(src)) {
+            return
+        }
         if (isImageExist(book, src)) {
             return
         }
@@ -402,6 +407,7 @@ object BookHelp {
             val matcher = AppPattern.imgPattern.matcher(it)
             while (matcher.find()) {
                 val src = matcher.group(1)!!
+                if (AppPattern.isVirtualImageSrc(src)) continue
                 val image = AiImageGalleryManager.resolveImageFile(src) ?: getImage(book, src)
                 if (!image.exists()) {
                     ret = false
@@ -501,6 +507,7 @@ object BookHelp {
         val matcher = AppPattern.imgPattern.matcher(content)
         while (matcher.find()) {
             val src = matcher.group(1) ?: continue
+            if (AppPattern.isVirtualImageSrc(src)) continue
             if (AiImageGalleryManager.imageIdFromUri(src) != null) continue
             val mSrc = NetworkUtils.getAbsoluteURL(bookChapter.url, src)
             getImage(book, mSrc).takeIf { it.exists() }?.delete()
