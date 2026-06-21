@@ -54,6 +54,10 @@ class StableLiquidGlassView @JvmOverloads constructor(
 
     fun bind(source: ViewGroup?) {
         sampleSource = source
+        if (source == null) {
+            removeGlass()
+            return
+        }
         ensureGlass()
     }
 
