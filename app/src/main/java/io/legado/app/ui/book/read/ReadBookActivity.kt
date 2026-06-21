@@ -4416,8 +4416,33 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     override fun showRefreshOptions() {
-        // 长按刷新 - 暂时刷新全部
-        ReadBook.book?.let { refreshContentAll(it) }
+        val labels = listOf(
+            getString(R.string.menu_refresh_dur),
+            getString(R.string.menu_refresh_after),
+            getString(R.string.menu_refresh_all)
+        )
+        binding.readMenu.runMenuOut()
+        selector(R.string.refresh, labels) { _, index ->
+            if (ReadBook.bookSource == null) {
+                upContent()
+                return@selector
+            }
+            ReadBook.book?.let { book ->
+                when (index) {
+                    0 -> {
+                        ReadBook.curTextChapter = null
+                        binding.readView.upContent()
+                        viewModel.refreshContentDur(book)
+                    }
+                    1 -> {
+                        ReadBook.clearTextChapter()
+                        binding.readView.upContent()
+                        viewModel.refreshContentAfter(book)
+                    }
+                    2 -> refreshContentAll(book)
+                }
+            }
+        }
     }
 
     override fun showCacheDialog() {
