@@ -114,10 +114,10 @@ internal fun BookSourceScreen(
             // 手动排序:扁平列表 + 拖动手柄重排(长按仍为多选,不冲突)。
             items(
                 items = orderedSources,
-                key = { it.bookSourceUrl },
+                key = { it.rowContentKey() },
                 contentType = { "bookSource" }
             ) { source ->
-                ReorderableItem(reorderState, key = source.bookSourceUrl) {
+                ReorderableItem(reorderState, key = source.rowContentKey()) {
                     itemRow(source) {
                         Icon(
                             painter = painterResource(R.drawable.ic_drag_handle),
@@ -148,7 +148,7 @@ internal fun BookSourceScreen(
                     }
                 }
                 item(
-                    key = source.bookSourceUrl,
+                    key = source.rowContentKey(),
                     contentType = "bookSource"
                 ) {
                     itemRow(source)
@@ -235,6 +235,24 @@ private fun BookSourceItemRow(
             }
         }
     )
+}
+
+private fun BookSourcePart.rowContentKey(): String {
+    return listOf(
+        bookSourceUrl,
+        bookSourceName,
+        bookSourceGroup.orEmpty(),
+        customOrder,
+        enabled,
+        enabledExplore,
+        hasLoginUrl,
+        lastUpdateTime,
+        respondTime,
+        weight,
+        hasExploreUrl,
+        eventListener,
+        bookSourceType
+    ).joinToString(separator = "\u001E")
 }
 
 private val FINAL_DEBUG_MESSAGE_REGEX = Regex("成功|失败")

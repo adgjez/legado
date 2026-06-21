@@ -88,10 +88,10 @@ internal fun RssSourceScreen(
         if (reorderEnabled) {
             items(
                 items = orderedSources,
-                key = { it.sourceUrl },
+                key = { it.rowContentKey() },
                 contentType = { "rssSource" }
             ) { source ->
-                ReorderableItem(reorderState, key = source.sourceUrl) {
+                ReorderableItem(reorderState, key = source.rowContentKey()) {
                     itemRow(source) {
                         Icon(
                             painter = painterResource(R.drawable.ic_drag_handle),
@@ -110,7 +110,7 @@ internal fun RssSourceScreen(
         } else {
             items(
                 items = sources,
-                key = { it.sourceUrl },
+                key = { it.rowContentKey() },
                 contentType = { "rssSource" }
             ) { source ->
                 itemRow(source)
@@ -154,4 +154,21 @@ private fun RssSourceItemRow(
         moreActions = moreActions,
         leadingContent = dragHandle
     )
+}
+
+private fun RssSource.rowContentKey(): String {
+    return listOf(
+        sourceUrl,
+        sourceName,
+        sourceIcon,
+        sourceGroup.orEmpty(),
+        sourceComment.orEmpty(),
+        enabled,
+        loginUrl.orEmpty(),
+        lastUpdateTime,
+        customOrder,
+        type,
+        preload,
+        cacheFirst
+    ).joinToString(separator = "\u001E")
 }
