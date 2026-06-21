@@ -9,6 +9,7 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 
 class OomGuardTest {
 
@@ -41,7 +42,7 @@ class OomGuardTest {
 
     @Test
     fun isSameOrSubFileOfRejectsSiblingWithSamePrefix() {
-        val root = createTempDir(prefix = "legado-root")
+        val root = Files.createTempDirectory("legado-root").toFile()
         val child = File(root, "child.txt")
         val sibling = File(root.parentFile, "${root.name}-evil/child.txt")
         try {
