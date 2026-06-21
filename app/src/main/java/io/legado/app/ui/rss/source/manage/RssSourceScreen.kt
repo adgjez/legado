@@ -11,7 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -55,7 +55,7 @@ internal fun RssSourceScreen(
             it.type
         ).joinToString(separator = "\u001E")
     }
-    var orderedSources by remember { mutableStateOf(sourceSnapshot, neverEqualPolicy()) }
+    var orderedSources by remember { mutableStateOf(sourceSnapshot, referentialEqualityPolicy()) }
     LaunchedEffect(reorderEnabled, sourcesSignature) {
         orderedSources = sourceSnapshot
     }
@@ -89,10 +89,10 @@ internal fun RssSourceScreen(
         if (reorderEnabled) {
             items(
                 items = orderedSources,
-                key = { it.rowContentKey() },
+                key = { it.sourceUrl },
                 contentType = { "rssSource" }
             ) { source ->
-                ReorderableItem(reorderState, key = source.rowContentKey()) {
+                ReorderableItem(reorderState, key = source.sourceUrl) {
                     itemRow(source) {
                         Icon(
                             painter = painterResource(R.drawable.ic_drag_handle),
@@ -111,7 +111,7 @@ internal fun RssSourceScreen(
         } else {
             items(
                 items = sources,
-                key = { it.rowContentKey() },
+                key = { it.sourceUrl },
                 contentType = { "rssSource" }
             ) { source ->
                 itemRow(source)
@@ -155,21 +155,4 @@ private fun RssSourceItemRow(
         moreActions = moreActions,
         leadingContent = dragHandle
     )
-}
-
-private fun RssSource.rowContentKey(): String {
-    return listOf(
-        sourceUrl,
-        sourceName,
-        sourceIcon,
-        sourceGroup.orEmpty(),
-        sourceComment.orEmpty(),
-        enabled,
-        loginUrl.orEmpty(),
-        lastUpdateTime,
-        customOrder,
-        type,
-        preload,
-        cacheFirst
-    ).joinToString(separator = "\u001E")
 }

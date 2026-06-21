@@ -15,7 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.neverEqualPolicy
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,7 +73,7 @@ internal fun BookSourceScreen(
         ).joinToString(separator = "\u001E")
     }
     // 拖拽过程的本地顺序;sources 内容变化(落库后重新发射)时重置同步。
-    var orderedSources by remember { mutableStateOf(sourceSnapshot, neverEqualPolicy()) }
+    var orderedSources by remember { mutableStateOf(sourceSnapshot, referentialEqualityPolicy()) }
     LaunchedEffect(reorderEnabled, sourcesSignature) {
         orderedSources = sourceSnapshot
     }
@@ -115,10 +115,10 @@ internal fun BookSourceScreen(
             // 手动排序:扁平列表 + 拖动手柄重排(长按仍为多选,不冲突)。
             items(
                 items = orderedSources,
-                key = { it.rowContentKey() },
+                key = { it.bookSourceUrl },
                 contentType = { "bookSource" }
             ) { source ->
-                ReorderableItem(reorderState, key = source.rowContentKey()) {
+                ReorderableItem(reorderState, key = source.bookSourceUrl) {
                     itemRow(source) {
                         Icon(
                             painter = painterResource(R.drawable.ic_drag_handle),
@@ -149,7 +149,7 @@ internal fun BookSourceScreen(
                     }
                 }
                 item(
-                    key = source.rowContentKey(),
+                    key = source.bookSourceUrl,
                     contentType = "bookSource"
                 ) {
                     itemRow(source)
@@ -236,24 +236,6 @@ private fun BookSourceItemRow(
             }
         }
     )
-}
-
-private fun BookSourcePart.rowContentKey(): String {
-    return listOf(
-        bookSourceUrl,
-        bookSourceName,
-        bookSourceGroup.orEmpty(),
-        customOrder,
-        enabled,
-        enabledExplore,
-        hasLoginUrl,
-        lastUpdateTime,
-        respondTime,
-        weight,
-        hasExploreUrl,
-        eventListener,
-        bookSourceType
-    ).joinToString(separator = "\u001E")
 }
 
 private val FINAL_DEBUG_MESSAGE_REGEX = Regex("成功|失败")
