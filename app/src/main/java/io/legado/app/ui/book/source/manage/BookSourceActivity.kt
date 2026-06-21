@@ -593,7 +593,7 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             ).catch {
                 AppLog.put("书源界面更新书源出错", it)
             }.flowOn(IO).conflate().collect { data ->
-                sourcesState.replaceByIndex(data)
+                sourcesState.replaceByIndex(data, ::sameBookSourcePartContent)
                 val currentUrls = data.mapTo(mutableSetOf()) { it.bookSourceUrl }
                 selectedUrls.value = selectedUrls.value.filter { it in currentUrls }.toSet()
                 isSelectMode.value = selectedUrls.value.isNotEmpty()
@@ -1132,6 +1132,22 @@ class BookSourceActivity : VMBaseActivity<ActivityBookSourceBinding, BookSourceV
             transform = { it.copy(enabledExplore = enable) }
         ) ?: bookSource.copy(enabledExplore = enable)
         viewModel.enableExplore(enable, listOf(updated))
+    }
+
+    private fun sameBookSourcePartContent(old: BookSourcePart, new: BookSourcePart): Boolean {
+        return old.bookSourceUrl == new.bookSourceUrl &&
+            old.bookSourceName == new.bookSourceName &&
+            old.bookSourceGroup == new.bookSourceGroup &&
+            old.customOrder == new.customOrder &&
+            old.enabled == new.enabled &&
+            old.enabledExplore == new.enabledExplore &&
+            old.hasLoginUrl == new.hasLoginUrl &&
+            old.lastUpdateTime == new.lastUpdateTime &&
+            old.respondTime == new.respondTime &&
+            old.weight == new.weight &&
+            old.hasExploreUrl == new.hasExploreUrl &&
+            old.eventListener == new.eventListener &&
+            old.bookSourceType == new.bookSourceType
     }
 
     private fun toTop(bookSource: BookSourcePart) {

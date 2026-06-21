@@ -478,7 +478,7 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
             }.catch {
                 AppLog.put("订阅源管理界面更新数据出错", it)
             }.flowOn(IO).conflate().collect {
-                sourcesState.replaceByIndex(it)
+                sourcesState.replaceByIndex(it, ::sameRssSourceListContent)
                 val currentUrls = it.mapTo(mutableSetOf()) { source -> source.sourceUrl }
                 selectedUrls.value = selectedUrls.value.filter { url -> url in currentUrls }.toSet()
                 isSelectMode.value = selectedUrls.value.isNotEmpty()
@@ -541,6 +541,21 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                 sourcesState[index] = source.copy(enabled = enabled)
             }
         }
+    }
+
+    private fun sameRssSourceListContent(old: RssSource, new: RssSource): Boolean {
+        return old.sourceUrl == new.sourceUrl &&
+            old.sourceName == new.sourceName &&
+            old.sourceIcon == new.sourceIcon &&
+            old.sourceGroup == new.sourceGroup &&
+            old.sourceComment == new.sourceComment &&
+            old.enabled == new.enabled &&
+            old.loginUrl == new.loginUrl &&
+            old.lastUpdateTime == new.lastUpdateTime &&
+            old.customOrder == new.customOrder &&
+            old.type == new.type &&
+            old.preload == new.preload &&
+            old.cacheFirst == new.cacheFirst
     }
 
     private fun updateSearchQuery(query: String) {
