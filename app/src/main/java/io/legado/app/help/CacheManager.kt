@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import android.graphics.Bitmap
 import android.webkit.JavascriptInterface
 import androidx.annotation.Keep
 import androidx.collection.LruCache
@@ -17,9 +18,30 @@ private val queryTTFMap = LruCache<String, QueryTTF>(4)
 private val memoryLruCache = object : LruCache<String, Any>(1024 * 1024 * 50) {
 
     override fun sizeOf(key: String, value: Any): Int {
-        return value.toString().memorySize()
+        return value.estimatedMemorySize().coerceAtLeast(1)
     }
 
+}
+
+private fun Any?.estimatedMemorySize(): Int {
+    val size = when (this) {
+        null -> 0L
+        is String -> memorySize().toLong()
+        is CharSequence -> toString().memorySize().toLong()
+        is ByteArray -> size.toLong()
+        is Bitmap -> runCatching { allocationByteCount }.getOrElse { rowBytes * height }.toLong()
+        is Int, is Float -> 4L
+        is Long, is Double -> 8L
+        is Boolean, is Byte -> 1L
+        is Short, is Char -> 2L
+        is Pair<*, *> -> 16L + first.estimatedMemorySize() + second.estimatedMemorySize()
+        is Collection<*> -> fold(16L) { acc, item -> acc + item.estimatedMemorySize() }
+        is Map<*, *> -> entries.fold(32L) { acc, entry ->
+            acc + entry.key.estimatedMemorySize() + entry.value.estimatedMemorySize()
+        }
+        else -> toString().memorySize().toLong()
+    }
+    return size.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
 }
 
 object AppCacheManager {
