@@ -86,3 +86,14 @@ fun File.checkWrite(): Boolean {
 fun File.outputStream(append: Boolean = false): FileOutputStream {
     return FileOutputStream(this, append)
 }
+
+fun File.isSameOrSubFileOf(parent: File): Boolean {
+    val childPath = canonicalPath
+    val parentPath = parent.canonicalPath
+    val parentPrefix = if (parentPath.endsWith(File.separator)) {
+        parentPath
+    } else {
+        parentPath + File.separator
+    }
+    return childPath == parentPath || childPath.startsWith(parentPrefix)
+}

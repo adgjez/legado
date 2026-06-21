@@ -3,6 +3,7 @@ package io.legado.app.utils.compress
 import android.annotation.SuppressLint
 import io.legado.app.utils.DebugLog
 import io.legado.app.utils.compress.ZipUtils.zipFile
+import io.legado.app.utils.isSameOrSubFileOf
 import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
@@ -249,7 +250,7 @@ object ZipUtils {
         while (zipInputStream.nextEntry.also { entry = it } != null) {
             val entryName = entry!!.name
             val entryFile = File(dir, entryName)
-            if (!entryFile.canonicalPath.startsWith(dir.canonicalPath)) {
+            if (!entryFile.isSameOrSubFileOf(dir)) {
                 throw SecurityException("压缩文件只能解压到指定路径")
             }
             if (entry.isDirectory) {

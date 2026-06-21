@@ -13,6 +13,7 @@ import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.isSameOrSubFileOf
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.normalizeFileName
@@ -538,7 +539,7 @@ object AppearanceKitManager {
             zip.entries().asSequence().forEach { entry ->
                 if (entry.isDirectory) return@forEach
                 val target = File(targetDir, entry.name)
-                if (!target.canonicalPath.startsWith(targetDir.canonicalPath)) {
+                if (!target.isSameOrSubFileOf(targetDir)) {
                     throw IllegalArgumentException("Invalid package")
                 }
                 target.parentFile?.mkdirs()

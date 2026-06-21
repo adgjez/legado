@@ -6,6 +6,7 @@ import android.system.Os
 import android.system.OsConstants
 import android.system.OsConstants.S_ISDIR
 import io.legado.app.lib.icu4j.CharsetDetector
+import io.legado.app.utils.isSameOrSubFileOf
 import me.zhanghai.android.libarchive.Archive
 import me.zhanghai.android.libarchive.ArchiveEntry
 import me.zhanghai.android.libarchive.ArchiveException
@@ -237,7 +238,7 @@ object LibArchiveUtils {
                     getEntryString(ArchiveEntry.pathnameUtf8(entry), ArchiveEntry.pathname(entry))
                         ?: continue
                 val entryFile = File(destDir, entryName)
-                if (!entryFile.canonicalPath.startsWith(destDir.canonicalPath)) {
+                if (!entryFile.isSameOrSubFileOf(destDir)) {
                     throw SecurityException("压缩文件只能解压到指定路径")
                 }
                 val entryStat = ArchiveEntry.stat(entry)

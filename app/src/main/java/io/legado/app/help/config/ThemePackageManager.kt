@@ -18,6 +18,7 @@ import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getFile
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.isSameOrSubFileOf
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.readBytesLimited
 import io.legado.app.help.http.newCallResponse
@@ -679,8 +680,9 @@ object ThemePackageManager {
                 zip.entries().asSequence().forEach { entry ->
                     if (entry.isDirectory) return@forEach
                     val target = File(unzipDir, entry.name)
-                    target.canonicalPath.takeIf { it.startsWith(unzipDir.canonicalPath + File.separator) }
-                        ?: throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                    if (!target.isSameOrSubFileOf(unzipDir)) {
+                        throw IllegalArgumentException(appCtx.getString(R.string.theme_red_invalid))
+                    }
                     target.parentFile?.mkdirs()
                     zip.getInputStream(entry).use { input ->
                         FileOutputStream(target).use { output -> input.copyTo(output) }

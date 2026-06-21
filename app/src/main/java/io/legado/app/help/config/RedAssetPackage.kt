@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.getFile
+import io.legado.app.utils.isSameOrSubFileOf
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
@@ -68,12 +69,10 @@ internal object RedAssetPackage {
             FileUtils.delete(targetDir, deleteRootDir = true)
         }
         targetDir.mkdirs()
-        val rootPath = targetDir.canonicalPath
         ZipFile(zipFile).use { zip ->
             zip.entries().asSequence().forEach { entry ->
                 val target = File(targetDir, entry.name)
-                val targetPath = target.canonicalPath
-                if (!targetPath.startsWith(rootPath + File.separator) && targetPath != rootPath) {
+                if (!target.isSameOrSubFileOf(targetDir)) {
                     throw IllegalArgumentException("Invalid RED package")
                 }
                 if (entry.isDirectory) {
