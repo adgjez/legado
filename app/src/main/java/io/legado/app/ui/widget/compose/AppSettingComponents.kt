@@ -345,10 +345,10 @@ fun AppManagementListRow(
             }
             trailingBeforeSwitch?.invoke(this)
             if (switchChecked != null && onSwitchChange != null) {
-                LegadoMiuixSwitch(
+                AppManagementSwitch(
                     checked = switchChecked,
-                    onCheckedChange = onSwitchChange,
-                    palette = palette.miuix
+                    palette = palette,
+                    onCheckedChange = onSwitchChange
                 )
             }
             onEdit?.let {
@@ -413,6 +413,57 @@ fun AppManagementListRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AppManagementSwitch(
+    checked: Boolean,
+    palette: AppManagementPalette,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val progress by animateFloatAsState(
+        targetValue = if (checked) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "managementSwitchChecked"
+    )
+    Box(
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .width(48.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (checked) {
+                    palette.settings.accent
+                } else {
+                    palette.settings.secondaryText.copy(alpha = 0.22f)
+                }
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                onCheckedChange(!checked)
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(start = 3.dp)
+                .size(22.dp)
+                .graphicsLayer {
+                    translationX = progress * 20.dp.toPx()
+                }
+                .clip(CircleShape)
+                .background(
+                    if (checked) {
+                        palette.settings.onAccent
+                    } else {
+                        palette.settings.secondaryText.copy(alpha = 0.72f)
+                    }
+                )
+        )
     }
 }
 
