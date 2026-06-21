@@ -3,10 +3,12 @@ package io.legado.app.ui.widget
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -72,6 +74,14 @@ class MainTopBarView @JvmOverloads constructor(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
     }
+    /** 覆盖式宿主在 API>=33 时用于背景毛玻璃的采样层,默认隐藏。 */
+    private val backdropGlass = StableLiquidGlassView(context).apply {
+        visibility = View.GONE
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private var backdropGlassActive = false
     private var mode = Mode.BOOKSHELF
     private var styleSignature: String? = null
     private var primaryBarRequested = false
@@ -109,6 +119,15 @@ class MainTopBarView @JvmOverloads constructor(
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        // 玻璃层放在背景层之上、内容层之下:激活时作为半透明顶栏的实底,内容仍清晰。
+        surfaceLayout.addView(
+            backdropGlass,
+            1,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
         contentLayout.addView(titleRow)
@@ -187,6 +206,36 @@ class MainTopBarView @JvmOverloads constructor(
 
     fun isOverlayMode(): Boolean {
         return isRegularStyle()
+    }
+
+    /** 设备是否支持背景毛玻璃(液态玻璃着色器需 API 33+);宿主据此决定覆盖式 or 非覆盖兜底。 */
+    fun supportsBackdropBlur(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    }
+
+    /**
+     * 覆盖式宿主(列表滚到顶栏下方)在 API>=33 时,用背景毛玻璃做实底,避免透明顶栏透出滚动的列表。
+     * @param source 列表容器(玻璃采样源);传 null 或低版本时关闭玻璃,改由宿主使用非覆盖布局兜底。
+     */
+    fun setBackdropBlur(source: ViewGroup?) {
+        val active = source != null && supportsBackdropBlur()
+        backdropGlassActive = active
+        if (active) {
+            val config = TopBarConfig.currentConfig(context, AppConfig.isNightTheme)
+            val radius = if (isRegularStyle()) TopBarConfig.cornerRadius(context, config) else 0f
+            backdropGlass.visibility = View.VISIBLE
+            backdropGlass.setCornerRadius(radius)
+            backdropGlass.setBlurRadius(18.dp.toFloat())
+            backdropGlass.setTintAlpha(0.10f)
+            backdropGlass.setDispersion(0.10f)
+            backdropGlass.setRefractionHeight(14.dp.toFloat())
+            backdropGlass.setRefractionOffset(26.dp.toFloat())
+            backdropGlass.bind(source)
+        } else {
+            backdropGlass.visibility = View.GONE
+            backdropGlass.bind(null)
+        }
+        applyTopBarStyle(force = true, resetFilters = false)
     }
 
     fun refreshStyle() {
@@ -294,7 +343,11 @@ class MainTopBarView @JvmOverloads constructor(
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         contentLayout.setPadding(horizontal, statusBarInsetTop, horizontal, 0)
         // 覆盖式场景(如发现页顶栏浮在列表之上)需要不透明底，否则滚动的书籍会从透明顶栏后透出。
-        background = if (overlayOpaqueBackground) ColorDrawable(context.backgroundColor) else null
+        background = if (overlayOpaqueBackground && !backdropGlassActive) {
+            ColorDrawable(context.backgroundColor)
+        } else {
+            null
+        }
         renderBackgroundLayer(null, 0f)
         titleRow.background = null
         titleRow.setPadding(0, resources.getDimensionPixelSize(R.dimen.bookshelf_title_row_margin_top), 0, 0)
@@ -337,10 +390,15 @@ class MainTopBarView @JvmOverloads constructor(
         val horizontal = resources.getDimensionPixelSize(R.dimen.bookshelf_tag_bar_margin_horizontal)
         val vertical = 5.dp
         contentLayout.setPadding(horizontal, statusBarInsetTop + vertical, horizontal, vertical)
-        background = if (overlayOpaqueBackground) ColorDrawable(context.backgroundColor) else null
+        background = if (overlayOpaqueBackground && !backdropGlassActive) {
+            ColorDrawable(context.backgroundColor)
+        } else {
+            null
+        }
+        val hideConfigBg = overlayOpaqueBackground || backdropGlassActive
         renderBackgroundLayer(
-            config.takeUnless { overlayOpaqueBackground },
-            if (overlayOpaqueBackground) 0f else TopBarConfig.cornerRadius(context, config)
+            config.takeUnless { hideConfigBg },
+            if (hideConfigBg) 0f else TopBarConfig.cornerRadius(context, config)
         )
         titleRow.background = null
         titleRow.setPadding(0, 0, 0, 0)
@@ -556,9 +614,9 @@ class MainTopBarView @JvmOverloads constructor(
     private class ContentMeasuredFrameLayout(context: Context) : FrameLayout(context) {
 
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            val background = getChildAt(0)
-            val content = getChildAt(1)
-            if (background == null || content == null) {
+            // 最后一个子 view 为内容层(决定高度),其余(背景层/毛玻璃层)按内容测得尺寸铺满。
+            val content = getChildAt(childCount - 1)
+            if (content == null) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec)
                 return
             }
@@ -573,10 +631,12 @@ class MainTopBarView @JvmOverloads constructor(
                 contentLp.topMargin + contentLp.bottomMargin
             val measuredHeight = resolveSize(contentHeight, heightMeasureSpec)
             setMeasuredDimension(measuredWidth, measuredHeight)
-            background.measure(
-                View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
-            )
+            for (i in 0 until childCount - 1) {
+                getChildAt(i).measure(
+                    View.MeasureSpec.makeMeasureSpec(measuredWidth, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(measuredHeight, View.MeasureSpec.EXACTLY)
+                )
+            }
         }
     }
 }

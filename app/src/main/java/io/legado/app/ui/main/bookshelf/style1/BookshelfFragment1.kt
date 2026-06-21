@@ -161,7 +161,8 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
 
     private fun updateTopBarOverlay() {
         if (!isAdded) return
-        val overlay = binding.topBar.isOverlayMode()
+        // 仅 API>=33 走覆盖式(顶栏背景毛玻璃);低版本降级为非覆盖布局,避免透明顶栏透出滚动列表。
+        val overlay = binding.topBar.isOverlayMode() && binding.topBar.supportsBackdropBlur()
         val contentMargin = resources.getDimensionPixelSize(R.dimen.bookshelf_content_margin_top)
         val newSpace = if (overlay) binding.topBar.height else 0
         if (topOverlayEnabled != overlay) {
@@ -193,6 +194,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap.values.forEach { fragment ->
             fragment.setTopOverlaySpace(topOverlaySpace, topOverlayEnabled)
         }
+        binding.topBar.setBackdropBlur(if (overlay) binding.viewPagerBookshelf else null)
         binding.topBar.bringToFront()
     }
 

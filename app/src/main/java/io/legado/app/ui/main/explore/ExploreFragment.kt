@@ -214,8 +214,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             }
         }
         binding.topBar.setMode(io.legado.app.ui.widget.MainTopBarView.Mode.DISCOVERY)
-        // 发现页顶栏浮在列表之上(覆盖式)，需不透明背景，避免滚动书籍从顶栏后透出。
-        binding.topBar.overlayOpaqueBackground = true
         binding.topBar.setSearchEntryVisible(true)
         binding.topBar.applyStatusBarPadding(withInitialPadding = true)
         binding.topBar.doOnLayout {
@@ -417,9 +415,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     private fun updateModernTopBarOverlay() {
         if (!usingModernDiscovery || view == null) return
         val topSpace = binding.topBar.height
+        // API>=33:顶栏背景毛玻璃,列表滚到栏下被磨砂;低版本:compose 列表内边距下移并裁剪,不滚到栏下。
+        val canBlur = binding.topBar.supportsBackdropBlur()
         if (modernTopOverlaySpace != topSpace) {
             modernTopOverlaySpace = topSpace
-            composeDiscoverTopPadding.intValue = topSpace
+            composeDiscoverTopPadding.intValue = if (canBlur) topSpace else 0
+            binding.composeDiscoverBooks.setPadding(
+                binding.composeDiscoverBooks.paddingLeft,
+                if (canBlur) 0 else topSpace,
+                binding.composeDiscoverBooks.paddingRight,
+                binding.composeDiscoverBooks.paddingBottom
+            )
             binding.rvDiscoverBooks.clipToPadding = true
             binding.rvDiscoverBooks.setPadding(
                 binding.rvDiscoverBooks.paddingLeft,
@@ -433,6 +439,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 topSpace + 56.dpToPx()
             )
         }
+        binding.topBar.setBackdropBlur(if (canBlur) binding.flDiscoverBooks else null)
         binding.topBar.bringToFront()
     }
 
