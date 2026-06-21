@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
@@ -104,18 +105,15 @@ fun Fragment.readUri(uri: Uri?, success: (fileDoc: FileDoc, inputStream: InputSt
 }
 
 @Throws(Exception::class)
-fun Uri.readBytes(context: Context): ByteArray {
+fun Uri.readBytes(context: Context, maxBytes: Long = Long.MAX_VALUE): ByteArray {
     return if (this.isContentScheme()) {
         context.contentResolver.openInputStream(this)?.use {
-            val len: Int = it.available()
-            val buffer = ByteArray(len)
-            it.read(buffer)
-            buffer
+            it.readBytesLimited(maxBytes)
         } ?: throw NoStackTraceException("打开文件失败\n${this}")
     } else {
         val path = RealPathUtil.getPath(context, this)
         if (path?.isNotEmpty() == true) {
-            File(path).readBytes()
+            File(path).inputStream().use { it.readBytesLimited(maxBytes) }
         } else {
             throw NoStackTraceException("获取文件真实地址失败\n${this.path}")
         }
@@ -295,8 +293,7 @@ fun Uri.toRequestBody(contentType: MediaType? = null): RequestBody {
         override fun contentType() = contentType
 
         override fun contentLength(): Long {
-            val length = uri.inputStream(appCtx).getOrThrow().available().toLong()
-            return if (length > 0) length else -1
+            return uri.length(appCtx)
         }
 
         override fun writeTo(sink: BufferedSink) {
@@ -305,6 +302,26 @@ fun Uri.toRequestBody(contentType: MediaType? = null): RequestBody {
             }
         }
     }
+}
+
+fun Uri.length(context: Context): Long {
+    if (!isContentScheme()) {
+        val path = RealPathUtil.getPath(context, this)
+        return path?.let { File(it).takeIf(File::exists)?.length() } ?: -1L
+    }
+    context.contentResolver.openAssetFileDescriptor(this, "r")?.use {
+        if (it.length >= 0) return it.length
+    }
+    context.contentResolver.query(this, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index >= 0 && !cursor.isNull(index)) {
+                val size = cursor.getLong(index)
+                if (size >= 0) return size
+            }
+        }
+    }
+    return -1L
 }
 
 fun Uri.canRead(): Boolean {

@@ -394,13 +394,11 @@ fun DocumentFile.readText(context: Context): String {
 }
 
 @Throws(Exception::class)
-fun DocumentFile.readBytes(context: Context): ByteArray {
+fun DocumentFile.readBytes(context: Context, maxBytes: Long = Long.MAX_VALUE): ByteArray {
     return context.contentResolver.openInputStream(uri)?.let {
-        val len: Int = it.available()
-        val buffer = ByteArray(len)
-        it.read(buffer)
-        it.close()
-        return buffer
+        it.use { input ->
+            return input.readBytesLimited(maxBytes)
+        }
     } ?: throw NoStackTraceException("打开文件失败\n${uri}")
 }
 
