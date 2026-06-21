@@ -105,6 +105,44 @@ object BitmapUtils {
         return BitmapFactory.decodeResource(context.resources, resId, opt)
     }
 
+    fun decodeBitmap(
+        inputFactory: () -> InputStream?,
+        width: Int,
+        height: Int? = null,
+        preferredConfig: Config? = null
+    ): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        inputFactory()?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        } ?: return null
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        options.inSampleSize = calculateInSampleSize(options, width, height)
+        options.inJustDecodeBounds = false
+        preferredConfig?.let { options.inPreferredConfig = it }
+        return inputFactory()?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        }
+    }
+
+    fun decodeBitmap(
+        bytes: ByteArray,
+        width: Int,
+        height: Int? = null,
+        preferredConfig: Config? = null
+    ): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        options.inSampleSize = calculateInSampleSize(options, width, height)
+        options.inJustDecodeBounds = false
+        preferredConfig?.let { options.inPreferredConfig = it }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
     /**
      * @param context 设备上下文
      * @param resId 资源ID

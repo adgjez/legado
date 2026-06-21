@@ -8,7 +8,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -21,6 +20,7 @@ import io.legado.app.data.appDb
 import io.legado.app.ui.about.ReadRecordActivity
 import io.legado.app.ui.about.ReadRecordWidgetStore
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.utils.BitmapUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,17 +118,21 @@ class ReadGoalWidgetProvider : AppWidgetProvider() {
         private fun decodeAvatarBitmap(context: Context, path: String): Bitmap? {
             if (path.isBlank()) return null
             return runCatching {
-                val input = when {
-                    path.startsWith("content://", ignoreCase = true) ||
-                            path.startsWith("file://", ignoreCase = true) -> {
-                        context.contentResolver.openInputStream(Uri.parse(path))
-                    }
-                    else -> File(path).takeIf { it.exists() }?.inputStream()
-                } ?: return null
-                input.use {
-                    BitmapFactory.decodeStream(it)
-                }?.centerCircleCrop(42.dp(context))
+                val size = 42.dp(context)
+                BitmapUtils.decodeBitmap(
+                    inputFactory = { openAvatarInputStream(context, path) },
+                    width = size,
+                    height = size
+                )?.centerCircleCrop(size)
             }.getOrNull()
+        }
+
+        private fun openAvatarInputStream(context: Context, path: String) = when {
+            path.startsWith("content://", ignoreCase = true) ||
+                    path.startsWith("file://", ignoreCase = true) -> {
+                context.contentResolver.openInputStream(Uri.parse(path))
+            }
+            else -> File(path).takeIf { it.exists() }?.inputStream()
         }
 
         private fun Bitmap.centerCircleCrop(size: Int): Bitmap {

@@ -14,6 +14,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.SvgUtils
@@ -67,6 +68,7 @@ class EpubFile(var book: Book) {
         const val TEXT_CONTENT_VERSION_FLAG = "<!--epub-text-ver=1-->"
         private const val NATIVE_LAYOUT_DISK_CACHE_VERSION = 4
         private const val ENABLE_EPUB_DEBUG_DUMP = false
+        private const val MAX_COVER_IMAGE_SIZE = 1600
         private val scriptBlockRegex = Regex("(?is)<script\\b[^>]*>.*?</script>")
         private val scriptSelfClosingRegex = Regex("(?is)<script\\b[^>]*/>")
         private val textEngineBlockTags = setOf(
@@ -2099,9 +2101,7 @@ class EpubFile(var book: Book) {
                     return true
                 }
                 /*部分书籍DRM处理后，封面获取异常，待优化*/
-                val cover = it.coverImage?.inputStream?.use { input ->
-                    BitmapFactory.decodeStream(input)
-                } ?: findFallbackCoverBitmap()
+                val cover = decodeCoverResource(it.coverImage) ?: findFallbackCoverBitmap()
                 if (cover == null) {
                     AppLog.putDebug("Epub: 封面获取为空. path: ${book.bookUrl}")
                     return false
@@ -2135,6 +2135,15 @@ class EpubFile(var book: Book) {
         coverLoadChecked = true
     }
 
+    private fun decodeCoverResource(resource: Resource?): Bitmap? {
+        resource ?: return null
+        return BitmapUtils.decodeBitmap(
+            inputFactory = { resource.inputStream },
+            width = MAX_COVER_IMAGE_SIZE,
+            height = MAX_COVER_IMAGE_SIZE
+        )
+    }
+
     private fun findFallbackCoverBitmap(): Bitmap? {
         val resources = epubBook?.resources?.all.orEmpty()
         val coverResource = resources.firstOrNull { resource ->
@@ -2147,9 +2156,7 @@ class EpubFile(var book: Book) {
             val mediaType = resource.mediaType?.toString().orEmpty().lowercase(Locale.ROOT)
             mediaType.startsWith("image/") || href.endsWith(".jpg") || href.endsWith(".jpeg") || href.endsWith(".png")
         }
-        return coverResource?.inputStream?.use { input ->
-            BitmapFactory.decodeStream(input)
-        }
+        return decodeCoverResource(coverResource)
     }
 
     private fun upBookInfo() {

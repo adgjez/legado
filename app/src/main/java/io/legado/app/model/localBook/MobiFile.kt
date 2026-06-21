@@ -1,7 +1,6 @@
 package io.legado.app.model.localBook
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.ParcelFileDescriptor
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
@@ -12,6 +11,7 @@ import io.legado.app.lib.mobi.KF8Book
 import io.legado.app.lib.mobi.MobiBook
 import io.legado.app.lib.mobi.MobiReader
 import io.legado.app.lib.mobi.entities.TOC
+import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.compressPreservingAlpha
@@ -25,6 +25,7 @@ import java.io.InputStream
 class MobiFile(var book: Book) {
 
     companion object : BaseLocalBookParse {
+        private const val MAX_COVER_IMAGE_SIZE = 1600
         private var mFile: MobiFile? = null
         private val xmlDeclarationRegex = "<\\?xml[^>]*>".toRegex()
         private val doctypeDeclarationRegex = "<!DOCTYPE[^>]*>".toRegex()
@@ -283,7 +284,11 @@ class MobiFile(var book: Book) {
                     return
                 }
                 it.getCover()?.let { bytes ->
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    val bitmap = BitmapUtils.decodeBitmap(
+                        bytes = bytes,
+                        width = MAX_COVER_IMAGE_SIZE,
+                        height = MAX_COVER_IMAGE_SIZE
+                    ) ?: return@let
                     val coverPath = LocalBook.resolveCoverPath(book, bitmap.preferredCoverExtension())
                     book.coverUrl = coverPath
                     val file = FileUtils.createFileIfNotExist(coverPath)
