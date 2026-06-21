@@ -11,7 +11,7 @@ internal fun <T> SnapshotStateList<T>.replaceByIndex(
         val next = items[index]
         if (index < size) {
             if (!sameContent(this[index], next)) {
-                this[index] = next
+                replaceAt(index, next)
             }
         } else {
             add(next)
@@ -31,7 +31,7 @@ internal inline fun <T> SnapshotStateList<T>.replaceFirst(
     if (index < 0) return null
     val next = transform(this[index])
     if (this[index] !== next || this[index] != next) {
-        this[index] = next
+        replaceAt(index, next)
     }
     return next
 }
@@ -45,8 +45,18 @@ internal inline fun <T> SnapshotStateList<T>.replaceMatching(
         if (predicate(current)) {
             val next = transform(current)
             if (current !== next || current != next) {
-                this[index] = next
+                replaceAt(index, next)
             }
         }
+    }
+}
+
+@PublishedApi
+internal fun <T> SnapshotStateList<T>.replaceAt(index: Int, next: T) {
+    if (this[index] != next) {
+        this[index] = next
+    } else {
+        removeAt(index)
+        add(index, next)
     }
 }
