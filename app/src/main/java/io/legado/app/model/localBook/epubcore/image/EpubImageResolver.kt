@@ -3,11 +3,12 @@ package io.legado.app.model.localBook.epubcore.image
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Size
-import android.util.Base64
 import android.util.LruCache
 import io.legado.app.model.localBook.epubcore.archive.EpubArchive
 import io.legado.app.model.localBook.epubcore.archive.EpubPath
+import io.legado.app.utils.MAX_DATA_URL_BYTES
 import io.legado.app.utils.SvgUtils
+import io.legado.app.utils.decodeBase64DataUrlBytes
 import java.io.ByteArrayInputStream
 
 class EpubImageResolver(
@@ -88,7 +89,9 @@ class EpubImageResolver(
                 .onFailure(::handleDecodeFailure)
                 .getOrNull()
         } else {
-            runCatching { archive.readBytes(EpubPath.stripFragment(href)) }.getOrNull()
+            runCatching {
+                archive.readBytes(EpubPath.stripFragment(href), EpubArchive.DEFAULT_MAX_ENTRY_BYTES)
+            }.getOrNull()
         }
     }
 
@@ -130,9 +133,13 @@ class EpubImageResolver(
         val meta = href.substring(0, comma)
         val payload = href.substring(comma + 1)
         return if (meta.contains(";base64", ignoreCase = true)) {
-            runCatching { Base64.decode(payload, Base64.DEFAULT) }.getOrNull()
+            href.decodeBase64DataUrlBytes(EpubArchive.DEFAULT_MAX_ENTRY_BYTES)
         } else {
-            runCatching { java.net.URLDecoder.decode(payload, Charsets.UTF_8.name()).toByteArray() }.getOrNull()
+            runCatching {
+                java.net.URLDecoder.decode(payload, Charsets.UTF_8.name())
+                    .toByteArray()
+                    .takeIf { it.size <= MAX_DATA_URL_BYTES }
+            }.getOrNull()
         }
     }
 
