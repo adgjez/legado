@@ -40,6 +40,7 @@ collection = "1.5.0"
 composeBom = "2025.10.00"
 composeMaterial3 = "1.4.0"
 miuix = "0.8.8"
+reorderable = "3.1.0"
 
 zxingLite = "3.3.0"
 
@@ -92,6 +93,7 @@ androidx-collection = { module = "androidx.collection:collection", version.ref =
 appcompat-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 liquidglass = { module = "com.qmdeve.liquidglass:core", version.ref = "liquidglass" }
+reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 lottie = { module = "com.airbnb.android:lottie", version.ref = "lottie" }
 
 

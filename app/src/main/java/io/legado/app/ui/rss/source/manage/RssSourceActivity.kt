@@ -187,6 +187,8 @@ class RssSourceActivity : VMBaseActivity<ActivityRssSourceBinding, RssSourceView
                         sources = sourcesState,
                         selectedUrls = selectedUrls.value,
                         isSelectMode = isSelectMode.value,
+                        reorderEnabled = searchQueryState.value.isBlank(),
+                        onReorder = { reordered -> viewModel.upOrder(reordered) },
                         onToggleSelect = ::toggleSourceSelection,
                         onToggleEnabled = ::toggleSourceEnabled,
                         onEdit = ::editSource,

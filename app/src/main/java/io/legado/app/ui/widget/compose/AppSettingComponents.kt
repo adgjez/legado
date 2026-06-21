@@ -191,11 +191,14 @@ fun rememberAppManagementPalette(): AppManagementPalette {
 fun AppManagementLazyColumn(
     palette: AppManagementPalette,
     modifier: Modifier = Modifier,
+    state: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState(),
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
     content: LazyListScope.() -> Unit
 ) {
     LazyColumn(
+        state = state,
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars),
@@ -285,7 +288,8 @@ fun AppManagementListRow(
     onDelete: (() -> Unit)? = null,
     moreIndicatorColor: Color? = null,
     headerContent: (@Composable ColumnScope.() -> Unit)? = null,
-    trailingBeforeSwitch: (@Composable RowScope.() -> Unit)? = null
+    trailingBeforeSwitch: (@Composable RowScope.() -> Unit)? = null,
+    leadingContent: (@Composable () -> Unit)? = null
 ) {
     AppManagementCard(
         palette = palette,
@@ -308,6 +312,7 @@ fun AppManagementListRow(
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            leadingContent?.invoke()
             AppManagementSelectionSlot(
                 visible = selectionVisible && onToggleSelection != null,
                 animated = animatedSelection,
