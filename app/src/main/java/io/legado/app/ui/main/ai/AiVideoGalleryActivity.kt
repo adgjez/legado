@@ -165,25 +165,21 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
     }
 
     private fun showItemMenu(video: AiGeneratedVideo) {
-        val items = mutableListOf(
-            getString(R.string.ai_video_rename),
-            if (video.favorite) getString(R.string.ai_video_cancel_favorite) else getString(R.string.ai_video_favorite_to)
+        // 用闭包列表避免 when(index) 错位（retry 项不一定存在）。
+        data class Item(val label: String, val action: () -> Unit)
+        val items = mutableListOf<Item>(
+            Item(getString(R.string.ai_video_rename)) { promptRename(video) },
+            Item(
+                if (video.favorite) getString(R.string.ai_video_cancel_favorite)
+                else getString(R.string.ai_video_favorite_to)
+            ) { toggleFavorite(video) }
         )
         if (video.status == AiGeneratedVideo.STATUS_FAILED) {
-            items.add(getString(R.string.ai_video_retry))
+            items.add(Item(getString(R.string.ai_video_retry)) { retry(video) })
         }
-        items.add(getString(R.string.delete))
+        items.add(Item(getString(R.string.delete)) { confirmDelete(video) })
         alert(R.string.more) {
-            items.forEachIndexed { index, label ->
-                neutralButton(label) {
-                    when (index) {
-                        0 -> promptRename(video)
-                        1 -> toggleFavorite(video)
-                        2 -> retry(video)
-                        3 -> confirmDelete(video)
-                    }
-                }
-            }
+            items.forEach { item -> neutralButton(item.label) { item.action() } }
         }
     }
 
@@ -195,8 +191,13 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
             okButton {
                 val newName = binding.editView.text?.toString().orEmpty().trim()
                 if (newName.isNotBlank()) {
-                    AiVideoGalleryManager.rename(video.id, newName)
-                    refreshList()
+                    // rename 内部为 Room UPDATE，需 IO 线程。
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            AiVideoGalleryManager.rename(video.id, newName)
+                        }
+                        refreshList()
+                    }
                 }
             }
             cancelButton()
@@ -204,8 +205,13 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
     }
 
     private fun toggleFavorite(video: AiGeneratedVideo) {
-        AiVideoGalleryManager.setFavorite(video.id, !video.favorite, null)
-        refreshList()
+        // setFavorite 内部为 Room UPDATE，需 IO 线程。
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                AiVideoGalleryManager.setFavorite(video.id, !video.favorite, null)
+            }
+            refreshList()
+        }
     }
 
     private fun retry(video: AiGeneratedVideo) {
@@ -224,7 +230,15 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
 
     private fun confirmDelete(video: AiGeneratedVideo) {
         alert(R.string.ai_video_delete_confirm) {
-            okButton { AiVideoGalleryManager.delete(video.id); refreshList() }
+            okButton {
+                // delete 内部包含 Room 写操作 + 文件 I/O，必须切到 IO 线程。
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        AiVideoGalleryManager.delete(video.id)
+                    }
+                    refreshList()
+                }
+            }
             cancelButton()
         }
     }
