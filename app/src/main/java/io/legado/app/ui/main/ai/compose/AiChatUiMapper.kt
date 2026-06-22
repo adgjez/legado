@@ -148,7 +148,7 @@ fun buildAiChatUiItems(
             }
             assistantMessages
                 .filterNot { it.isProcessMessage() }
-                .forEach { assistantParts += it.toTextParts() }
+                .forEach { assistantParts += it.toTextParts(context) }
             if (processImages.isNotEmpty()) {
                 val existingImageKeys = assistantParts
                     .filterIsInstance<AiMessagePartUi.Images>()
@@ -204,7 +204,7 @@ private fun AiChatMessage.isProcessMessage(): Boolean {
     }
 }
 
-private fun AiChatMessage.toTextParts(): List<AiMessagePartUi> {
+private fun AiChatMessage.toTextParts(context: Context): List<AiMessagePartUi> {
     val parsed = parseAssistantContent(content)
     val parts = mutableListOf<AiMessagePartUi>()
     if (parsed.content.isNotBlank() || pending) {

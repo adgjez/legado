@@ -493,11 +493,6 @@ class AiChatViewModel : ViewModel() {
         }
     }
 
-    private fun detachAiVideoEvents() {
-        runCatching { LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED).removeObserver(::onAiVideoCompleted) }
-        runCatching { LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).removeObserver(::onAiVideoFailed) }
-    }
-
     private fun setRequesting(value: Boolean) {
         isRequesting = value
         requestingLiveData.postValue(value)
@@ -548,7 +543,9 @@ class AiChatViewModel : ViewModel() {
             AiChatMessage.Kind.TEXT -> MAX_STORED_TEXT_CHARS
             AiChatMessage.Kind.STATUS,
             AiChatMessage.Kind.THINKING,
-            AiChatMessage.Kind.TOOL -> MAX_STORED_STATUS_CHARS
+            AiChatMessage.Kind.TOOL,
+            AiChatMessage.Kind.VIDEO_COMPLETED,
+            AiChatMessage.Kind.VIDEO_FAILED -> MAX_STORED_STATUS_CHARS
         }
         return message.copy(
             content = sanitizeStoredText(message.content, maxChars),
