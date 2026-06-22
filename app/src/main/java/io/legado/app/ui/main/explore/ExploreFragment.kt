@@ -439,7 +439,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 topSpace + 56.dpToPx()
             )
         }
-        binding.topBar.setBackdropBlur(if (canBlur) binding.flDiscoverBooks else null)
+        binding.topBar.setBackdropBlur(null)
         binding.topBar.bringToFront()
     }
 

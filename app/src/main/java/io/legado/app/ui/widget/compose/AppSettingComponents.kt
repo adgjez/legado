@@ -195,16 +195,26 @@ fun AppManagementLazyColumn(
         androidx.compose.foundation.lazy.rememberLazyListState(),
     contentPadding: androidx.compose.foundation.layout.PaddingValues =
         androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+    showFastScroller: Boolean = true,
     content: LazyListScope.() -> Unit
 ) {
-    LazyColumn(
-        state = state,
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.navigationBars),
-        contentPadding = contentPadding,
-        content = content
-    )
+            .windowInsetsPadding(WindowInsets.navigationBars)
+    ) {
+        LazyColumn(
+            state = state,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            content = content
+        )
+        ComposeLazyListFastScroller(
+            state = state,
+            enabled = showFastScroller,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

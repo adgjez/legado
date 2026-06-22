@@ -194,7 +194,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap.values.forEach { fragment ->
             fragment.setTopOverlaySpace(topOverlaySpace, topOverlayEnabled)
         }
-        binding.topBar.setBackdropBlur(if (overlay) binding.viewPagerBookshelf else null)
+        binding.topBar.setBackdropBlur(null)
         binding.topBar.bringToFront()
     }
 

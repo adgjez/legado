@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +42,7 @@ import io.legado.app.ui.main.bookshelf.compose.BookListCardSurface
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListItemStyle
 import io.legado.app.ui.main.bookshelf.compose.BookshelfListPalette
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
+import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.image.CoverImageView
@@ -83,29 +84,39 @@ fun SearchResultScreen(
             if (scrollToTopSignal > 0) listState.scrollToItem(0)
         }
 
-        LazyColumn(
-            state = listState,
-            modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 86.dp),
-            verticalArrangement = Arrangement.spacedBy(if (rounded) 4.dp else 2.dp)
-        ) {
-            items(
-                items = books,
-                key = { "${it.bookUrl}|${it.origin}" }
-            ) { book ->
-                val inBookshelf = remember(book.bookUrl, bookshelfTick) { isInBookshelf(book) }
-                SearchResultItem(
-                    book = book,
-                    inBookshelf = inBookshelf,
-                    rounded = rounded,
-                    renderConfig = renderConfig,
-                    palette = palette,
-                    lifecycle = lifecycle,
-                    onClick = { onBookClick(book) }
-                )
+        Box(modifier = modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 86.dp),
+                verticalArrangement = Arrangement.spacedBy(if (rounded) 4.dp else 2.dp)
+            ) {
+                itemsIndexed(
+                    items = books,
+                    key = { index, book -> searchResultItemKey(index, book) }
+                ) { _, book ->
+                    val inBookshelf = remember(book.bookUrl, bookshelfTick) { isInBookshelf(book) }
+                    SearchResultItem(
+                        book = book,
+                        inBookshelf = inBookshelf,
+                        rounded = rounded,
+                        renderConfig = renderConfig,
+                        palette = palette,
+                        lifecycle = lifecycle,
+                        onClick = { onBookClick(book) }
+                    )
+                }
             }
+            ComposeLazyListFastScroller(
+                state = listState,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
+}
+
+private fun searchResultItemKey(index: Int, book: SearchBook): String {
+    return "${book.bookUrl}|${book.origin}|${book.name}|${book.author}|$index"
 }
 
 @Composable

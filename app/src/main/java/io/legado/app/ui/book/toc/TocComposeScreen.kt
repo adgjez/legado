@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.toc
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -55,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import io.legado.app.R
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -74,6 +74,7 @@ import io.legado.app.ui.widget.compose.AppManagementIconAction
 import io.legado.app.ui.widget.compose.AppManagementMenuAction
 import io.legado.app.ui.widget.compose.AppManagementMoreActionButton
 import io.legado.app.ui.widget.compose.AppManagementPalette
+import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.ui.widget.compose.LegadoComposeTheme
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
@@ -437,22 +438,36 @@ private fun TocTopBar(
                 tint = palette.settings.primaryText,
                 onClick = onBack
             )
-            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = stringResource(
+                    if (selectedPage == TocPage.Bookmarks) R.string.bookmark else R.string.chapter_list
+                ),
+                color = palette.settings.primaryText,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = palette.settings.titleFontFamily,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+            )
             AppManagementMoreActionButton(
                 actionsProvider = { moreActions },
                 palette = palette,
                 contentDescription = stringResource(R.string.more_menu)
             )
         }
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         TocSearchField(
             query = searchQuery,
             onQueryChange = onSearchQueryChange
         )
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         TocTabs(
             selectedPage = selectedPage,
-            onSelectPage = onSelectPage
+            onSelectPage = onSelectPage,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -509,12 +524,12 @@ private fun TocSearchField(
 @Composable
 private fun TocTabs(
     selectedPage: TocPage,
-    onSelectPage: (TocPage) -> Unit
+    onSelectPage: (TocPage) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val palette = rememberAppManagementPalette()
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Color(palette.settings.row))
             .padding(3.dp),
@@ -564,12 +579,12 @@ private fun TocTabButton(
             fontSize = 14.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             fontFamily = palette.settings.bodyFontFamily,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TocChapterList(
     book: Book?,
@@ -585,38 +600,122 @@ private fun TocChapterList(
     val palette = rememberAppManagementPalette()
     // 仅当存在分卷时才缩进章节，纯平铺目录保持齐头。
     val hasVolumes = chapters.any { it.isVolume }
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 12.dp)
-    ) {
-        // 卷与章节按原 visibleChapters 顺序逐项发射(卷→stickyHeader, 章→item)，
-        // 每项仍是一个 lazy item，故索引与 visibleChapters 一一对应，滚动定位逻辑无需改动。
-        chapters.forEach { chapter ->
-            val key = "${chapter.bookUrl}|${chapter.index}|${chapter.url}"
-            if (chapter.isVolume) {
-                stickyHeader(key = key, contentType = "volume") {
-                    TocVolumeHeaderRow(
-                        palette = palette,
-                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                        collapsed = collapsedVolumeIndexes.contains(chapter.index),
-                        onClick = { onToggleVolume(chapter) }
-                    )
-                }
-            } else {
-                item(key = key, contentType = "chapter") {
-                    TocChapterRow(
-                        palette = palette,
-                        book = book,
-                        chapter = chapter,
-                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                        cached = chapterCacheMap[chapter.primaryStr()] ?: true,
-                        countWords = countWords,
-                        indented = hasVolumes,
-                        onClick = { onOpenChapter(chapter) }
-                    )
-                }
+    val pinnedVolume by remember(chapters, listState) {
+        derivedStateOf {
+            val firstVisibleIndex = listState.firstVisibleItemIndex
+            chapters
+                .take(firstVisibleIndex.coerceAtMost(chapters.lastIndex) + 1)
+                .lastOrNull { it.isVolume }
+        }
+    }
+    val pinnedVolumeHeight = 42.dp
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (pinnedVolume != null) {
+                Spacer(modifier = Modifier.height(pinnedVolumeHeight))
             }
+            Box(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 12.dp)
+                ) {
+                    chapters.forEach { chapter ->
+                        val key = "${chapter.bookUrl}|${chapter.index}|${chapter.url}"
+                        if (chapter.isVolume) {
+                            item(key = key, contentType = "volume") {
+                                if (pinnedVolume?.index == chapter.index) {
+                                    Spacer(modifier = Modifier.height(0.dp))
+                                } else {
+                                    TocVolumeHeaderPanel(
+                                        palette = palette,
+                                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                                        collapsed = collapsedVolumeIndexes.contains(chapter.index),
+                                        onClick = { onToggleVolume(chapter) }
+                                    )
+                                }
+                            }
+                        } else {
+                            item(key = key, contentType = "chapter") {
+                                TocChapterRow(
+                                    palette = palette,
+                                    book = book,
+                                    chapter = chapter,
+                                    title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                                    cached = chapterCacheMap[chapter.primaryStr()] ?: true,
+                                    countWords = countWords,
+                                    indented = hasVolumes,
+                                    onClick = { onOpenChapter(chapter) }
+                                )
+                            }
+                        }
+                    }
+                }
+                ComposeLazyListFastScroller(
+                    state = listState,
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
+        }
+        pinnedVolume?.let { chapter ->
+            TocVolumeHeaderPanel(
+                palette = palette,
+                title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                collapsed = collapsedVolumeIndexes.contains(chapter.index),
+                onClick = { onToggleVolume(chapter) },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .height(pinnedVolumeHeight)
+                    .zIndex(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TocVolumeHeaderPanel(
+    palette: AppManagementPalette,
+    title: String,
+    collapsed: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(end = 10.dp)
+                    .size(width = 3.dp, height = 16.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(palette.settings.accent.copy(alpha = 0.85f))
+            )
+            Text(
+                text = title,
+                color = palette.settings.primaryText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = palette.settings.titleFontFamily,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                painter = painterResource(
+                    id = if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
+                ),
+                contentDescription = null,
+                tint = palette.settings.accent.copy(alpha = 0.82f),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -628,11 +727,19 @@ private fun TocVolumeHeaderRow(
     collapsed: Boolean,
     onClick: () -> Unit
 ) {
+    val occludingBackground = remember(palette.settings.page, palette.settings.row) {
+        if (palette.settings.page.alpha < 0.98f) {
+            Color(palette.settings.row)
+        } else {
+            palette.settings.page.copy(alpha = 1f)
+        }
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             // 吸顶标题必须不透明，否则下方章节会从标题后透出；先铺不透明 page 底再叠强调色薄染。
-            .background(palette.settings.page)
+            .zIndex(1f)
+            .background(occludingBackground)
             .background(palette.settings.accent.copy(alpha = 0.08f))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 11.dp),
@@ -762,21 +869,27 @@ private fun TocBookmarkList(
     onClick: (Bookmark) -> Unit,
     onLongClick: (Bookmark, Int) -> Unit
 ) {
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp)
-    ) {
-        itemsIndexed(
-            items = bookmarks,
-            key = { _, bookmark -> bookmark.time }
-        ) { index, bookmark ->
-            TocBookmarkRow(
-                bookmark = bookmark,
-                onClick = { onClick(bookmark) },
-                onLongClick = { onLongClick(bookmark, index) }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 24.dp)
+        ) {
+            itemsIndexed(
+                items = bookmarks,
+                key = { _, bookmark -> bookmark.time }
+            ) { index, bookmark ->
+                TocBookmarkRow(
+                    bookmark = bookmark,
+                    onClick = { onClick(bookmark) },
+                    onLongClick = { onLongClick(bookmark, index) }
+                )
+            }
         }
+        ComposeLazyListFastScroller(
+            state = listState,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 

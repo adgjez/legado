@@ -82,7 +82,7 @@ class TextDialog() : ComposeDialogFragment() {
 
     override val widthFraction: Float = 0.96f
     override val maxWidthDp: Int = 720
-    override val dialogHeight: Int = ViewGroup.LayoutParams.MATCH_PARENT
+    override val dialogHeight: Int = ViewGroup.LayoutParams.WRAP_CONTENT
 
     private var time = 0L
     private var autoClose: Boolean = false

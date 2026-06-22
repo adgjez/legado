@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,7 +25,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
@@ -59,6 +62,8 @@ import io.legado.app.ui.main.bookshelf.compose.BookshelfListItem
 import io.legado.app.ui.main.bookshelf.compose.buildBookshelfItems
 import io.legado.app.ui.main.bookshelf.compose.rememberBookshelfListRenderConfig
 import io.legado.app.ui.main.bookshelf.compose.updateBookshelfItemUpdating
+import io.legado.app.ui.widget.compose.ComposeLazyGridFastScroller
+import io.legado.app.ui.widget.compose.ComposeLazyListFastScroller
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.applyMainBottomBarPadding
 import io.legado.app.utils.dpToPx
@@ -293,6 +298,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }
             topExtra.toDp()
         }
+        val lazyModifier = if (topOverlayEnabled) {
+            Modifier
+                .fillMaxSize()
+                .padding(top = topExtraDp)
+                .clipToBounds()
+        } else {
+            Modifier.fillMaxSize()
+        }
+        val contentTopPadding = if (topOverlayEnabled) {
+            marginDp
+        } else {
+            topExtraDp + marginDp
+        }
         val bottomBarPadding = with(LocalDensity.current) {
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
         }
@@ -316,31 +334,38 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
             }
         }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(bookshelfLayout.coerceAtLeast(2)),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 8.dp,
-                top = topExtraDp + marginDp,
-                end = 8.dp,
-                bottom = marginDp + bottomBarPadding + 12.dp
-            )
-        ) {
-            items(
-                items = composeItems,
-                key = { it.key },
-                contentType = { it.contentType }
-            ) { item ->
-                BookshelfGridItem(
-                    item = item,
-                    modifier = Modifier.padding(marginDp.coerceAtLeast(2.dp)),
-                    fragment = this@BooksFragment,
-                    lifecycle = viewLifecycleOwner.lifecycle,
-                    onClick = ::onComposeItemClick,
-                    onLongClick = ::onComposeItemLongClick
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(bookshelfLayout.coerceAtLeast(2)),
+                state = gridState,
+                modifier = lazyModifier,
+                contentPadding = PaddingValues(
+                    start = 8.dp,
+                    top = contentTopPadding,
+                    end = 8.dp,
+                    bottom = marginDp + bottomBarPadding + 12.dp
                 )
+            ) {
+                items(
+                    items = composeItems,
+                    key = { it.key },
+                    contentType = { it.contentType }
+                ) { item ->
+                    BookshelfGridItem(
+                        item = item,
+                        modifier = Modifier.padding(marginDp.coerceAtLeast(2.dp)),
+                        fragment = this@BooksFragment,
+                        lifecycle = viewLifecycleOwner.lifecycle,
+                        onClick = ::onComposeItemClick,
+                        onLongClick = ::onComposeItemLongClick
+                    )
+                }
             }
+            ComposeLazyGridFastScroller(
+                state = gridState,
+                enabled = AppConfig.showBookshelfFastScroller,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 
@@ -364,6 +389,19 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 resources.getDimensionPixelSize(R.dimen.bookshelf_content_margin_top)
             }
             topExtra.toDp()
+        }
+        val lazyModifier = if (topOverlayEnabled) {
+            Modifier
+                .fillMaxSize()
+                .padding(top = topExtraDp)
+                .clipToBounds()
+        } else {
+            Modifier.fillMaxSize()
+        }
+        val contentTopPadding = if (topOverlayEnabled) {
+            marginDp
+        } else {
+            topExtraDp + marginDp
         }
         val bottomBarPadding = with(LocalDensity.current) {
             resources.getDimensionPixelSize(R.dimen.main_content_bottom_bar_padding).toDp()
@@ -389,33 +427,40 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
                 }
             }
         }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 8.dp,
-                top = topExtraDp + marginDp,
-                end = 8.dp,
-                bottom = marginDp + bottomBarPadding + 12.dp
-            )
-        ) {
-            items(
-                items = composeItems,
-                key = { it.key },
-                contentType = { it.contentType }
-            ) { item ->
-                BookshelfListItem(
-                    item = item,
-                    listLayout = bookshelfLayout,
-                    cardStyle = composeListItemStyle,
-                    renderConfig = renderConfig,
-                    modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
-                    fragment = this@BooksFragment,
-                    lifecycle = viewLifecycleOwner.lifecycle,
-                    onClick = ::onComposeItemClick,
-                    onLongClick = ::onComposeItemLongClick
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = lazyModifier,
+                contentPadding = PaddingValues(
+                    start = 8.dp,
+                    top = contentTopPadding,
+                    end = 8.dp,
+                    bottom = marginDp + bottomBarPadding + 12.dp
                 )
+            ) {
+                items(
+                    items = composeItems,
+                    key = { it.key },
+                    contentType = { it.contentType }
+                ) { item ->
+                    BookshelfListItem(
+                        item = item,
+                        listLayout = bookshelfLayout,
+                        cardStyle = composeListItemStyle,
+                        renderConfig = renderConfig,
+                        modifier = Modifier.padding(vertical = marginDp.coerceAtLeast(2.dp)),
+                        fragment = this@BooksFragment,
+                        lifecycle = viewLifecycleOwner.lifecycle,
+                        onClick = ::onComposeItemClick,
+                        onLongClick = ::onComposeItemLongClick
+                    )
+                }
             }
+            ComposeLazyListFastScroller(
+                state = listState,
+                enabled = AppConfig.showBookshelfFastScroller,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 

@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -127,10 +128,13 @@ fun ExploreModernListScreen(
 
     LazyColumn(
         state = listState,
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(top = topPadding)
+            .clipToBounds(),
         contentPadding = PaddingValues(
             start = 8.dp,
-            top = topPadding + 8.dp,
+            top = 8.dp,
             end = 8.dp,
             bottom = 86.dp
         ),
@@ -220,10 +224,13 @@ private fun ExploreModernGridScreen(
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         state = gridState,
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(top = topPadding)
+            .clipToBounds(),
         contentPadding = PaddingValues(
             start = 8.dp,
-            top = topPadding + 8.dp,
+            top = 8.dp,
             end = 8.dp,
             bottom = 86.dp
         ),

@@ -208,7 +208,6 @@ private fun BookshelfClassicListItem(
             item = item,
             width = metrics.coverWidth,
             cornerRadius = metrics.cornerRadius,
-            palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -252,7 +251,6 @@ private fun BookshelfRoundedCardListItem(
             item = item,
             width = metrics.coverWidth,
             cornerRadius = metrics.cornerRadius,
-            palette = palette,
             fragment = fragment,
             lifecycle = lifecycle
         )
@@ -275,7 +273,6 @@ private fun BookshelfCoverBlock(
     item: BookshelfItemUi,
     width: Dp,
     cornerRadius: Dp,
-    palette: BookshelfListPalette,
     fragment: Fragment?,
     lifecycle: Lifecycle?,
     modifier: Modifier = Modifier
@@ -288,39 +285,16 @@ private fun BookshelfCoverBlock(
             fragment = fragment,
             lifecycle = lifecycle
         )
-        BookshelfCoverBadge(
-            item = item,
-            palette = palette,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-        )
     }
 }
 
 @Composable
-private fun BookshelfCoverBadge(
+private fun BookshelfUnreadBadge(
     item: BookshelfItemUi,
     palette: BookshelfListPalette,
     modifier: Modifier = Modifier
 ) {
     if (item !is BookshelfBookItemUi) return
-    if (item.isUpdating) {
-        Box(
-            modifier = modifier
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.52f))
-                .padding(3.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = Color.White
-            )
-        }
-        return
-    }
     if (!AppConfig.showUnread || item.unreadCount <= 0) return
     val badgeColor = if (item.hasNewChapter) {
         palette.accent
@@ -535,10 +509,27 @@ private fun BookshelfListStatus(
     Column(
         modifier = modifier
             .padding(start = 8.dp)
-            .widthIn(min = 28.dp),
+            .widthIn(min = 42.dp, max = 76.dp),
         horizontalAlignment = Alignment.End,
         verticalArrangement = Arrangement.Center
     ) {
+        if (item.isUpdating) {
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.52f))
+                    .padding(3.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+            }
+        } else {
+            BookshelfUnreadBadge(item = item, palette = palette)
+        }
         item.lastUpdateText?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
