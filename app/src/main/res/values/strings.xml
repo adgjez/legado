@@ -767,6 +767,29 @@
     <string name="ai_video_play">播放</string>
     <string name="ai_video_settings">AI 视频设置</string>
     <!-- end AI 视频生成 -->
+    <!-- AI 视频分析（P3） -->
+    <string name="ai_video_analysis_title">AI 视频分析</string>
+    <string name="ai_video_analysis_start">开始分析</string>
+    <string name="ai_video_analysis_type_label">分析类型</string>
+    <string name="ai_video_analysis_lang_label">语种</string>
+    <string name="ai_video_analysis_kind_summary">摘要</string>
+    <string name="ai_video_analysis_kind_subtitle">字幕</string>
+    <string name="ai_video_analysis_kind_chapters">章节</string>
+    <string name="ai_video_analysis_kind_keyframes">关键帧</string>
+    <string name="ai_video_analysis_kind_cover">封面</string>
+    <string name="ai_video_analysis_lang_auto">自动</string>
+    <string name="ai_video_analysis_lang_zh">中文</string>
+    <string name="ai_video_analysis_lang_en">英文</string>
+    <string name="ai_video_analysis_running">分析中…</string>
+    <string name="ai_video_analysis_failed">分析失败：%1$s</string>
+    <string name="ai_video_analysis_failed_short">分析失败：%1$s</string>
+    <string name="ai_video_analysis_cancelled">已取消</string>
+    <string name="ai_video_analysis_pending">等待中</string>
+    <string name="ai_video_analysis_missing_params">缺少视频或书籍信息</string>
+    <string name="ai_video_analysis_result_title">视频分析结果</string>
+    <string name="ai_video_analysis_loading">加载中…</string>
+    <string name="ai_video_analysis_empty">还没有分析结果，点击下方按钮开始</string>
+    <!-- end AI 视频分析 -->
     <string name="ai_tavily_api_key">Tavily API key</string>
     <string name="ai_tavily_api_key_hint">tvly-...</string>
     <string name="ai_tavily_api_key_summary">Tap to set your Tavily API key.</string>

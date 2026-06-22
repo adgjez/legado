@@ -849,6 +849,15 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
 
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
+            R.id.menu_ai_video_analysis -> {
+                val book = VideoPlay.book
+                val url = VideoPlay.videoUrl
+                if (book == null || url.isNullOrBlank()) {
+                    this.toastOnUi(R.string.ai_video_analysis_missing_params)
+                    return true
+                }
+                AiVideoAnalysisDialog.show(this, book.bookUrl, url)
+            }
         }
         return super.onCompatOptionsItemSelected(item)
     }

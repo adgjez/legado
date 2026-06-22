@@ -55,4 +55,9 @@
         android:title="@string/log"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_ai_video_analysis"
+        android:title="@string/ai_video_analysis_title"
+        app:showAsAction="never" />
+
 </menu>

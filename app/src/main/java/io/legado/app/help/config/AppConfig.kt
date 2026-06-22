@@ -463,6 +463,23 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiCurrentProvider: AiProviderConfig?
         get() = aiProviderList.firstOrNull { it.id == aiCurrentProviderId }
 
+    /**
+     * 当前 LLM provider + 选中的 modelId 合并为可写入缓存的快照。
+     * v1 暂不区分 per-book 配置。
+     */
+    fun defaultLlmConfig(): AiProviderConfig? {
+        val provider = aiCurrentProvider ?: return null
+        val model = aiCurrentModelConfig?.modelId?.trim().orEmpty()
+        if (model.isBlank()) return null
+        return provider
+    }
+
+    /**
+     * per-book LLM 配置：v1 暂时回退到默认。
+     */
+    fun llmConfigForBook(@Suppress("UNUSED_PARAMETER") bookId: String?): AiProviderConfig? =
+        defaultLlmConfig()
+
     var aiModelConfigList: List<AiModelConfig>
         get() {
             val providers = readAiProviders()
@@ -830,6 +847,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
             return providers.firstOrNull { it.id == currentId }
         }
+
+    /**
+     * 当前 ASR 配置（v1：固定走 Whisper 占位）。真实凭据由用户通过 aiVideo 之外的
+     * "AI 服务" 设置页（待 P4 实现）配置；当前只暴露接口让 P3 UI 不为空。
+     */
+    fun asrConfig(): io.legado.app.help.ai.asr.AsrConfig? {
+        // v1：直接给一个 Whisper 占位（baseUrl/apiKey 留空，调用方会判定空给提示）
+        return io.legado.app.help.ai.asr.AsrConfig(
+            type = io.legado.app.help.ai.asr.AsrConfig.TYPE_WHISPER
+        )
+    }
 
     fun findEnabledVideoProvider(id: String?): AiVideoProviderConfig? {
         val cleanId = id?.trim().orEmpty()

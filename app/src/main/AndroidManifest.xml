@@ -311,6 +311,11 @@
             android:theme="@style/AppTheme.Material"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
+            android:name=".ui.main.ai.AiVideoAnalysisActivity"
+            android:launchMode="standard"
+            android:theme="@style/AppTheme.Material"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".ui.book.character.BookCharacterManageActivity"
             android:launchMode="standard" />
         <activity

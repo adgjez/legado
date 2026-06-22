@@ -22,6 +22,7 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
+            migration_99_100,
         )
     }
 
@@ -694,6 +695,48 @@ object DatabaseMigrations {
             db.execSQL(
                 "INSERT OR IGNORE INTO `ai_video_groups` (`id`, `name`, `order`, `cover`) " +
                     "VALUES ('default', '默认分组', 0, '')"
+            )
+        }
+    }
+
+    /**
+     * P3：新建 ai_video_analysis 缓存表（AI 视频分析结果）。
+     * 字段与索引与 [io.legado.app.data.entities.AiVideoAnalysis] 一致。
+     */
+    private val migration_99_100 = object : Migration(99, 100) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_video_analysis` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `language` TEXT NOT NULL DEFAULT '',
+                    `payloadJson` TEXT NOT NULL DEFAULT '',
+                    `model` TEXT NOT NULL DEFAULT '',
+                    `providerId` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT 'pending',
+                    `failReason` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` " +
+                    "ON `ai_video_analysis` (`bookId`, `kind`, `language`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_book` " +
+                    "ON `ai_video_analysis` (`bookId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_status` " +
+                    "ON `ai_video_analysis` (`status`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
+                    "ON `ai_video_analysis` (`updatedAt`)"
             )
         }
     }

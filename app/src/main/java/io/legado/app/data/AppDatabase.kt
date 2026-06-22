@@ -12,6 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiGeneratedVideoDao
 import io.legado.app.data.dao.AiImageGroupDao
+import io.legado.app.data.dao.AiVideoAnalysisDao
 import io.legado.app.data.dao.AiVideoGroupDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
@@ -42,6 +43,7 @@ import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.data.entities.AiImageGroup
+import io.legado.app.data.entities.AiVideoAnalysis
 import io.legado.app.data.entities.AiVideoGroup
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -88,7 +90,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 99,
+    version = 100,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -99,7 +101,8 @@ val appDb by lazy {
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
         AiImageGroup::class, AiGeneratedImage::class, AiVideoGroup::class, AiGeneratedVideo::class,
-        BookCharacter::class, BookCharacterRelation::class],
+        BookCharacter::class, BookCharacterRelation::class,
+        AiVideoAnalysis::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -184,6 +187,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiGeneratedImageDao: AiGeneratedImageDao
     abstract val aiVideoGroupDao: AiVideoGroupDao
     abstract val aiGeneratedVideoDao: AiGeneratedVideoDao
+    abstract val aiVideoAnalysisDao: AiVideoAnalysisDao
 
     companion object {
 
