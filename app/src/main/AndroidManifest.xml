@@ -298,6 +298,16 @@
             android:name=".ui.main.ai.AiImageGalleryActivity"
             android:launchMode="standard" />
         <activity
+            android:name=".ui.main.ai.AiVideoGalleryActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.main.ai.AiVideoProviderManageActivity"
+            android:launchMode="standard" />
+        <activity
+            android:name=".ui.main.ai.AiVideoProviderEditActivity"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <activity
             android:name=".ui.book.character.BookCharacterManageActivity"
             android:launchMode="standard" />
         <activity
@@ -615,6 +625,9 @@
             android:foregroundServiceType="mediaPlayback" />
         <service
             android:name=".service.DownloadService"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.AiVideoTaskService"
             android:foregroundServiceType="dataSync" />
 
         <receiver

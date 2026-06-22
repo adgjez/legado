@@ -71,6 +71,18 @@
             android:title="@string/ai_image_provider_manage"
             app:iconSpaceReserved="false" />
 
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiVideoGallery"
+            android:summary="@string/ai_video_gallery_summary"
+            android:title="@string/ai_video_gallery"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="aiVideoProviderManage"
+            android:summary="@string/ai_video_provider_manage_summary"
+            android:title="@string/ai_video_provider_manage"
+            app:iconSpaceReserved="false" />
+
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory

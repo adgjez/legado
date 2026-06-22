@@ -27,6 +27,8 @@ import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import io.legado.app.ui.main.ai.AiImageGalleryActivity
+import io.legado.app.ui.main.ai.AiVideoGalleryActivity
+import io.legado.app.ui.main.ai.AiVideoProviderManageActivity
 import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.ui.main.ai.AiSkillConfig
@@ -82,6 +84,10 @@ class AiConfigFragment : PreferenceFragment(),
                 startActivity(Intent(requireContext(), AiImageGalleryActivity::class.java))
             "aiImageProviderManage" ->
                 startActivity(Intent(requireContext(), AiImageProviderManageActivity::class.java))
+            "aiVideoGallery" ->
+                startActivity(Intent(requireContext(), AiVideoGalleryActivity::class.java))
+            "aiVideoProviderManage" ->
+                startActivity(Intent(requireContext(), AiVideoProviderManageActivity::class.java))
             "aiImportDefaultSkill" -> importDefaultSkill()
             PreferKey.aiSkillPrompt -> showManageSkillsDialog()
         }
