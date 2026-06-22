@@ -75,6 +75,7 @@ import io.legado.app.databinding.DialogThemePackageEditBinding
 import io.legado.app.databinding.ItemThemePackageOptionBinding
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppCloudStorage
+import io.legado.app.help.config.AppearanceKitManager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemePackageManager
@@ -1543,11 +1544,21 @@ class ThemeManageActivity : BaseActivity<ActivityThemeManageBinding>(),
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(file).use { output -> input.copyTo(output) }
                 } ?: throw IllegalArgumentException(getString(R.string.theme_zip_read_failed))
-                ThemePackageManager.importPackage(file)
+                if (AppearanceKitManager.isAppearanceKitPackage(file)) {
+                    emptyList<ThemePackageManager.Entry>() to AppearanceKitManager.importPackage(file).total
+                } else {
+                    ThemePackageManager.importPackage(file) to 0
+                }
             }.onSuccess {
-                toastOnUi(getString(R.string.theme_imported))
+                toastOnUi(
+                    if (it.second > 0) {
+                        getString(R.string.appearance_kit_imported, it.second)
+                    } else {
+                        getString(R.string.theme_imported)
+                    }
+                )
                 loadThemes()
-                val hasUploadTask = it.any(::enqueueUploadIfNeeded)
+                val hasUploadTask = it.first.any(::enqueueUploadIfNeeded)
                 if (hasUploadTask) {
                     showThemeSyncTasks()
                 }
