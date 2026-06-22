@@ -84,6 +84,9 @@ import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
 import io.legado.app.ui.book.read.page.provider.ChapterProvider.reviewChar
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isDataUrl
+import io.legado.app.utils.isUri
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -300,7 +303,7 @@ class TextChapterLayout(
                     val imageInfo = parseImageInfo(titleImg)
                     var click: String? = imageInfo.click
                     var style: String? = imageInfo.style
-                    var imgSize = ImageProvider.getImageSize(book, imageInfo.renderSrc, ReadBook.bookSource)
+                    var imgSize = getImageSizeForLayout(book, imageInfo.renderSrc)
                     imageInfo.width?.let {
                         imgSize = imgSize.applyWidth(it)
                     }
@@ -444,7 +447,7 @@ class TextChapterLayout(
                         val imageInfo = parseImageInfo(imgSrc)
                         var style: String? = imageInfo.style
                         var click: String? = imageInfo.click
-                        var imgSize = ImageProvider.getImageSize(book, imageInfo.renderSrc, ReadBook.bookSource)
+                        var imgSize = getImageSizeForLayout(book, imageInfo.renderSrc)
                         imageInfo.width?.let {
                             imgSize = imgSize.applyWidth(it)
                         }
@@ -637,6 +640,24 @@ class TextChapterLayout(
             }
         }
         durY += textHeight * paragraphSpacing / 10f
+    }
+
+    private suspend fun getImageSizeForLayout(book: Book, src: String): Size {
+        if (ParagraphBubbleRenderer.isBubbleSrc(src) || src.isDataUrl() || src.isUri() || src.startsWith("/")) {
+            return ImageProvider.getImageSize(book, src, ReadBook.bookSource)
+        }
+        val timeoutSize = withTimeoutOrNull(3000) {
+            ImageProvider.getImageSize(book, src, ReadBook.bookSource)
+        }
+        if (timeoutSize != null) {
+            return timeoutSize
+        }
+        ImageProvider.cacheImageAsync(book, src, ReadBook.bookSource) {
+            ReadBook.invalidateEpubResource(book.bookUrl, bookChapter.index, src)
+        }
+        val fallback = contentPaintTextHeight.roundToInt().coerceAtLeast(1)
+        AppLog.putDebug("Reader image size timed out, continue layout with placeholder: $src")
+        return Size(fallback, fallback)
     }
 
     private suspend fun breakAfterSingleImageIfNeed() {
@@ -1559,7 +1580,7 @@ class TextChapterLayout(
             }
             .ifBlank { imageInfo.click.orEmpty() }
             .ifBlank { null }
-        var imgSize = ImageProvider.getImageSize(book, imageInfo.renderSrc, ReadBook.bookSource)
+        var imgSize = getImageSizeForLayout(book, imageInfo.renderSrc)
         imgSize = imgSize.applyWidth(width)
         if (style == null) {
             style = if (imgSize.width < 80 && imgSize.height < 80) {
@@ -1856,7 +1877,7 @@ class TextChapterLayout(
                         var iStyle = imageInfo.style
                         val width = imageInfo.width
                         val click = imageInfo.click
-                        var imgSize = ImageProvider.getImageSize(book, imageInfo.renderSrc, ReadBook.bookSource)
+                        var imgSize = getImageSizeForLayout(book, imageInfo.renderSrc)
                         width?.let {
                             imgSize = imgSize.applyWidth(it)
                         }
@@ -1893,7 +1914,7 @@ class TextChapterLayout(
                             }
                         }
                     } else {
-                        val imgSize = ImageProvider.getImageSize(book, imageInfo.renderSrc, ReadBook.bookSource)
+                        val imgSize = getImageSizeForLayout(book, imageInfo.renderSrc)
                         setTypeImage(
                             book,
                             imageInfo.renderSrc,
