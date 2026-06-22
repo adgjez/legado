@@ -23,6 +23,7 @@ import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 object AppearanceKitManager {
@@ -207,8 +208,13 @@ object AppearanceKitManager {
     }
 
     suspend fun importPackage(file: File): ImportResult = withContext(IO) {
-        if (isAppearanceKitPackage(file)) {
-            importAppearanceKit(file)
+        val kitZip = appearanceKitZipPayload(file)
+        if (kitZip != null) {
+            try {
+                importAppearanceKit(kitZip)
+            } finally {
+                if (kitZip != file) kitZip.delete()
+            }
         } else {
             val result = ThemePackageManager.importPackageDetailed(file)
             val kit = createKitFromImportResult(result)
@@ -255,10 +261,10 @@ object AppearanceKitManager {
         }
     }
 
-    private fun isAppearanceKitPackage(file: File): Boolean {
-        return runCatching {
-            ZipFile(file).use { zip -> zip.getEntry(kitManifestName) != null }
-        }.getOrDefault(false)
+    fun isAppearanceKitPackage(file: File): Boolean {
+        val kitZip = appearanceKitZipPayload(file) ?: return false
+        if (kitZip != file) kitZip.delete()
+        return true
     }
 
     private suspend fun importAppearanceKit(file: File): ImportResult {
@@ -269,13 +275,13 @@ object AppearanceKitManager {
         var result = ImportResult()
         try {
             unzipSecure(file, unzipDir)
-            val manifestFile = File(unzipDir, kitManifestName)
+            val manifestFile = findKitManifestFile(unzipDir)
+                ?: throw IllegalArgumentException(appCtx.getString(io.legado.app.R.string.appearance_kit_manifest_missing))
+            val packageRoot = manifestFile.parentFile ?: unzipDir
             val manifest = GSON.fromJsonObject<AppearanceKitPackage>(manifestFile.readText()).getOrThrow()
             val importedBinding = KitBinding()
             manifest.components.forEach { component ->
-                val componentFile = File(unzipDir, component.path)
-                    .takeIf { it.isFile }
-                    ?: return@forEach
+                val componentFile = resolveKitComponentFile(packageRoot, unzipDir, component.path) ?: return@forEach
                 when (component.type) {
                     KitComponentType.THEME.name -> {
                         val entry = ThemePackageManager.importZip(componentFile)
@@ -315,6 +321,44 @@ object AppearanceKitManager {
         } finally {
             FileUtils.delete(unzipDir, deleteRootDir = true)
         }
+    }
+
+    private fun appearanceKitZipPayload(file: File): File? {
+        if (hasKitManifest(file)) return file
+        val payload = RedAssetPackage.zipPayload(file, tempDir) ?: return null
+        if (hasKitManifest(payload)) return payload
+        payload.delete()
+        return null
+    }
+
+    private fun hasKitManifest(file: File): Boolean {
+        return runCatching {
+            ZipFile(file).use { zip -> zip.findKitManifestEntry() != null }
+        }.getOrDefault(false)
+    }
+
+    private fun ZipFile.findKitManifestEntry(): ZipEntry? {
+        return entries().asSequence().firstOrNull { entry ->
+            !entry.isDirectory && entry.name.isKitManifestPath()
+        }
+    }
+
+    private fun String.isKitManifestPath(): Boolean {
+        val normalized = replace('\\', '/').trim('/')
+        return normalized == kitManifestName || normalized.endsWith("/$kitManifestName")
+    }
+
+    private fun findKitManifestFile(root: File): File? {
+        return root.walkTopDown().firstOrNull { it.isFile && it.name == kitManifestName }
+    }
+
+    private fun resolveKitComponentFile(packageRoot: File, unzipRoot: File, path: String): File? {
+        val normalized = path.replace('\\', '/').trim('/').takeIf { it.isNotBlank() } ?: return null
+        if (File(normalized).isAbsolute) return null
+        return listOf(
+            File(packageRoot, normalized),
+            File(unzipRoot, normalized)
+        ).firstOrNull { it.isFile && it.isSameOrSubFileOf(unzipRoot) }
     }
 
     private suspend fun applyBinding(context: Context, binding: KitBinding) {

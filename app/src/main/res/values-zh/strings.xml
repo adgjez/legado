@@ -2170,6 +2170,7 @@ bookUrl：%7$s
     <string name="appearance_kit_export">导出当前应用主题</string>
     <string name="appearance_kit_export_summary">导出当前主题、顶栏、底栏和封面图集的组合包</string>
     <string name="appearance_kit_imported">已导入 %d 个组件</string>
+    <string name="appearance_kit_manifest_missing">缺少 appearance_kit.json</string>
     <string name="appearance_kit_sync_summary">查看主题、顶栏、底栏的云端同步任务</string>
     <string name="appearance_kit_advanced">高级管理</string>
     <string name="appearance_kit_cover_summary">管理书籍封面图集资源</string>

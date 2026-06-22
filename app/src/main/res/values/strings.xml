@@ -2301,6 +2301,7 @@ Selected text or question:
     <string name="appearance_kit_export">Export current app theme</string>
     <string name="appearance_kit_export_summary">Export current theme, top bar, bottom bar, and cover collection together</string>
     <string name="appearance_kit_imported">Imported %d components</string>
+    <string name="appearance_kit_manifest_missing">appearance_kit.json not found</string>
     <string name="appearance_kit_sync_summary">View cloud sync tasks for themes, top bars, and bottom bars</string>
     <string name="appearance_kit_advanced">Advanced management</string>
     <string name="appearance_kit_cover_summary">Manage book cover gallery resources</string>
