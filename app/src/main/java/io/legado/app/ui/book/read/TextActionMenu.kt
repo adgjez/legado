@@ -19,10 +19,7 @@ import androidx.appcompat.view.SupportMenuInflater
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.appcompat.view.menu.MenuItemImpl
 import androidx.core.view.isVisible
-import com.google.android.flexbox.AlignItems
-import com.google.android.flexbox.FlexDirection
-import com.google.android.flexbox.FlexWrap
-import com.google.android.flexbox.FlexboxLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
@@ -56,6 +53,8 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private val visibleMenuItems = arrayListOf<MenuItemImpl>()
     private val moreMenuItems = arrayListOf<MenuItemImpl>()
     private var lastMaxMainWidth = 0
+    private var mainMenuLayoutManager: GridLayoutManager? = null
+    private var mainMenuItemOuterWidth = 70.dpToPx()
     private val itemTextPaint = TextPaint().apply {
         textSize = 12f * context.resources.displayMetrics.scaledDensity
         typeface = context.uiTypeface()
@@ -98,11 +97,8 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             onInitializeMenu(otherMenu)
         }
         allMenuItems = myMenu.visibleItems + otherMenu.visibleItems
-        binding.recyclerView.layoutManager = FlexboxLayoutManager(context).apply {
-            flexDirection = FlexDirection.ROW
-            flexWrap = FlexWrap.WRAP
-            alignItems = AlignItems.FLEX_START
-        }
+        mainMenuLayoutManager = GridLayoutManager(context, 1)
+        binding.recyclerView.layoutManager = mainMenuLayoutManager
         binding.recyclerView.adapter = adapter
         binding.recyclerViewMore.adapter = adapter
         setOnDismissListener {
@@ -135,12 +131,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         val filteredItems = filteredMenuItems()
         val maxWidth = (maxMainWidth - 16.dpToPx()).coerceAtLeast(140.dpToPx())
         val contentMaxWidth = (maxWidth - 12.dpToPx()).coerceAtLeast(120.dpToPx())
-        val noMoreLayout = flowMainMenu(filteredItems, contentMaxWidth)
-        val layout = if (noMoreLayout.overflow.isEmpty()) {
-            noMoreLayout
-        } else {
-            flowMainMenu(filteredItems, (contentMaxWidth - moreButtonWidth()).coerceAtLeast(96.dpToPx()))
-        }
+        val layout = gridMainMenu(filteredItems, contentMaxWidth)
         visibleMenuItems += layout.visible
         moreMenuItems += layout.overflow
         applyMainMenuLayout(layout)
@@ -159,49 +150,54 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
 
     private fun mainRowHeight(): Int = 40.dpToPx()
 
-    private fun flowMainMenu(items: List<MenuItemImpl>, rowWidth: Int): MainMenuLayout {
-        val visible = arrayListOf<MenuItemImpl>()
-        val overflow = arrayListOf<MenuItemImpl>()
-        val lineWidths = arrayListOf<Int>()
-        var rowIndex = 0
-        var usedWidth = 0
-        var overflowStarted = false
-        items.forEach { item ->
-            val itemWidth = estimateItemWidth(item).coerceAtMost(rowWidth)
-            if (!overflowStarted) {
-                if (usedWidth == 0 || usedWidth + itemWidth <= rowWidth) {
-                    visible += item
-                    usedWidth += itemWidth
-                    return@forEach
-                }
-                if (rowIndex == 0) {
-                    lineWidths += usedWidth
-                    rowIndex = 1
-                    usedWidth = itemWidth
-                    visible += item
-                    return@forEach
-                }
-            }
-            overflowStarted = true
-            overflow += item
+    private fun gridMainMenu(items: List<MenuItemImpl>, contentMaxWidth: Int): MainMenuLayout {
+        val noMoreColumns = mainMenuColumnCount(items.size, contentMaxWidth)
+        val noMoreCapacity = noMoreColumns * 2
+        val hasOverflow = items.size > noMoreCapacity
+        val rowWidth = if (hasOverflow) {
+            (contentMaxWidth - moreButtonWidth()).coerceAtLeast(96.dpToPx())
+        } else {
+            contentMaxWidth
         }
-        if (usedWidth > 0 || lineWidths.isEmpty()) {
-            lineWidths += usedWidth
-        }
-        val rowCount = if (visible.isEmpty()) 1 else lineWidths.size.coerceIn(1, 2)
-        val layoutWidth = lineWidths.maxOrNull()
-            ?.coerceAtLeast(if (visible.isEmpty()) 0 else 52.dpToPx())
-            ?.coerceAtMost(rowWidth)
-            ?: rowWidth
+        val columns = mainMenuColumnCount(items.size.coerceAtMost(8), rowWidth)
+        val capacity = columns * 2
+        val visible = items.take(capacity)
+        val overflow = items.drop(capacity)
+        val rowCount = ceil(visible.size / columns.toFloat()).toInt().coerceIn(1, 2)
+        val itemWidth = mainMenuItemWidth(visible, columns, rowWidth)
         return MainMenuLayout(
             visible = visible,
             overflow = overflow,
             rowCount = rowCount,
-            width = layoutWidth
+            columnCount = columns,
+            itemWidth = itemWidth,
+            width = itemWidth * columns
         )
     }
 
+    private fun mainMenuColumnCount(itemCount: Int, rowWidth: Int): Int {
+        if (itemCount <= 0) return 1
+        val maxColumnsByWidth = (rowWidth / 58.dpToPx()).coerceIn(1, 4)
+        val idealColumns = if (itemCount <= 4) {
+            itemCount
+        } else {
+            ceil(itemCount / 2f).toInt()
+        }
+        return idealColumns.coerceIn(1, maxColumnsByWidth)
+    }
+
+    private fun mainMenuItemWidth(items: List<MenuItemImpl>, columns: Int, rowWidth: Int): Int {
+        val measured = items.maxOfOrNull(::estimateItemWidth) ?: 64.dpToPx()
+        val maxCellWidth = (rowWidth / columns).coerceAtLeast(1)
+        return measured
+            .coerceAtLeast(64.dpToPx())
+            .coerceAtMost(maxCellWidth)
+    }
+
     private fun applyMainMenuLayout(layout: MainMenuLayout) = binding.run {
+        mainMenuItemOuterWidth = layout.itemWidth
+        adapter.itemOuterWidth = layout.itemWidth
+        mainMenuLayoutManager?.spanCount = layout.columnCount
         recyclerView.layoutParams = recyclerView.layoutParams.apply {
             width = layout.width
             height = layout.rowCount * mainRowHeight()
@@ -211,6 +207,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private fun showMainMenu() = binding.run {
         ivMenuMore.setImageResource(R.drawable.ic_more_vert)
         recyclerViewMore.gone()
+        adapter.itemOuterWidth = mainMenuItemOuterWidth
         adapter.setItems(visibleMenuItems)
         recyclerView.visible()
         ivMenuMore.visible(moreMenuItems.isNotEmpty())
@@ -219,6 +216,7 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private fun showMoreMenu() = binding.run {
         ivMenuMore.setImageResource(R.drawable.ic_arrow_back)
         val rowHeight = 42.dpToPx()
+        adapter.itemOuterWidth = maxMenuItemWidth() + 6.dpToPx()
         recyclerViewMore.layoutParams = recyclerViewMore.layoutParams.apply {
             height = minOf(moreMenuItems.size * rowHeight, 240.dpToPx())
         }
@@ -234,7 +232,8 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         startTopY: Int,
         startBottomY: Int,
         endX: Int,
-        endBottomY: Int
+        endBottomY: Int,
+        reservedBottom: Int = 0
     ) {
         val defaultActionId = defaultOpenActionId
         if (defaultActionId.isNotEmpty() && configuredActionIds.contains(defaultActionId)) {
@@ -255,8 +254,9 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         val popupWidth = contentView.measuredWidth
         val popupHeight = contentView.measuredHeight
         val margin = 8.dpToPx()
+        val safeWindowHeight = (windowHeight - reservedBottom).coerceAtLeast(margin * 2)
         val spaceAbove = startTopY
-        val spaceBelow = windowHeight - endBottomY
+        val spaceBelow = safeWindowHeight - endBottomY
         val showAbove = spaceAbove >= popupHeight + margin || spaceAbove > spaceBelow
         val preferredX = ((startX + endX) / 2f - popupWidth / 2f).toInt()
         val maxX = (view.width - popupWidth - margin).coerceAtLeast(margin)
@@ -264,13 +264,15 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         val y = if (showAbove) {
             (startTopY - popupHeight - margin).coerceAtLeast(margin)
         } else {
-            (endBottomY + margin).coerceAtMost((windowHeight - popupHeight - margin).coerceAtLeast(margin))
+            (endBottomY + margin).coerceAtMost((safeWindowHeight - popupHeight - margin).coerceAtLeast(margin))
         }
         showAtLocation(view, Gravity.TOP or Gravity.START, x, y)
     }
 
     inner class Adapter(context: Context) :
         RecyclerAdapter<MenuItemImpl, ItemTextBinding>(context) {
+
+        var itemOuterWidth: Int = 70.dpToPx()
 
         override fun getItemId(position: Int): Long {
             return position.toLong()
@@ -287,9 +289,16 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             payloads: MutableList<Any>
         ) {
             with(binding) {
+                val marginParams = textView.layoutParams as? ViewGroup.MarginLayoutParams
+                if (marginParams != null) {
+                    val horizontalMargin = marginParams.leftMargin + marginParams.rightMargin
+                    marginParams.width = (itemOuterWidth - horizontalMargin).coerceAtLeast(52.dpToPx())
+                    marginParams.height = 34.dpToPx()
+                    textView.layoutParams = marginParams
+                }
                 textView.text = item.title
                 textView.typeface = context.uiTypeface()
-                textView.maxWidth = maxMenuItemWidth()
+                textView.maxWidth = itemOuterWidth.coerceAtMost(maxMenuItemWidth())
             }
         }
 
@@ -402,6 +411,8 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         val visible: List<MenuItemImpl>,
         val overflow: List<MenuItemImpl>,
         val rowCount: Int,
+        val columnCount: Int,
+        val itemWidth: Int,
         val width: Int
     )
 }

@@ -373,6 +373,7 @@ class ReadMenu @JvmOverloads constructor(
                             isEpub = callBack.isEpubCoreBook()
                         ),
                         actions = ReadMenuTitleBarActions(
+                            onBackClick = { callBack.returnToBookshelf() },
                             onBookClick = { callBack.openBookInfoActivity() },
                             onChangeSourceClick = { callBack.changeSource() },
                             onChangeSourceLongClick = { callBack.changeSourceSingle() },
@@ -463,6 +464,9 @@ class ReadMenu @JvmOverloads constructor(
         val layout = buttonLayout
         val hasButtons = layout.firstRow.isNotEmpty() || layout.secondRow.isNotEmpty()
         val showBrightness = showBrightnessView && hasButtons
+        val navigationBarBottom = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
 
         Surface(
             modifier = Modifier
@@ -484,7 +488,12 @@ class ReadMenu @JvmOverloads constructor(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(
+                        start = 14.dp,
+                        top = 10.dp,
+                        end = 14.dp,
+                        bottom = 10.dp + navigationBarBottom
+                    ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // SeekBar 区域
@@ -748,6 +757,7 @@ class ReadMenu @JvmOverloads constructor(
         fun openSearchActivity(searchWord: String?)
         fun openSourceEditActivity()
         fun openBookInfoActivity()
+        fun returnToBookshelf()
         fun showReadStyle()
         fun showMoreSetting()
         fun openReadAiSummary()

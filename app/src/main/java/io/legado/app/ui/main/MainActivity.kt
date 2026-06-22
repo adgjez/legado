@@ -3,6 +3,7 @@
 package io.legado.app.ui.main
 
 import android.animation.ValueAnimator
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -178,6 +179,20 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val adapter by lazy {
         TabFragmentPageAdapter(supportFragmentManager)
     }
+
+    companion object {
+        private const val EXTRA_TARGET_PAGE = "targetPage"
+        private const val TARGET_BOOKSHELF = "bookshelf"
+
+        fun openBookshelf(context: Context) {
+            context.startActivity(Intent(context, MainActivity::class.java).apply {
+                putExtra(EXTRA_TARGET_PAGE, TARGET_BOOKSHELF)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
+    }
     private var onUpBooksBadgeView: BadgeView? = null
     private val appearanceRefreshRunnable = Runnable {
         refreshAppearanceKitNow()
@@ -260,6 +275,7 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         setupMainBackgroundLayer()
         upBottomMenu()
         initView()
+        handleTargetIntent(intent)
         ReadAloudAppCapsuleHost.attachMain(this, binding.root)
         onBackPressedDispatcher.addCallback(this) {
             if (isSidebarMode() && sideNavigationOpen) {
@@ -286,6 +302,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleTargetIntent(intent)
     }
 
     override fun onPostCreate(savedInstanceState: Bundle?) {
@@ -466,6 +488,25 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         }
         bindMergedDiscoveryLongClick()
         applyBottomLayoutMode()
+    }
+
+    private fun handleTargetIntent(intent: Intent?) {
+        if (intent?.getStringExtra(EXTRA_TARGET_PAGE) != TARGET_BOOKSHELF) return
+        intent.removeExtra(EXTRA_TARGET_PAGE)
+        binding.viewPagerMain.post {
+            openBookshelfPage()
+        }
+    }
+
+    private fun openBookshelfPage() = binding.run {
+        val position = realPositions.indexOf(idBookshelf).takeIf { it >= 0 } ?: 0
+        pagePosition = position
+        viewPagerMain.setCurrentItem(position, false)
+        bottomNavigationView.menu.findItem(R.id.menu_bookshelf)?.isChecked = true
+        updateSideNavigationItems()
+        if (isSidebarMode() && sideNavigationOpen) {
+            closeSideNavigation()
+        }
     }
 
     private fun scheduleLiquidGlassSetup(delayMillis: Long = 0L) {

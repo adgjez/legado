@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.ImageView
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -99,6 +100,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.composeActionRadius
 import io.legado.app.lib.theme.composePanelRadius
 import io.legado.app.ui.association.OnLineImportActivity
+import io.legado.app.ui.book.info.BookInfoUseWebHost
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
 import io.noties.markwon.Markwon
@@ -1971,22 +1973,35 @@ private fun BookInfoWebIntro(
         }
     }
     val loadToken = remember { AtomicLong(0L) }
-    val webView = remember(context) {
-        WebView(context).apply {
+    val webContainer = remember(context) {
+        FrameLayout(context).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+    }
+    val webView = remember(context) {
+        WebView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
             settings.apply {
                 javaScriptEnabled = true
                 mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 domStorageEnabled = true
+                loadsImagesAutomatically = true
+                blockNetworkImage = false
+                javaScriptCanOpenWindowsAutomatically = true
+                setSupportMultipleWindows(true)
                 mediaPlaybackRequiresUserGesture = false
                 allowContentAccess = true
                 builtInZoomControls = false
                 displayZoomControls = false
                 textZoom = 100
             }
+            BookInfoUseWebHost.configure(this)
             overScrollMode = View.OVER_SCROLL_NEVER
             isVerticalScrollBarEnabled = false
             isLongClickable = true
@@ -1996,11 +2011,14 @@ private fun BookInfoWebIntro(
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
     }
-    DisposableEffect(webView) {
+    DisposableEffect(webContainer, webView) {
         onDispose {
             loadToken.set(Long.MIN_VALUE)
+            BookInfoUseWebHost.clearPopups(webContainer)
+            webView.webChromeClient = null
             webView.webViewClient = WebViewClient()
             (webView.parent as? ViewGroup)?.removeView(webView)
+            webContainer.removeAllViews()
             webView.stopLoading()
             webView.destroy()
         }
@@ -2010,15 +2028,45 @@ private fun BookInfoWebIntro(
             .fillMaxWidth()
             .height(webHeight),
         factory = {
-            webView.apply {
+            webContainer.apply {
                 (parent as? ViewGroup)?.removeView(this)
-                setTag(R.id.tag, null)
-                onResume()
-                actions.onSetupWebIntro(this)
+                if (webView.parent !== this) {
+                    (webView.parent as? ViewGroup)?.removeView(webView)
+                    addView(
+                        webView,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                }
+                webView.setTag(R.id.tag, null)
+                webView.onResume()
+                actions.onSetupWebIntro(webView)
+                BookInfoUseWebHost.attachPopupSupport(
+                    container = this,
+                    webView = webView,
+                    configurePopupWebView = actions.onSetupWebIntro
+                )
             }
         },
-        update = { webView ->
+        update = { container ->
+            if (webView.parent !== container) {
+                (webView.parent as? ViewGroup)?.removeView(webView)
+                container.addView(
+                    webView,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+            }
             actions.onSetupWebIntro(webView)
+            BookInfoUseWebHost.attachPopupSupport(
+                container = container,
+                webView = webView,
+                configurePopupWebView = actions.onSetupWebIntro
+            )
             webView.webViewClient = BookInfoIntroWebViewClient(
                 context = context,
                 currentToken = { loadToken.get() },

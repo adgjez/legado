@@ -187,6 +187,7 @@ import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
 import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.showDialogFragment
@@ -531,7 +532,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             if (getPrefBoolean("disableReturnKey") && !menuLayoutIsVisible) {
                 return@addCallback
             }
-            finish()
+            returnToBookshelf()
         }
     }
 
@@ -1276,7 +1277,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             topY,
             startBottomY,
             endX,
-            endBottomY
+            endBottomY,
+            navigationBarHeight
         )
     }
 
@@ -1315,7 +1317,8 @@ class ReadBookActivity : BaseReadBookActivity(),
             top,
             endBottomY.toInt(),
             end,
-            endBottomY.toInt()
+            endBottomY.toInt(),
+            navigationBarHeight
         )
     }
 
@@ -2990,9 +2993,49 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    /**
-     * 替换
-     */
+    override fun returnToBookshelf() {
+        val book = ReadBook.book
+        if (book == null) {
+            super.finish()
+            openBookshelf()
+            return
+        }
+        if (ReadBook.inBookshelf) {
+            callBackBookEnd()
+            super.finish()
+            openBookshelf()
+            return
+        }
+        if (!AppConfig.showAddToShelfAlert) {
+            callBackBookEnd()
+            viewModel.removeFromBookshelf {
+                super.finish()
+                openBookshelf()
+            }
+        } else {
+            alert(title = getString(R.string.add_to_bookshelf)) {
+                setMessage(getString(R.string.check_add_bookshelf, book.name))
+                okButton {
+                    ReadBook.book?.removeType(BookType.notShelf)
+                    ReadBook.book?.save()
+                    SourceCallBack.callBackBook(SourceCallBack.ADD_BOOK_SHELF, ReadBook.bookSource, ReadBook.book)
+                    ReadBook.inBookshelf = true
+                    setResult(RESULT_OK)
+                    callBackBookEnd()
+                    super.finish()
+                    openBookshelf()
+                }
+                noButton {
+                    callBackBookEnd()
+                    viewModel.removeFromBookshelf {
+                        super.finish()
+                        openBookshelf()
+                    }
+                }
+            }
+        }
+    }
+
     override fun openReplaceRule() {
         replaceActivity.launch(Intent(this, ReplaceRuleActivity::class.java))
     }

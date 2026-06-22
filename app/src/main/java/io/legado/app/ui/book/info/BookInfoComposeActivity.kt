@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
@@ -78,6 +79,7 @@ import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
@@ -193,6 +195,9 @@ class BookInfoComposeActivity :
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        onBackPressedDispatcher.addCallback(this) {
+            returnToBookshelf()
+        }
         refreshLayout.setOnRefreshListener {
             refreshBook()
         }
@@ -244,7 +249,7 @@ class BookInfoComposeActivity :
 
     private fun composeActions(): BookInfoActions {
         return BookInfoActions(
-            onBack = ::finish,
+            onBack = ::returnToBookshelf,
             onRefresh = ::refreshBook,
             onRefreshToc = ::refreshToc,
             onRead = {
@@ -402,6 +407,11 @@ class BookInfoComposeActivity :
         )
     }
 
+    private fun returnToBookshelf() {
+        finish()
+        openBookshelf()
+    }
+
     private fun setBookCanUpdate(enabled: Boolean) {
         viewModel.getBook()?.let { book ->
             book.canUpdate = enabled
@@ -477,6 +487,7 @@ class BookInfoComposeActivity :
     }
 
     private fun setupWebIntro(webView: WebView) {
+        BookInfoUseWebHost.configure(webView)
         webView.addJavascriptInterface(WebCacheManager, nameCache)
         viewModel.bookSource?.let { source ->
             webView.addJavascriptInterface(source as BaseSource, nameSource)

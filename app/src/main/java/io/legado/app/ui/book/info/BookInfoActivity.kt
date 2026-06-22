@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -147,6 +148,7 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.openBookshelf
 import io.legado.app.utils.openFileUri
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
@@ -483,12 +485,23 @@ class BookInfoActivity :
         })
     }
 
+    private fun returnToBookshelf() {
+        finish()
+        openBookshelf()
+    }
+
     @SuppressLint("PrivateResource")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         useComposeBookInfo = false
+        onBackPressedDispatcher.addCallback(this) {
+            returnToBookshelf()
+        }
         binding.bgBook.setBackgroundColor(backgroundColor)
         binding.vwBg.alpha = 1f
         binding.titleBar.setBackgroundResource(R.color.transparent)
+        binding.titleBar.setNavigationOnClickListener {
+            returnToBookshelf()
+        }
         binding.refreshLayout.setColorSchemeColors(accentColor)
         binding.arcView.setBgColor(backgroundColor)
         binding.llInfo.setBackgroundResource(R.color.transparent)
@@ -562,7 +575,7 @@ class BookInfoActivity :
 
     private fun composeBookInfoActions(): BookInfoActions {
         return BookInfoActions(
-            onBack = ::finish,
+            onBack = ::returnToBookshelf,
             onRefresh = ::refreshBook,
             onRead = {
                 viewModel.getBook()?.let { book ->
@@ -732,6 +745,7 @@ class BookInfoActivity :
     }
 
     private fun setupComposeWebIntro(webView: WebView) {
+        BookInfoUseWebHost.configure(webView)
         webView.addJavascriptInterface(WebCacheManager, nameCache)
         viewModel.bookSource?.let { source ->
             webView.addJavascriptInterface(source as BaseSource, nameSource)
@@ -2005,21 +2019,19 @@ class BookInfoActivity :
                 val webView = pooledWebView.realWebView
                 webView.onResume()
                 webView.webViewClient = CustomWebViewClient()
-                webView.addJavascriptInterface(WebCacheManager, nameCache)
-                viewModel.bookSource?.let {
-                    webView.addJavascriptInterface(it as BaseSource, nameSource)
-                    val webJsExtensions = WebJsExtensions(it, null, webView)
-                    webView.addJavascriptInterface(webJsExtensions, nameJava)
-                }
+                setupComposeWebIntro(webView)
+                BookInfoUseWebHost.configure(webView)
                 pooledWebView
             }
             val webView = pooledWebView.realWebView
+            BookInfoUseWebHost.configure(webView)
             webView.setBackgroundColor(Color.TRANSPARENT)
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
             webView.setOnTouchListener(webIntroTouchListener())
             if (initIntroView || this.pooledWebView == null) {
                 initIntroView = false
                 this.pooledWebView = pooledWebView
+                BookInfoUseWebHost.clearPopups(binding.tvIntroContainer)
                 binding.tvIntroContainer.removeAllViews()
                 binding.tvIntroContainer.addView(
                     webView,
@@ -2030,6 +2042,11 @@ class BookInfoActivity :
                 )
                 relayoutUseWebIntro(webView)
             }
+            BookInfoUseWebHost.attachPopupSupport(
+                container = binding.tvIntroContainer,
+                webView = webView,
+                configurePopupWebView = ::setupComposeWebIntro
+            )
             val bookUrl = viewModel.getBook()?.bookUrl
                 ?.takeIf { it.startsWith("http", true) }
                 ?.substringBefore(",")
@@ -3275,6 +3292,8 @@ class BookInfoActivity :
     }
 
     private fun destroyWeb() {
+        BookInfoUseWebHost.clearPopups(binding.tvIntroContainer)
+        pooledWebView?.realWebView?.webChromeClient = null
         pooledWebView?.let { WebViewPool.release(it) }
         pooledWebView = null
     }

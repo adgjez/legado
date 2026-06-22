@@ -49,6 +49,7 @@ import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.video.VideoPlayerActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.main.MainActivity
 import splitties.systemservices.clipboardManager
 import splitties.systemservices.connectivityManager
 import splitties.systemservices.uiModeManager
@@ -78,6 +79,10 @@ fun Context.startActivityForBook(
     intent.putExtra("bookUrl", book.bookUrl)
     intent.apply(configIntent)
     startActivity(intent)
+}
+
+fun Context.openBookshelf() {
+    MainActivity.openBookshelf(this)
 }
 
 

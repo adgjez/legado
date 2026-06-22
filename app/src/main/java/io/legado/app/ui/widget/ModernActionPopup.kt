@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.PopupMenu
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.MenuRes
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -371,9 +373,10 @@ object ModernActionPopup {
         val bottomGap = bottomGapDp.dpToPx()
         val hostWidth = host.width.takeIf { it > 0 } ?: host.rootView.width
         val hostHeight = host.height.takeIf { it > 0 } ?: host.rootView.height
-        val belowSpace = hostHeight - anchorBottom - gap - bottomGap
+        val safeHostHeight = host.safePopupHostHeight(hostHeight)
+        val belowSpace = safeHostHeight - anchorBottom - gap - bottomGap
         val aboveSpace = anchorTop - gap
-        val usableHeight = (hostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
+        val usableHeight = (safeHostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
         val minimumHeight = minOf(72.dpToPx(), usableHeight).coerceAtLeast(1)
         val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
             minOf(48.dpToPx(), usableHeight).coerceAtLeast(1),
@@ -397,7 +400,7 @@ object ModernActionPopup {
             anchorRight = anchorRight,
             anchorBottom = anchorBottom,
             hostWidth = hostWidth,
-            hostHeight = hostHeight,
+            hostHeight = safeHostHeight,
             maxWidthPx = maxWidth,
             maxHeightPx = maxHeight,
             fallbackWidthPx = fallbackWidth,
@@ -542,13 +545,14 @@ object ModernActionPopup {
         anchor.getLocationOnScreen(anchorLocation)
         val hostWidth = host.width.takeIf { it > 0 } ?: anchor.rootView.width
         val hostHeight = host.height.takeIf { it > 0 } ?: anchor.rootView.height
+        val safeHostHeight = host.safePopupHostHeight(hostHeight)
         val anchorLeft = anchorLocation[0] - hostLocation[0]
         val anchorTop = anchorLocation[1] - hostLocation[1]
         val anchorRight = anchorLeft + anchor.width
         val anchorBottom = anchorTop + anchor.height
-        val belowSpace = hostHeight - anchorBottom - gap - bottomGap
+        val belowSpace = safeHostHeight - anchorBottom - gap - bottomGap
         val aboveSpace = anchorTop - gap
-        val usableHeight = (hostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
+        val usableHeight = (safeHostHeight - gap * 2 - bottomGap).coerceAtLeast(1)
         val minimumHeight = minOf(72.dpToPx(), usableHeight).coerceAtLeast(1)
         val anchorSpace = maxOf(belowSpace, aboveSpace).coerceIn(
             minOf(48.dpToPx(), usableHeight).coerceAtLeast(1),
@@ -572,7 +576,7 @@ object ModernActionPopup {
             anchorRight = anchorRight,
             anchorBottom = anchorBottom,
             hostWidth = hostWidth,
-            hostHeight = hostHeight,
+            hostHeight = safeHostHeight,
             maxWidthPx = maxWidth,
             maxHeightPx = maxHeight,
             fallbackWidthPx = fallbackWidth,
@@ -625,5 +629,12 @@ object ModernActionPopup {
         val estimatedDp = (56 + longest.coerceAtMost(14) * 13)
             .coerceIn(MIN_WIDTH_DP, MAX_WIDTH_DP)
         return minOf(estimatedDp.dpToPx(), maxWidthPx).coerceAtLeast(1)
+    }
+
+    private fun View.safePopupHostHeight(hostHeight: Int): Int {
+        val navigationBottom = ViewCompat.getRootWindowInsets(this)
+            ?.getInsets(WindowInsetsCompat.Type.navigationBars())
+            ?.bottom ?: 0
+        return (hostHeight - navigationBottom).coerceAtLeast(1)
     }
 }

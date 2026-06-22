@@ -61,6 +61,9 @@ import io.legado.app.utils.dpToPx
 
 private const val MENU_BUTTONS_PER_PAGE = 4
 private val READ_MENU_BUTTON_MIN_HEIGHT = 52.dp
+private val READ_MENU_TITLE_ICON_SIZE = 22.dp
+private val READ_MENU_TITLE_TOUCH_SIZE = 44.dp
+private val READ_MENU_TITLE_ICON_SPACING = 2.dp
 
 data class ReadMenuTitleBarState(
     val bookName: String?,
@@ -69,6 +72,7 @@ data class ReadMenuTitleBarState(
 )
 
 data class ReadMenuTitleBarActions(
+    val onBackClick: () -> Unit,
     val onBookClick: () -> Unit,
     val onChangeSourceClick: () -> Unit,
     val onChangeSourceLongClick: () -> Unit,
@@ -139,19 +143,18 @@ fun ReadMenuTitleBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = actions.onBookClick)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 返回按钮
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_back),
+            ReadMenuTitleIconButton(
+                painterRes = R.drawable.ic_arrow_back,
                 contentDescription = null,
                 tint = style.primaryText,
-                modifier = Modifier
-                    .size(22.dp)
-                    .clickable { actions.onBookClick() }
+                style = style,
+                onClick = actions.onBackClick
             )
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             // 书名
             Text(
                 text = state.bookName ?: "",
@@ -164,49 +167,42 @@ fun ReadMenuTitleBar(
             )
             // 换源图标
             if (!state.isLocalBook) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_exchange),
+                ReadMenuTitleIconButton(
+                    painterRes = R.drawable.ic_exchange,
                     contentDescription = "换源",
                     tint = style.primaryText,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .combinedClickable(
-                            onClick = actions.onChangeSourceClick,
-                            onLongClick = actions.onChangeSourceLongClick
-                        )
+                    style = style,
+                    onLongClick = actions.onChangeSourceLongClick,
+                    onClick = actions.onChangeSourceClick
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(READ_MENU_TITLE_ICON_SPACING))
             }
             // 刷新图标
-            Icon(
-                painter = painterResource(R.drawable.ic_refresh_black_24dp),
+            ReadMenuTitleIconButton(
+                painterRes = R.drawable.ic_refresh_black_24dp,
                 contentDescription = "刷新",
                 tint = style.primaryText,
-                modifier = Modifier
-                    .size(22.dp)
-                    .combinedClickable(
-                        onClick = actions.onRefreshClick,
-                        onLongClick = actions.onRefreshLongClick
-                    )
+                style = style,
+                onLongClick = actions.onRefreshLongClick,
+                onClick = actions.onRefreshClick
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(READ_MENU_TITLE_ICON_SPACING))
             // 缓存图标
             if (!state.isLocalBook) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_download_line),
+                ReadMenuTitleIconButton(
+                    painterRes = R.drawable.ic_download_line,
                     contentDescription = "缓存",
                     tint = style.primaryText,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clickable(onClick = actions.onCacheClick)
+                    style = style,
+                    onClick = actions.onCacheClick
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(READ_MENU_TITLE_ICON_SPACING))
             }
             // 三点菜单（overflow menu）- 使用 ModernActionPopup
             var anchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(READ_MENU_TITLE_TOUCH_SIZE)
                     .clip(RoundedCornerShape(style.actionRadius))
                     .onGloballyPositioned { coordinates ->
                         val pos = coordinates.localToWindow(androidx.compose.ui.geometry.Offset.Zero)
@@ -258,6 +254,41 @@ fun ReadMenuTitleBar(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ReadMenuTitleIconButton(
+    painterRes: Int,
+    contentDescription: String?,
+    tint: Color,
+    style: AppDialogStyle,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
+    } else {
+        Modifier.clickable(onClick = onClick)
+    }
+
+    Box(
+        modifier = modifier
+            .size(READ_MENU_TITLE_TOUCH_SIZE)
+            .clip(RoundedCornerShape(style.actionRadius))
+            .then(clickModifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(painterRes),
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(READ_MENU_TITLE_ICON_SIZE)
+        )
     }
 }
 
