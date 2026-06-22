@@ -186,6 +186,11 @@ object AiVideoGalleryManager {
         }
     }
 
+    /**
+     * 按保留天数清理过期记录。
+     * 注意：本地文件是否存在的检查已下沉到 [listVideosWithCleanup] 中惰性处理，
+     * 这里不再做全表扫描，避免在大库上产生 O(N) 磁盘 I/O。
+     */
     suspend fun cleanupExpired() = withContext(Dispatchers.IO) {
         val keepDays = appCtx.getPrefInt(PreferKey.aiVideoKeepTempDays, TEMP_KEEP_DAYS.toInt())
             .coerceIn(1, 365)
@@ -198,12 +203,6 @@ object AiVideoGalleryManager {
             ),
             before = cutoff
         )
-        val all = appDb.aiGeneratedVideoDao.all()
-        all.forEach { v ->
-            if (v.localPath.isNotBlank() && !File(v.localPath).isFile) {
-                appDb.aiGeneratedVideoDao.delete(v.id)
-            }
-        }
     }
 
     fun listGroups(): List<AiVideoGroup> {
