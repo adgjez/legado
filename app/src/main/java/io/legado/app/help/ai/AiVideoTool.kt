@@ -4,8 +4,13 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGeneratedVideo
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookCharacter
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.main.ai.AiChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -15,13 +20,15 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * P2：AI 视频相关 5 个 LLM tool。
+ * P2：AI 视频相关 LLM tool。
  *
  * - generate_video：提交文生视频/图生视频任务（异步，立即返回 taskId）
  * - list_ai_gallery_videos：列出画廊视频
  * - get_ai_gallery_video：取一条视频元信息
  * - set_book_character_avatar_from_video_gallery：从画廊视频抽帧做角色头像
  * - generate_book_character_short_video：角色卡对应短视（基于角色描述 prompt）
+ * - generate_book_chapter_video：读取章节正文 → LLM 提取视觉场景 → 提交视频生成
+ * - generate_book_chapter_video_range：批量按章节区间连续生成视频
  */
 object AiVideoTool {
 
@@ -30,12 +37,21 @@ object AiVideoTool {
     private const val TOOL_GET = "get_ai_gallery_video"
     private const val TOOL_SET_AVATAR = "set_book_character_avatar_from_video_gallery"
     private const val TOOL_GENERATE_CHARACTER_VIDEO = "generate_book_character_short_video"
+    private const val TOOL_GENERATE_CHAPTER_VIDEO = "generate_book_chapter_video"
+    private const val TOOL_GENERATE_CHAPTER_VIDEO_RANGE = "generate_book_chapter_video_range"
 
     private const val MAX_LIST_LIMIT = 50
     private const val DEFAULT_LIST_LIMIT = 20
     private const val MAX_AVATAR_SIDE = 720
     private const val FRAME_TIME_DEFAULT_MS = 0L
     private const val SOURCE_TYPE_CHARACTER_SHORT_VIDEO = "character_short_video"
+    private const val SOURCE_TYPE_CHAPTER_VIDEO = "chapter_video"
+
+    /** 章节正文最大字符数（截取后送 LLM 提取场景） */
+    private const val MAX_CHAPTER_CHARS = 6000
+
+    /** 批量生成章节区间上限 */
+    private const val MAX_RANGE_CHAPTERS = 10
 
     fun resolvedTools(): List<AiResolvedTool> {
         return listOf(
@@ -45,8 +61,22 @@ object AiVideoTool {
             AiResolvedTool(TOOL_SET_AVATAR, setAvatarDefinition()) { args -> executeSetAvatar(args) },
             AiResolvedTool(TOOL_GENERATE_CHARACTER_VIDEO, generateCharacterVideoDefinition()) { args ->
                 executeGenerateCharacterVideo(args)
+            },
+            AiResolvedTool(TOOL_GENERATE_CHAPTER_VIDEO, generateChapterVideoDefinition()) { args ->
+                executeGenerateChapterVideo(args)
+            },
+            AiResolvedTool(TOOL_GENERATE_CHAPTER_VIDEO_RANGE, generateChapterVideoRangeDefinition()) { args ->
+                executeGenerateChapterVideoRange(args)
             }
         )
+    }
+
+    /**
+     * 供 UI 直接调用的批量章节视频生成入口。
+     * 内部委托 [executeGenerateChapterVideoRange]，不经过 LLM tool 调度。
+     */
+    suspend fun runChapterVideoRange(args: JSONObject): String {
+        return executeGenerateChapterVideoRange(args)
     }
 
     private fun generateDefinition(): JSONObject {
@@ -105,6 +135,40 @@ object AiVideoTool {
         ) {
             put("characterId", intProp("角色 ID，必填。"))
             put("stylePrompt", stringProp("可选，附加风格提示词。"))
+        }
+    }
+
+    private fun generateChapterVideoDefinition(): JSONObject {
+        return function(
+            TOOL_GENERATE_CHAPTER_VIDEO,
+            "读取指定书籍章节的正文，用 LLM 提取 1~3 个适合生成短视频的视觉场景，" +
+                "然后提交视频生成任务。sourceType=chapter_video，自动绑定 bookKey/chapterIndex/chapterTitle。" +
+                "返回每个场景的 taskId，1~30 分钟后在画廊可见。"
+        ) {
+            put("bookUrl", stringProp("书籍 bookUrl，必填（与 name+author 二选一）。"))
+            put("name", stringProp("书名，bookUrl 为空时用。"))
+            put("author", stringProp("作者，bookUrl 为空时用。"))
+            put("chapterIndex", intProp("章节序号（从 0 开始），必填。"))
+            put("stylePrompt", stringProp("可选，附加风格提示词，如\"水墨画风\"\"赛博朋克\"。"))
+            put("characterId", intProp("可选，关联角色 ID，生成的视频会绑定该角色。"))
+            put("maxScenes", intProp("可选，每章最多提取场景数，默认 2，最大 3。"))
+        }
+    }
+
+    private fun generateChapterVideoRangeDefinition(): JSONObject {
+        return function(
+            TOOL_GENERATE_CHAPTER_VIDEO_RANGE,
+            "批量按章节区间连续生成视频。对 fromChapter 到 toChapter 的每一章调用 generate_book_chapter_video，" +
+                "每章提取场景并提交视频任务。任务在后台并发执行（默认 2 并发），完成后逐条通知。" +
+                "返回每章的提交结果列表。区间上限 ${MAX_RANGE_CHAPTERS} 章。"
+        ) {
+            put("bookUrl", stringProp("书籍 bookUrl，必填（与 name+author 二选一）。"))
+            put("name", stringProp("书名，bookUrl 为空时用。"))
+            put("author", stringProp("作者，bookUrl 为空时用。"))
+            put("fromChapter", intProp("起始章节序号（从 0 开始），必填。"))
+            put("toChapter", intProp("结束章节序号（含），必填。"))
+            put("stylePrompt", stringProp("可选，附加风格提示词。"))
+            put("maxScenesPerChapter", intProp("可选，每章最多提取场景数，默认 2，最大 3。"))
         }
     }
 
@@ -282,6 +346,231 @@ object AiVideoTool {
         }.getOrElse { t ->
             errorJson(t.localizedMessage ?: t.javaClass.simpleName)
         }
+    }
+
+    // ==================== 章节视频生成 ====================
+
+    private suspend fun executeGenerateChapterVideo(args: JSONObject?): String = withContext(Dispatchers.IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val chapterIndex = args?.optInt("chapterIndex", -1) ?: -1
+        if (chapterIndex < 0) return@withContext errorJson("chapterIndex 不能为空")
+        val stylePrompt = args?.optString("stylePrompt")?.trim().orEmpty()
+        val characterId = args?.optLong("characterId", 0L) ?: 0L
+        val maxScenes = (args?.optInt("maxScenes", 2) ?: 2).coerceIn(1, 3)
+        val provider = AppConfig.aiCurrentVideoProvider
+            ?: return@withContext errorJson("AI 视频供应商不可用")
+
+        // 1. 读取章节正文
+        val chapter = resolveChapter(book, chapterIndex)
+            ?: return@withContext errorJson("未找到章节 $chapterIndex")
+        val content = readChapterContent(book, chapter)
+            ?: return@withContext errorJson("章节正文未缓存且读取失败")
+        if (content.isBlank()) return@withContext errorJson("章节正文为空")
+
+        // 2. LLM 提取视觉场景
+        val scenes = runCatching {
+            extractScenesFromChapter(content, chapter.title, stylePrompt, maxScenes)
+        }.getOrElse { t ->
+            return@withContext errorJson("场景提取失败：${t.localizedMessage ?: t.javaClass.simpleName}")
+        }
+        if (scenes.isEmpty()) return@withContext errorJson("未能从章节中提取到适合生成视频的场景")
+
+        // 3. 逐场景提交视频生成
+        val character = if (characterId > 0L) {
+            appDb.bookCharacterDao.getCharacter(characterId)
+        } else null
+        val results = JSONArray()
+        for (scene in scenes) {
+            val metadata = AiVideoGalleryManager.VideoMetadata(
+                bookName = book.name,
+                bookAuthor = book.author,
+                chapterIndex = chapter.index,
+                chapterTitle = chapter.title,
+                characterId = character?.id ?: 0L,
+                characterName = character?.name ?: "",
+                sourceType = SOURCE_TYPE_CHAPTER_VIDEO,
+                sourceText = scene.description
+            )
+            runCatching {
+                val row = AiVideoService.submitAndStore(
+                    prompt = scene.description,
+                    provider = provider,
+                    metadata = metadata
+                )
+                results.put(JSONObject().apply {
+                    put("ok", true)
+                    put("taskId", row.id)
+                    put("videoId", row.id)
+                    put("sceneIndex", scene.index)
+                    put("sceneDescription", scene.description)
+                    put("chapterIndex", chapter.index)
+                    put("chapterTitle", chapter.title)
+                    put("status", row.status)
+                })
+            }.getOrElse { t ->
+                results.put(JSONObject().apply {
+                    put("ok", false)
+                    put("sceneIndex", scene.index)
+                    put("error", t.localizedMessage ?: t.javaClass.simpleName)
+                })
+            }
+        }
+        JSONObject().apply {
+            put("ok", true)
+            put("book", book.name)
+            put("chapterIndex", chapter.index)
+            put("chapterTitle", chapter.title)
+            put("sceneCount", scenes.size)
+            put("submittedCount", results.length())
+            put("results", results)
+        }.toString()
+    }
+
+    private suspend fun executeGenerateChapterVideoRange(args: JSONObject?): String = withContext(Dispatchers.IO) {
+        val book = resolveBook(args) ?: return@withContext errorJson("未找到书籍")
+        val fromChapter = args?.optInt("fromChapter", -1) ?: -1
+        val toChapter = args?.optInt("toChapter", -1) ?: -1
+        if (fromChapter < 0 || toChapter < 0 || toChapter < fromChapter) {
+            return@withContext errorJson("章节区间无效，fromChapter=$fromChapter toChapter=$toChapter")
+        }
+        val rangeSize = toChapter - fromChapter + 1
+        if (rangeSize > MAX_RANGE_CHAPTERS) {
+            return@withContext errorJson("章节区间过大，最多 ${MAX_RANGE_CHAPTERS} 章，当前 $rangeSize 章")
+        }
+        val stylePrompt = args?.optString("stylePrompt")?.trim().orEmpty()
+        val maxScenesPerChapter = (args?.optInt("maxScenesPerChapter", 2) ?: 2).coerceIn(1, 3)
+
+        val chapterArgs = JSONObject().apply {
+            put("bookUrl", book.bookUrl)
+            put("stylePrompt", stylePrompt)
+            put("maxScenes", maxScenesPerChapter)
+        }
+        val chapterResults = JSONArray()
+        for (idx in fromChapter..toChapter) {
+            chapterArgs.put("chapterIndex", idx)
+            val result = executeGenerateChapterVideo(chapterArgs)
+            chapterResults.put(JSONObject(result))
+        }
+        JSONObject().apply {
+            put("ok", true)
+            put("book", book.name)
+            put("fromChapter", fromChapter)
+            put("toChapter", toChapter)
+            put("chapterCount", rangeSize)
+            put("results", chapterResults)
+        }.toString()
+    }
+
+    // ==================== 章节正文读取 ====================
+
+    private suspend fun resolveBook(args: JSONObject?): Book? {
+        val bookUrl = args?.optString("bookUrl")?.trim().orEmpty()
+        if (bookUrl.isNotBlank()) {
+            appDb.bookDao.getBook(bookUrl)?.let { return it }
+        }
+        val name = args?.optString("name")?.trim().orEmpty()
+        val author = args?.optString("author")?.trim().orEmpty()
+        if (name.isNotBlank() && author.isNotBlank()) {
+            appDb.bookDao.getBook(name, author)?.let { return it }
+        }
+        if (name.isNotBlank()) {
+            return appDb.bookDao.all.find { it.name.equals(name, ignoreCase = true) }
+        }
+        return null
+    }
+
+    private fun resolveChapter(book: Book, chapterIndex: Int): BookChapter? {
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        return chapters.find { it.index == chapterIndex }
+    }
+
+    private suspend fun readChapterContent(book: Book, chapter: BookChapter): String? {
+        // 优先读缓存
+        BookHelp.getContent(book, chapter)?.let { return it }
+        // 缓存未命中，尝试从书源获取
+        return runCatching {
+            val source = appDb.bookSourceDao.getBookSource(book.origin)
+                ?: return@runCatching null
+            val content = WebBook.getContentAwait(source, book, chapter)
+            content.ifBlank { null }
+        }.getOrNull()
+    }
+
+    // ==================== LLM 场景提取 ====================
+
+    data class SceneExtraction(
+        val index: Int,
+        val description: String,
+        val mood: String = "",
+        val cameraMovement: String = ""
+    )
+
+    /**
+     * 用 LLM 从章节正文中提取适合生成短视频的视觉场景。
+     *
+     * 策略：将章节正文截取前 [MAX_CHAPTER_CHARS] 字符，构造 system+user 消息，
+     * 调用 [AiChatService.chat] 获取 JSON 格式的场景列表。
+     */
+    private suspend fun extractScenesFromChapter(
+        content: String,
+        chapterTitle: String,
+        stylePrompt: String,
+        maxScenes: Int
+    ): List<SceneExtraction> {
+        val truncated = content.take(MAX_CHAPTER_CHARS)
+        val systemPrompt = buildString {
+            append("你是小说场景提取助手。请从以下章节正文中提取 1~${maxScenes} 个适合生成 5~10 秒短视频的视觉场景。")
+            append("\n每个场景应包含：")
+            append("\n- description: 英文场景描述，适合 AI 视频生成（画面内容、角色动作、环境光影）")
+            append("\n- mood: 场景情绪（如 tense, peaceful, dramatic）")
+            append("\n- cameraMovement: 镜头运动（如 slow pan, close-up, tracking shot）")
+            append("\n请保持场景连续性，按故事时间顺序排列。")
+            if (stylePrompt.isNotBlank()) {
+                append("\n附加风格要求：$stylePrompt")
+            }
+            append("\n\n请以 JSON 数组格式返回，例如：")
+            append("\n[{\"description\":\"A young warrior standing on a cliff at dawn...\",\"mood\":\"heroic\",\"cameraMovement\":\"slow zoom in\"}]")
+            append("\n只返回 JSON 数组，不要其他文字。")
+        }
+        val userMessage = buildString {
+            append(systemPrompt)
+            append("\n\n---\n\n")
+            append("章节标题：$chapterTitle\n\n正文：\n$truncated")
+        }
+        val messages = listOf(
+            AiChatMessage(role = AiChatMessage.Role.USER, content = userMessage)
+        )
+        val response = AiChatService.chat(messages)
+        return parseScenesFromLlmResponse(response)
+    }
+
+    private fun parseScenesFromLlmResponse(response: String): List<SceneExtraction> {
+        // 尝试从 LLM 响应中提取 JSON 数组
+        val jsonStr = extractJsonArray(response) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(jsonStr)
+            (0 until array.length()).map { i ->
+                val obj = array.optJSONObject(i) ?: return@map null
+                SceneExtraction(
+                    index = i,
+                    description = obj.optString("description").trim(),
+                    mood = obj.optString("mood").trim(),
+                    cameraMovement = obj.optString("cameraMovement").trim()
+                )
+            }.filter { it.description.isNotBlank() }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun extractJsonArray(text: String): String? {
+        // 尝试直接解析
+        runCatching { JSONArray(text); return text }
+        // 尝试提取第一个 [ 到最后一个 ]
+        val start = text.indexOf('[')
+        val end = text.lastIndexOf(']')
+        if (start >= 0 && end > start) {
+            return text.substring(start, end + 1)
+        }
+        return null
     }
 
     private fun extractFrameToAvatarFile(

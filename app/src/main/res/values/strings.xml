@@ -766,6 +766,24 @@
     <string name="ai_video_failed_msg">AI 视频生成失败：%1$s</string>
     <string name="ai_video_play">播放</string>
     <string name="ai_video_settings">AI 视频设置</string>
+    <!-- 章节视频生成 -->
+    <string name="ai_video_mode_chapter">按章节生成</string>
+    <string name="ai_video_mode_manual">手动输入</string>
+    <string name="ai_video_generate_range">批量生成</string>
+    <string name="ai_video_select_book">选择书籍</string>
+    <string name="ai_video_select_book_first">请先选择书籍</string>
+    <string name="ai_video_select_chapter_range">选择章节区间</string>
+    <string name="ai_video_select_from_chapter">起始章节</string>
+    <string name="ai_video_select_to_chapter">结束章节</string>
+    <string name="ai_video_single_chapter">仅此一章</string>
+    <string name="ai_video_no_book">书架为空</string>
+    <string name="ai_video_no_chapters">未找到章节</string>
+    <string name="ai_video_no_book_videos">暂无关联书籍的视频</string>
+    <string name="ai_video_chapter_range_summary">第%1$d章 %2$s → 第%3$d章 %4$s（共%5$d章）</string>
+    <string name="ai_video_chapter_single_summary">第%1$d章 %2$s</string>
+    <string name="ai_video_range_submitted">已提交 %1$d 章的视频生成任务</string>
+    <string name="ai_video_style_prompt_hint">风格提示词（可选，如：水墨画风、赛博朋克）</string>
+    <string name="ai_video_gallery_by_book">按书籍</string>
     <!-- end AI 视频生成 -->
     <!-- AI 视频分析（P3） -->
     <string name="ai_video_analysis_title">AI 视频分析</string>

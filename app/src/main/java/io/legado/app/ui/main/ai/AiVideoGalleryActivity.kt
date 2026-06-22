@@ -74,7 +74,8 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
         listOf(
             Filter.ALL to getString(R.string.ai_video_gallery_all),
             Filter.RUNNING to getString(R.string.ai_video_gallery_running),
-            Filter.FAILED to getString(R.string.ai_video_gallery_failed)
+            Filter.FAILED to getString(R.string.ai_video_gallery_failed),
+            Filter.BY_BOOK to getString(R.string.ai_video_gallery_by_book)
         ).forEach { (filter, label) ->
             val chip = Chip(this).apply {
                 text = label
@@ -82,10 +83,48 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                 isChecked = filter == currentFilter
                 setOnClickListener {
                     currentFilter = filter
-                    refreshList()
+                    if (filter == Filter.BY_BOOK) {
+                        showBookPicker()
+                    } else {
+                        currentBookKey = null
+                        refreshList()
+                    }
                 }
             }
             group.addView(chip)
+        }
+    }
+
+    private fun showBookPicker() {
+        lifecycleScope.launch {
+            val books = withContext(Dispatchers.IO) {
+                // 取所有有视频的书籍
+                val allVideos = appDb.aiGeneratedVideoDao.all()
+                allVideos.map { it.bookKey to it.bookName }
+                    .filter { it.first.isNotBlank() }
+                    .distinctBy { it.first }
+            }
+            if (books.isEmpty()) {
+                toastOnUi(R.string.ai_video_no_book_videos)
+                currentFilter = Filter.ALL
+                setupChips()
+                refreshList()
+                return@launch
+            }
+            val labels = books.map { it.second }
+            alert(R.string.ai_video_select_book) {
+                labels.forEachIndexed { index, name ->
+                    neutralButton(name) {
+                        currentBookKey = books[index].first
+                        refreshList()
+                    }
+                }
+                cancelButton {
+                    currentFilter = Filter.ALL
+                    setupChips()
+                    refreshList()
+                }
+            }
         }
     }
 
@@ -129,13 +168,19 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                 Filter.RUNNING -> AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_RUNNING) +
                     AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_PENDING)
                 Filter.FAILED -> AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_FAILED)
+                Filter.BY_BOOK -> {
+                    val key = currentBookKey
+                    if (key.isNullOrBlank()) emptyList()
+                    else appDb.aiGeneratedVideoDao.byBook(key).sortedBy { it.chapterIndex }
+                }
             }
             if (searchKeyword.isBlank()) baseList
             else baseList.filter { v ->
                 v.prompt.contains(searchKeyword, ignoreCase = true) ||
                     v.name.contains(searchKeyword, ignoreCase = true) ||
                     v.bookName.contains(searchKeyword, ignoreCase = true) ||
-                    v.characterName.contains(searchKeyword, ignoreCase = true)
+                    v.characterName.contains(searchKeyword, ignoreCase = true) ||
+                    v.chapterTitle.contains(searchKeyword, ignoreCase = true)
             }
         }
         adapter.setItems(items)
@@ -243,7 +288,9 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
         }
     }
 
-    private enum class Filter { ALL, RUNNING, FAILED }
+    private enum class Filter { ALL, RUNNING, FAILED, BY_BOOK }
+
+    private var currentBookKey: String? = null
 
     private inner class Adapter(context: android.content.Context) :
         RecyclerAdapter<AiGeneratedVideo, ItemAiGeneratedVideoBinding>(context) {
@@ -274,6 +321,18 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
             payloads: MutableList<Any>
         ) {
             binding.tvName.text = item.name
+            // 显示书籍/章节信息
+            val subtitle = buildString {
+                if (item.bookName.isNotBlank()) {
+                    append(item.bookName)
+                }
+                if (item.chapterIndex >= 0 && item.chapterTitle.isNotBlank()) {
+                    if (isNotEmpty()) append(" · ")
+                    append("第${item.chapterIndex + 1}章 ${item.chapterTitle}")
+                }
+            }
+            binding.tvBookChapter.text = subtitle
+            binding.tvBookChapter.isVisible = subtitle.isNotBlank()
             if (item.coverPath.isNotBlank()) {
                 io.legado.app.help.glide.ImageLoader.load(
                     holder.itemView.context,

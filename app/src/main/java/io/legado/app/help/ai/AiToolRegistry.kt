@@ -89,6 +89,8 @@ object AiToolRegistry {
         "get_ai_gallery_video" to "读取 AI 视频详情",
         "set_book_character_avatar_from_video_gallery" to "从视频库设置角色头像",
         "generate_book_character_short_video" to "生成角色短视频",
+        "generate_book_chapter_video" to "章节生成视频",
+        "generate_book_chapter_video_range" to "批量章节视频",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -130,6 +132,8 @@ object AiToolRegistry {
         "get_ai_gallery_video" to "AI 视频",
         "set_book_character_avatar_from_video_gallery" to "角色资料",
         "generate_book_character_short_video" to "AI 视频",
+        "generate_book_chapter_video" to "AI 视频",
+        "generate_book_chapter_video_range" to "AI 视频",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"

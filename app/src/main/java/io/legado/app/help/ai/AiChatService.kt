@@ -37,7 +37,9 @@ object AiChatService {
     )
     private val longRunningToolNames = setOf(
         "generate_video",
-        "generate_book_character_short_video"
+        "generate_book_character_short_video",
+        "generate_book_chapter_video",
+        "generate_book_chapter_video_range"
     )
     private val retryableToolNames = setOf(
         "query_bookshelf",

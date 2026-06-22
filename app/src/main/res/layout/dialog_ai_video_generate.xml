@@ -17,108 +17,178 @@
         android:textSize="14sp"
         android:layout_marginBottom="8dp" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
+    <Button
+        android:id="@+id/btn_chapter_mode"
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:hint="@string/ai_video_prompt_hint">
+        android:layout_marginBottom="8dp"
+        android:text="@string/ai_video_mode_chapter" />
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_prompt"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textMultiLine"
-            android:minLines="3" />
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="@string/ai_video_negative_prompt_hint">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_negative_prompt"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textMultiLine"
-            android:minLines="2" />
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:hint="@string/ai_video_first_frame">
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/et_first_frame"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri" />
-    </com.google.android.material.textfield.TextInputLayout>
-
+    <!-- 手动模式 -->
     <LinearLayout
+        android:id="@+id/layout_manual"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:orientation="horizontal">
+        android:orientation="vertical">
 
         <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="@string/ai_video_duration">
+            android:hint="@string/ai_video_prompt_hint">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_duration"
+                android:id="@+id/et_prompt"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="number" />
+                android:inputType="textMultiLine"
+                android:minLines="3" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/chip_aspect"
-            android:layout_width="0dp"
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:layout_weight="2"
-            app:chipSpacingHorizontal="4dp"
-            app:singleLine="true"
-            app:singleSelection="true">
+            android:layout_marginTop="8dp"
+            android:hint="@string/ai_video_negative_prompt_hint">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip_16_9"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_negative_prompt"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:checkable="true"
-                android:checked="true"
-                android:text="16:9" />
+                android:inputType="textMultiLine"
+                android:minLines="2" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip_9_16"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checkable="true"
-                android:text="9:16" />
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/ai_video_first_frame">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip_1_1"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_first_frame"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:checkable="true"
-                android:text="1:1" />
+                android:inputType="textUri" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chip_4_3"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:checkable="true"
-                android:text="4:3" />
-        </com.google.android.material.chip.ChipGroup>
+                android:layout_weight="1"
+                android:hint="@string/ai_video_duration">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_duration"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chip_aspect"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_weight="2"
+                app:chipSpacingHorizontal="4dp"
+                app:singleLine="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_16_9"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checkable="true"
+                    android:checked="true"
+                    android:text="16:9" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_9_16"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checkable="true"
+                    android:text="9:16" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_1_1"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checkable="true"
+                    android:text="1:1" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_4_3"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checkable="true"
+                    android:text="4:3" />
+            </com.google.android.material.chip.ChipGroup>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 章节模式 -->
+    <LinearLayout
+        android:id="@+id/layout_chapter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btn_select_book"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ai_video_select_book" />
+
+        <TextView
+            android:id="@+id/tv_selected_book"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/primaryText"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btn_select_chapter_range"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/ai_video_select_chapter_range" />
+
+        <TextView
+            android:id="@+id/tv_selected_chapters"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/secondaryText"
+            android:textSize="13sp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="@string/ai_video_style_prompt_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_style_prompt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:hint="@string/ai_video_style_prompt_hint" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <Button
