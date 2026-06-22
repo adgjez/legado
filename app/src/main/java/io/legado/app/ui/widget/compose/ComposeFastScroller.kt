@@ -3,6 +3,8 @@ package io.legado.app.ui.widget.compose
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -17,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -116,63 +119,74 @@ private fun ComposeFastScroller(
         targetValue = if (dragging) 0.10f else 0f,
         label = "composeFastScrollerTrackAlpha"
     )
+    val scrollerVisible = dragging || isScrollInProgress || recentlyVisible
 
-    Canvas(
+    Box(
         modifier = modifier
             .width(40.dp)
             .fillMaxHeight()
             .padding(top = 8.dp, end = 6.dp, bottom = 8.dp)
             .onSizeChanged { trackHeight = it.height }
-            .pointerInput(totalItems, visibleItems, trackHeight) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        dragging = true
-                        val metrics = fastScrollerMetrics(
-                            totalItems = totalItems,
-                            visibleItems = visibleItems,
-                            firstVisibleIndex = firstVisibleIndex,
-                            trackHeight = trackHeight,
-                            minThumbHeight = minThumbHeight
-                        )
-                        dragThumbTop = (offset.y - metrics.thumbHeight / 2f)
-                            .coerceIn(0f, metrics.maxThumbTop)
-                    },
-                    onDragEnd = { dragging = false },
-                    onDragCancel = { dragging = false },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        val metrics = fastScrollerMetrics(
-                            totalItems = totalItems,
-                            visibleItems = visibleItems,
-                            firstVisibleIndex = firstVisibleIndex,
-                            trackHeight = trackHeight,
-                            minThumbHeight = minThumbHeight
-                        )
-                        dragThumbTop = (dragThumbTop + dragAmount.y)
-                            .coerceIn(0f, metrics.maxThumbTop)
-                        val index = metrics.indexForThumbTop(dragThumbTop)
-                        scope.launch { onScrollToIndex(index) }
-                    }
-                )
-            }
     ) {
-        val metrics = fastScrollerMetrics(
-            totalItems = totalItems,
-            visibleItems = visibleItems,
-            firstVisibleIndex = firstVisibleIndex,
-            trackHeight = size.height.roundToInt(),
-            minThumbHeight = minThumbHeight
-        )
-        val thumbTop = if (dragging) dragThumbTop else metrics.thumbTop
-        drawFastScroller(
-            alpha = visible,
-            thumbTop = thumbTop,
-            thumbHeight = metrics.thumbHeight,
-            thumbWidthDp = thumbWidth,
-            thumbAlpha = thumbAlpha,
-            trackAlpha = trackAlpha,
-            color = palette.settings.secondaryText
-        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val metrics = fastScrollerMetrics(
+                totalItems = totalItems,
+                visibleItems = visibleItems,
+                firstVisibleIndex = firstVisibleIndex,
+                trackHeight = size.height.roundToInt(),
+                minThumbHeight = minThumbHeight
+            )
+            val thumbTop = if (dragging) dragThumbTop else metrics.thumbTop
+            drawFastScroller(
+                alpha = visible,
+                thumbTop = thumbTop,
+                thumbHeight = metrics.thumbHeight,
+                thumbWidthDp = thumbWidth,
+                thumbAlpha = thumbAlpha,
+                trackAlpha = trackAlpha,
+                color = palette.settings.secondaryText
+            )
+        }
+        if (scrollerVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(16.dp)
+                    .fillMaxHeight()
+                    .pointerInput(totalItems, visibleItems, trackHeight) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                dragging = true
+                                val metrics = fastScrollerMetrics(
+                                    totalItems = totalItems,
+                                    visibleItems = visibleItems,
+                                    firstVisibleIndex = firstVisibleIndex,
+                                    trackHeight = trackHeight,
+                                    minThumbHeight = minThumbHeight
+                                )
+                                dragThumbTop = (offset.y - metrics.thumbHeight / 2f)
+                                    .coerceIn(0f, metrics.maxThumbTop)
+                            },
+                            onDragEnd = { dragging = false },
+                            onDragCancel = { dragging = false },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val metrics = fastScrollerMetrics(
+                                    totalItems = totalItems,
+                                    visibleItems = visibleItems,
+                                    firstVisibleIndex = firstVisibleIndex,
+                                    trackHeight = trackHeight,
+                                    minThumbHeight = minThumbHeight
+                                )
+                                dragThumbTop = (dragThumbTop + dragAmount.y)
+                                    .coerceIn(0f, metrics.maxThumbTop)
+                                val index = metrics.indexForThumbTop(dragThumbTop)
+                                scope.launch { onScrollToIndex(index) }
+                            }
+                        )
+                    }
+            )
+        }
     }
 }
 
