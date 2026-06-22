@@ -238,9 +238,6 @@ object AppearanceKitManager {
             exportTopBars(context, packageDir, components)
             exportNavigationBars(packageDir, components)
             exportCoverCollections(packageDir, components)
-            if (components.isEmpty()) {
-                throw IllegalArgumentException("No local appearance components to export")
-            }
             val manifest = AppearanceKitPackage(
                 id = UUID.randomUUID().toString(),
                 name = "应用主题",
@@ -252,7 +249,8 @@ object AppearanceKitManager {
             File(packageDir, kitManifestName).writeText(GSON.toJson(manifest))
             val zipFile = tempDir.getFile("appearance_kit_${System.currentTimeMillis()}.zip")
             if (zipFile.exists()) zipFile.delete()
-            if (!ZipUtils.zipFile(packageDir, zipFile) || !zipFile.isFile || zipFile.length() <= 0L) {
+            val packageFiles = packageDir.listFiles()?.toList().orEmpty()
+            if (!ZipUtils.zipFiles(packageFiles, zipFile) || !zipFile.isFile || zipFile.length() <= 0L) {
                 throw IllegalStateException("Export failed")
             }
             zipFile
