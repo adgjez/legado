@@ -203,7 +203,8 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     fun upBookView() {
-        currentBookName = ReadBook.book?.name
+        val currentBook = ReadBook.book
+        currentBookName = currentBook?.name
         if (callBack.isEpubCoreBook()) {
             currentChapterUrl = callBack.epubCoreChapterUrl()
             currentChapterName = callBack.epubCoreChapterTitle().orEmpty()
@@ -212,19 +213,26 @@ class ReadMenu @JvmOverloads constructor(
             canGoNext = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
             return
         }
-        ReadBook.curTextChapter?.let {
-            currentChapterName = it.title
+        val currentTextChapter = ReadBook.curTextChapter
+        val currentChapter = currentTextChapter?.chapter
+            ?: currentBook?.let { book ->
+                appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+            }
+        if (currentChapter != null) {
+            currentChapterName = currentTextChapter?.title
+                ?: currentChapter.title.takeIf { it.isNotBlank() }
+                ?: currentBook?.durChapterTitle?.takeIf { it.isNotBlank() }
             if (!ReadBook.isLocalBook) {
-                currentChapterUrl = resolveChapterUrl(it.chapter)
+                currentChapterUrl = resolveChapterUrl(currentChapter)
             } else {
                 currentChapterUrl = null
             }
             upSeekBar()
             canGoPrev = ReadBook.durChapterIndex != 0
             canGoNext = ReadBook.durChapterIndex != ReadBook.simulatedChapterSize - 1
-        } ?: run {
+        } else {
             currentChapterUrl = null
-            currentChapterName = null
+            currentChapterName = currentBook?.durChapterTitle?.takeIf { it.isNotBlank() }
         }
     }
 
