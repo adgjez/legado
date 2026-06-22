@@ -25,7 +25,7 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:contentDescription="@string/ai_video_play"
-        android:src="@drawable/ic_play"
+        android:src="@drawable/ic_play_24dp"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/iv_cover"
         app:layout_constraintEnd_toEndOf="@id/iv_cover"
