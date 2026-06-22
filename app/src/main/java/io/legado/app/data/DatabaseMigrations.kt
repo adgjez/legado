@@ -22,7 +22,7 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_99_100,
+            migration_99_100, migration_100_101,
         )
     }
 
@@ -738,6 +738,21 @@ object DatabaseMigrations {
                 "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
                     "ON `ai_video_analysis` (`updatedAt`)"
             )
+        }
+    }
+
+    /**
+     * P3 修复：从 100 升到 101。空迁移，仅用于刷新 room_master_table 中的 identityHash。
+     *
+     * 历史原因：P3 阶段 0 早期手写的 100.json 在 d8c32cb8 commit 中补 IndexBundle.createSql
+     * 时内容手写错误，导致编译期算的 identityHash 与运行时从实体类算出的不一致。
+     * 用户在手机上启动 v100 时出现 "Room cannot verify the data integrity" 异常。
+     * 通过引入 101 版本号 + 空迁移，让 Room 用新的、来自编译期 101.json 的 identityHash
+     * 覆盖 room_master_table 中错误的旧值。
+     */
+    private val migration_100_101 = object : Migration(100, 101) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // 故意为空：表结构未变，仅 version + identityHash 升级
         }
     }
 
