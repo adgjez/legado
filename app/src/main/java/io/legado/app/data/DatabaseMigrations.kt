@@ -22,7 +22,7 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_100_101,
+            migration_100_101, migration_101_102,
         )
     }
 
@@ -765,6 +765,25 @@ object DatabaseMigrations {
                 "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
                     "ON `ai_video_analysis` (`updatedAt`)"
             )
+        }
+    }
+
+    /**
+     * 修复 migration_97_98 / migration_98_99 中 CREATE TABLE / ALTER TABLE
+     * 给 NOT NULL 列加了 DEFAULT 约束，但实体类 [AiGeneratedImage]、
+     * [AiGeneratedVideo]、[AiVideoGroup] 未声明 @ColumnInfo(defaultValue=...)，
+     * 导致 Room onValidateSchema 比对 101.json（无 defaultValue）与 db 真实表
+     * （有 DEFAULT）时抛 "Migration didn't properly handle: ... Expected ... found ...".
+     *
+     * 修复方式：在实体类上补齐 @ColumnInfo(defaultValue=...) 使 102.json 的
+     * defaultValue 与 db 中已存在的 DEFAULT 约束一致。此 migration 本身无需
+     * 执行任何 SQL——DEFAULT 约束在 v97/v98 阶段已写入 db，此处仅触发版本号
+     * 升级让 Room 用新的 102.json 重新校验 schema。
+     */
+    private val migration_101_102 = object : Migration(101, 102) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // No-op: DEFAULT 约束已由 migration_97_98 / migration_98_99 写入 db，
+            // 此处仅升级版本号让 Room 用 102.json 校验 schema。
         }
     }
 

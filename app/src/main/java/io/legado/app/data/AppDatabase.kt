@@ -86,8 +86,8 @@ val appDb by lazy {
         // v99/v100 旧版 schema JSON 手写错误导致 runtime identityHash 不匹配，
         // 用户 db room_master_table 中存的是错误 hash。fallbackDestructive 让
         // 旧版用户直接重建 db（v99 之前的手写 migration_10_11 ... migration_98_99
-        // 走正常路径升级到 v101）。
-        .fallbackToDestructiveMigrationFrom(99, 100)
+        // 走正常路径升级到 v102）。
+        .fallbackToDestructiveMigrationFrom(false, 99, 100)
         .addMigrations(*DatabaseMigrations.migrations)
         .allowMainThreadQueries()
         .addCallback(AppDatabase.dbCallback)
@@ -95,7 +95,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 101,
+    version = 102,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
