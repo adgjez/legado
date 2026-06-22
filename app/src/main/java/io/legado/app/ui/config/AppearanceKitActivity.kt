@@ -77,6 +77,7 @@ import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
 import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
+import io.legado.app.ui.widget.compose.showComposeTextInputDialog
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.startActivity
@@ -87,9 +88,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-private const val MENU_IMPORT = 1
-private const val MENU_EXPORT = 2
-private const val MENU_SYNC_TASKS = 3
+private const val MENU_CREATE = 1
+private const val MENU_IMPORT = 2
+private const val MENU_EXPORT = 3
+private const val MENU_SYNC_TASKS = 4
 
 class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
 
@@ -127,17 +129,20 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menu.add(0, MENU_IMPORT, 0, R.string.appearance_kit_import)
+        menu.add(0, MENU_CREATE, 0, R.string.appearance_kit_create)
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_EXPORT, 1, R.string.appearance_kit_export)
+        menu.add(0, MENU_IMPORT, 1, R.string.appearance_kit_import)
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-        menu.add(0, MENU_SYNC_TASKS, 2, R.string.package_sync_task_title)
+        menu.add(0, MENU_EXPORT, 2, R.string.appearance_kit_export)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+        menu.add(0, MENU_SYNC_TASKS, 3, R.string.package_sync_task_title)
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         return true
     }
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            MENU_CREATE -> { showCreateKitDialog(); true }
             MENU_IMPORT -> { selectImportPackage(); true }
             MENU_EXPORT -> { exportCurrentKit(); true }
             MENU_SYNC_TASKS -> { showSyncTasks(); true }
@@ -272,6 +277,31 @@ class AppearanceKitActivity : BaseActivity<ActivityThemeManageBinding>() {
             }.onSuccess { deleted ->
                 toastOnUi(if (deleted) R.string.delete_success else R.string.error)
                 refreshKits()
+            }.onFailure {
+                toastOnUi(it.localizedMessage ?: getString(R.string.error))
+            }
+        }
+    }
+
+    private fun showCreateKitDialog() {
+        showComposeTextInputDialog(
+            title = getString(R.string.appearance_kit_create),
+            hint = getString(R.string.appearance_kit_name),
+            initialValue = getString(R.string.appearance_kit_manage),
+            validateInput = { it.trim().isNotBlank() },
+            onPositive = ::createKit
+        )
+    }
+
+    private fun createKit(name: String) {
+        lifecycleScope.launch {
+            runCatching {
+                AppearanceKitManager.createFromCurrent(this@AppearanceKitActivity, name)
+            }.onSuccess { kit ->
+                refreshKits()
+                startActivity<AppearanceKitEditActivity> {
+                    putExtra(AppearanceKitEditActivity.EXTRA_KIT_ID, kit.id)
+                }
             }.onFailure {
                 toastOnUi(it.localizedMessage ?: getString(R.string.error))
             }

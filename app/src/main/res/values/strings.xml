@@ -2296,6 +2296,8 @@ Selected text or question:
     <string name="appearance_kit_manage">App themes</string>
     <string name="appearance_kit_summary">Manage themes, top bar, bottom bar, and cover galleries together</string>
     <string name="appearance_kit_actions">Theme actions</string>
+    <string name="appearance_kit_create">Create app theme</string>
+    <string name="appearance_kit_name">App theme name</string>
     <string name="appearance_kit_import">Import app theme</string>
     <string name="appearance_kit_import_summary">Supports RED theme packages, theme ZIPs, and app theme ZIPs</string>
     <string name="appearance_kit_export">Export current app theme</string>

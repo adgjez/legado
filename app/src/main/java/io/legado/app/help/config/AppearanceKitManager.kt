@@ -168,6 +168,26 @@ object AppearanceKitManager {
         loadIndex().firstOrNull { it.id == id }
     }
 
+    suspend fun createFromCurrent(context: Context, name: String): StoredAppearanceKit = withContext(IO) {
+        val nextName = name.trim().ifBlank { appCtx.getString(io.legado.app.R.string.appearance_kit_manage) }
+        val kits = loadIndex()
+        if (kits.any { it.name == nextName }) {
+            throw IllegalArgumentException(appCtx.getString(io.legado.app.R.string.theme_name_exists))
+        }
+        ThemePackageManager.ensureLocalAppliedTheme(context, false)
+        ThemePackageManager.ensureLocalAppliedTheme(context, true)
+        val now = System.currentTimeMillis()
+        val kit = StoredAppearanceKit(
+            id = "kit_${UUID.randomUUID()}",
+            name = nextName,
+            binding = currentBinding(context),
+            importedAt = now,
+            updatedAt = now
+        )
+        saveIndex(kits + kit)
+        kit
+    }
+
     suspend fun saveImportedKit(kit: StoredAppearanceKit): Boolean = withContext(IO) {
         val nextName = kit.name.trim().ifBlank { return@withContext false }
         val kits = loadIndex()
