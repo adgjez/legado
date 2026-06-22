@@ -55,7 +55,7 @@
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/chip_openai"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checkable="true"
@@ -63,7 +63,7 @@
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/chip_kling"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checkable="true"
@@ -71,7 +71,7 @@
 
                 <com.google.android.material.chip.Chip
                     android:id="@+id/chip_js"
-                    style="@style/Widget.Material3.Chip.Filter"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:checkable="true"
