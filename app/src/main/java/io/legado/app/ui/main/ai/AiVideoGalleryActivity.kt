@@ -278,8 +278,7 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                 AiVideoService.submitAndStore(
                     prompt = video.prompt,
                     negativePrompt = video.negativePrompt,
-                    firstFrame = video.firstFrame?.takeIf { it.isNotBlank() },
-                    durationSec = video.durationSec,
+                    durationSec = (video.durationMs / 1000).toInt(),
                     aspectRatio = video.aspectRatio,
                     metadata = metadata
                 )
