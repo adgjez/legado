@@ -564,9 +564,17 @@ class PageView(context: Context) : FrameLayout(context) {
 
     fun syncContentViewSizeToChapterProvider(): Boolean {
         if (!isMainView) return false
-        val width = binding.contentTextView.width
-        val height = binding.contentTextView.height
-        if (width <= 0 || height <= 0) return false
+        val width = binding.contentTextView.width.takeIf { it > 0 } ?: binding.contentTextView.measuredWidth
+        val height = binding.contentTextView.height.takeIf { it > 0 } ?: binding.contentTextView.measuredHeight
+        if (width <= 0 || height <= 0) {
+            val fallbackWidth = binding.vwRoot.width.takeIf { it > 0 } ?: width
+            val fallbackHeight = (
+                binding.vwBottomDivider.top.takeIf { it > 0 } ?: (binding.vwRoot.height - binding.llFooter.height)
+            ) - binding.vwTopDivider.bottom
+            if (fallbackWidth <= 0 || fallbackHeight <= 0) return false
+            ChapterProvider.upViewSize(fallbackWidth, fallbackHeight)
+            return ChapterProvider.isLayoutSizeReady()
+        }
         ChapterProvider.upViewSize(width, height)
         return true
     }

@@ -759,6 +759,19 @@ object ReadBook : CoroutineScope by MainScope() {
         }
     }
 
+    private fun showCurrentChapterLoadError(message: String, throwable: Throwable? = null) {
+        val msg = "加载正文失败\n$message"
+        if (throwable != null) {
+            AppLog.put(msg, throwable)
+        } else {
+            AppLog.put(msg)
+        }
+        launch(Main) {
+            upMsg(msg)
+            callBack?.contentLoadFinish()
+        }
+    }
+
     /**
      * 加载章节内容
      * @param index 章节序号
@@ -789,9 +802,21 @@ object ReadBook : CoroutineScope by MainScope() {
             return
         }
         Coroutine.async {
-            val book = book!!
+            val book = book ?: run {
+                if (index == durChapterIndex) {
+                    showCurrentChapterLoadError("书籍数据为空")
+                }
+                return@async
+            }
             refreshParagraphRuleLayoutKey()
-            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: return@async
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, index) ?: run {
+                if (index == durChapterIndex) {
+                    showCurrentChapterLoadError("未找到当前章节，可能目录未加载成功")
+                } else {
+                    AppLog.putDebug("Skip loading missing neighbour chapter: ${book.name} index=$index")
+                }
+                return@async
+            }
             if (addLoading(index)) {
                 BookHelp.getContent(book, chapter)?.let {
                     contentLoadFinish(
@@ -809,7 +834,11 @@ object ReadBook : CoroutineScope by MainScope() {
                 )
             }
         }.onError {
-            AppLog.put("加载正文出错\n${it.localizedMessage}")
+            if (index == durChapterIndex) {
+                showCurrentChapterLoadError(it.localizedMessage ?: it.toString(), it)
+            } else {
+                AppLog.put("加载正文出错\n${it.localizedMessage}", it)
+            }
         }
     }
 
@@ -828,7 +857,11 @@ object ReadBook : CoroutineScope by MainScope() {
                 contentLoadFinishAwait(book, chapter, content, upContent, resetPageOffset)
                 success?.invoke()
             } catch (e: Exception) {
-                AppLog.put("加载正文出错\n${e.localizedMessage}")
+                if (index == durChapterIndex) {
+                    showCurrentChapterLoadError(e.localizedMessage ?: e.toString(), e)
+                } else {
+                    AppLog.put("加载正文出错\n${e.localizedMessage}", e)
+                }
             } finally {
                 removeLoading(index)
             }
@@ -1004,6 +1037,10 @@ object ReadBook : CoroutineScope by MainScope() {
                 return@onError
             }
             AppLog.put("ChapterProvider ERROR", it)
+            if (chapter.index == durChapterIndex) {
+                showCurrentChapterLoadError("正文排版失败: ${it.localizedMessage ?: it::class.java.simpleName}", it)
+                return@onError
+            }
             appCtx.toastOnUi("ChapterProvider ERROR:\n${it.stackTraceStr}")
         }.onSuccess {
             success?.invoke()
@@ -1101,6 +1138,10 @@ object ReadBook : CoroutineScope by MainScope() {
                 return@onFailure
             }
             AppLog.put("ChapterProvider ERROR", it)
+            if (chapter.index == durChapterIndex) {
+                showCurrentChapterLoadError("正文排版失败: ${it.localizedMessage ?: it::class.java.simpleName}", it)
+                return@onFailure
+            }
             appCtx.toastOnUi("ChapterProvider ERROR:\n${it.stackTraceStr}")
         }
     }
@@ -1327,6 +1368,8 @@ object ReadBook : CoroutineScope by MainScope() {
         fun contentLoadFinish()
 
         fun upPageAnim(upRecorder: Boolean = false)
+
+        fun requestLayoutSizeSync(): Boolean = false
 
         fun notifyBookChanged()
 

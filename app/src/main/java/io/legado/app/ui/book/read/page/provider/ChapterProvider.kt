@@ -27,6 +27,9 @@ import io.legado.app.utils.spToPx
 import io.legado.app.utils.textHeight
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import splitties.init.appCtx
 import androidx.core.net.toUri
 
@@ -146,6 +149,7 @@ object ChapterProvider {
 
     private val layoutSizeReadyLock = Any()
     private var layoutSizeReadySignal = CompletableDeferred<Unit>()
+    private const val layoutSizeReadyTimeoutMillis = 1500L
 
     init {
         upStyle()
@@ -185,6 +189,10 @@ object ChapterProvider {
 
     suspend fun awaitLayoutSizeReady() {
         if (isLayoutSizeReady()) return
+        withContext(Main.immediate) {
+            ReadBook.callBack?.requestLayoutSizeSync()
+        }
+        if (isLayoutSizeReady()) return
         val signal = synchronized(layoutSizeReadyLock) {
             if (isLayoutSizeReady()) {
                 null
@@ -193,7 +201,31 @@ object ChapterProvider {
                     ?: CompletableDeferred<Unit>().also { layoutSizeReadySignal = it }
             }
         }
-        signal?.await()
+        if (signal != null && withTimeoutOrNull(layoutSizeReadyTimeoutMillis) { signal.await() } == null) {
+            withContext(Main.immediate) {
+                ReadBook.callBack?.requestLayoutSizeSync()
+            }
+        }
+        if (isLayoutSizeReady()) return
+        if (bootstrapFallbackLayoutSize()) return
+        throw IllegalStateException(
+            "Reader layout size is not ready: view=${viewWidth}x${viewHeight}, " +
+                "visible=${visibleWidth}x${visibleHeight}"
+        )
+    }
+
+    private fun bootstrapFallbackLayoutSize(): Boolean {
+        if (isLayoutSizeReady()) return true
+        val metrics = appCtx.resources.displayMetrics
+        val fallbackWidth = metrics.widthPixels
+        val fallbackHeight = metrics.heightPixels
+        if (fallbackWidth <= 0 || fallbackHeight <= 0) return false
+        AppLog.putDebug(
+            "Reader layout size fallback: view=${viewWidth}x${viewHeight}, " +
+                "screen=${fallbackWidth}x${fallbackHeight}"
+        )
+        notifyViewSizeChange(fallbackWidth, fallbackHeight)
+        return isLayoutSizeReady()
     }
 
     private fun notifyLayoutSizeReadyIfNeeded() {

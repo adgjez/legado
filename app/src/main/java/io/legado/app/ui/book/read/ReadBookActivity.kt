@@ -1779,6 +1779,16 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
+    override fun requestLayoutSizeSync(): Boolean {
+        val synced = binding.readView.syncLayoutSizeToChapterProvider()
+        if (!synced) {
+            binding.readView.post {
+                binding.readView.syncLayoutSizeToChapterProvider()
+            }
+        }
+        return synced
+    }
+
     private fun isEpubCoreMode(): Boolean {
         return ReadBook.book?.isEpub == true && AppConfig.useExperimentalEpubCore
     }

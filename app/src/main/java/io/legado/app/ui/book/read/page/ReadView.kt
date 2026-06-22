@@ -160,6 +160,13 @@ class ReadView(context: Context, attrs: AttributeSet) :
         }
     }
 
+    fun syncLayoutSizeToChapterProvider(): Boolean {
+        if (curPage.syncContentViewSizeToChapterProvider()) return true
+        if (width <= 0 || height <= 0) return false
+        ChapterProvider.upViewSize(width, height)
+        return ChapterProvider.isLayoutSizeReady()
+    }
+
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
         pageDelegate?.onDraw(canvas)
