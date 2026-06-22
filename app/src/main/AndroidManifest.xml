@@ -299,13 +299,16 @@
             android:launchMode="standard" />
         <activity
             android:name=".ui.main.ai.AiVideoGalleryActivity"
-            android:launchMode="standard" />
+            android:launchMode="standard"
+            android:theme="@style/AppTheme.Material" />
         <activity
             android:name=".ui.main.ai.AiVideoProviderManageActivity"
-            android:launchMode="standard" />
+            android:launchMode="standard"
+            android:theme="@style/AppTheme.Material" />
         <activity
             android:name=".ui.main.ai.AiVideoProviderEditActivity"
             android:launchMode="standard"
+            android:theme="@style/AppTheme.Material"
             android:windowSoftInputMode="adjustResize|stateHidden" />
         <activity
             android:name=".ui.book.character.BookCharacterManageActivity"
