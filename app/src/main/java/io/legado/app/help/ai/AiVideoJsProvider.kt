@@ -154,27 +154,28 @@ class AiVideoJsProvider(
             is String -> runCatching { JSONObject(raw) }.getOrNull()
             else -> runCatching { JSONObject(raw.toString()) }.getOrNull()
         } ?: error("Poll script returned unsupported type: ${raw.javaClass.simpleName}")
+        val json2: JSONObject = json!!
 
         return VideoPollResult(
-            status = VideoStatus.from(json.optString("status").ifBlank { json.optString("task_status") }),
-            progress = json.optInt("progress", -1).let { if (it < 0) {
-                when (VideoStatus.from(json.optString("status"))) {
+            status = VideoStatus.from(json2.optString("status").ifBlank { json2.optString("task_status") }),
+            progress = json2.optInt("progress", -1).let { if (it < 0) {
+                when (VideoStatus.from(json2.optString("status"))) {
                     VideoStatus.SUCCESS -> 100
                     VideoStatus.RUNNING -> 50
                     else -> 0
                 }
             } else it.coerceIn(0, 100) },
-            videoUrl = json.optString("videoUrl").takeIf { it.isNotBlank() }
-                ?: json.optString("video_url").takeIf { it.isNotBlank() }
-                ?: json.optString("url").takeIf { it.isNotBlank() },
-            coverUrl = json.optString("coverUrl").takeIf { it.isNotBlank() }
-                ?: json.optString("cover_url").takeIf { it.isNotBlank() }
-                ?: json.optString("thumbnail").takeIf { it.isNotBlank() },
-            durationMs = json.optLong("durationMs", 0L).let { if (it == 0L) json.optLong("duration_ms", 0L) else it },
-            failReason = json.optString("failReason").takeIf { it.isNotBlank() }
-                ?: json.optString("fail_reason").takeIf { it.isNotBlank() }
-                ?: json.optString("error").takeIf { it.isNotBlank() },
-            raw = json
+            videoUrl = json2.optString("videoUrl").takeIf { it.isNotBlank() }
+                ?: json2.optString("video_url").takeIf { it.isNotBlank() }
+                ?: json2.optString("url").takeIf { it.isNotBlank() },
+            coverUrl = json2.optString("coverUrl").takeIf { it.isNotBlank() }
+                ?: json2.optString("cover_url").takeIf { it.isNotBlank() }
+                ?: json2.optString("thumbnail").takeIf { it.isNotBlank() },
+            durationMs = json2.optLong("durationMs", 0L).let { if (it == 0L) json2.optLong("duration_ms", 0L) else it },
+            failReason = json2.optString("failReason").takeIf { it.isNotBlank() }
+                ?: json2.optString("fail_reason").takeIf { it.isNotBlank() }
+                ?: json2.optString("error").takeIf { it.isNotBlank() },
+            raw = json2
         )
     }
 

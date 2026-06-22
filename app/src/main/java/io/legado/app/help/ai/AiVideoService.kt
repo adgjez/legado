@@ -71,7 +71,7 @@ object AiVideoService {
         timeoutMs: Long = 10 * 60 * 1000L
     ): AiGeneratedVideo? = withTimeoutOrNull(timeoutMs) {
         val videoRow: AiGeneratedVideo? = appDb.aiGeneratedVideoDao.get(videoId)
-        val provider: AiVideoProviderConfig? = AppConfig.findEnabledVideoProvider(videoRow?.providerId)
+        val provider: AiVideoProviderConfig = AppConfig.findEnabledVideoProvider(videoRow?.providerId)
             ?: return@withTimeoutOrNull null
         val providerImpl: AiVideoProvider = AiVideoProviderFactory.create(provider)
         val row: AiGeneratedVideo = videoRow ?: return@withTimeoutOrNull null
@@ -106,7 +106,7 @@ object AiVideoService {
                         sizeBytes = polled.sizeBytes
                     )
                     LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED)
-                        .post(Pair(videoId, final.id))
+                        .post(final.id)
                     return@withTimeoutOrNull final
                 }
                 VideoStatus.FAILED -> {
@@ -117,7 +117,7 @@ object AiVideoService {
                         0
                     )
                     LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
-                        .post(Pair(videoId, polled.failReason ?: "unknown"))
+                        .post(videoId)
                     return@withTimeoutOrNull null
                 }
                 VideoStatus.CANCELLED -> {
@@ -132,7 +132,7 @@ object AiVideoService {
                 else -> {
                     AiVideoGalleryManager.updateProgress(videoId, polled.progress)
                     LiveEventBus.get<String>(EventBus.AI_VIDEO_PROGRESS)
-                        .post(Pair(videoId, polled.progress))
+                        .post(videoId)
                     kotlinx.coroutines.delay(provider.validPollIntervalMs())
                 }
             }

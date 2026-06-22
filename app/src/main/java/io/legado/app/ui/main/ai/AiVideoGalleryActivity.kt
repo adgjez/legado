@@ -41,7 +41,7 @@ import kotlinx.coroutines.withContext
 class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
 
     override val binding by viewBinding(ActivityAiVideoGalleryBinding::inflate)
-    private val adapter by lazy { Adapter() }
+    private val adapter by lazy { Adapter(this@AiVideoGalleryActivity) }
     private var refreshJob: Job? = null
     private var currentFilter: Filter = Filter.ALL
     private var searchKeyword: String = ""

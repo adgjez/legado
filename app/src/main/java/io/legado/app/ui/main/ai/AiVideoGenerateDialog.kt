@@ -31,7 +31,6 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
-        super.onFragmentCreated(view, savedInstanceState)
         binding.tvProviderName.text = AppConfig.aiCurrentVideoProvider?.displayName()
             ?: getString(R.string.ai_video_no_provider)
         binding.btnSubmit.setOnClickListener { submit() }

@@ -226,7 +226,7 @@ class AiVideoTaskService : BaseService() {
             }
             if (System.currentTimeMillis() - startedAt > provider.validMaxWaitMs()) {
                 AiVideoGalleryManager.updateStatus(videoId, AiGeneratedVideo.STATUS_FAILED, "timeout")
-                LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).post(Pair(videoId, "timeout"))
+                LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).post(videoId)
                 return
             }
             val polled: VideoPollResult = try {
@@ -255,7 +255,7 @@ class AiVideoTaskService : BaseService() {
                         )
                     }.onSuccess {
                         LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED)
-                            .post(Pair(videoId, it.id))
+                            .post(it.id)
                     }.onFailure {
                         AppLog.put("AI video save failed", it)
                         AiVideoGalleryManager.updateStatus(
@@ -264,7 +264,7 @@ class AiVideoTaskService : BaseService() {
                             it.message ?: "save failed"
                         )
                         LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
-                            .post(Pair(videoId, it.message ?: "save failed"))
+                            .post(videoId)
                     }
                     return
                 }
@@ -274,7 +274,7 @@ class AiVideoTaskService : BaseService() {
                         polled.failReason ?: "unknown", 0
                     )
                     LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
-                        .post(Pair(videoId, polled.failReason ?: "unknown"))
+                        .post(videoId)
                     return
                 }
                 VideoStatus.CANCELLED -> {
@@ -287,7 +287,7 @@ class AiVideoTaskService : BaseService() {
                 else -> {
                     AiVideoGalleryManager.updateProgress(videoId, polled.progress)
                     LiveEventBus.get<String>(EventBus.AI_VIDEO_PROGRESS)
-                        .post(Pair(videoId, polled.progress))
+                        .post(videoId)
                     delay(provider.validPollIntervalMs())
                 }
             }

@@ -1,7 +1,6 @@
 package io.legado.app.help.ai
 
 import io.legado.app.help.http.okHttpClient
-import io.legado.app.utils.printOnDebug
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -175,5 +174,5 @@ fun String.toJsonArrayOrNull(): JSONArray? = runCatching {
 }.getOrNull()
 
 internal fun Throwable.debugPrint(prefix: String) {
-    printOnDebug(prefix + ": " + javaClass.simpleName + " - " + (message ?: ""))
+    io.legado.app.utils.LogUtils.d("AiVideo", prefix + ": " + javaClass.simpleName + " - " + (message ?: ""))
 }
