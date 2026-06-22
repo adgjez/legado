@@ -83,31 +83,30 @@ private fun ComposeThemeImage(
                 return@AndroidView
             }
             imageView.loadKey = loadKey
+            val requestManager = Glide.with(imageView.context.applicationContext ?: imageView.context)
             if (crop != null) {
                 imageView.scaleType = ImageView.ScaleType.MATRIX
                 if (animate) {
-                    Glide.with(imageView).load(file)
+                    requestManager.load(file)
                         .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
-                    Glide.with(imageView).asBitmap().load(file).into(imageView)
+                    requestManager.asBitmap().load(file).into(imageView)
                 }
             } else {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
                 if (animate) {
-                    Glide.with(imageView).load(file).centerCrop()
+                    requestManager.load(file).centerCrop()
                         .listener(imageView.drawableStartListener())
                         .into(imageView)
                 } else {
-                    Glide.with(imageView).asBitmap().load(file).centerCrop().into(imageView)
+                    requestManager.asBitmap().load(file).centerCrop().into(imageView)
                 }
             }
         },
         onRelease = { imageView ->
             // 离开 composition 时停止动画并取消/释放 Glide，防止 gif/webp 持续解码与 bitmap 泄漏
-            (imageView.drawable as? Animatable)?.stop()
-            Glide.with(imageView).clear(imageView)
-            imageView.setImageDrawable(null)
+            imageView.releaseComposeImage()
             imageView.loadKey = null
         }
     )

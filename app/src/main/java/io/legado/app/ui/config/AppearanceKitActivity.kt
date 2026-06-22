@@ -75,6 +75,7 @@ import io.legado.app.ui.widget.compose.AppSettingSectionTitle
 import io.legado.app.ui.widget.compose.rememberAppManagementPalette
 import io.legado.app.ui.widget.compose.appSettingPanelBackground
 import io.legado.app.ui.widget.compose.appSettingRowDecoration
+import io.legado.app.ui.widget.compose.releaseComposeImage
 import io.legado.app.ui.widget.compose.showComposeConfirmDialog
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
@@ -682,16 +683,22 @@ private fun AppearanceKitPreview(
             },
             update = { imageView ->
                 imageView.setBackgroundColor(preview.backgroundColor)
-                imageView.setImageDrawable(null)
-                val path = preview.backgroundPath
-                if (!path.isNullOrBlank()) {
-                    val request = ImageLoader.load(imageView.context, path)
-                        .centerCrop()
-                        .error(ColorDrawable(preview.backgroundColor))
-                    preview.signature?.let { request.signature(it) }
-                    request.into(imageView)
+                val path = preview.backgroundPath?.takeIf { it.isNotBlank() }
+                val loadTag = "${path.orEmpty()}|${preview.backgroundColor}|${preview.signature}"
+                if (imageView.tag != loadTag) {
+                    imageView.tag = loadTag
+                    imageView.releaseComposeImage()
+                    if (path != null) {
+                        val appContext = imageView.context.applicationContext ?: imageView.context
+                        val request = ImageLoader.load(appContext, path)
+                            .centerCrop()
+                            .error(ColorDrawable(preview.backgroundColor))
+                        preview.signature?.let { request.signature(it) }
+                        request.into(imageView)
+                    }
                 }
             },
+            onRelease = { it.releaseComposeImage() },
             modifier = Modifier.fillMaxSize()
         )
         Column(

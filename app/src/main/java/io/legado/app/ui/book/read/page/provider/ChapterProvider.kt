@@ -25,6 +25,7 @@ import io.legado.app.utils.isPad
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.spToPx
 import io.legado.app.utils.textHeight
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 import androidx.core.net.toUri
@@ -143,11 +144,14 @@ object ChapterProvider {
 
     private var upViewSizeRunnable: Runnable? = null
 
+    private val layoutSizeReadyLock = Any()
+    private var layoutSizeReadySignal = CompletableDeferred<Unit>()
+
     init {
         upStyle()
     }
 
-    fun getTextChapterAsync(
+    suspend fun getTextChapterAsync(
         scope: CoroutineScope,
         book: Book,
         bookChapter: BookChapter,
@@ -155,6 +159,7 @@ object ChapterProvider {
         bookContent: BookContent,
         chapterSize: Int,
     ): TextChapter {
+        awaitLayoutSizeReady()
 
         val textChapter = TextChapter(
             bookChapter,
@@ -169,6 +174,33 @@ object ChapterProvider {
         }
 
         return textChapter
+    }
+
+    /**
+     * 阅读区域尺寸是否已可用于排版
+     */
+    fun isLayoutSizeReady(): Boolean {
+        return viewWidth > 0 && viewHeight > 0 && visibleWidth > 0 && visibleHeight > 0
+    }
+
+    suspend fun awaitLayoutSizeReady() {
+        if (isLayoutSizeReady()) return
+        val signal = synchronized(layoutSizeReadyLock) {
+            if (isLayoutSizeReady()) {
+                null
+            } else {
+                layoutSizeReadySignal.takeUnless { it.isCompleted }
+                    ?: CompletableDeferred<Unit>().also { layoutSizeReadySignal = it }
+            }
+        }
+        signal?.await()
+    }
+
+    private fun notifyLayoutSizeReadyIfNeeded() {
+        if (!isLayoutSizeReady()) return
+        synchronized(layoutSizeReadyLock) {
+            layoutSizeReadySignal.takeUnless { it.isCompleted }
+        }?.complete(Unit)
     }
 
     /**
@@ -362,6 +394,7 @@ object ChapterProvider {
             visibleBottom.toFloat() + 10f.dpToPx() //下划线最远10dp
         )
 
+        notifyLayoutSizeReadyIfNeeded()
     }
 
     private fun setFallbackLayout() {

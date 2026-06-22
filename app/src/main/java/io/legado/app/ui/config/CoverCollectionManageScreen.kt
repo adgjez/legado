@@ -200,7 +200,7 @@ private fun CoverCollectionItemRow(
                     }
                 },
                 update = { imageView ->
-                    Glide.with(imageView)
+                    Glide.with(imageView.context.applicationContext ?: imageView.context)
                         .load(collection.images.firstOrNull())
                         .centerCrop()
                         .into(imageView)

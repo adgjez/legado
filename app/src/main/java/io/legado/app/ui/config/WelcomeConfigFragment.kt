@@ -48,7 +48,7 @@ class WelcomeConfigFragment : ComposeSettingFragment() {
 
     override fun onResume() {
         super.onResume()
-        val welcomeShowTime = intSetting(PreferKey.welcomeShowTime, 500)
+        val welcomeShowTime = intSetting(PreferKey.welcomeShowTime, 0)
         val safeWelcomeShowTime = welcomeShowTime.coerceIn(0, 800)
         if (welcomeShowTime != safeWelcomeShowTime) {
             updateIntSetting(PreferKey.welcomeShowTime, safeWelcomeShowTime)
@@ -65,7 +65,7 @@ class WelcomeConfigFragment : ComposeSettingFragment() {
                             key = PreferKey.welcomeShowTime,
                             title = getString(R.string.welcome_show_time),
                             summary = getString(R.string.welcome_show_time_summary),
-                            value = intSetting(PreferKey.welcomeShowTime, 500).coerceIn(0, 800),
+                            value = intSetting(PreferKey.welcomeShowTime, 0).coerceIn(0, 800),
                             valueRange = 0..800,
                             onValueChange = {
                                 updateIntSetting(PreferKey.welcomeShowTime, it)

@@ -20,6 +20,7 @@ import androidx.lifecycle.Observer
 import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.readaloud.ReadAloudPlaybackState
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
@@ -191,12 +192,15 @@ object ReadAloudAppCapsuleHost {
         kind: HostKind
     ): ReadAloudPlayerPanel.PlayerUiState {
         val book = ReadBook.book
+        val coverDisplay = book?.let { CoverDisplayResolver.resolve(it) }
         val playing = lastPlaybackState.playing ?: BaseReadAloudService.isPlay()
         return ReadAloudPlayerPanel.PlayerUiState(
             bookName = book?.name.orEmpty(),
             author = book?.author.orEmpty(),
-            coverUrl = book?.getDisplayCover(),
-            sourceOrigin = ReadBook.bookSource?.bookSourceUrl,
+            coverUrl = coverDisplay?.path,
+            sourceOrigin = coverDisplay?.sourceOrigin,
+            coverForcePath = coverDisplay?.forcePath ?: false,
+            coverAllowNameOverlay = coverDisplay?.allowNameOverlay,
             chapterTitle = ReadBook.curTextChapter?.chapter?.title.orEmpty(),
             playing = playing,
             playbackPhase = lastPlaybackState.phase,

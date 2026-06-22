@@ -2274,12 +2274,13 @@ private fun ThemePackagePreview(
                 }
             },
             update = { imageView ->
-                Glide.with(imageView.context).clear(imageView)
+                imageView.releaseComposeImage()
                 imageView.setBackgroundColor(preview.fallbackColor)
                 imageView.setImageDrawable(null)
                 val path = preview.backgroundPath
                 if (!path.isNullOrBlank()) {
-                    val request = ImageLoader.load(imageView.context, path)
+                    val appContext = imageView.context.applicationContext ?: imageView.context
+                    val request = ImageLoader.load(appContext, path)
                         .centerCrop()
                         .error(ColorDrawable(preview.fallbackColor))
                     preview.signature?.let { request.signature(it) }

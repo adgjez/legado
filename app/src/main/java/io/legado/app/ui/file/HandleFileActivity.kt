@@ -361,7 +361,7 @@ class HandleFileActivity :
         }
         if (mode == HandleFileContract.EXPORT) {
             getFileData()?.let { fileData ->
-                viewModel.saveToLocal(uri, fileData.first, fileData.second) { savedUri ->
+                viewModel.saveToLocal(uri, fileData.first, fileData.second, fileData.third) { savedUri ->
                     setResult(RESULT_OK, Intent().setData(savedUri))
                     finish()
                 }

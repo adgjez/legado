@@ -252,12 +252,21 @@ class TextChapterLayout(
     /**
      * 获取拆分完的章节数据
      */
+    private fun requireReaderLayoutSize(stage: String) {
+        if (viewWidth > 0 && viewHeight > 0 && visibleWidth > 0 && visibleHeight > 0) return
+        throw IllegalStateException(
+            "Reader layout size is not ready before $stage: " +
+                "view=${viewWidth}x${viewHeight}, visible=${visibleWidth}x${visibleHeight}"
+        )
+    }
+
     private suspend fun getTextChapter(
         book: Book,
         bookChapter: BookChapter,
         displayTitle: String,
         bookContent: BookContent,
     ) {
+        requireReaderLayoutSize("chapter layout")
         val contents = bookContent.textList
         val imageStyle = book.getImageStyle()
         val isSingleImageStyle = imageStyle.equals(Book.imgStyleSingle, true)
@@ -1770,6 +1779,7 @@ class TextChapterLayout(
         layoutStartOffset: Float = 0f,
         layoutWidth: Int = visibleWidth
     ) {
+        requireReaderLayoutSize("html text layout")
         breakAfterSingleImageIfNeed()
         val textViewTagHandler = TextViewTagHandler()
         val spanned = htmlContent.parseAsHtml(HtmlCompat.FROM_HTML_MODE_COMPACT, tagHandler = textViewTagHandler)
@@ -2229,6 +2239,7 @@ class TextChapterLayout(
         clickSrcList: LinkedList<String?>? = null,
         clickList: LinkedList<String?>?
     ) {
+        requireReaderLayoutSize("plain text layout")
         breakAfterSingleImageIfNeed()
         val widthsArray = allocateFloatArray(text.length)
         textPaint.getTextWidthsCompat(text, widthsArray, reviewCharWidth)

@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.text.TextPaint
+import android.text.TextUtils
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -196,18 +197,41 @@ class CircleImageView @JvmOverloads constructor(
     }
 
     private fun drawText(canvas: Canvas) {
-        text?.let {
+        text?.takeIf { it.isNotBlank() }?.let {
             textPaint.color = textColor
             textPaint.isFakeBoldText = textBold
             textPaint.typeface = textTypeface
-            textPaint.textSize = 15f.spToPx()
-            val fm = textPaint.fontMetrics
-            canvas.drawText(
+            val maxWidth = (mDrawableRadius * 2f * 0.72f).coerceAtLeast(1f)
+            val maxTextSize = 15f.spToPx()
+            val minTextSize = 8f.spToPx()
+            textPaint.textSize = maxTextSize
+            val measuredWidth = textPaint.measureText(it)
+            if (measuredWidth > maxWidth) {
+                textPaint.textSize = (maxTextSize * maxWidth / measuredWidth).coerceAtLeast(minTextSize)
+            }
+            val displayText = TextUtils.ellipsize(
                 it,
+                textPaint,
+                maxWidth,
+                TextUtils.TruncateAt.END
+            ).toString()
+            val fm = textPaint.fontMetrics
+            val saveCount = canvas.save()
+            canvas.clipPath(Path().apply {
+                addCircle(
+                    mDrawableRect.centerX(),
+                    mDrawableRect.centerY(),
+                    mDrawableRadius,
+                    Path.Direction.CW
+                )
+            })
+            canvas.drawText(
+                displayText,
                 width * 0.5f,
                 (height * 0.5f + (fm.bottom - fm.top) * 0.5f - fm.bottom),
                 textPaint
             )
+            canvas.restoreToCount(saveCount)
         }
     }
 

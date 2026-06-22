@@ -132,6 +132,7 @@ import io.legado.app.help.ai.AiReadAloudRolePreviewSegment
 import io.legado.app.help.ai.AiReadAloudRoleState
 import io.legado.app.help.book.characterBookKey
 import io.legado.app.help.character.BookCharacterIdentityMigrator
+import io.legado.app.help.CoverDisplayResolver
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.readaloud.ReadAloudConfigChangeNotifier
@@ -284,6 +285,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
         val author: String = "",
         val coverUrl: String? = null,
         val sourceOrigin: String? = null,
+        val coverForcePath: Boolean = false,
+        val coverAllowNameOverlay: Boolean? = null,
         val chapterTitle: String = "",
         val chapterIndexText: String = "",
         val playing: Boolean = false,
@@ -1115,7 +1118,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
                 exactRoleCache?.status == AiReadAloudRoleCache.STATUS_RUNNING &&
                 AiReadAloudRoleService.isRunningCacheActive(exactRoleCacheKey, exactRoleCache.updatedAt)
         val audioInfo = buildAudioInfo(book.bookUrl, chapterSequence)
-        val coverUrl = book.getDisplayCover()
+        val coverDisplay = CoverDisplayResolver.resolve(book)
+        val coverUrl = coverDisplay.path
         val cueFingerprint = buildString {
             append(baseCues.size)
             append(':')
@@ -1130,7 +1134,7 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             book.name,
             book.author,
             book.origin,
-            coverUrl.orEmpty(),
+            coverDisplay.loadKey,
             chapterSequence.toString(),
             chapter.chapter.url.orEmpty(),
             chapter.chapter.title,
@@ -1173,7 +1177,9 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             bookName = book.name.ifBlank { context.getString(R.string.book_name) },
             author = book.author,
             coverUrl = coverUrl,
-            sourceOrigin = book.origin,
+            sourceOrigin = coverDisplay.sourceOrigin,
+            coverForcePath = coverDisplay.forcePath,
+            coverAllowNameOverlay = coverDisplay.allowNameOverlay,
             chapterTitle = chapter.chapter.title.ifBlank { "当前章节" },
             chapterIndexText = "${chapterSequence + 1}/${chapter.chaptersSize.coerceAtLeast(chapterSequence + 1)}",
             chapterSequence = chapterSequence,
@@ -1317,6 +1323,8 @@ class ReadAloudPlayerPanel @JvmOverloads constructor(
             author = model?.author.orEmpty(),
             coverUrl = model?.coverUrl,
             sourceOrigin = model?.sourceOrigin,
+            coverForcePath = model?.coverForcePath ?: false,
+            coverAllowNameOverlay = model?.coverAllowNameOverlay,
             chapterTitle = model?.chapterTitle.orEmpty(),
             chapterIndexText = model?.chapterIndexText.orEmpty(),
             playing = servicePlaying,
@@ -2113,6 +2121,8 @@ private data class PlayerChapterModel(
     val author: String,
     val coverUrl: String?,
     val sourceOrigin: String?,
+    val coverForcePath: Boolean,
+    val coverAllowNameOverlay: Boolean,
     val chapterTitle: String,
     val chapterIndexText: String,
     val chapterSequence: Int,
@@ -2233,7 +2243,8 @@ private fun CoverBackdropImage(
             val loadKey = listOf(
                 state.coverUrl.orEmpty(),
                 state.sourceOrigin.orEmpty(),
-                AppConfig.useDefaultCover.toString()
+                AppConfig.useDefaultCover.toString(),
+                state.coverForcePath.toString()
             ).joinToString("|")
             if (it.tag != loadKey) {
                 it.tag = loadKey
@@ -2241,7 +2252,8 @@ private fun CoverBackdropImage(
                     context = it.context,
                     path = state.coverUrl,
                     loadOnlyWifi = false,
-                    sourceOrigin = state.sourceOrigin
+                    sourceOrigin = state.sourceOrigin,
+                    forcePath = state.coverForcePath
                 ).into(it)
             }
         },
@@ -2426,7 +2438,9 @@ internal fun ReadAloudCapsule(
                                 state.bookName,
                                 state.author,
                                 state.sourceOrigin.orEmpty(),
-                                "thumb"
+                                "thumb",
+                                state.coverForcePath.toString(),
+                                state.coverAllowNameOverlay.toString()
                             ).joinToString("|")
                             if (it.tag != loadKey) {
                                 it.tag = loadKey
@@ -2436,7 +2450,9 @@ internal fun ReadAloudCapsule(
                                     author = state.author,
                                     loadOnlyWifi = false,
                                     sourceOrigin = state.sourceOrigin,
-                                    preferThumb = true
+                                    preferThumb = true,
+                                    forcePath = state.coverForcePath,
+                                    allowNameOverlay = state.coverAllowNameOverlay
                                 )
                             }
                         },
@@ -4304,7 +4320,9 @@ private fun CoverArt(
                     state.bookName,
                     state.author,
                     state.sourceOrigin.orEmpty(),
-                    "full"
+                    "full",
+                    state.coverForcePath.toString(),
+                    state.coverAllowNameOverlay.toString()
                 ).joinToString("|")
                 if (it.tag != loadKey) {
                     it.tag = loadKey
@@ -4314,10 +4332,13 @@ private fun CoverArt(
                         author = state.author,
                         loadOnlyWifi = false,
                         sourceOrigin = state.sourceOrigin,
-                        preferThumb = false
+                        preferThumb = false,
+                        forcePath = state.coverForcePath,
+                        allowNameOverlay = state.coverAllowNameOverlay
                     )
                 }
-            }
+            },
+            onRelease = { it.releaseComposeImage() }
         )
     }
 }

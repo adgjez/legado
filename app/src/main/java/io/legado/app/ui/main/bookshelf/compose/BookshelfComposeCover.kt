@@ -78,7 +78,8 @@ fun BookshelfComposeCover(
     }
     DisposableEffect(target) {
         onDispose {
-            runCatching { com.bumptech.glide.Glide.with(context).clear(target) }
+            val appContext = context.applicationContext ?: context
+            runCatching { com.bumptech.glide.Glide.with(appContext).clear(target) }
         }
     }
     LaunchedEffect(coverRequest.loadKey, fragment, lifecycle) {

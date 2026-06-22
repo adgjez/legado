@@ -19,16 +19,20 @@ import io.legado.app.utils.setStatusBarColorAuto
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
+open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>(imageBg = false) {
 
     override val binding by viewBinding(ActivityWelcomeBinding::inflate)
+
+    override fun initTheme() {
+        setTheme(R.style.AppTheme_Welcome)
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         if (intent.flags and Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT != 0) {
             // 避免从桌面启动程序后，会重新实例化入口类的activity
             finish()
         } else {
-            val welcomeShowTime = getPrefInt(PreferKey.welcomeShowTime, 500)
+            val welcomeShowTime = getPrefInt(PreferKey.welcomeShowTime, 0)
             if (welcomeShowTime == 0) {
                 startMainActivity()
             } else {

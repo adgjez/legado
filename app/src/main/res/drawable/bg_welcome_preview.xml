@@ -10,7 +10,7 @@
     <item
         android:width="112dp"
         android:height="112dp"
-        android:drawable="@drawable/icon_read_book"
+        android:drawable="@drawable/ic_launcher_agent"
         android:gravity="center" />
 
 </layer-list>

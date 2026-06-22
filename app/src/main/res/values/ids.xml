@@ -21,5 +21,6 @@
     <item name="main_bottom_bar_space_decoration" type="id" />
     <item name="ui_title_typeface_role" type="id" />
     <item name="ai_markdown_link_tap_handler" type="id" />
+    <item name="book_info_useweb_popup_host" type="id" />
 
 </resources>

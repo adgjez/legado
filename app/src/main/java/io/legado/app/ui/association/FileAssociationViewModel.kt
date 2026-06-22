@@ -9,6 +9,7 @@ import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.entities.Book
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.*
+import io.legado.app.utils.compress.ZipUtils
 
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
     val importBookLiveData = MutableLiveData<Uri>()
@@ -28,6 +29,10 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
                     return@execute
                 }
                 if (fileName.matches(AppPattern.archiveFileRegex)) {
+                    if (fileName.endsWith(".zip", ignoreCase = true) && isThemeZip(fileDoc)) {
+                        importRedThemeLiveData.postValue(fileDoc.uri)
+                        return@execute
+                    }
                     ArchiveUtils.deCompress(fileDoc, ArchiveUtils.TEMP_PATH) {
                         it.matches(bookFileRegex) || it.endsWith(".red", ignoreCase = true)
                     }.forEach {
@@ -66,6 +71,20 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             return
         }
         notSupportedLiveData.postValue(Pair(fileDoc.uri, fileDoc.name))
+    }
+
+    private fun isThemeZip(fileDoc: FileDoc): Boolean {
+        return kotlin.runCatching {
+            fileDoc.openInputStream().getOrThrow().use { input ->
+                ZipUtils.getFilesName(input) { true }.any { name ->
+                    val normalized = name.replace('\\', '/').trim('/')
+                    normalized.endsWith("/theme.json", ignoreCase = true) ||
+                        normalized.equals("theme.json", ignoreCase = true) ||
+                        normalized.endsWith("/appearance_kit.json", ignoreCase = true) ||
+                        normalized.equals("appearance_kit.json", ignoreCase = true)
+                }
+            }
+        }.getOrDefault(false)
     }
 
     fun importBook(uri: Uri) {

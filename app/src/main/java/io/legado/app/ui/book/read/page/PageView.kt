@@ -113,6 +113,7 @@ class PageView(context: Context) : FrameLayout(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         upBg()
+        postSyncMainContentSize()
     }
 
     override fun onDetachedFromWindow() {
@@ -558,6 +559,26 @@ class PageView(context: Context) : FrameLayout(context) {
     fun markAsMainView() {
         isMainView = true
         binding.contentTextView.isMainView = true
+        postSyncMainContentSize()
+    }
+
+    fun syncContentViewSizeToChapterProvider(): Boolean {
+        if (!isMainView) return false
+        val width = binding.contentTextView.width
+        val height = binding.contentTextView.height
+        if (width <= 0 || height <= 0) return false
+        ChapterProvider.upViewSize(width, height)
+        return true
+    }
+
+    private fun postSyncMainContentSize() {
+        if (!isMainView) return
+        post {
+            syncContentViewSizeToChapterProvider()
+        }
+        binding.contentTextView.post {
+            syncContentViewSizeToChapterProvider()
+        }
     }
 
     fun selectStartMove(x: Float, y: Float) {

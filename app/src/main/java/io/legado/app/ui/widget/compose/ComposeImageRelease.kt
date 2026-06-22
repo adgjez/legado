@@ -16,6 +16,7 @@ import com.bumptech.glide.Glide
 fun ImageView.releaseComposeImage() {
     (drawable as? Animatable)?.stop()
     // view 离开 composition 时其 context 可能正在销毁，Glide.with 可能抛异常，需吞掉
-    runCatching { Glide.with(this).clear(this) }
+    val appContext = context.applicationContext ?: context
+    runCatching { Glide.with(appContext).clear(this) }
     setImageDrawable(null)
 }
