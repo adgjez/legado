@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.toc
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -585,6 +586,7 @@ private fun TocTabButton(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TocChapterList(
     book: Book?,
@@ -600,123 +602,44 @@ private fun TocChapterList(
     val palette = rememberAppManagementPalette()
     // 仅当存在分卷时才缩进章节，纯平铺目录保持齐头。
     val hasVolumes = chapters.any { it.isVolume }
-    val pinnedVolume by remember(chapters, listState) {
-        derivedStateOf {
-            val firstVisibleIndex = listState.firstVisibleItemIndex
-            chapters
-                .take(firstVisibleIndex.coerceAtMost(chapters.lastIndex) + 1)
-                .lastOrNull { it.isVolume }
-        }
-    }
-    val pinnedVolumeHeight = 42.dp
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (pinnedVolume != null) {
-                Spacer(modifier = Modifier.height(pinnedVolumeHeight))
-            }
-            Box(modifier = Modifier.weight(1f)) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 12.dp)
-                ) {
-                    chapters.forEach { chapter ->
-                        val key = "${chapter.bookUrl}|${chapter.index}|${chapter.url}"
-                        if (chapter.isVolume) {
-                            item(key = key, contentType = "volume") {
-                                if (pinnedVolume?.index == chapter.index) {
-                                    Spacer(modifier = Modifier.height(0.dp))
-                                } else {
-                                    TocVolumeHeaderPanel(
-                                        palette = palette,
-                                        title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                                        collapsed = collapsedVolumeIndexes.contains(chapter.index),
-                                        onClick = { onToggleVolume(chapter) }
-                                    )
-                                }
-                            }
-                        } else {
-                            item(key = key, contentType = "chapter") {
-                                TocChapterRow(
-                                    palette = palette,
-                                    book = book,
-                                    chapter = chapter,
-                                    title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                                    cached = chapterCacheMap[chapter.primaryStr()] ?: true,
-                                    countWords = countWords,
-                                    indented = hasVolumes,
-                                    onClick = { onOpenChapter(chapter) }
-                                )
-                            }
-                        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 12.dp)
+        ) {
+            // 卷仍作为 lazy item 发射，保持索引与 visibleChapters 一一对应，滚动定位逻辑无需改动。
+            chapters.forEach { chapter ->
+                val key = "${chapter.bookUrl}|${chapter.index}|${chapter.url}"
+                if (chapter.isVolume) {
+                    stickyHeader(key = key, contentType = "volume") {
+                        TocVolumeHeaderRow(
+                            palette = palette,
+                            title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                            collapsed = collapsedVolumeIndexes.contains(chapter.index),
+                            onClick = { onToggleVolume(chapter) }
+                        )
+                    }
+                } else {
+                    item(key = key, contentType = "chapter") {
+                        TocChapterRow(
+                            palette = palette,
+                            book = book,
+                            chapter = chapter,
+                            title = displayTitles[chapter.primaryStr()] ?: chapter.title,
+                            cached = chapterCacheMap[chapter.primaryStr()] ?: true,
+                            countWords = countWords,
+                            indented = hasVolumes,
+                            onClick = { onOpenChapter(chapter) }
+                        )
                     }
                 }
-                ComposeLazyListFastScroller(
-                    state = listState,
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                )
             }
         }
-        pinnedVolume?.let { chapter ->
-            TocVolumeHeaderPanel(
-                palette = palette,
-                title = displayTitles[chapter.primaryStr()] ?: chapter.title,
-                collapsed = collapsedVolumeIndexes.contains(chapter.index),
-                onClick = { onToggleVolume(chapter) },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .height(pinnedVolumeHeight)
-                    .zIndex(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun TocVolumeHeaderPanel(
-    palette: AppManagementPalette,
-    title: String,
-    collapsed: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(end = 10.dp)
-                    .size(width = 3.dp, height = 16.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(palette.settings.accent.copy(alpha = 0.85f))
-            )
-            Text(
-                text = title,
-                color = palette.settings.primaryText,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = palette.settings.titleFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(
-                painter = painterResource(
-                    id = if (collapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less
-                ),
-                contentDescription = null,
-                tint = palette.settings.accent.copy(alpha = 0.82f),
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        ComposeLazyListFastScroller(
+            state = listState,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 
