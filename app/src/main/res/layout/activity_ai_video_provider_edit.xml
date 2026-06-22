@@ -214,25 +214,12 @@
                     android:minLines="6" />
             </com.google.android.material.textfield.TextInputLayout>
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_enabled"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <androidx.appcompat.widget.SwitchCompat
-                    android:id="@+id/switch_enabled"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:checked="true" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="@string/enable" />
-            </LinearLayout>
+                android:checked="true"
+                android:text="@string/enable" />
 
             <LinearLayout
                 android:layout_width="match_parent"

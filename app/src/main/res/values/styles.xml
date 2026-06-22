@@ -7,8 +7,8 @@
         <item name="actionBarStyle">@style/AppTheme.AppBarOverlay.Light</item>
     </style>
 
-    <!-- Material 主题（用于需要 Material Components 的 Activity） -->
-    <style name="AppTheme.Material" parent="Theme.MaterialComponents.DayNight.NoActionBar.Bridge" />
+    <!-- Material3 主题（用于需要 Material Components 的 Activity） -->
+    <style name="AppTheme.Material" parent="Theme.Material3.DayNight.NoActionBar" />
 
     <!-- 暗色主题 -->
     <style name="AppTheme.Dark" parent="Base.AppTheme">
