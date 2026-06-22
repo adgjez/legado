@@ -88,6 +88,25 @@ jobs:
           echo "== APKs =="
           find app/build/outputs -type f -name '*.apk' 2>/dev/null || echo "no apk found"
 
+      - name: Upload generated Room schema (debug)
+        if: success()
+        run: |
+          mkdir -p /tmp/room-schemas
+          find app/build/generated/ksp -path '*schemas/io.legado.app.data.AppDatabase*' -name '*.json' -print -exec cp {} /tmp/room-schemas/ \; 2>/dev/null || true
+          cp -v app/schemas/io.legado.app.data.AppDatabase/100.json /tmp/room-schemas/ 2>/dev/null || echo "no 100.json in git"
+          echo "--- collected ---"
+          ls -la /tmp/room-schemas/ || true
+        continue-on-error: true
+
+      - name: Upload Room schema artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: /tmp/room-schemas/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload APK artifact
         if: success()
         uses: actions/upload-artifact@v4
