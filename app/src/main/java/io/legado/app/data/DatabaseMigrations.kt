@@ -742,17 +742,71 @@ object DatabaseMigrations {
     }
 
     /**
-     * P3 修复：从 100 升到 101。空迁移，仅用于刷新 room_master_table 中的 identityHash。
+     * P3 修复：从 100 升到 101。重建 [io.legado.app.data.entities.AiVideoAnalysis] 表，
+     * 移除 v100 migration 误加的列级 DEFAULT 约束，与 Room 编译生成的 101.json 保持一致。
      *
      * 历史原因：P3 阶段 0 早期手写的 100.json 在 d8c32cb8 commit 中补 IndexBundle.createSql
      * 时内容手写错误，导致编译期算的 identityHash 与运行时从实体类算出的不一致。
-     * 用户在手机上启动 v100 时出现 "Room cannot verify the data integrity" 异常。
-     * 通过引入 101 版本号 + 空迁移，让 Room 用新的、来自编译期 101.json 的 identityHash
-     * 覆盖 room_master_table 中错误的旧值。
+     * 同时 migration_99_100 创建表时给 TEXT/INTEGER 列加了 DEFAULT ''/0，实体类本身没有
+     * 默认值。Room 升级到 101 后 onValidateSchema 发现 defaultValue 不匹配会抛
+     * "Migration didn't properly handle"。本迁移用"改名-重建-复制"模式把表结构对齐
+     * 101.json，保留 v100 阶段可能已写入的 AI 视频分析缓存数据。
      */
     private val migration_100_101 = object : Migration(100, 101) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // 故意为空：表结构未变，仅 version + identityHash 升级
+            // 1) 备份旧表（保留可能存在的 v100 阶段数据）
+            db.execSQL("ALTER TABLE `ai_video_analysis` RENAME TO `_ai_video_analysis_backup`")
+            // 2) 按 101.json 定义创建新表（无列级 DEFAULT）
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_video_analysis` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `language` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `providerId` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `failReason` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            // 3) 复制旧表数据；IFNULL 防御极端情况下 v100 数据出现 NULL
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO `ai_video_analysis`
+                    (`id`, `bookId`, `kind`, `language`, `payloadJson`, `model`,
+                     `providerId`, `status`, `failReason`, `createdAt`, `updatedAt`)
+                SELECT
+                    `id`, IFNULL(`bookId`, ''), IFNULL(`kind`, ''), IFNULL(`language`, ''),
+                    IFNULL(`payloadJson`, ''), IFNULL(`model`, ''), IFNULL(`providerId`, ''),
+                    IFNULL(`status`, 'pending'), IFNULL(`failReason`, ''),
+                    IFNULL(`createdAt`, 0), IFNULL(`updatedAt`, 0)
+                FROM `_ai_video_analysis_backup`
+                """.trimIndent()
+            )
+            // 4) 删除备份
+            db.execSQL("DROP TABLE IF EXISTS `_ai_video_analysis_backup`")
+            // 5) 重建索引（与 101.json 一致）
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` " +
+                    "ON `ai_video_analysis` (`bookId`, `kind`, `language`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_book` " +
+                    "ON `ai_video_analysis` (`bookId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_status` " +
+                    "ON `ai_video_analysis` (`status`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
+                    "ON `ai_video_analysis` (`updatedAt`)"
+            )
         }
     }
 
