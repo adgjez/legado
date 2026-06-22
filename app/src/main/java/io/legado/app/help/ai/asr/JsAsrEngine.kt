@@ -1,10 +1,12 @@
 package io.legado.app.help.ai.asr
 
+import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.Scriptable
 import java.io.File
 
@@ -26,27 +28,26 @@ class JsAsrEngine(
     override suspend fun transcribe(audio: File, language: String): List<AsrSegment> =
         withContext(Dispatchers.IO) {
             require(config.script.isNotBlank()) { "JS script is empty" }
-            val bindings: MutableMap<String, Any?> = HashMap()
-            bindings["audioPath"] = audio.absolutePath
-            bindings["language"] = language
-            bindings["config"] = config
+            val bindings = buildScriptBindings { b ->
+                b["audioPath"] = audio.absolutePath
+                b["language"] = language
+                b["config"] = config
+            }
             val scope: Scriptable = RhinoScriptEngine.getRuntimeScope(bindings)
             val compiled = RhinoScriptEngine.compile(config.script)
-            // 用户脚本应定义 transcribe(audioPath, language) -> segments
             val result = compiled.eval(scope)
             parseResult(result)
         }
 
     private fun parseResult(raw: Any?): List<AsrSegment> {
         return try {
-            // 1) 字符串
+            // 1) 字符串：尝试 JSON.parse
             if (raw is String) return parseResult(JSONArray(raw))
-            // 2) Rhino native array（NativeArray 在 Rhino 中）
-            //    NativeJavaArray / NativeArray 都可转 JSONArray（已通过反射或显式 NativeArray 处理）
-            if (raw is org.mozilla.javascript.NativeArray) {
+            // 2) Rhino native array
+            if (raw is NativeArray) {
                 val arr = JSONArray()
                 for (i in 0 until raw.length) {
-                    arr.put(JSONObject.wrapOrNull(raw.get(i)))
+                    arr.put(wrap(raw.get(i)))
                 }
                 return parseFromJsonArray(arr)
             }
@@ -55,13 +56,31 @@ class JsAsrEngine(
             }
             if (raw is List<*>) {
                 val arr = JSONArray()
-                raw.forEach { arr.put(JSONObject.wrapOrNull(it)) }
+                raw.forEach { arr.put(wrap(it)) }
                 return parseFromJsonArray(arr)
             }
             // 3) 兜底：toString 解析
             parseResult(raw?.toString())
         } catch (e: Throwable) {
             emptyList()
+        }
+    }
+
+    private fun wrap(value: Any?): Any {
+        if (value == null) return JSONObject.NULL
+        return when (value) {
+            is Number, is Boolean, is String, is JSONObject, is JSONArray -> value
+            is Map<*, *> -> {
+                val obj = JSONObject()
+                value.forEach { (k, v) -> obj.put(k.toString(), wrap(v)) }
+                obj
+            }
+            is List<*> -> {
+                val arr = JSONArray()
+                value.forEach { arr.put(wrap(it)) }
+                arr
+            }
+            else -> value.toString()
         }
     }
 
@@ -77,7 +96,6 @@ class JsAsrEngine(
                     if (text.isNotEmpty() && end >= start) AsrSegment(start, end, text) else null
                 }
                 is JSONArray -> {
-                    // [startMs, endMs, text]
                     if (item.length() >= 3) {
                         val start = item.optLong(0)
                         val end = item.optLong(1)
@@ -90,25 +108,5 @@ class JsAsrEngine(
             if (seg != null) out.add(seg)
         }
         return out
-    }
-
-    private fun JSONObject.Companion.wrapOrNull(any: Any?): Any {
-        if (any == null) return JSONObject.NULL
-        return when (any) {
-            is Number, is Boolean, is String -> any
-            is JSONObject -> any
-            is JSONArray -> any
-            is Map<*, *> -> {
-                val obj = JSONObject()
-                any.forEach { (k, v) -> obj.put(k.toString(), wrapOrNull(v)) }
-                obj
-            }
-            is List<*> -> {
-                val arr = JSONArray()
-                any.forEach { arr.put(wrapOrNull(it)) }
-                arr
-            }
-            else -> any.toString()
-        }
     }
 }

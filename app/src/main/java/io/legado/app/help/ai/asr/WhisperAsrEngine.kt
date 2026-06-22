@@ -1,13 +1,12 @@
 package io.legado.app.help.ai.asr
 
 import android.util.Log
+import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postMultipart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.Request
-import org.json.JSONObject
 import java.io.File
 
 /**
@@ -34,28 +33,27 @@ class WhisperAsrEngine(
             val baseUrl = config.baseUrl.ifBlank { DEFAULT_BASE_URL }
             val url = (baseUrl.trimEnd('/') + "/audio/transcriptions").toHttpUrl()
             val form: Map<String, Any> = buildMap {
-                put("file", mapOf(
-                    "fileName" to audio.name,
-                    "file" to audio,
-                    "contentType" to "audio/mpeg"
-                ))
+                put(
+                    "file",
+                    mapOf(
+                        "fileName" to audio.name,
+                        "file" to audio,
+                        "contentType" to "audio/mpeg"
+                    )
+                )
                 put("model", config.model.ifBlank { "whisper-1" })
                 put("response_format", "verbose_json")
                 put("timestamp_granularities", "segment")
                 if (language.isNotBlank()) put("language", language)
             }
-            val request = Request.Builder()
-                .url(url)
-                .apply {
-                    if (config.apiKey.isNotBlank()) {
-                        header("Authorization", "Bearer ${config.apiKey}")
-                    }
+            val strResp = okHttpClient.newCallStrResponse(0) {
+                url(url)
+                if (config.apiKey.isNotBlank()) {
+                    header("Authorization", "Bearer ${config.apiKey}")
                 }
-                .postMultipart("multipart/form-data", form)
-                .build()
-            okHttpClient.newCallResponse(0) { url(request.url); method(request.method, request.body) }
-                .body
-                .text("utf-8")
+                postMultipart("multipart/form-data", form)
+            }
+            strResp.body.orEmpty()
         }
 
     companion object {
@@ -68,7 +66,7 @@ class WhisperAsrEngine(
          */
         fun parseVerboseJson(text: String): List<AsrSegment> {
             return try {
-                val obj = JSONObject(text)
+                val obj = org.json.JSONObject(text)
                 val arr = obj.optJSONArray("segments") ?: return emptyList()
                 val out = ArrayList<AsrSegment>(arr.length())
                 for (i in 0 until arr.length()) {

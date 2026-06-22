@@ -8,6 +8,7 @@ import io.legado.app.help.ai.asr.AsrEngine
 import io.legado.app.help.ai.asr.AsrEngineFactory
 import io.legado.app.help.ai.asr.AsrSegment
 import io.legado.app.help.ai.asr.toSrtText
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiProviderConfig
 import io.legado.app.utils.externalFiles
@@ -74,7 +75,7 @@ object AiVideoAnalysisService {
             }
 
             val payload = JSONObject().apply { put("summary", summaryText) }.toString()
-            markSuccess(rowId, llmConfig?.model ?: "", llmConfig?.id ?: "", payload)
+            markSuccess(rowId, currentModelId(), llmConfig?.id ?: "", payload)
         } catch (e: CancellationException) {
             markCancelled(rowId)
             throw e
@@ -196,7 +197,7 @@ object AiVideoAnalysisService {
                 })
             }
             val payload = JSONObject().apply { put("chapters", arr) }.toString()
-            markSuccess(rowId, llmConfig.model, llmConfig.id, payload)
+            markSuccess(rowId, currentModelId(), llmConfig.id, payload)
         } catch (e: CancellationException) {
             markCancelled(rowId)
             throw e
@@ -322,4 +323,7 @@ object AiVideoAnalysisService {
     @Suppress("unused")
     private fun rootDir(bookId: String): File =
         File(appCtx.externalFiles, "ai_video_analysis/$bookId").apply { mkdirs() }
+
+    private fun currentModelId(): String =
+        AppConfig.aiCurrentModelConfig?.modelId.orEmpty()
 }

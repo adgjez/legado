@@ -60,6 +60,7 @@ import io.legado.app.lib.theme.secondaryTextColor
 import io.legado.app.model.VideoPlay
 import io.legado.app.service.VideoPlayService
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.main.ai.AiVideoAnalysisDialog
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog

@@ -15,7 +15,6 @@ import io.legado.app.help.ai.AiVideoAnalysisService
 import io.legado.app.help.ai.asr.AsrConfig
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.dialogs.okButton
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -103,10 +102,12 @@ class AiVideoAnalysisDialog : DialogFragment() {
                         )
                         AiVideoAnalysis.KIND_CHAPTERS -> {
                             // 先确保有字幕
+                            val llmCfg = AppConfig.llmConfigForBook(bookId)
+                                ?: AppConfig.defaultLlmConfig()
+                                ?: error("LLM provider not configured")
                             AiVideoAnalysisService.detectChapters(
                                 bookId = bookId,
-                                llmConfig = AppConfig.llmConfigForBook(bookId)
-                                    ?: AppConfig.defaultLlmConfig(),
+                                llmConfig = llmCfg,
                                 asrConfig = asrConfig(),
                                 videoPath = videoPath,
                                 language = lang
