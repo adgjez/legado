@@ -742,23 +742,181 @@ object DatabaseMigrations {
     }
 
     /**
-     * P3 修复：从 100 升到 101。重建 [io.legado.app.data.entities.AiVideoAnalysis] 表，
-     * 移除 v100 migration 误加的列级 DEFAULT 约束，与 Room 编译生成的 101.json 保持一致。
+     * P3 修复：从 100 升到 101。
      *
-     * 历史原因：P3 阶段 0 早期手写的 100.json 在 d8c32cb8 commit 中补 IndexBundle.createSql
-     * 时内容手写错误，导致编译期算的 identityHash 与运行时从实体类算出的不一致。
-     * 同时 migration_99_100 创建表时给 TEXT/INTEGER 列加了 DEFAULT ''/0，实体类本身没有
-     * 默认值。Room 升级到 101 后 onValidateSchema 发现 defaultValue 不匹配会抛
-     * "Migration didn't properly handle"。本迁移用"改名-重建-复制"模式把表结构对齐
-     * 101.json，保留 v100 阶段可能已写入的 AI 视频分析缓存数据。
+     * 历史原因（P2 阶段 98→99 + P3 阶段 99→100）：手写的 migration_98_99 和 migration_99_100
+     * 在 CREATE TABLE 时给所有 TEXT/INTEGER 列加了 DEFAULT ''/0/...，但实体类本身没有
+     * 默认值。Room 升级到 101 后 onValidateSchema 对比 101.json（Room 编译生成，列无 DEFAULT）
+     * 与 db 中真实表（带 DEFAULT），发现 defaultValue 不匹配会抛
+     * "Migration didn't properly handle"。
+     *
+     * 解决：采用"改名-重建-复制-删备份"模式，对 v98→v100 期间新增的 3 个 P2/P3 表
+     * ([ai_video_groups], [io.legado.app.data.entities.AiGeneratedVideo], [io.legado.app.data.entities.AiVideoAnalysis])
+     * 一次性全部按 101.json 编译定义重建，保留 v98/v100 阶段已写入的数据。
+     *
+     * v97 之前的所有表（books / book_sources / rss / readRecord ...）字段定义 98→101
+     * 没有差异，不在本迁移范围内。
      */
     private val migration_100_101 = object : Migration(100, 101) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            // 1) 备份旧表（保留可能存在的 v100 阶段数据）
-            db.execSQL("ALTER TABLE `ai_video_analysis` RENAME TO `_ai_video_analysis_backup`")
-            // 2) 按 101.json 定义创建新表（无列级 DEFAULT）
+            rebuildTable_aiVideoGroups(db)
+            rebuildTable_aiGeneratedVideos(db)
+            rebuildTable_aiVideoAnalysis(db)
+        }
+
+        /** 重命名-重建-复制 通用流程：用于按 101.json 定义重建表。 */
+        private fun recreate(
+            db: SupportSQLiteDatabase,
+            table: String,
+            createSql: String,
+            columns: List<String>,
+            backupValues: Map<String, String>,
+            indexSqls: List<String>
+        ) {
+            val backup = "_${table}_v100_backup"
+            db.execSQL("ALTER TABLE `$table` RENAME TO `$backup`")
+            db.execSQL(createSql)
+            val colList = columns.joinToString(", ") { "`$it`" }
+            val selList = columns.joinToString(", ") { col -> backupValues[col] ?: "`$col`" }
             db.execSQL(
-                """
+                "INSERT OR IGNORE INTO `$table` ($colList) SELECT $selList FROM `$backup`"
+            )
+            db.execSQL("DROP TABLE IF EXISTS `$backup`")
+            indexSqls.forEach { db.execSQL(it) }
+        }
+
+        private fun rebuildTable_aiVideoGroups(db: SupportSQLiteDatabase) {
+            val createSql = """
+                CREATE TABLE IF NOT EXISTS `ai_video_groups` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `order` INTEGER NOT NULL,
+                    `cover` TEXT NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+            """.trimIndent()
+            recreate(
+                db = db,
+                table = "ai_video_groups",
+                createSql = createSql,
+                columns = listOf("id", "name", "order", "cover"),
+                backupValues = mapOf(
+                    "order" to "IFNULL(`order`, 0)",
+                    "cover" to "IFNULL(`cover`, '')"
+                ),
+                indexSqls = listOf(
+                    "CREATE INDEX IF NOT EXISTS `index_ai_video_groups_order` " +
+                        "ON `ai_video_groups` (`order`)"
+                )
+            )
+            // 保留默认分组（如果备份里没有的话）
+            db.execSQL(
+                "INSERT OR IGNORE INTO `ai_video_groups` (`id`, `name`, `order`, `cover`) " +
+                    "VALUES ('default', '默认分组', 0, '')"
+            )
+        }
+
+        private fun rebuildTable_aiGeneratedVideos(db: SupportSQLiteDatabase) {
+            val createSql = """
+                CREATE TABLE IF NOT EXISTS `ai_generated_videos` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `prompt` TEXT NOT NULL,
+                    `negativePrompt` TEXT NOT NULL,
+                    `providerId` TEXT NOT NULL,
+                    `providerName` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `localPath` TEXT NOT NULL,
+                    `remoteUrl` TEXT NOT NULL,
+                    `coverPath` TEXT NOT NULL,
+                    `durationMs` INTEGER NOT NULL,
+                    `width` INTEGER NOT NULL,
+                    `height` INTEGER NOT NULL,
+                    `sizeBytes` INTEGER NOT NULL,
+                    `aspectRatio` TEXT NOT NULL,
+                    `seed` INTEGER NOT NULL,
+                    `bookKey` TEXT NOT NULL,
+                    `bookName` TEXT NOT NULL,
+                    `bookAuthor` TEXT NOT NULL,
+                    `chapterKey` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `chapterTitle` TEXT NOT NULL,
+                    `characterId` INTEGER NOT NULL,
+                    `characterName` TEXT NOT NULL,
+                    `sourceType` TEXT NOT NULL,
+                    `sourceText` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `failReason` TEXT NOT NULL,
+                    `progress` INTEGER NOT NULL,
+                    `externalTaskId` TEXT NOT NULL,
+                    `metadataJson` TEXT NOT NULL,
+                    `favorite` INTEGER NOT NULL,
+                    `groupId` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    `completedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+            """.trimIndent()
+            recreate(
+                db = db,
+                table = "ai_generated_videos",
+                createSql = createSql,
+                columns = listOf(
+                    "id", "name", "prompt", "negativePrompt", "providerId", "providerName",
+                    "model", "localPath", "remoteUrl", "coverPath", "durationMs", "width",
+                    "height", "sizeBytes", "aspectRatio", "seed", "bookKey", "bookName",
+                    "bookAuthor", "chapterKey", "chapterIndex", "chapterTitle", "characterId",
+                    "characterName", "sourceType", "sourceText", "status", "failReason",
+                    "progress", "externalTaskId", "metadataJson", "favorite", "groupId",
+                    "createdAt", "updatedAt", "completedAt"
+                ),
+                backupValues = mapOf(
+                    "negativePrompt" to "IFNULL(`negativePrompt`, '')",
+                    "localPath" to "IFNULL(`localPath`, '')",
+                    "remoteUrl" to "IFNULL(`remoteUrl`, '')",
+                    "coverPath" to "IFNULL(`coverPath`, '')",
+                    "durationMs" to "IFNULL(`durationMs`, 0)",
+                    "width" to "IFNULL(`width`, 0)",
+                    "height" to "IFNULL(`height`, 0)",
+                    "sizeBytes" to "IFNULL(`sizeBytes`, 0)",
+                    "aspectRatio" to "IFNULL(`aspectRatio`, '')",
+                    "seed" to "IFNULL(`seed`, -1)",
+                    "bookKey" to "IFNULL(`bookKey`, '')",
+                    "bookName" to "IFNULL(`bookName`, '')",
+                    "bookAuthor" to "IFNULL(`bookAuthor`, '')",
+                    "chapterKey" to "IFNULL(`chapterKey`, '')",
+                    "chapterIndex" to "IFNULL(`chapterIndex`, -1)",
+                    "chapterTitle" to "IFNULL(`chapterTitle`, '')",
+                    "characterId" to "IFNULL(`characterId`, 0)",
+                    "characterName" to "IFNULL(`characterName`, '')",
+                    "sourceType" to "IFNULL(`sourceType`, '')",
+                    "sourceText" to "IFNULL(`sourceText`, '')",
+                    "status" to "IFNULL(`status`, 'pending')",
+                    "failReason" to "IFNULL(`failReason`, '')",
+                    "progress" to "IFNULL(`progress`, 0)",
+                    "externalTaskId" to "IFNULL(`externalTaskId`, '')",
+                    "metadataJson" to "IFNULL(`metadataJson`, '')",
+                    "favorite" to "IFNULL(`favorite`, 0)",
+                    "createdAt" to "IFNULL(`createdAt`, 0)",
+                    "updatedAt" to "IFNULL(`updatedAt`, 0)",
+                    "completedAt" to "IFNULL(`completedAt`, 0)"
+                ),
+                indexSqls = listOf(
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_groupId` ON `ai_generated_videos` (`groupId`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_favorite` ON `ai_generated_videos` (`favorite`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_status` ON `ai_generated_videos` (`status`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_createdAt` ON `ai_generated_videos` (`createdAt`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_bookKey` ON `ai_generated_videos` (`bookKey`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_chapterKey` ON `ai_generated_videos` (`chapterKey`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_characterId` ON `ai_generated_videos` (`characterId`)",
+                    "CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_sourceType` ON `ai_generated_videos` (`sourceType`)"
+                )
+            )
+        }
+
+        private fun rebuildTable_aiVideoAnalysis(db: SupportSQLiteDatabase) {
+            val createSql = """
                 CREATE TABLE IF NOT EXISTS `ai_video_analysis` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `bookId` TEXT NOT NULL,
@@ -772,40 +930,37 @@ object DatabaseMigrations {
                     `createdAt` INTEGER NOT NULL,
                     `updatedAt` INTEGER NOT NULL
                 )
-                """.trimIndent()
-            )
-            // 3) 复制旧表数据；IFNULL 防御极端情况下 v100 数据出现 NULL
-            db.execSQL(
-                """
-                INSERT OR IGNORE INTO `ai_video_analysis`
-                    (`id`, `bookId`, `kind`, `language`, `payloadJson`, `model`,
-                     `providerId`, `status`, `failReason`, `createdAt`, `updatedAt`)
-                SELECT
-                    `id`, IFNULL(`bookId`, ''), IFNULL(`kind`, ''), IFNULL(`language`, ''),
-                    IFNULL(`payloadJson`, ''), IFNULL(`model`, ''), IFNULL(`providerId`, ''),
-                    IFNULL(`status`, 'pending'), IFNULL(`failReason`, ''),
-                    IFNULL(`createdAt`, 0), IFNULL(`updatedAt`, 0)
-                FROM `_ai_video_analysis_backup`
-                """.trimIndent()
-            )
-            // 4) 删除备份
-            db.execSQL("DROP TABLE IF EXISTS `_ai_video_analysis_backup`")
-            // 5) 重建索引（与 101.json 一致）
-            db.execSQL(
-                "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` " +
-                    "ON `ai_video_analysis` (`bookId`, `kind`, `language`)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS `idx_book` " +
-                    "ON `ai_video_analysis` (`bookId`)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS `idx_status` " +
-                    "ON `ai_video_analysis` (`status`)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
-                    "ON `ai_video_analysis` (`updatedAt`)"
+            """.trimIndent()
+            recreate(
+                db = db,
+                table = "ai_video_analysis",
+                createSql = createSql,
+                columns = listOf(
+                    "id", "bookId", "kind", "language", "payloadJson", "model",
+                    "providerId", "status", "failReason", "createdAt", "updatedAt"
+                ),
+                backupValues = mapOf(
+                    "bookId" to "IFNULL(`bookId`, '')",
+                    "kind" to "IFNULL(`kind`, '')",
+                    "language" to "IFNULL(`language`, '')",
+                    "payloadJson" to "IFNULL(`payloadJson`, '')",
+                    "model" to "IFNULL(`model`, '')",
+                    "providerId" to "IFNULL(`providerId`, '')",
+                    "status" to "IFNULL(`status`, 'pending')",
+                    "failReason" to "IFNULL(`failReason`, '')",
+                    "createdAt" to "IFNULL(`createdAt`, 0)",
+                    "updatedAt" to "IFNULL(`updatedAt`, 0)"
+                ),
+                indexSqls = listOf(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` " +
+                        "ON `ai_video_analysis` (`bookId`, `kind`, `language`)",
+                    "CREATE INDEX IF NOT EXISTS `idx_book` " +
+                        "ON `ai_video_analysis` (`bookId`)",
+                    "CREATE INDEX IF NOT EXISTS `idx_status` " +
+                        "ON `ai_video_analysis` (`status`)",
+                    "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
+                        "ON `ai_video_analysis` (`updatedAt`)"
+                )
             )
         }
     }
