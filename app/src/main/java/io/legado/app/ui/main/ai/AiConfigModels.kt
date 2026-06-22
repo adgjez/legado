@@ -101,3 +101,49 @@ data class AiImageProviderConfig(
         const val TYPE_JS = "js"
     }
 }
+
+/**
+ * AI 视频生成 Provider 配置
+ *
+ * 与 AiImageProviderConfig 镜像，并增加视频生成特定的轮询参数
+ * （视频生成 API 几乎都是异步的：先 submit 拿 taskId，再轮询拿结果）。
+ */
+@Keep
+data class AiVideoProviderConfig(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val type: String = TYPE_OPENAI,
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val headers: String = "",
+    val model: String = "",
+    val defaultParamsJson: String = "",
+    val stylePrompt: String = "",
+    val jsLib: String = "",
+    val loginUrl: String = "",
+    val loginUi: String = "",
+    val enabledCookieJar: Boolean = false,
+    val script: String = "",
+    val pollIntervalMs: Long = 5_000L,
+    val maxWaitMs: Long = 1_800_000L,
+    val timeoutMillisecond: Long = 120_000L,
+    val order: Int = 0,
+    val enabled: Boolean = true
+) {
+    fun displayName(): String = name.ifBlank { type }
+
+    fun validTimeout(): Long {
+        val normalized = timeoutMillisecond.takeIf { it > 0L } ?: 300_000L
+        return normalized.coerceIn(60_000L, 600_000L)
+    }
+
+    fun validPollIntervalMs(): Long = pollIntervalMs.coerceIn(1_000L, 60_000L)
+
+    fun validMaxWaitMs(): Long = maxWaitMs.coerceIn(60_000L, 7_200_000L)
+
+    companion object {
+        const val TYPE_OPENAI = "openai"
+        const val TYPE_KLING = "kling"
+        const val TYPE_JS = "js"
+    }
+}

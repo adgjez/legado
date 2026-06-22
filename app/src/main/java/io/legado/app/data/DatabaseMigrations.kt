@@ -21,7 +21,7 @@ object DatabaseMigrations {
             migration_35_36, migration_36_37, migration_37_38, migration_38_39,
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
-            migration_95_96, migration_96_97, migration_97_98,
+            migration_95_96, migration_96_97, migration_97_98, migration_98_99,
         )
     }
 
@@ -625,5 +625,77 @@ object DatabaseMigrations {
         columnName = "reviewImg"
     )
     class Migration_84_85 : AutoMigrationSpec
+
+    private val migration_98_99 = object : Migration(98, 99) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_video_groups` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `cover` TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_generated_videos` (
+                    `id` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `prompt` TEXT NOT NULL,
+                    `negativePrompt` TEXT NOT NULL DEFAULT '',
+                    `providerId` TEXT NOT NULL,
+                    `providerName` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `localPath` TEXT NOT NULL DEFAULT '',
+                    `remoteUrl` TEXT NOT NULL DEFAULT '',
+                    `coverPath` TEXT NOT NULL DEFAULT '',
+                    `durationMs` INTEGER NOT NULL DEFAULT 0,
+                    `width` INTEGER NOT NULL DEFAULT 0,
+                    `height` INTEGER NOT NULL DEFAULT 0,
+                    `sizeBytes` INTEGER NOT NULL DEFAULT 0,
+                    `aspectRatio` TEXT NOT NULL DEFAULT '',
+                    `seed` INTEGER NOT NULL DEFAULT -1,
+                    `bookKey` TEXT NOT NULL DEFAULT '',
+                    `bookName` TEXT NOT NULL DEFAULT '',
+                    `bookAuthor` TEXT NOT NULL DEFAULT '',
+                    `chapterKey` TEXT NOT NULL DEFAULT '',
+                    `chapterIndex` INTEGER NOT NULL DEFAULT -1,
+                    `chapterTitle` TEXT NOT NULL DEFAULT '',
+                    `characterId` INTEGER NOT NULL DEFAULT 0,
+                    `characterName` TEXT NOT NULL DEFAULT '',
+                    `sourceType` TEXT NOT NULL DEFAULT '',
+                    `sourceText` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT 'pending',
+                    `failReason` TEXT NOT NULL DEFAULT '',
+                    `progress` INTEGER NOT NULL DEFAULT 0,
+                    `externalTaskId` TEXT NOT NULL DEFAULT '',
+                    `metadataJson` TEXT NOT NULL DEFAULT '',
+                    `favorite` INTEGER NOT NULL DEFAULT 0,
+                    `groupId` TEXT DEFAULT NULL,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    `completedAt` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_groupId` ON `ai_generated_videos` (`groupId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_favorite` ON `ai_generated_videos` (`favorite`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_status` ON `ai_generated_videos` (`status`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_createdAt` ON `ai_generated_videos` (`createdAt`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_bookKey` ON `ai_generated_videos` (`bookKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_chapterKey` ON `ai_generated_videos` (`chapterKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_characterId` ON `ai_generated_videos` (`characterId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_generated_videos_sourceType` ON `ai_generated_videos` (`sourceType`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_video_groups_order` ON `ai_video_groups` (`order`)")
+            db.execSQL(
+                "INSERT OR IGNORE INTO `ai_video_groups` (`id`, `name`, `order`, `cover`) " +
+                    "VALUES ('default', '默认分组', 0, '')"
+            )
+        }
+    }
 
 }

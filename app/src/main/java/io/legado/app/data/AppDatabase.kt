@@ -10,7 +10,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 import io.legado.app.data.dao.AiGeneratedImageDao
+import io.legado.app.data.dao.AiGeneratedVideoDao
 import io.legado.app.data.dao.AiImageGroupDao
+import io.legado.app.data.dao.AiVideoGroupDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
@@ -38,7 +40,9 @@ import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
 import io.legado.app.data.entities.AiGeneratedImage
+import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.data.entities.AiImageGroup
+import io.legado.app.data.entities.AiVideoGroup
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookCharacter
@@ -84,7 +88,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 98,
+    version = 99,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -94,7 +98,7 @@ val appDb by lazy {
         RuleSub::class, DictRule::class, KeyboardAssist::class, Server::class,
         ReadRecentBook::class, ParagraphRule::class, BookParagraphRule::class,
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
-        AiImageGroup::class, AiGeneratedImage::class,
+        AiImageGroup::class, AiGeneratedImage::class, AiVideoGroup::class, AiGeneratedVideo::class,
         BookCharacter::class, BookCharacterRelation::class],
     views = [BookSourcePart::class],
     autoMigrations = [
@@ -178,6 +182,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val readMenuCustomButtonDao: ReadMenuCustomButtonDao
     abstract val aiImageGroupDao: AiImageGroupDao
     abstract val aiGeneratedImageDao: AiGeneratedImageDao
+    abstract val aiVideoGroupDao: AiVideoGroupDao
+    abstract val aiGeneratedVideoDao: AiGeneratedVideoDao
 
     companion object {
 

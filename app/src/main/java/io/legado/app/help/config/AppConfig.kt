@@ -29,6 +29,7 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.ui.main.ai.AiChatSession
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiImageProviderConfig
+import io.legado.app.ui.main.ai.AiVideoProviderConfig
 import io.legado.app.ui.main.ai.AiPersonaConfig
 import io.legado.app.ui.main.ai.AiMcpServerConfig
 import io.legado.app.ui.main.ai.AiModelConfig
@@ -792,6 +793,61 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         return aiEnabledImageProviders.firstOrNull { it.id == cleanId }
     }
 
+    var aiVideoProviderList: List<AiVideoProviderConfig>
+        get() = normalizeAiVideoProviders(
+            GSON.fromJsonArray<AiVideoProviderConfig>(appCtx.getPrefString(PreferKey.aiVideoProviderList))
+                .getOrDefault(emptyList())
+        )
+        set(value) {
+            val providers = normalizeAiVideoProviders(value)
+            if (providers.isEmpty()) appCtx.removePref(PreferKey.aiVideoProviderList)
+            else appCtx.putPrefString(PreferKey.aiVideoProviderList, GSON.toJson(providers))
+        }
+
+    val aiEnabledVideoProviders: List<AiVideoProviderConfig>
+        get() = aiVideoProviderList.filter { it.enabled }
+
+    var aiCurrentVideoProviderId: String?
+        get() = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
+        set(value) {
+            if (value.isNullOrBlank()) appCtx.removePref(PreferKey.aiCurrentVideoProviderId)
+            else appCtx.putPrefString(PreferKey.aiCurrentVideoProviderId, value)
+        }
+
+    val aiCurrentVideoProvider: AiVideoProviderConfig?
+        get() {
+            val providers = aiEnabledVideoProviders
+            val currentId = aiCurrentVideoProviderId
+            if (currentId.isNullOrBlank()) {
+                return providers.firstOrNull()?.also { aiCurrentVideoProviderId = it.id }
+            }
+            return providers.firstOrNull { it.id == currentId }
+        }
+
+    fun findEnabledVideoProvider(id: String?): AiVideoProviderConfig? {
+        val cleanId = id?.trim().orEmpty()
+        if (cleanId.isBlank()) return null
+        return aiEnabledVideoProviders.firstOrNull { it.id == cleanId }
+    }
+
+    fun upsertVideoProvider(config: AiVideoProviderConfig) {
+        val list = aiVideoProviderList.toMutableList()
+        val index = list.indexOfFirst { it.id == config.id }
+        if (index >= 0) {
+            list[index] = config
+        } else {
+            list.add(config)
+        }
+        aiVideoProviderList = list
+    }
+
+    fun deleteVideoProvider(id: String) {
+        aiVideoProviderList = aiVideoProviderList.filterNot { it.id == id }
+        if (aiCurrentVideoProviderId == id) {
+            aiCurrentVideoProviderId = null
+        }
+    }
+
     var aiContextCompressionEnabled: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.aiContextCompressionEnabled, false)
         set(value) = appCtx.putPrefBoolean(PreferKey.aiContextCompressionEnabled, value)
@@ -1028,6 +1084,51 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                     loginUi = safeString { provider.loginUi },
                     enabledCookieJar = safeBoolean(false) { provider.enabledCookieJar },
                     script = safeString { provider.script },
+                    timeoutMillisecond = safeLong(120_000L) { provider.timeoutMillisecond }
+                        .takeIf { it > 0L } ?: 120_000L,
+                    order = safeInt(0) { provider.order },
+                    enabled = safeBoolean(true) { provider.enabled }
+                )
+            }
+        }
+            .distinctBy { it.id }
+            .sortedBy { it.order }
+            .mapIndexed { index, provider -> provider.copy(order = index) }
+    }
+
+    private fun normalizeAiVideoProviders(value: List<AiVideoProviderConfig>): List<AiVideoProviderConfig> {
+        return value.mapNotNull { provider ->
+            val id = safeString { provider.id }.trim()
+            val name = safeString { provider.name }.trim()
+            if (id.isEmpty() || name.isEmpty()) {
+                null
+            } else {
+                val type = safeString { provider.type }.trim()
+                    .takeIf {
+                        it == AiVideoProviderConfig.TYPE_OPENAI ||
+                            it == AiVideoProviderConfig.TYPE_KLING ||
+                            it == AiVideoProviderConfig.TYPE_JS
+                    }
+                    ?: AiVideoProviderConfig.TYPE_OPENAI
+                AiVideoProviderConfig(
+                    id = id,
+                    name = name,
+                    type = type,
+                    baseUrl = safeString { provider.baseUrl }.trim(),
+                    apiKey = safeString { provider.apiKey }.trim(),
+                    headers = safeString { provider.headers }.trim(),
+                    model = safeString { provider.model }.trim(),
+                    defaultParamsJson = safeString { provider.defaultParamsJson }.trim(),
+                    stylePrompt = safeString { provider.stylePrompt }.trim(),
+                    jsLib = safeString { provider.jsLib },
+                    loginUrl = safeString { provider.loginUrl }.trim(),
+                    loginUi = safeString { provider.loginUi },
+                    enabledCookieJar = safeBoolean(false) { provider.enabledCookieJar },
+                    script = safeString { provider.script },
+                    pollIntervalMs = safeLong(5_000L) { provider.pollIntervalMs }
+                        .coerceIn(1_000L, 60_000L),
+                    maxWaitMs = safeLong(1_800_000L) { provider.maxWaitMs }
+                        .coerceIn(60_000L, 7_200_000L),
                     timeoutMillisecond = safeLong(120_000L) { provider.timeoutMillisecond }
                         .takeIf { it > 0L } ?: 120_000L,
                     order = safeInt(0) { provider.order },
