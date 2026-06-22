@@ -3,6 +3,7 @@ package io.legado.app.service
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.lifecycleScope
 import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -14,6 +15,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.help.ai.AiVideoGalleryManager
+import io.legado.app.help.ai.AiVideoProvider
 import io.legado.app.help.ai.AiVideoProviderFactory
 import io.legado.app.help.ai.VideoPollResult
 import io.legado.app.help.ai.VideoStatus
@@ -174,13 +176,14 @@ class AiVideoTaskService : BaseService() {
         // 已经有一个常驻 dispatcher 协程在跑
         scope.launch {
             while (isActive && !stopping.get()) {
-                val next = queue.poll() ?: run {
+                val next: String? = queue.poll()
+                if (next == null) {
                     delay(500)
-                    return@run
-                }
-                if (jobMap[next]?.isActive == true) continue
-                jobMap[next] = scope.launch {
-                    runOne(next)
+                } else {
+                    if (jobMap[next]?.isActive == true) continue
+                    jobMap[next] = scope.launch {
+                        runOne(next)
+                    }
                 }
             }
         }
@@ -193,7 +196,7 @@ class AiVideoTaskService : BaseService() {
     }
 
     private suspend fun runOne(videoId: String) {
-        val row = appDb.aiGeneratedVideoDao.get(videoId) ?: return
+        val row: AiGeneratedVideo = appDb.aiGeneratedVideoDao.get(videoId) ?: return
         if (row.status == AiGeneratedVideo.STATUS_SUCCESS ||
             row.status == AiGeneratedVideo.STATUS_FAILED ||
             row.status == AiGeneratedVideo.STATUS_CANCELLED
@@ -202,7 +205,8 @@ class AiVideoTaskService : BaseService() {
             AiVideoGalleryManager.updateStatus(videoId, AiGeneratedVideo.STATUS_FAILED, "no external task id")
             return
         }
-        val provider = AppConfig.findEnabledVideoProvider(row.providerId) ?: run {
+        val provider: AiVideoProviderConfig? = AppConfig.findEnabledVideoProvider(row.providerId)
+        if (provider == null) {
             AiVideoGalleryManager.updateStatus(
                 videoId,
                 AiGeneratedVideo.STATUS_FAILED,
@@ -210,7 +214,7 @@ class AiVideoTaskService : BaseService() {
             )
             return
         }
-        val providerImpl = AiVideoProviderFactory.create(provider)
+        val providerImpl: AiVideoProvider = AiVideoProviderFactory.create(provider)
         val startedAt = System.currentTimeMillis()
         AiVideoGalleryManager.updateStatus(videoId, AiGeneratedVideo.STATUS_RUNNING)
         while (true) {
@@ -222,7 +226,7 @@ class AiVideoTaskService : BaseService() {
             }
             if (System.currentTimeMillis() - startedAt > provider.validMaxWaitMs()) {
                 AiVideoGalleryManager.updateStatus(videoId, AiGeneratedVideo.STATUS_FAILED, "timeout")
-                LiveEventBus.get(EventBus.AI_VIDEO_FAILED).post(Pair(videoId, "timeout"))
+                LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).post(Pair(videoId, "timeout"))
                 return
             }
             val polled: VideoPollResult = try {
@@ -250,7 +254,7 @@ class AiVideoTaskService : BaseService() {
                             sizeBytes = polled.sizeBytes
                         )
                     }.onSuccess {
-                        LiveEventBus.get(EventBus.AI_VIDEO_COMPLETED)
+                        LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED)
                             .post(Pair(videoId, it.id))
                     }.onFailure {
                         AppLog.put("AI video save failed", it)
@@ -259,7 +263,7 @@ class AiVideoTaskService : BaseService() {
                             AiGeneratedVideo.STATUS_FAILED,
                             it.message ?: "save failed"
                         )
-                        LiveEventBus.get(EventBus.AI_VIDEO_FAILED)
+                        LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
                             .post(Pair(videoId, it.message ?: "save failed"))
                     }
                     return
@@ -269,7 +273,7 @@ class AiVideoTaskService : BaseService() {
                         videoId, AiGeneratedVideo.STATUS_FAILED,
                         polled.failReason ?: "unknown", 0
                     )
-                    LiveEventBus.get(EventBus.AI_VIDEO_FAILED)
+                    LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
                         .post(Pair(videoId, polled.failReason ?: "unknown"))
                     return
                 }
@@ -282,7 +286,7 @@ class AiVideoTaskService : BaseService() {
                 }
                 else -> {
                     AiVideoGalleryManager.updateProgress(videoId, polled.progress)
-                    LiveEventBus.get(EventBus.AI_VIDEO_PROGRESS)
+                    LiveEventBus.get<String>(EventBus.AI_VIDEO_PROGRESS)
                         .post(Pair(videoId, polled.progress))
                     delay(provider.validPollIntervalMs())
                 }

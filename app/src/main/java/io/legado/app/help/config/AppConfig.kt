@@ -807,6 +807,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiEnabledVideoProviders: List<AiVideoProviderConfig>
         get() = aiVideoProviderList.filter { it.enabled }
 
+    var aiVideoMaxConcurrent: Int
+        get() = appCtx.getPrefInt(PreferKey.aiVideoMaxConcurrent, 2)
+            .coerceIn(1, 4)
+        set(value) {
+            appCtx.putPrefInt(PreferKey.aiVideoMaxConcurrent, value.coerceIn(1, 4))
+        }
+
     var aiCurrentVideoProviderId: String?
         get() = appCtx.getPrefString(PreferKey.aiCurrentVideoProviderId)
         set(value) {

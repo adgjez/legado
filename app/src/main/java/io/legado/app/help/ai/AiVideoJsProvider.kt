@@ -131,8 +131,7 @@ class AiVideoJsProvider(
         val json: JSONObject? = when (raw) {
             is org.mozilla.javascript.NativeObject -> {
                 val obj = JSONObject()
-                val ids = raw.idEntries ?: return@when null
-                ids.forEach { id ->
+                raw.ids.forEach { id ->
                     val key = id.toString()
                     val v = raw.get(key, raw)
                     when {

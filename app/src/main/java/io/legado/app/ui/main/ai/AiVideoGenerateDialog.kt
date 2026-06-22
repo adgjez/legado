@@ -18,14 +18,9 @@ import kotlinx.coroutines.launch
 /**
  * AI 视频生成对话框
  */
-class AiVideoGenerateDialog : BaseDialogFragment() {
+class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_generate) {
 
-    override val binding by viewBinding(DialogAiVideoGenerateBinding::inflate)
-
-    private val book by lazy {
-        (parentFragment as? io.legado.app.ui.book.info.BookInfoActivity)?.viewModel?.book
-            ?: (activity as? io.legado.app.ui.book.info.BookInfoActivity)?.viewModel?.book
-    }
+    private val binding by viewBinding(DialogAiVideoGenerateBinding::bind)
 
     override fun onStart() {
         super.onStart()
@@ -59,8 +54,6 @@ class AiVideoGenerateDialog : BaseDialogFragment() {
         }
         val firstFrame = binding.etFirstFrame.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
         val metadata = AiVideoGalleryManager.VideoMetadata(
-            bookName = book?.name.orEmpty(),
-            bookAuthor = book?.author.orEmpty(),
             sourceType = "user_prompt"
         )
         viewLifecycleOwner.lifecycleScope.launch {

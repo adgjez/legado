@@ -19,7 +19,7 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 class AiVideoProviderManageActivity : BaseActivity<ActivityAiVideoProviderManageBinding>() {
 
     override val binding by viewBinding(ActivityAiVideoProviderManageBinding::inflate)
-    private val adapter by lazy { Adapter() }
+    private val adapter by lazy { Adapter(this) }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         binding.titleBar.title = getString(R.string.ai_video_provider_manage)
@@ -58,7 +58,8 @@ class AiVideoProviderManageActivity : BaseActivity<ActivityAiVideoProviderManage
         startActivity(intent)
     }
 
-    private inner class Adapter : RecyclerAdapter<AiVideoProviderConfig, ItemAiVideoProviderBinding>() {
+    private inner class Adapter(context: android.content.Context) :
+        RecyclerAdapter<AiVideoProviderConfig, ItemAiVideoProviderBinding>(context) {
         override fun getViewBinding(parent: ViewGroup): ItemAiVideoProviderBinding {
             return ItemAiVideoProviderBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         }
@@ -79,7 +80,7 @@ class AiVideoProviderManageActivity : BaseActivity<ActivityAiVideoProviderManage
             }
         }
 
-        override fun onBindView(
+        override fun convert(
             holder: ItemViewHolder,
             binding: ItemAiVideoProviderBinding,
             item: AiVideoProviderConfig,

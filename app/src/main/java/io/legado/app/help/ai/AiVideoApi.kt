@@ -9,6 +9,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
+import okio.buffer
+import okio.sink
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -85,10 +88,10 @@ object AiVideoApi {
             }
             val body = response.body ?: error("Empty body")
             target.parentFile?.mkdirs()
-            val sink = okio.buffer(okio.sink(target))
+            val sink = target.sink().buffer()
             val source = body.source()
             var total = 0L
-            val buffer = okio.Buffer()
+            val buffer = Buffer()
             try {
                 while (!source.exhausted()) {
                     val read = source.read(buffer, 8 * 1024L)

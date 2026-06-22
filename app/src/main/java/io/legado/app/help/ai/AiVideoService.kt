@@ -56,7 +56,7 @@ object AiVideoService {
             firstFrame = firstFrame,
             metadata = metadata
         )
-        LiveEventBus.get(EventBus.AI_VIDEO_SUBMITTED).post(row.id)
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_SUBMITTED).post(row.id)
         // 触发后台服务开始执行
         AiVideoTaskService.startIfNeeded(appCtx)
         return row
@@ -70,11 +70,11 @@ object AiVideoService {
         videoId: String,
         timeoutMs: Long = 10 * 60 * 1000L
     ): AiGeneratedVideo? = withTimeoutOrNull(timeoutMs) {
-        val provider = AppConfig.findEnabledVideoProvider(
-            appDb.aiGeneratedVideoDao.get(videoId)?.providerId
-        ) ?: return@withTimeoutOrNull null
-        val providerImpl = AiVideoProviderFactory.create(provider)
-        val row = appDb.aiGeneratedVideoDao.get(videoId) ?: return@withTimeoutOrNull null
+        val videoRow: AiGeneratedVideo? = appDb.aiGeneratedVideoDao.get(videoId)
+        val provider: AiVideoProviderConfig? = AppConfig.findEnabledVideoProvider(videoRow?.providerId)
+            ?: return@withTimeoutOrNull null
+        val providerImpl: AiVideoProvider = AiVideoProviderFactory.create(provider)
+        val row: AiGeneratedVideo = videoRow ?: return@withTimeoutOrNull null
         if (row.status == AiGeneratedVideo.STATUS_SUCCESS) return@withTimeoutOrNull row
         if (row.externalTaskId.isBlank()) return@withTimeoutOrNull null
         val startedAt = System.currentTimeMillis()
@@ -83,7 +83,7 @@ object AiVideoService {
                 AiVideoGalleryManager.updateStatus(videoId, AiGeneratedVideo.STATUS_FAILED, "timeout")
                 break
             }
-            val polled = try {
+            val polled: VideoPollResult = try {
                 providerImpl.poll(row.externalTaskId)
             } catch (e: CancellationException) {
                 throw e
@@ -105,7 +105,7 @@ object AiVideoService {
                         height = polled.height,
                         sizeBytes = polled.sizeBytes
                     )
-                    LiveEventBus.get(EventBus.AI_VIDEO_COMPLETED)
+                    LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED)
                         .post(Pair(videoId, final.id))
                     return@withTimeoutOrNull final
                 }
@@ -116,7 +116,7 @@ object AiVideoService {
                         polled.failReason ?: "unknown",
                         0
                     )
-                    LiveEventBus.get(EventBus.AI_VIDEO_FAILED)
+                    LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED)
                         .post(Pair(videoId, polled.failReason ?: "unknown"))
                     return@withTimeoutOrNull null
                 }
@@ -131,7 +131,7 @@ object AiVideoService {
                 }
                 else -> {
                     AiVideoGalleryManager.updateProgress(videoId, polled.progress)
-                    LiveEventBus.get(EventBus.AI_VIDEO_PROGRESS)
+                    LiveEventBus.get<String>(EventBus.AI_VIDEO_PROGRESS)
                         .post(Pair(videoId, polled.progress))
                     kotlinx.coroutines.delay(provider.validPollIntervalMs())
                 }

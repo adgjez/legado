@@ -1,10 +1,12 @@
 package io.legado.app.help.ai
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.data.entities.AiVideoGroup
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
+import io.legado.app.utils.getPrefInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -124,7 +126,7 @@ object AiVideoGalleryManager {
             ?: error("Video row not found: $videoId")
         val id = row.id
         val videoFile = File(videoDir, "$id.mp4")
-        val coverFile = File(videoDir, "$id_cover.jpg")
+        val coverFile = File(videoDir, "${id}_cover.jpg")
         val writtenVideoUrl = videoUrl?.takeIf { it.isNotBlank() }
         if (writtenVideoUrl != null) {
             runCatching {

@@ -90,15 +90,15 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
     }
 
     private fun observeEvents() {
-        LiveEventBus.get(EventBus.AI_VIDEO_PROGRESS).observe(this) {
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_PROGRESS).observe(this) {
             // 仅做提示
             adapter.notifyDataSetChanged()
         }
-        LiveEventBus.get(EventBus.AI_VIDEO_COMPLETED).observe(this) {
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED).observe(this) {
             toastOnUi(R.string.ai_video_status_success)
             refreshList()
         }
-        LiveEventBus.get(EventBus.AI_VIDEO_FAILED).observe(this) {
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).observe(this) {
             toastOnUi(R.string.ai_video_status_failed)
             refreshList()
         }
@@ -223,7 +223,8 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
 
     private enum class Filter { ALL, RUNNING, FAILED }
 
-    private inner class Adapter : RecyclerAdapter<AiGeneratedVideo, ItemAiGeneratedVideoBinding>() {
+    private inner class Adapter(context: android.content.Context) :
+        RecyclerAdapter<AiGeneratedVideo, ItemAiGeneratedVideoBinding>(context) {
         override fun getViewBinding(parent: ViewGroup): ItemAiGeneratedVideoBinding {
             return ItemAiGeneratedVideoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         }
@@ -244,7 +245,7 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
             }
         }
 
-        override fun onBindView(
+        override fun convert(
             holder: ItemViewHolder,
             binding: ItemAiGeneratedVideoBinding,
             item: AiGeneratedVideo,
@@ -254,9 +255,8 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
             if (item.coverPath.isNotBlank()) {
                 io.legado.app.help.glide.ImageLoader.load(
                     holder.itemView.context,
-                    java.io.File(item.coverPath),
-                    binding.ivCover
-                )
+                    java.io.File(item.coverPath)
+                ).into(binding.ivCover)
             } else {
                 binding.ivCover.setImageResource(R.drawable.ic_image)
             }
