@@ -97,7 +97,7 @@ class VideoAiChapterOverlay(
      */
     private fun createMarkers() {
         val parent = player.parent as? ViewGroup ?: return
-        val duration = player.duration
+        val duration = player.getDuration()
         if (duration <= 0) return
 
         // 移除旧容器

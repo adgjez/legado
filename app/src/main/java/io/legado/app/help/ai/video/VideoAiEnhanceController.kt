@@ -9,6 +9,8 @@ import android.widget.TextView
 import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import io.legado.app.constant.PreferKey
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -163,7 +165,7 @@ class VideoAiEnhanceController(
         pollJob = scope.launch {
             while (isActive) {
                 delay(200) // 5fps 刷新
-                val pos = player.currentTime
+                val pos = player.currentPosition
                 subtitleRenderer?.onPositionChanged(pos)
             }
         }
