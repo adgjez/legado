@@ -8,6 +8,10 @@ import io.legado.app.base.BaseDialogFragment
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogVideoAiSettingsBinding
 import io.legado.app.help.ai.video.VideoAiSettings
+import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import splitties.init.appCtx
 
