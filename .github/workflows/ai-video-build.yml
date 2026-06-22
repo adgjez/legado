@@ -92,8 +92,11 @@ jobs:
         if: success()
         run: |
           mkdir -p /tmp/room-schemas
-          find app/build/generated/ksp -path '*schemas/io.legado.app.data.AppDatabase*' -name '*.json' -print -exec cp {} /tmp/room-schemas/ \; 2>/dev/null || true
-          cp -v app/schemas/io.legado.app.data.AppDatabase/100.json /tmp/room-schemas/ 2>/dev/null || echo "no 100.json in git"
+          # Room KSP 任务 copyRoomSchemas 会把生成的 schema JSON 拷贝到 app/schemas/
+          # (100.json 已删除，因此只会看到 101.json 新文件)
+          find app/schemas -name '*.json' -newer app/schemas/.gitkeep 2>/dev/null -exec cp -v {} /tmp/room-schemas/ \; || true
+          # 兜底：拷贝所有 schemas
+          cp -v app/schemas/io.legado.app.data.AppDatabase/*.json /tmp/room-schemas/ 2>&1 || true
           echo "--- collected ---"
           ls -la /tmp/room-schemas/ || true
         continue-on-error: true
