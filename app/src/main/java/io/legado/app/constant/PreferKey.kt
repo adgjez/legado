@@ -76,6 +76,9 @@ object PreferKey {
     const val aiVideoDefaultDurationSec = "aiVideoDefaultDurationSec"
     const val aiVideoDefaultAspect = "aiVideoDefaultAspect"
     const val aiVideoKeepTempDays = "aiVideoKeepTempDays"
+    // P4: 视频播放 AI 增强
+    const val videoAiSubtitleEnabled = "videoAiSubtitleEnabled"
+    const val videoAiSubtitleLanguage = "videoAiSubtitleLanguage"
     const val aiContextCompressionEnabled = "aiContextCompressionEnabled"
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"

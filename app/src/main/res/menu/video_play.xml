@@ -60,4 +60,9 @@
         android:title="@string/ai_video_analysis_title"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_video_ai_subtitle"
+        android:title="@string/video_ai_enhance"
+        app:showAsAction="never" />
+
 </menu>

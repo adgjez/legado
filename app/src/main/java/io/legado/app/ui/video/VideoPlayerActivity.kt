@@ -228,6 +228,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             initView()
         }
         upView()
+        // P4: 初始化 AI 字幕控制器
+        initVideoAiController()
         onBackPressedDispatcher.addCallback(this) {
             if (isFullScreen) {
                 toggleFullScreen()
@@ -859,8 +861,32 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 }
                 AiVideoAnalysisDialog.show(this, book.bookUrl, url)
             }
+            R.id.menu_video_ai_subtitle -> {
+                showVideoAiSettingsDialog()
+            }
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    private var videoAiController: io.legado.app.help.ai.video.VideoAiEnhanceController? = null
+
+    private fun showVideoAiSettingsDialog() {
+        VideoAiSettingsDialog().apply {
+            onSettingsChanged = { settings ->
+                videoAiController?.applySettings(settings)
+            }
+        }.show(supportFragmentManager, "VideoAiSettings")
+    }
+
+    private fun initVideoAiController() {
+        val book = VideoPlay.book ?: return
+        val videoPath = VideoPlay.videoUrl
+        videoAiController = io.legado.app.help.ai.video.VideoAiEnhanceController(
+            activity = this,
+            player = playerView,
+            bookId = book.bookUrl,
+            videoPath = videoPath
+        ).also { it.attach() }
     }
 
     private fun startFloatingWindow() {
@@ -943,6 +969,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
     }
 
     override fun onDestroy() {
+        videoAiController?.detach()
+        videoAiController = null
         destroyWeb()
         super.onDestroy()
         if (initGetter) {

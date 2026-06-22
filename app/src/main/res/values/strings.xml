@@ -784,6 +784,16 @@
     <string name="ai_video_range_submitted">已提交 %1$d 章的视频生成任务</string>
     <string name="ai_video_style_prompt_hint">风格提示词（可选，如：水墨画风、赛博朋克）</string>
     <string name="ai_video_gallery_by_book">按书籍</string>
+    <!-- P4: 视频播放 AI 增强 -->
+    <string name="video_ai_enhance">AI 字幕</string>
+    <string name="video_ai_settings">AI 字幕设置</string>
+    <string name="video_ai_subtitle">AI 字幕</string>
+    <string name="video_ai_subtitle_language">字幕语言</string>
+    <string name="video_ai_test">测试</string>
+    <string name="video_ai_subtitle_generating">正在生成字幕…</string>
+    <string name="video_ai_subtitle_no_cache">暂无字幕缓存，是否立即生成？</string>
+    <string name="video_ai_subtitle_not_found">未找到字幕</string>
+    <!-- end P4 -->
     <!-- end AI 视频生成 -->
     <!-- AI 视频分析（P3） -->
     <string name="ai_video_analysis_title">AI 视频分析</string>
