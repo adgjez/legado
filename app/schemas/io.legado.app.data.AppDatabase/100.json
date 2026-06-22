@@ -2984,28 +2984,36 @@
               "bookId",
               "kind",
               "language"
-            ]
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` ON `${TABLE_NAME}` (`bookId`, `kind`, `language`)"
           },
           {
             "name": "idx_book",
             "unique": false,
             "columnNames": [
               "bookId"
-            ]
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_book` ON `${TABLE_NAME}` (`bookId`)"
           },
           {
             "name": "idx_status",
             "unique": false,
             "columnNames": [
               "status"
-            ]
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_status` ON `${TABLE_NAME}` (`status`)"
           },
           {
             "name": "idx_updatedAt",
             "unique": false,
             "columnNames": [
               "updatedAt"
-            ]
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_updatedAt` ON `${TABLE_NAME}` (`updatedAt`)"
           }
         ],
         "foreignKeys": []
