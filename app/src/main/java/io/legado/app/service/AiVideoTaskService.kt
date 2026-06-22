@@ -52,6 +52,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class AiVideoTaskService : BaseService() {
 
     companion object {
+        // 多线程（startIfNeeded / onDestroy）共享，使用 @Volatile 保证可见性。
+        @Volatile
         var isRun = false
             private set
 
@@ -190,8 +192,11 @@ class AiVideoTaskService : BaseService() {
     }
 
     private fun enqueueTask(videoId: String) {
-        if (queue.contains(videoId)) return
-        queue.offer(videoId)
+        // contains + offer 之间不是原子操作，必须用 synchronized 包裹避免重复入队。
+        synchronized(queue) {
+            if (queue.contains(videoId)) return
+            queue.offer(videoId)
+        }
         ensureDispatcherRunning()
     }
 

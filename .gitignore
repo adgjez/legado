@@ -8,3 +8,5 @@ captures/
 .cxx/
 build3*
 poll.sh
+poll.log
+*.apk

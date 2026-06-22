@@ -104,12 +104,20 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
         }
     }
 
+    /**
+     * 自适应刷新：空闲时降低频率（10s），有进行中任务时 2s 刷新一次。
+     * LiveEventBus 事件触发时会额外立即刷新一次，避免漏更新。
+     */
     private fun startRefreshing() {
         refreshJob?.cancel()
         refreshJob = lifecycleScope.launch {
             while (isActive) {
-                delay(2000)
-                adapter.notifyDataSetChanged()
+                refreshList()
+                val active = withContext(Dispatchers.IO) {
+                    appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_PENDING) +
+                        appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_RUNNING)
+                }
+                delay(if (active > 0) 2_000L else 10_000L)
             }
         }
     }
@@ -117,7 +125,7 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
     private fun refreshList() = lifecycleScope.launch {
         val items = withContext(Dispatchers.IO) {
             val baseList = when (currentFilter) {
-                Filter.ALL -> AiVideoGalleryManager.listVideos()
+                Filter.ALL -> AiVideoGalleryManager.listVideosWithCleanup()
                 Filter.RUNNING -> AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_RUNNING) +
                     AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_PENDING)
                 Filter.FAILED -> AiVideoGalleryManager.listByStatus(AiGeneratedVideo.STATUS_FAILED)

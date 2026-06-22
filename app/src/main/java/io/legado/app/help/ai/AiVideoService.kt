@@ -70,11 +70,13 @@ object AiVideoService {
         videoId: String,
         timeoutMs: Long = 10 * 60 * 1000L
     ): AiGeneratedVideo? = withTimeoutOrNull(timeoutMs) {
-        val videoRow: AiGeneratedVideo? = appDb.aiGeneratedVideoDao.get(videoId)
-        val provider: AiVideoProviderConfig = AppConfig.findEnabledVideoProvider(videoRow?.providerId)
+        // 先校验 videoRow 是否为 null，再访问其字段（语义清晰、避免反直觉）。
+        val videoRow: AiGeneratedVideo = appDb.aiGeneratedVideoDao.get(videoId)
+            ?: return@withTimeoutOrNull null
+        val provider: AiVideoProviderConfig = AppConfig.findEnabledVideoProvider(videoRow.providerId)
             ?: return@withTimeoutOrNull null
         val providerImpl: AiVideoProvider = AiVideoProviderFactory.create(provider)
-        val row: AiGeneratedVideo = videoRow ?: return@withTimeoutOrNull null
+        val row: AiGeneratedVideo = videoRow
         if (row.status == AiGeneratedVideo.STATUS_SUCCESS) return@withTimeoutOrNull row
         if (row.externalTaskId.isBlank()) return@withTimeoutOrNull null
         val startedAt = System.currentTimeMillis()

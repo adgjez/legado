@@ -101,7 +101,9 @@ object AiVideoApi {
                     onProgress?.invoke(total)
                 }
             } finally {
-                sink.close()
+                // sink 与 source 都必须释放，避免文件句柄/响应体未关闭。
+                runCatching { sink.close() }
+                runCatching { source.close() }
             }
             total
         }

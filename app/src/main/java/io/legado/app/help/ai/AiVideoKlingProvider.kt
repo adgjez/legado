@@ -48,7 +48,7 @@ class AiVideoKlingProvider(
             } else {
                 put("aspect_ratio", "16:9")
             }
-            if (params.firstFrame.isNullOrBlank().not()) {
+            if (!params.firstFrame.isNullOrBlank()) {
                 put("image", params.firstFrame)
             }
             put("mode", "std")

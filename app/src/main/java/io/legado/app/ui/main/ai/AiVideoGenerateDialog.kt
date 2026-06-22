@@ -65,9 +65,14 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
                     aspectRatio = aspect,
                     metadata = metadata
                 )
+                // 用户可能已快速关闭对话框，需做生命周期守卫再访问 Fragment/Activity。
+                if (!isAdded || view == null) return@launch
                 toastOnUi(R.string.ai_video_submit)
                 dismissAllowingStateLoss()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
+                if (!isAdded || view == null) return@launch
                 alert(getString(R.string.ai_video_submit_failed, e.message ?: e.javaClass.simpleName)) {
                     okButton()
                 }

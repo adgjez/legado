@@ -42,10 +42,10 @@ class AiVideoOpenAiProvider(
             if (params.negativePrompt.isNotBlank()) {
                 put("negative_prompt", params.negativePrompt)
             }
-            if (params.firstFrame.isNullOrBlank().not()) {
+            if (!params.firstFrame.isNullOrBlank()) {
                 put("first_frame", params.firstFrame)
             }
-            if (params.lastFrame.isNullOrBlank().not()) {
+            if (!params.lastFrame.isNullOrBlank()) {
                 put("last_frame", params.lastFrame)
             }
             if (params.width > 0 && params.height > 0) {

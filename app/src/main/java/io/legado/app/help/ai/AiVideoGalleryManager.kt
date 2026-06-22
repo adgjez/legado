@@ -48,9 +48,10 @@ object AiVideoGalleryManager {
     }
 
     /**
-     * 在任务提交后立即落 pending 行（用于记录与后续轮询跟踪）
+     * 在任务提交后立即落 pending 行（用于记录与后续轮询跟踪）。
+     * 标注为 suspend 并切换到 IO 调度器，确保 Room 的写操作不会落在主线程。
      */
-    fun saveSubmittedTask(
+    suspend fun saveSubmittedTask(
         prompt: String,
         negativePrompt: String,
         provider: AiVideoProviderConfig,
@@ -60,7 +61,7 @@ object AiVideoGalleryManager {
         aspectRatio: String = "",
         firstFrame: String? = null,
         metadata: VideoMetadata = VideoMetadata()
-    ): AiGeneratedVideo {
+    ): AiGeneratedVideo = withContext(Dispatchers.IO) {
         ensureDefaultGroup()
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -91,7 +92,7 @@ object AiVideoGalleryManager {
             metadataJson = if (firstFrame.isNullOrBlank()) "" else JSONObject().put("firstFrame", firstFrame).toString()
         )
         appDb.aiGeneratedVideoDao.insert(row)
-        return row
+        row
     }
 
     fun updateStatus(id: String, status: String, failReason: String = "", progress: Int = 0) {
@@ -222,18 +223,39 @@ object AiVideoGalleryManager {
         return group
     }
 
+    /**
+     * 同步读取一条视频记录。不在内部做删除，删除请调用 [cleanupMissingLocalFiles]。
+     */
     fun getVideo(id: String): AiGeneratedVideo? {
-        val v = appDb.aiGeneratedVideoDao.get(id) ?: return null
+        return appDb.aiGeneratedVideoDao.get(id)
+    }
+
+    /**
+     * 异步读取一条视频记录：若本地文件已丢失则一并清理。
+     * 调用方应位于 IO / 非主线程上下文。
+     */
+    suspend fun getVideoWithCleanup(id: String): AiGeneratedVideo? = withContext(Dispatchers.IO) {
+        val v = appDb.aiGeneratedVideoDao.get(id) ?: return@withContext null
         if (v.localPath.isNotBlank() && !File(v.localPath).isFile) {
             appDb.aiGeneratedVideoDao.delete(id)
-            return null
+            return@withContext null
         }
-        return v
+        v
     }
 
     fun listVideos(): List<AiGeneratedVideo> {
         ensureDefaultGroup()
-        return appDb.aiGeneratedVideoDao.all().filter { v ->
+        return appDb.aiGeneratedVideoDao.all()
+    }
+
+    /**
+     * 异步版本的 [listVideos]，会清理本地文件已不存在的记录。
+     * 调用方应位于 IO / 非主线程上下文。
+     */
+    suspend fun listVideosWithCleanup(): List<AiGeneratedVideo> = withContext(Dispatchers.IO) {
+        ensureDefaultGroup()
+        val all = appDb.aiGeneratedVideoDao.all()
+        all.filter { v ->
             if (v.localPath.isNotBlank() && !File(v.localPath).isFile) {
                 appDb.aiGeneratedVideoDao.delete(v.id)
                 false
