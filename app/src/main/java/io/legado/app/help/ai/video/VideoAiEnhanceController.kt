@@ -20,13 +20,13 @@ import kotlinx.coroutines.launch
 import splitties.init.appCtx
 
 /**
- * P4 AI 字幕控制器。
+ * P4 AI 视频增强控制器。
  *
  * 在 [VideoPlayerActivity.onCreate] 时创建并 [attach]，
  * [onDestroy] 时调 [detach]。
  *
  * 职责：
- * 1. 读取偏好，按开关装配字幕渲染器
+ * 1. 读取偏好，按开关装配字幕渲染器和章节标记
  * 2. 提供轮询协程，定期刷新当前字幕
  * 3. 设置变更后调 [applySettings] 热更新
  */
@@ -42,6 +42,7 @@ class VideoAiEnhanceController(
 
     private var subtitleView: TextView? = null
     private var subtitleRenderer: VideoAiSubtitleRenderer? = null
+    private var chapterOverlay: VideoAiChapterOverlay? = null
 
     /**
      * 装配增强组件。在 Activity onCreate 末尾调用。
@@ -58,6 +59,7 @@ class VideoAiEnhanceController(
         scope.cancel()
         pollJob?.cancel()
         subtitleRenderer?.detach()
+        chapterOverlay?.detach()
         subtitleView?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
         }
@@ -69,6 +71,8 @@ class VideoAiEnhanceController(
      */
     fun applySettings(newSettings: VideoAiSettings) {
         settings = newSettings
+
+        // 字幕
         if (newSettings.subtitleEnabled) {
             ensureSubtitleView()
             ensureSubtitleRenderer()
@@ -76,15 +80,25 @@ class VideoAiEnhanceController(
             subtitleRenderer?.detach()
             subtitleView?.visibility = View.GONE
         }
+
+        // 章节标记
+        if (newSettings.chapterMarkerEnabled) {
+            ensureChapterOverlay()
+        } else {
+            chapterOverlay?.detach()
+        }
     }
 
     private fun loadSettings(): VideoAiSettings {
         return VideoAiSettings(
             subtitleEnabled = appCtx.getPrefBoolean(PreferKey.videoAiSubtitleEnabled, false),
             subtitleLanguage = appCtx.getPrefString(PreferKey.videoAiSubtitleLanguage)
-                ?: "zh-CN"
+                ?: "zh-CN",
+            chapterMarkerEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, true)
         )
     }
+
+    // ==================== 字幕 ====================
 
     private fun ensureSubtitleView() {
         if (subtitleView != null) return
@@ -128,6 +142,20 @@ class VideoAiEnhanceController(
             scope = scope
         ).also { it.attach() }
     }
+
+    // ==================== 章节标记 ====================
+
+    private fun ensureChapterOverlay() {
+        if (chapterOverlay != null) return
+        chapterOverlay = VideoAiChapterOverlay(
+            activity = activity,
+            player = player,
+            bookId = bookId,
+            scope = scope
+        ).also { it.attach() }
+    }
+
+    // ==================== 轮询 ====================
 
     private fun startPolling() {
         pollJob = scope.launch {

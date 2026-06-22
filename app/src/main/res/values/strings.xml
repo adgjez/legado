@@ -793,6 +793,8 @@
     <string name="video_ai_subtitle_generating">正在生成字幕…</string>
     <string name="video_ai_subtitle_no_cache">暂无字幕缓存，是否立即生成？</string>
     <string name="video_ai_subtitle_not_found">未找到字幕</string>
+    <string name="video_ai_chapter_marker">章节标记</string>
+    <string name="video_ai_chapter_no_data">暂无章节数据</string>
     <!-- end P4 -->
     <!-- end AI 视频生成 -->
     <!-- AI 视频分析（P3） -->

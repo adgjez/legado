@@ -79,6 +79,7 @@ object PreferKey {
     // P4: 视频播放 AI 增强
     const val videoAiSubtitleEnabled = "videoAiSubtitleEnabled"
     const val videoAiSubtitleLanguage = "videoAiSubtitleLanguage"
+    const val videoAiChapterMarkerEnabled = "videoAiChapterMarkerEnabled"
     const val aiContextCompressionEnabled = "aiContextCompressionEnabled"
     const val aiContextWindowTokens = "aiContextWindowTokens"
     const val aiThinkingContextTokens = "aiThinkingContextTokens"
