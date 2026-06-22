@@ -84,6 +84,11 @@ object AiToolRegistry {
         "list_ai_gallery_images" to "读取 AI 图片库",
         "set_book_character_avatar_from_gallery" to "设置角色图库头像",
         "generate_book_character_avatar" to "生成角色头像",
+        "generate_video" to "生成 AI 视频",
+        "list_ai_gallery_videos" to "读取 AI 视频库",
+        "get_ai_gallery_video" to "读取 AI 视频详情",
+        "set_book_character_avatar_from_video_gallery" to "从视频库设置角色头像",
+        "generate_book_character_short_video" to "生成角色短视频",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
         "set_app_settings_batch" to "批量修改设置"
@@ -120,6 +125,11 @@ object AiToolRegistry {
         "list_ai_gallery_images" to "AI 图片库",
         "set_book_character_avatar_from_gallery" to "角色资料",
         "generate_book_character_avatar" to "角色资料",
+        "generate_video" to "AI 视频",
+        "list_ai_gallery_videos" to "AI 视频",
+        "get_ai_gallery_video" to "AI 视频",
+        "set_book_character_avatar_from_video_gallery" to "角色资料",
+        "generate_book_character_short_video" to "AI 视频",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
         "set_app_settings_batch" to "设置"
@@ -156,6 +166,7 @@ object AiToolRegistry {
         tools += AiSettingsTool.resolvedTools()
         tools += AiImageTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
+        tools += AiVideoTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 

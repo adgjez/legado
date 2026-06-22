@@ -27,6 +27,7 @@ object AiChatService {
     private const val MAX_SEARCH_RESULT_CARDS = 8
     private const val DEFAULT_TOOL_TIMEOUT_MILLIS = 120_000L
     private const val IMAGE_TOOL_TIMEOUT_MILLIS = 300_000L
+    private const val VIDEO_TOOL_TIMEOUT_MILLIS = 300_000L
     private const val NETWORK_ABORT_RETRY_COUNT = 1
     private const val MAX_DEBUG_LOG_CHARS = 16_000
     private const val MAX_DEBUG_PAYLOAD_CHARS = 8_000
@@ -51,6 +52,8 @@ object AiChatService {
         "search_web_tavily",
         "generate_image",
         "generate_book_character_avatar",
+        "generate_video",
+        "generate_book_character_short_video",
         "list_book_characters",
         "list_book_character_relations",
         "get_app_settings"
@@ -504,7 +507,11 @@ object AiChatService {
     }
 
     private fun toolTimeoutMillis(name: String): Long {
-        return if (name in imageToolNames) IMAGE_TOOL_TIMEOUT_MILLIS else DEFAULT_TOOL_TIMEOUT_MILLIS
+        return when {
+            name in longRunningToolNames -> VIDEO_TOOL_TIMEOUT_MILLIS
+            name in imageToolNames -> IMAGE_TOOL_TIMEOUT_MILLIS
+            else -> DEFAULT_TOOL_TIMEOUT_MILLIS
+        }
     }
 
     private fun Throwable.isRetryableNetworkAbort(): Boolean {

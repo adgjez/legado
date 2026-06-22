@@ -18,7 +18,9 @@ data class AiChatMessage(
     val statusDetail: String? = null,
     val statusKey: String? = null,
     val collapsed: Boolean = false,
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val attachmentVideoId: String? = null,
+    val attachmentCoverPath: String? = null
 ) {
     @Keep
     enum class Role {
@@ -31,7 +33,9 @@ data class AiChatMessage(
         TEXT,
         STATUS,
         THINKING,
-        TOOL
+        TOOL,
+        VIDEO_COMPLETED,
+        VIDEO_FAILED
     }
 }
 

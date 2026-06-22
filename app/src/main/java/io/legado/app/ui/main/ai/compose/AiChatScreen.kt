@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -112,7 +113,8 @@ data class AiChatScreenActions(
     val onNewChat: () -> Unit,
     val onOpenHistory: () -> Unit,
     val onSelectModel: () -> Unit,
-    val onOpenImageGallery: (() -> Unit)? = null
+    val onOpenImageGallery: (() -> Unit)? = null,
+    val onAiVideoClick: (String) -> Unit = {}
 )
 
 @Composable
@@ -279,6 +281,9 @@ fun AiChatScreen(
                                             listState.scrollToItem(0)
                                         }
                                     }
+                                },
+                                onVideoClick = { videoId ->
+                                    actions.onAiVideoClick(videoId)
                                 }
                             )
                         }
@@ -509,11 +514,12 @@ private fun AiMessageRow(
     item: AiChatUiItem,
     style: AiComposeStyle,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
-    onProcessExpanded: () -> Unit
+    onProcessExpanded: () -> Unit,
+    onVideoClick: (String) -> Unit
 ) {
     when (item) {
         is AiChatUiItem.User -> AiUserMessageRow(item, style)
-        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview, onProcessExpanded)
+        is AiChatUiItem.Assistant -> AiAssistantMessageRow(item, style, onToolPreview, onProcessExpanded, onVideoClick)
     }
 }
 
@@ -551,7 +557,8 @@ private fun AiAssistantMessageRow(
     message: AiChatUiItem.Assistant,
     style: AiComposeStyle,
     onToolPreview: (AiToolDisplayPayload) -> Unit,
-    onProcessExpanded: () -> Unit
+    onProcessExpanded: () -> Unit,
+    onVideoClick: (String) -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -568,8 +575,64 @@ private fun AiAssistantMessageRow(
                         is AiMessagePartUi.ProcessChain -> AiProcessPart(part, style, onToolPreview, onProcessExpanded)
                         is AiMessagePartUi.SearchBooks -> AiSearchBookInlinePart(part, style, onToolPreview)
                         is AiMessagePartUi.Images -> AiImageInlinePart(part, style, onToolPreview)
+                        is AiMessagePartUi.Video -> AiVideoPart(part, style, onVideoClick)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiVideoPart(
+    part: AiMessagePartUi.Video,
+    style: AiComposeStyle,
+    onClick: (String) -> Unit
+) {
+    val successColor = if (part.success) {
+        style.colors.primaryText
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+    Surface(
+        shape = RoundedCornerShape(style.metrics.cardRadius),
+        color = style.colors.toolSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(style.metrics.strokeWidth, style.colors.stroke),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick(part.videoId) }
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 96.dp, height = 64.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("AI", style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = part.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = successColor,
+                    maxLines = 2
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = part.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

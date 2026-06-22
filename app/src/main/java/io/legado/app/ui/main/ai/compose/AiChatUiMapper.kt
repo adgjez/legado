@@ -51,6 +51,16 @@ sealed class AiMessagePartUi {
         override val id: String,
         val images: List<AiImageResultUi>
     ) : AiMessagePartUi()
+
+    @Immutable
+    data class Video(
+        override val id: String,
+        val videoId: String,
+        val coverPath: String,
+        val success: Boolean,
+        val title: String,
+        val subtitle: String
+    ) : AiMessagePartUi()
 }
 
 @Immutable
@@ -214,6 +224,25 @@ private fun AiChatMessage.toTextParts(): List<AiMessagePartUi> {
         parts += AiMessagePartUi.Images(
             id = "$id-images",
             images = parsed.images
+        )
+    }
+    val kind = kind ?: AiChatMessage.Kind.TEXT
+    if ((kind == AiChatMessage.Kind.VIDEO_COMPLETED || kind == AiChatMessage.Kind.VIDEO_FAILED) &&
+        !attachmentVideoId.isNullOrBlank()
+    ) {
+        val success = kind == AiChatMessage.Kind.VIDEO_COMPLETED
+        val titleText = content.ifBlank {
+            context.getString(
+                if (success) R.string.ai_video_completed else R.string.ai_video_failed_msg
+            )
+        }
+        parts += AiMessagePartUi.Video(
+            id = "$id-video",
+            videoId = attachmentVideoId,
+            coverPath = attachmentCoverPath.orEmpty(),
+            success = success,
+            title = titleText,
+            subtitle = context.getString(R.string.ai_video_view_in_gallery)
         )
     }
     return parts

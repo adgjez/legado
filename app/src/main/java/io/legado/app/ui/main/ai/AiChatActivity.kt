@@ -52,7 +52,8 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
                     onNewChat = ::startNewChatFromMenu,
                     onOpenHistory = ::openHistoryFromMenu,
                     onSelectModel = ::showModelSelectorDialog,
-                    onOpenImageGallery = ::openImageGallery
+                    onOpenImageGallery = ::openImageGallery,
+                    onAiVideoClick = ::openAiVideoGallery
                 )
             )
         }
@@ -111,6 +112,10 @@ class AiChatActivity : BaseActivity<ActivityAiChatBinding>(
 
     private fun openImageGallery() {
         startActivity(android.content.Intent(this, AiImageGalleryActivity::class.java))
+    }
+
+    private fun openAiVideoGallery(@Suppress("UNUSED_PARAMETER") videoId: String) {
+        startActivity(android.content.Intent(this, AiVideoGalleryActivity::class.java))
     }
 
     private fun showHistoryDialog() {

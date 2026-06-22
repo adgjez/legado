@@ -2,8 +2,12 @@ package io.legado.app.ui.main.ai
 
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.jeremyliao.liveeventbus.LiveEventBus
 import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
@@ -46,6 +50,51 @@ class AiChatViewModel : ViewModel() {
     init {
         restoreCurrentSession()
         activeViewModel = this
+        observeAiVideoEvents()
+    }
+
+    private fun observeAiVideoEvents() {
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED).observeForever(::onAiVideoCompleted)
+        LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).observeForever(::onAiVideoFailed)
+    }
+
+    private fun onAiVideoCompleted(videoId: String) {
+        if (videoId.isBlank()) return
+        val row: AiGeneratedVideo = appDb.aiGeneratedVideoDao.get(videoId) ?: return
+        val target = activeViewModel?.takeIf { it.currentSessionId == currentSessionId } ?: this
+        val displayName = row.name.ifBlank { row.prompt.take(20) }
+        val msg = AiChatMessage(
+            role = AiChatMessage.Role.ASSISTANT,
+            content = appCtx.getString(R.string.ai_video_completed, displayName),
+            kind = AiChatMessage.Kind.VIDEO_COMPLETED,
+            attachmentVideoId = videoId,
+            attachmentCoverPath = row.coverPath.takeIf { it.isNotBlank() },
+            statusSuccess = true,
+            collapsed = false
+        )
+        target.injectSystemMessage(msg)
+    }
+
+    private fun onAiVideoFailed(videoId: String) {
+        if (videoId.isBlank()) return
+        val row: AiGeneratedVideo = appDb.aiGeneratedVideoDao.get(videoId) ?: return
+        val target = activeViewModel?.takeIf { it.currentSessionId == currentSessionId } ?: this
+        val reason = row.failReason.ifBlank { "未知原因" }
+        val msg = AiChatMessage(
+            role = AiChatMessage.Role.ASSISTANT,
+            content = appCtx.getString(R.string.ai_video_failed_msg, reason),
+            kind = AiChatMessage.Kind.VIDEO_FAILED,
+            attachmentVideoId = videoId,
+            statusSuccess = false,
+            collapsed = false
+        )
+        target.injectSystemMessage(msg)
+    }
+
+    private fun injectSystemMessage(message: AiChatMessage) {
+        if (messages.any { it.id == message.id }) return
+        messages.add(message)
+        publish()
     }
 
     fun append(message: AiChatMessage) {
@@ -442,6 +491,11 @@ class AiChatViewModel : ViewModel() {
         if (activeViewModel === this) {
             activeViewModel = null
         }
+    }
+
+    private fun detachAiVideoEvents() {
+        runCatching { LiveEventBus.get<String>(EventBus.AI_VIDEO_COMPLETED).removeObserver(::onAiVideoCompleted) }
+        runCatching { LiveEventBus.get<String>(EventBus.AI_VIDEO_FAILED).removeObserver(::onAiVideoFailed) }
     }
 
     private fun setRequesting(value: Boolean) {
