@@ -78,6 +78,7 @@ class VideoAiEnhanceController(
             ensureSubtitleRenderer()
         } else {
             subtitleRenderer?.detach()
+            subtitleRenderer = null
             subtitleView?.visibility = View.GONE
         }
 
@@ -86,6 +87,7 @@ class VideoAiEnhanceController(
             ensureChapterOverlay()
         } else {
             chapterOverlay?.detach()
+            chapterOverlay = null
         }
     }
 

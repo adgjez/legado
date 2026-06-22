@@ -577,6 +577,7 @@ class VideoPlayService : BaseService() {
     }
 
     override fun onDestroy() {
+        VideoPlay.stopLoading()
         super.onDestroy()
         VideoPlay.saveRead()
         try {

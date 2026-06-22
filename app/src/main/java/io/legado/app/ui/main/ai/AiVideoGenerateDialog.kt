@@ -128,13 +128,14 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
 
     private fun showToChapterPicker(chapters: List<BookChapter>, fromIndex: Int) {
         val book = selectedBook ?: return
+        val fromChapter = chapters.find { it.index == fromIndex }
         alert(R.string.ai_video_select_to_chapter) {
             chapters.filter { it.index >= fromIndex }.take(10).forEach { ch ->
                 neutralButton("${ch.index + 1}. ${ch.title}") {
                     selectedToChapter = ch.index
                     binding.tvSelectedChapters.text = getString(
                         R.string.ai_video_chapter_range_summary,
-                        fromIndex + 1, chapters[fromIndex].title,
+                        fromIndex + 1, fromChapter?.title ?: "",
                         ch.index + 1, ch.title,
                         ch.index - fromIndex + 1
                     )
@@ -145,7 +146,7 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
                 selectedToChapter = fromIndex
                 binding.tvSelectedChapters.text = getString(
                     R.string.ai_video_chapter_single_summary,
-                    fromIndex + 1, chapters[fromIndex].title
+                    fromIndex + 1, fromChapter?.title ?: ""
                 )
             }
             cancelButton()

@@ -265,8 +265,27 @@ class AiVideoGalleryActivity : BaseActivity<ActivityAiVideoGalleryBinding>() {
                 AiVideoGalleryManager.delete(video.id)
             }
             try {
-                AiVideoService.submitAndStore(prompt = video.prompt, negativePrompt = video.negativePrompt)
+                val metadata = AiVideoGalleryManager.VideoMetadata(
+                    bookName = video.bookName,
+                    bookAuthor = video.bookAuthor,
+                    chapterIndex = video.chapterIndex,
+                    chapterTitle = video.chapterTitle,
+                    characterId = video.characterId,
+                    characterName = video.characterName,
+                    sourceType = video.sourceType,
+                    sourceText = video.sourceText
+                )
+                AiVideoService.submitAndStore(
+                    prompt = video.prompt,
+                    negativePrompt = video.negativePrompt,
+                    firstFrame = video.firstFrame?.takeIf { it.isNotBlank() },
+                    durationSec = video.durationSec,
+                    aspectRatio = video.aspectRatio,
+                    metadata = metadata
+                )
                 refreshList()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 toastOnUi(getString(R.string.ai_video_submit_failed, e.message ?: e.javaClass.simpleName))
             }

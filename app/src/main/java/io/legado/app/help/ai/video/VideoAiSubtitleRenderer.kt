@@ -62,10 +62,12 @@ class VideoAiSubtitleRenderer(
     fun onPositionChanged(positionMs: Long) {
         if (!loaded || cues.isEmpty()) return
 
-        // 回退场景：用户 seek 后退
-        if (lastIndex > 0 && positionMs < cues[lastIndex - 1].startMs) {
-            // 二分查找重新定位
-            lastIndex = binarySearch(positionMs)
+        // 回退场景：用户 seek 后退到当前 cue 起始之前
+        if (lastIndex > 0 && lastIndex < cues.size && positionMs < cues[lastIndex].startMs) {
+            lastIndex = findLowerBound(positionMs)
+        } else if (lastIndex >= cues.size) {
+            // lastIndex 越界，重新定位
+            lastIndex = findLowerBound(positionMs)
         }
 
         // 前进扫描
@@ -87,20 +89,24 @@ class VideoAiSubtitleRenderer(
         onSubtitleReady(null)
     }
 
-    private fun binarySearch(positionMs: Long): Int {
+    /**
+     * 二分查找：返回最后一个 startMs <= positionMs 的索引（lower bound）。
+     * 如果所有 cue 的 startMs 都 > positionMs，返回 0。
+     */
+    private fun findLowerBound(positionMs: Long): Int {
         var lo = 0
         var hi = cues.size - 1
         var result = 0
         while (lo <= hi) {
             val mid = (lo + hi) ushr 1
             if (cues[mid].startMs <= positionMs) {
-                result = mid + 1
+                result = mid
                 lo = mid + 1
             } else {
                 hi = mid - 1
             }
         }
-        return result.coerceAtLeast(0)
+        return result
     }
 
     private suspend fun loadSubtitlesFromCache() {

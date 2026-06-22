@@ -557,7 +557,7 @@ object AiVideoTool {
                     mood = obj.optString("mood").trim(),
                     cameraMovement = obj.optString("cameraMovement").trim()
                 )
-            }.filter { it.description.isNotBlank() }
+            }.filterNotNull().filter { it.description.isNotBlank() }
         }.getOrDefault(emptyList())
     }
 

@@ -403,6 +403,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             videoManager.listener().onCompletion()
         }
         videoManager.releaseMediaPlayer()
+        stopLoading()
         if (!isLoading) {
             //还原所有状态
             videoUrl = null

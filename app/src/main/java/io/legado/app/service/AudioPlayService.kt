@@ -238,8 +238,7 @@ class AudioPlayService : BaseService(),
             if (url.isJsonArray()) {
                 val mediaSource = ExoPlayerHelper.getMediaSource(this@AudioPlayService, url)
                 if (mediaSource ==  null) {
-                    NoStackTraceException("url格式错误")
-                    return@execute
+                    throw NoStackTraceException("url格式错误")
                 }
                 exoPlayer.setMediaSource(mediaSource)
                 position = 0

@@ -113,6 +113,8 @@ class VideoAiChapterOverlay(
             }
         }
 
+        val parentWidth = parent.width
+
         for (chapter in chapters) {
             if (chapter.startMs <= 0L || chapter.startMs >= duration) continue
             val ratio = chapter.startMs.toFloat() / duration.toFloat()
@@ -122,7 +124,6 @@ class VideoAiChapterOverlay(
                     2.dpToPx(),
                     10.dpToPx()
                 ).apply {
-                    val parentWidth = parent.width
                     if (parentWidth > 0) {
                         leftMargin = (ratio * parentWidth).toInt()
                     }
