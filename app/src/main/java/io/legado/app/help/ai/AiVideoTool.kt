@@ -460,7 +460,13 @@ object AiVideoTool {
                     put("error", e.message ?: e.javaClass.simpleName)
                 }
             }
-            chapterResults.put(JSONObject(result))
+            // result 可能是 String(JSON) 或 JSONObject
+            val jsonResult = when (result) {
+                is String -> JSONObject(result)
+                is JSONObject -> result
+                else -> JSONObject().apply { put("result", result.toString()) }
+            }
+            chapterResults.put(jsonResult)
         }
         JSONObject().apply {
             put("ok", true)
