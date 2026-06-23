@@ -24,6 +24,7 @@ object DatabaseMigrations {
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102,
             migration_102_103,
+            migration_103_104,
         )
     }
 
@@ -940,6 +941,109 @@ object DatabaseMigrations {
             """.trimIndent())
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_contentHash` ON `book_ai_chapter_summaries` (`bookUrl`, `contentHash`)")
+        }
+    }
+
+    private val migration_103_104 = object : Migration(103, 104) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // AI 朗读角色缓存
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_read_aloud_role_caches` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `contentHash` TEXT NOT NULL,
+                    `roleJson` TEXT NOT NULL DEFAULT '',
+                    `status` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_role_caches_bookUrl_chapterIndex` ON `ai_read_aloud_role_caches` (`bookUrl`, `chapterIndex`)")
+
+            // AI 朗读用量记录
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_read_aloud_usage_records` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `model` TEXT NOT NULL DEFAULT '',
+                    `promptTokens` INTEGER NOT NULL DEFAULT 0,
+                    `completionTokens` INTEGER NOT NULL DEFAULT 0,
+                    `totalTokens` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_read_aloud_usage_records_bookUrl` ON `ai_read_aloud_usage_records` (`bookUrl`)")
+
+            // BGM 组
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_groups` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `enabled` INTEGER NOT NULL DEFAULT 1,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_groups_bookUrl` ON `read_aloud_bgm_groups` (`bookUrl`)")
+
+            // BGM 音轨
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_tracks` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `groupId` INTEGER NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `url` TEXT NOT NULL DEFAULT '',
+                    `type` TEXT NOT NULL DEFAULT '',
+                    `volume` REAL NOT NULL DEFAULT 1.0,
+                    `loop` INTEGER NOT NULL DEFAULT 1,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`groupId`) REFERENCES `read_aloud_bgm_groups`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_tracks_groupId` ON `read_aloud_bgm_tracks` (`groupId`)")
+
+            // BGM 分配缓存
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `read_aloud_bgm_assignment_caches` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `contentHash` TEXT NOT NULL,
+                    `assignmentJson` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_bgm_assignment_caches_bookUrl_chapterIndex` ON `read_aloud_bgm_assignment_caches` (`bookUrl`, `chapterIndex`)")
+
+            // Speaker 组
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `read_aloud_speaker_groups` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `enabled` INTEGER NOT NULL DEFAULT 1,
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_groups_bookUrl` ON `read_aloud_speaker_groups` (`bookUrl`)")
+
+            // Speaker 组项
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `read_aloud_speaker_group_items` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `groupId` INTEGER NOT NULL,
+                    `speakerName` TEXT NOT NULL,
+                    `voiceId` TEXT NOT NULL DEFAULT '',
+                    `style` TEXT NOT NULL DEFAULT '',
+                    `order` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`groupId`) REFERENCES `read_aloud_speaker_groups`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId` ON `read_aloud_speaker_group_items` (`groupId`)")
         }
     }
 

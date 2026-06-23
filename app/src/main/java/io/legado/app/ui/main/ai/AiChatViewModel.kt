@@ -7,11 +7,16 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
+import io.legado.app.data.entities.AiAgentJob
+import io.legado.app.data.entities.AiAgentSession
 import io.legado.app.data.entities.AiGeneratedVideo
+import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
-import io.legado.app.help.ai.AiTaskKeepAlive
+import io.legado.app.help.ai.AiMemoryContext
 import io.legado.app.help.ai.AiMemoryStore
+import io.legado.app.help.ai.AiTaskKeepAlive
+import io.legado.app.help.ai.AiUsageStats
 import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
@@ -203,6 +208,17 @@ class AiChatViewModel : ViewModel() {
         val requestMessages = snapshotForRequest()
         var updatedContextSummary = currentSessionSummary()
         activeJob = requestScope.launch {
+            // 启动 Agent 运行时
+            startAgentRun(userContent)
+            // 构建记忆上下文
+            val companion = currentCompanion
+            val memoryContext = AiMemoryContext(
+                scope = if (companion.bookKey.isNotBlank()) AiMemoryItem.SCOPE_BOOK else AiMemoryItem.SCOPE_GLOBAL,
+                bookKey = companion.bookKey.ifBlank { "" },
+                companionId = companion.id,
+                sessionId = requestSessionId,
+                title = companion.name
+            )
             val result = runCatching {
                 AiChatService.chatStream(
                     messages = requestMessages,
@@ -219,8 +235,24 @@ class AiChatViewModel : ViewModel() {
                     contextSummary = updatedContextSummary,
                     onContextSummary = { summary ->
                         updatedContextSummary = summary
-                    }
+                    },
+                    onUsage = { stats ->
+                        AppLog.put("AI usage: prompt=${stats.promptTokens}, completion=${stats.completionTokens}, total=${stats.totalTokens}")
+                    },
+                    agentRun = agentRun,
+                    memoryContext = memoryContext
                 )
+            }
+            // 结束 Agent 运行时
+            if (result.isSuccess) {
+                finishAgentRun()
+            } else {
+                val err = result.exceptionOrNull()
+                if (err is CancellationException) {
+                    cancelAgentRun()
+                } else {
+                    finishAgentRun()
+                }
             }
             targetFor(requestSessionId).setRequesting(false)
             activeJob = null

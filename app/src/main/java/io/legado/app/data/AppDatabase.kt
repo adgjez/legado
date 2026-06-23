@@ -14,10 +14,14 @@ import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiGeneratedVideoDao
 import io.legado.app.data.dao.AiImageGroupDao
 import io.legado.app.data.dao.AiMemoryDao
+import io.legado.app.data.dao.AiReadAloudRoleCacheDao
+import io.legado.app.data.dao.AiReadAloudUsageRecordDao
 import io.legado.app.data.dao.AiVideoAnalysisDao
 import io.legado.app.data.dao.AiVideoGroupDao
 import io.legado.app.data.dao.BookAiChapterSummaryDao
 import io.legado.app.data.dao.BookChapterDao
+import io.legado.app.data.dao.ReadAloudBgmDao
+import io.legado.app.data.dao.ReadAloudSpeakerGroupDao
 import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
@@ -55,9 +59,16 @@ import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.data.entities.AiMemoryItemFts
 import io.legado.app.data.entities.AiVideoAnalysis
 import io.legado.app.data.entities.AiVideoGroup
+import io.legado.app.data.entities.AiReadAloudRoleCache
+import io.legado.app.data.entities.AiReadAloudUsageRecord
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.ReadAloudBgmAssignmentCache
+import io.legado.app.data.entities.ReadAloudBgmGroup
+import io.legado.app.data.entities.ReadAloudBgmTrack
+import io.legado.app.data.entities.ReadAloudSpeakerGroup
+import io.legado.app.data.entities.ReadAloudSpeakerGroupItem
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
 import io.legado.app.data.entities.BookGroup
@@ -104,7 +115,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 103,
+    version = 104,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -120,7 +131,10 @@ val appDb by lazy {
         AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
         AiMemoryItem::class, AiMemoryFragment::class,
         AiMemoryItemFts::class, AiMemoryFragmentFts::class,
-        BookAiChapterSummary::class],
+        BookAiChapterSummary::class,
+        AiReadAloudRoleCache::class, AiReadAloudUsageRecord::class,
+        ReadAloudBgmGroup::class, ReadAloudBgmTrack::class, ReadAloudBgmAssignmentCache::class,
+        ReadAloudSpeakerGroup::class, ReadAloudSpeakerGroupItem::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -209,6 +223,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiAgentDao: AiAgentDao
     abstract val aiMemoryDao: AiMemoryDao
     abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
+    abstract val aiReadAloudRoleCacheDao: AiReadAloudRoleCacheDao
+    abstract val aiReadAloudUsageRecordDao: AiReadAloudUsageRecordDao
+    abstract val readAloudBgmDao: ReadAloudBgmDao
+    abstract val readAloudSpeakerGroupDao: ReadAloudSpeakerGroupDao
 
     companion object {
 
