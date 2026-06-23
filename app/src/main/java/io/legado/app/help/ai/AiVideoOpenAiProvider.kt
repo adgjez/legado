@@ -77,8 +77,10 @@ class AiVideoOpenAiProvider(
             if (params.negativePrompt.isNotBlank()) {
                 put("negative_prompt", params.negativePrompt)
             }
+            // 首帧/尾帧：同时发送 first_frame/last_frame（OpenAI 风格）和 image（Agnes 风格）
             if (!params.firstFrame.isNullOrBlank()) {
                 put("first_frame", params.firstFrame)
+                put("image", params.firstFrame)
             }
             if (!params.lastFrame.isNullOrBlank()) {
                 put("last_frame", params.lastFrame)
@@ -92,16 +94,20 @@ class AiVideoOpenAiProvider(
                 put("aspect_ratio", params.aspectRatio)
             }
             // 时长：同时发送 duration（秒）和推算的 num_frames/frame_rate
+            // Agnes 要求 num_frames ≤ 441 且满足 8n+1
             if (params.durationSec > 0) {
                 put("duration", params.durationSec)
                 val fps = 24
-                put("num_frames", params.durationSec * fps + 1)
+                val rawFrames = params.durationSec * fps + 1
+                val numFrames = ((rawFrames - 1) / 8 * 8 + 1).coerceIn(1, 441)
+                put("num_frames", numFrames)
                 put("frame_rate", fps)
             }
             if (params.seed >= 0) {
                 put("seed", params.seed)
             }
             // 最后填入调用方扩展参数（最高优先级，可覆盖以上任何字段）
+            // 支持 image / mode / num_inference_steps / extra_body 等 Agnes 参数
             params.extra.keys().forEach { key ->
                 put(key, params.extra.get(key))
             }
