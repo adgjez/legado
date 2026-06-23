@@ -121,8 +121,9 @@ class AiVideoOpenAiProvider(
     override suspend fun poll(externalTaskId: String): VideoPollResult {
         val headers = buildHeaders()
 
-        // 1. 先尝试 Agnes 推荐方式: GET {baseOrigin}/agnesapi?video_id=<id>
-        val agnesUrl = "$baseOrigin/agnesapi?video_id=$externalTaskId"
+        // 1. 先尝试 Agnes 推荐方式: GET {baseOrigin}/agnesapi?video_id=<id>&model_name=<model>
+        val modelParam = config.model.takeIf { it.isNotBlank() }?.let { "&model_name=$it" } ?: ""
+        val agnesUrl = "$baseOrigin/agnesapi?video_id=$externalTaskId$modelParam"
         val agnesResult = runCatching {
             val resp = AiVideoApi.getJson(agnesUrl, headers, config.validTimeout())
             parsePoll(resp)
@@ -152,11 +153,13 @@ class AiVideoOpenAiProvider(
 
     private fun parseTaskId(body: String): String? {
         val json = body.toJsonObjectOrNull() ?: return null
-        return json.optString("id").takeIf { it.isNotBlank() }
+        // Agnes AI 同时返回 id/task_id/video_id，推荐用 video_id 轮询
+        // 标准 OpenAI 只返回 id/task_id
+        return json.optString("video_id").takeIf { it.isNotBlank() }
+            ?: json.optString("id").takeIf { it.isNotBlank() }
             ?: json.optString("task_id").takeIf { it.isNotBlank() }
-            ?: json.optString("video_id").takeIf { it.isNotBlank() }
-            ?: json.optJSONObject("data")?.optString("id")?.takeIf { it.isNotBlank() }
             ?: json.optJSONObject("data")?.optString("video_id")?.takeIf { it.isNotBlank() }
+            ?: json.optJSONObject("data")?.optString("id")?.takeIf { it.isNotBlank() }
     }
 
     private fun parsePoll(body: String): VideoPollResult {
@@ -180,8 +183,10 @@ class AiVideoOpenAiProvider(
         }
 
         // 视频 URL：兼容多层嵌套
+        // Agnes AI 完成后返回 remixed_from_video_id 字段作为视频下载 URL
         val video = json.optJSONObject("video")
         val videoUrl = video?.optString("url")?.takeIf { it.isNotBlank() }
+            ?: json.optString("remixed_from_video_id").takeIf { it.isNotBlank() }
             ?: json.optString("video_url").takeIf { it.isNotBlank() }
             ?: json.optString("url").takeIf { it.isNotBlank() }
             ?: json.optJSONArray("data")?.optJSONObject(0)?.optString("url")?.takeIf { it.isNotBlank() }
@@ -195,10 +200,19 @@ class AiVideoOpenAiProvider(
             ?: json.optString("thumbnail_url").takeIf { it.isNotBlank() }
             ?: json.optJSONObject("data")?.optString("cover_url")?.takeIf { it.isNotBlank() }
 
-        // 时长 / 尺寸
+        // 时长：Agnes 返回 seconds 字符串（如 "10.0"），其他 API 可能返回 duration_ms
         val durationMs = video?.optLong("duration_ms", 0L) ?: 0L
+            .let { if (it > 0) it else (json.optString("seconds").toDoubleOrNull()?.times(1000)?.toLong() ?: 0L) }
+
+        // 尺寸：Agnes 返回 size 字符串（如 "1280x768"），其他 API 可能返回独立 width/height
+        val sizeStr = json.optString("size").takeIf { it.isNotBlank() }
+        val (parsedWidth, parsedHeight) = sizeStr?.split("x")?.let { parts ->
+            if (parts.size == 2) parts[0].toIntOrNull() to parts[1].toIntOrNull() else null to null
+        } ?: (null to null)
         val width = video?.optInt("width", 0) ?: 0
+            .let { if (it > 0) it else (parsedWidth ?: 0) }
         val height = video?.optInt("height", 0) ?: 0
+            .let { if (it > 0) it else (parsedHeight ?: 0) }
         val sizeBytes = video?.optLong("size_bytes", 0L) ?: 0L
 
         // 失败原因
