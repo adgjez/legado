@@ -119,15 +119,22 @@ class StableLiquidGlassView @JvmOverloads constructor(
         val source = sampleSource ?: return
         if (!isAttachedToWindow) return
         if (glass == null) {
-            val nextConfig = createConfig()
-            val nextGlass = LiquidGlass(context, nextConfig)
-            config = nextConfig
-            glass = nextGlass
-            addView(
-                nextGlass,
-                0,
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-            )
+            try {
+                val nextConfig = createConfig()
+                val nextGlass = LiquidGlass(context, nextConfig)
+                config = nextConfig
+                glass = nextGlass
+                addView(
+                    nextGlass,
+                    0,
+                    LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                )
+            } catch (e: Throwable) {
+                // LiquidGlass 构造或 addView 失败时不能让 app 崩溃
+                glass = null
+                config = null
+                return
+            }
         }
         if (boundSource !== source) {
             runCatching {

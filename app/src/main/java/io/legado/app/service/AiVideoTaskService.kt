@@ -111,7 +111,9 @@ class AiVideoTaskService : BaseService() {
         isRun = true
         stopping.set(false)
         // 必须在 5 秒内调用 startForeground，否则 startForegroundService 会崩溃
-        startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
+        runCatching {
+            startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
+        }
         observeProgress()
         // 启动时恢复 pending/running 任务
         recoverTasks()
@@ -119,7 +121,9 @@ class AiVideoTaskService : BaseService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // 确保前台通知已启动（onCreate 可能因某些原因未执行）
-        startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
+        runCatching {
+            startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
+        }
         intent?.action?.let { action ->
             when (action) {
                 IntentAction.start -> ensureDispatcherRunning()
@@ -155,9 +159,14 @@ class AiVideoTaskService : BaseService() {
     }
 
     private fun updateNotification() {
-        val pending = appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_PENDING)
-        val running = appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_RUNNING)
-        val total = pending + running
+        val total = try {
+            val pending = appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_PENDING)
+            val running = appDb.aiGeneratedVideoDao.countByStatus(AiGeneratedVideo.STATUS_RUNNING)
+            pending + running
+        } catch (e: Throwable) {
+            AppLog.put("AI video updateNotification error", e)
+            0
+        }
         val text = if (total <= 0) {
             getString(R.string.ai_video_task_idle)
         } else {
@@ -166,9 +175,11 @@ class AiVideoTaskService : BaseService() {
         notificationBuilder.setContentText(text)
         val notification = notificationBuilder.build()
         // 前台服务必须始终有通知，不能 cancel
-        splitties.systemservices.notificationManager.notify(
-            NotificationId.AiVideoTaskService, notification
-        )
+        runCatching {
+            splitties.systemservices.notificationManager.notify(
+                NotificationId.AiVideoTaskService, notification
+            )
+        }
         // 无任务时自动停止服务
         if (total <= 0 && !stopping.get()) {
             stopping.set(true)
@@ -177,9 +188,13 @@ class AiVideoTaskService : BaseService() {
     }
 
     private fun recoverTasks() {
-        val pending = appDb.aiGeneratedVideoDao.byStatusSingle(AiGeneratedVideo.STATUS_PENDING)
-        val running = appDb.aiGeneratedVideoDao.byStatusSingle(AiGeneratedVideo.STATUS_RUNNING)
-        (pending + running).forEach { enqueueTask(it.id) }
+        try {
+            val pending = appDb.aiGeneratedVideoDao.byStatusSingle(AiGeneratedVideo.STATUS_PENDING)
+            val running = appDb.aiGeneratedVideoDao.byStatusSingle(AiGeneratedVideo.STATUS_RUNNING)
+            (pending + running).forEach { enqueueTask(it.id) }
+        } catch (e: Throwable) {
+            AppLog.put("AI video recoverTasks error", e)
+        }
     }
 
     private fun ensureDispatcherRunning() {

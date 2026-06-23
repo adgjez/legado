@@ -197,7 +197,11 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
     private val liquidGlassWarmupDelays = longArrayOf(48L, 180L, 420L, 900L)
     private val liquidGlassSetupRunnable = Runnable {
         if (!isFinishing && !isDestroyed && !isSidebarMode()) {
-            setupLiquidGlass()
+            try {
+                setupLiquidGlass()
+            } catch (e: Throwable) {
+                // LiquidGlass 初始化失败不应崩溃 app
+            }
         }
     }
     private var mergedDiscoveryLongClickView: View? = null
@@ -473,8 +477,12 @@ class MainActivity : VMBaseActivity<ActivityMainBinding, MainViewModel>(),
         liquidGlassWarmupDelays.forEach { delay ->
             val runnable = Runnable {
                 if (!isFinishing && !isDestroyed && !isSidebarMode()) {
-                    invalidateLiquidGlassSampleTarget()
-                    setupLiquidGlass()
+                    try {
+                        invalidateLiquidGlassSampleTarget()
+                        setupLiquidGlass()
+                    } catch (e: Throwable) {
+                        // LiquidGlass warmup 失败不应崩溃 app
+                    }
                 }
             }
             liquidGlassWarmupRunnables.add(runnable)
