@@ -6,6 +6,7 @@ import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.postJson
+import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatException
 import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
@@ -20,6 +21,24 @@ import splitties.init.appCtx
 import java.io.IOException
 import java.net.SocketException
 import java.util.concurrent.TimeUnit
+
+data class AiUsageStats(
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val totalTokens: Int = 0
+) {
+    operator fun plus(other: AiUsageStats): AiUsageStats {
+        return AiUsageStats(
+            promptTokens = promptTokens + other.promptTokens,
+            completionTokens = completionTokens + other.completionTokens,
+            totalTokens = totalTokens + other.totalTokens
+        )
+    }
+
+    companion object {
+        val ZERO = AiUsageStats()
+    }
+}
 
 object AiChatService {
 
@@ -1508,4 +1527,89 @@ object AiChatService {
         "```legado-search-results\\s*\\n([\\s\\S]*?)\\n```",
         setOf(RegexOption.MULTILINE)
     )
+
+    // ==================== 用量统计 ====================
+
+    fun extractUsage(response: JSONObject): AiUsageStats {
+        val usage = response.optJSONObject("usage") ?: return AiUsageStats.ZERO
+        return AiUsageStats(
+            promptTokens = firstInt(usage, "prompt_tokens", "input_tokens"),
+            completionTokens = firstInt(usage, "completion_tokens", "output_tokens"),
+            totalTokens = firstInt(usage, "total_tokens")
+                .takeIf { it > 0 }
+                ?: (firstInt(usage, "prompt_tokens", "input_tokens") + firstInt(usage, "completion_tokens", "output_tokens"))
+        )
+    }
+
+    private fun firstInt(json: JSONObject, vararg keys: String): Int {
+        for (key in keys) {
+            val v = json.opt(key)
+            when (v) {
+                is Int -> if (v > 0) return v
+                is Long -> if (v > 0) return v.toInt()
+                is Number -> if (v.toInt() > 0) return v.toInt()
+                is String -> v.toIntOrNull()?.let { if (it > 0) return it }
+            }
+        }
+        return 0
+    }
+
+    // ==================== Companion 系统提示词 ====================
+
+    fun resolveCompanionSystemPrompt(companion: AiChatCompanionConfig): String {
+        val parts = mutableListOf<String>()
+        // 基础系统提示词
+        val basePrompt = AppConfig.aiSystemPrompt
+        if (basePrompt.isNotBlank()) parts.add(basePrompt)
+        // Companion 自定义提示词
+        if (companion.prompt.isNotBlank()) parts.add(companion.prompt)
+        // 角色提示词
+        if (companion.type == AiChatCompanionConfig.TYPE_CHARACTER && companion.bookKey.isNotBlank()) {
+            val charPrompt = buildCharacterSystemPrompt(companion)
+            if (charPrompt.isNotBlank()) parts.add(charPrompt)
+        }
+        return parts.joinToString("\n\n")
+    }
+
+    private fun buildCharacterSystemPrompt(companion: AiChatCompanionConfig): String {
+        if (companion.characterId.isBlank()) return ""
+        val parts = mutableListOf<String>()
+        parts.add("你正在扮演一个书中的角色。请始终保持角色的一致性，用角色的语气和风格回复。")
+        parts.add("书籍: ${companion.bookKey}")
+        parts.add("角色ID: ${companion.characterId}")
+        return parts.joinToString("\n")
+    }
+
+    // ==================== 记忆/世界书上下文注入 ====================
+
+    suspend fun buildMemoryContext(
+        scope: String,
+        scopeKey: String,
+        recentMessages: List<AiChatMessage>,
+        maxItems: Int = 20
+    ): String {
+        return runCatching {
+            val context = AiMemoryContext(
+                scope = scope,
+                bookKey = scopeKey
+            )
+            val retrieved = AiMemoryRetriever.retrieve(context, recentMessages, limit = maxItems)
+            retrieved.toSystemPrompt()
+        }.getOrDefault("")
+    }
+
+    suspend fun buildWorldBookContext(
+        companion: AiChatCompanionConfig,
+        recentMessages: List<AiChatMessage>
+    ): String {
+        return runCatching {
+            val context = AiMemoryContext(
+                scope = if (companion.bookKey.isNotBlank()) AiMemoryItem.SCOPE_BOOK else AiMemoryItem.SCOPE_GLOBAL,
+                bookKey = companion.bookKey,
+                companionId = companion.id
+            )
+            val result = AiWorldBookManager.retrieve(context, recentMessages)
+            result.toTokenText()
+        }.getOrDefault("")
+    }
 }

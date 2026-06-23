@@ -26,7 +26,9 @@ import io.legado.app.utils.putPrefStringSet
 import io.legado.app.utils.removePref
 import io.legado.app.utils.sysConfiguration
 import io.legado.app.utils.toastOnUi
+import io.legado.app.ui.main.ai.AiChatCompanionConfig
 import io.legado.app.ui.main.ai.AiChatSession
+import io.legado.app.ui.main.ai.AiWorldBookConfig
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AiImageProviderConfig
 import io.legado.app.ui.main.ai.AiVideoProviderConfig
@@ -723,6 +725,72 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             }
         }
 
+    var aiChatCompanionList: List<AiChatCompanionConfig>
+        get() = readAiChatCompanions()
+        set(value) {
+            val companions = normalizeAiChatCompanions(value)
+            persistAiChatCompanions(companions)
+            syncCurrentAiChatCompanionId(companions)
+        }
+
+    var aiCurrentChatCompanionId: String
+        get() = syncCurrentAiChatCompanionId(aiChatCompanionList)
+        set(value) {
+            val companions = aiChatCompanionList
+            val targetId = companions.firstOrNull { it.id == value.trim() && it.enabled }?.id
+                ?: AiChatCompanionConfig.DEFAULT_COMPANION_ID
+            if (targetId == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                appCtx.removePref(PreferKey.aiCurrentChatCompanionId)
+            } else {
+                appCtx.putPrefString(PreferKey.aiCurrentChatCompanionId, targetId)
+            }
+        }
+
+    val aiCurrentChatCompanion: AiChatCompanionConfig
+        get() {
+            val companions = aiChatCompanionList
+            val currentId = syncCurrentAiChatCompanionId(companions)
+            return companions.firstOrNull { it.id == currentId }
+                ?: defaultAiChatCompanion()
+        }
+
+    var aiWorldBookList: List<AiWorldBookConfig>
+        get() = runCatching {
+            GSON.fromJsonArray<AiWorldBookConfig>(appCtx.getPrefString(PreferKey.aiWorldBookList))
+        }.getOrDefault(emptyList())
+        set(value) {
+            if (value.isEmpty()) appCtx.removePref(PreferKey.aiWorldBookList)
+            else appCtx.putPrefString(PreferKey.aiWorldBookList, GSON.toJson(value))
+        }
+
+    fun upsertAiChatCompanion(config: AiChatCompanionConfig) {
+        val list = aiChatCompanionList.toMutableList()
+        val idx = list.indexOfFirst { it.id == config.id }
+        val normalized = config.copy(
+            id = config.id.trim().ifBlank { java.util.UUID.randomUUID().toString() },
+            name = config.name.trim(),
+            updatedAt = System.currentTimeMillis()
+        )
+        if (idx >= 0) list[idx] = normalized else list.add(normalized)
+        aiChatCompanionList = list
+    }
+
+    fun removeAiChatCompanion(id: String) {
+        val targetId = id.trim()
+        if (targetId == AiChatCompanionConfig.DEFAULT_COMPANION_ID) return
+        val list = aiChatCompanionList.filter { it.id != targetId }
+        aiChatCompanionList = list
+        // 清理引用该 companion 的会话
+        aiChatSessionList = aiChatSessionList.map { session ->
+            if (session.companionId == targetId) {
+                session.copy(companionId = AiChatCompanionConfig.DEFAULT_COMPANION_ID)
+            } else session
+        }
+        if (aiCurrentChatCompanionId == targetId) {
+            aiCurrentChatCompanionId = AiChatCompanionConfig.DEFAULT_COMPANION_ID
+        }
+    }
+
     var aiSystemPrompt: String
         get() = appCtx.getPrefString(PreferKey.aiSystemPrompt, DEFAULT_AI_SYSTEM_PROMPT)
             ?: DEFAULT_AI_SYSTEM_PROMPT
@@ -1208,6 +1276,98 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private inline fun safeLong(default: Long, block: () -> Long): Long {
         return runCatching { block() }.getOrDefault(default)
+    }
+
+    private inline fun safeStringList(block: () -> List<String>): List<String> {
+        return runCatching { block() }
+            .getOrDefault(emptyList())
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    // ==================== Chat Companion 辅助方法 ====================
+
+    private fun readAiChatCompanions(): List<AiChatCompanionConfig> {
+        val json = appCtx.getPrefString(PreferKey.aiChatCompanionList) ?: return listOf(defaultAiChatCompanion())
+        return runCatching {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                AiChatCompanionConfig(
+                    id = obj.optString("id").ifBlank { AiChatCompanionConfig.DEFAULT_COMPANION_ID },
+                    type = obj.optString("type").ifBlank { AiChatCompanionConfig.TYPE_DEFAULT },
+                    name = obj.optString("name"),
+                    avatar = obj.optString("avatar"),
+                    bookKey = obj.optString("bookKey"),
+                    characterId = obj.optString("characterId"),
+                    prompt = obj.optString("prompt"),
+                    worldBookIds = safeStringList { obj.optJSONArray("worldBookIds")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList() },
+                    ttsRouteJson = obj.optString("ttsRouteJson"),
+                    order = obj.optInt("order", 0),
+                    enabled = obj.optBoolean("enabled", true),
+                    updatedAt = obj.optLong("updatedAt", 0L)
+                )
+            }
+        }.getOrDefault(listOf(defaultAiChatCompanion()))
+    }
+
+    private fun normalizeAiChatCompanions(value: List<AiChatCompanionConfig>): List<AiChatCompanionConfig> {
+        if (value.isEmpty()) return listOf(defaultAiChatCompanion())
+        val hasDefault = value.any { it.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+        val list = if (hasDefault) value else listOf(defaultAiChatCompanion()) + value
+        return list.mapIndexed { idx, c ->
+            c.copy(
+                id = c.id.trim().ifBlank { java.util.UUID.randomUUID().toString() },
+                name = c.name.trim().ifBlank { "Assistant" },
+                order = if (c.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID) 0 else c.order.takeIf { it > 0 } ?: (idx + 1)
+            )
+        }.distinctBy { it.id }
+    }
+
+    private fun defaultAiChatCompanion(): AiChatCompanionConfig {
+        return AiChatCompanionConfig(
+            id = AiChatCompanionConfig.DEFAULT_COMPANION_ID,
+            type = AiChatCompanionConfig.TYPE_DEFAULT,
+            name = "Assistant",
+            enabled = true,
+            order = 0
+        )
+    }
+
+    private fun persistAiChatCompanions(companions: List<AiChatCompanionConfig>) {
+        val arr = JSONArray()
+        companions.forEach { c ->
+            arr.put(JSONObject().apply {
+                put("id", c.id)
+                put("type", c.type)
+                put("name", c.name)
+                put("avatar", c.avatar)
+                put("bookKey", c.bookKey)
+                put("characterId", c.characterId)
+                put("prompt", c.prompt)
+                put("worldBookIds", JSONArray(c.worldBookIds))
+                put("ttsRouteJson", c.ttsRouteJson)
+                put("order", c.order)
+                put("enabled", c.enabled)
+                put("updatedAt", c.updatedAt)
+            })
+        }
+        appCtx.putPrefString(PreferKey.aiChatCompanionList, arr.toString())
+    }
+
+    private fun syncCurrentAiChatCompanionId(companions: List<AiChatCompanionConfig>): String {
+        val stored = appCtx.getPrefString(PreferKey.aiCurrentChatCompanionId) ?: ""
+        val match = companions.firstOrNull { it.id == stored && it.enabled }
+        val currentId = match?.id ?: AiChatCompanionConfig.DEFAULT_COMPANION_ID
+        if (stored != currentId) {
+            if (currentId == AiChatCompanionConfig.DEFAULT_COMPANION_ID) {
+                appCtx.removePref(PreferKey.aiCurrentChatCompanionId)
+            } else {
+                appCtx.putPrefString(PreferKey.aiCurrentChatCompanionId, currentId)
+            }
+        }
+        return currentId
     }
 
     private fun persistAiSkills(skills: List<AiSkillConfig>) {

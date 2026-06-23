@@ -43,6 +43,7 @@ data class AiChatMessage(
 data class AiChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
+    val companionId: String = AiChatCompanionConfig.DEFAULT_COMPANION_ID,
     val updatedAt: Long = System.currentTimeMillis(),
     val messages: List<AiChatMessage> = emptyList(),
     val contextSummary: AiContextSummary? = null

@@ -8,7 +8,11 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.AiGeneratedVideo
+import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
+import io.legado.app.help.ai.AiTaskKeepAlive
+import io.legado.app.help.ai.AiMemoryStore
+import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +20,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import splitties.init.appCtx
 import java.util.UUID
 
@@ -45,6 +50,81 @@ class AiChatViewModel : ViewModel() {
         private val dataImageRegex = Regex("data:image/[^\\s\"')]+")
         private const val MAX_STORED_TEXT_CHARS = 20_000
         private const val MAX_STORED_STATUS_CHARS = 4_000
+    }
+
+    // ==================== Companion 管理 ====================
+
+    val currentCompanion: AiChatCompanionConfig
+        get() = AppConfig.aiCurrentChatCompanion
+
+    val companions: List<AiChatCompanionConfig>
+        get() = AppConfig.aiChatCompanionList
+
+    fun switchCompanion(companionId: String) {
+        AppConfig.aiCurrentChatCompanionId = companionId
+    }
+
+    fun upsertCompanion(config: AiChatCompanionConfig) {
+        AppConfig.upsertAiChatCompanion(config)
+    }
+
+    fun removeCompanion(id: String) {
+        AppConfig.removeAiChatCompanion(id)
+    }
+
+    // ==================== Agent 运行时 ====================
+
+    private var agentRun: AiAgentStateStore.Run? = null
+
+    fun startAgentRun(prompt: String): String {
+        val companion = currentCompanion
+        val scope = if (companion.bookKey.isNotBlank()) "book" else "global"
+        val run = AiAgentStateStore.startRun(
+            scope = scope,
+            type = "chat",
+            currentGoal = prompt,
+            inputJson = JSONObject().put("companionId", companion.id).toString()
+        )
+        agentRun = run
+        AiTaskKeepAlive.retain(
+            AiTaskKeepAlive.TaskState(
+                id = run.jobId,
+                title = companion.name,
+                content = prompt.take(160)
+            )
+        )
+        return run.jobId
+    }
+
+    fun finishAgentRun() {
+        val run = agentRun
+        if (run != null) {
+            AiTaskKeepAlive.release(run.jobId)
+            AiAgentStateStore.finish(run, success = true)
+            agentRun = null
+        }
+    }
+
+    fun cancelAgentRun() {
+        val run = agentRun
+        if (run != null) {
+            AiTaskKeepAlive.release(run.jobId)
+            AiAgentStateStore.cancel(run)
+            agentRun = null
+        }
+    }
+
+    // ==================== 记忆上下文 ====================
+
+    suspend fun buildMemoryContextForChat(): String {
+        val companion = currentCompanion
+        val scope = if (companion.bookKey.isNotBlank()) "book" else "global"
+        val scopeKey = companion.bookKey.ifBlank { companion.id }
+        return AiChatService.buildMemoryContext(scope, scopeKey, messages)
+    }
+
+    suspend fun buildWorldBookContextForChat(): String {
+        return AiChatService.buildWorldBookContext(currentCompanion, messages)
     }
 
     init {

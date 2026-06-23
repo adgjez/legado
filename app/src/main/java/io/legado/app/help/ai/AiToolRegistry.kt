@@ -17,6 +17,15 @@ object AiToolRegistry {
         val group: String
     )
 
+    val characterCompanionToolNames = setOf(
+        "query_bookshelf",
+        "get_bookshelf_book_info",
+        "list_book_chapters",
+        "search_book_chapter_content",
+        "read_book_chapter_content",
+        "generate_image"
+    )
+
     val defaultEnabledTools = setOf(
         "query_bookshelf",
         "get_bookshelf_book_info",
@@ -234,5 +243,19 @@ object AiToolRegistry {
         val tools = nativeResolvedTools().toMutableList()
         tools += AiMcpClient.resolveTools(AppConfig.aiEnabledMcpServers)
         return tools.distinctBy { it.name }
+    }
+
+    fun resolveNativeTools(names: Set<String>): List<AiResolvedTool> {
+        return nativeResolvedTools()
+            .filter { it.name in names }
+    }
+
+    suspend fun resolveMcpTools(serverIds: Set<String>): List<AiResolvedTool> {
+        if (serverIds.isEmpty()) return emptyList()
+        val servers = AppConfig.aiMcpServerList.filter { server ->
+            server.enabled && server.id in serverIds
+        }
+        if (servers.isEmpty()) return emptyList()
+        return AiMcpClient.resolveTools(servers)
     }
 }
