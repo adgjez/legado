@@ -22,7 +22,7 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
-            migration_100_101, migration_101_102,
+            migration_99_100, migration_100_101, migration_101_102,
         )
     }
 
@@ -695,6 +695,51 @@ object DatabaseMigrations {
             db.execSQL(
                 "INSERT OR IGNORE INTO `ai_video_groups` (`id`, `name`, `order`, `cover`) " +
                     "VALUES ('default', '默认分组', 0, '')"
+            )
+        }
+    }
+
+    /**
+     * P3：从 99 升到 100。创建 [io.legado.app.data.entities.AiVideoAnalysis] 表。
+     *
+     * 原先使用 AutoMigration(99, 100)，但 v99/v100 的 schema JSON identityHash 全为零
+     *（手工编辑导致），AutoMigration 运行时 schema 校验失败直接崩溃。
+     * 改用手写 migration 彻底解决。
+     */
+    private val migration_99_100 = object : Migration(99, 100) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `ai_video_analysis` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `language` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `providerId` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `failReason` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `idx_book_kind_lang` " +
+                    "ON `ai_video_analysis` (`bookId`, `kind`, `language`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_book` " +
+                    "ON `ai_video_analysis` (`bookId`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_status` " +
+                    "ON `ai_video_analysis` (`status`)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `idx_updatedAt` " +
+                    "ON `ai_video_analysis` (`updatedAt`)"
             )
         }
     }

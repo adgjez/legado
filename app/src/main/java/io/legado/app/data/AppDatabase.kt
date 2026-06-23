@@ -83,11 +83,9 @@ import java.util.Locale
 val appDb by lazy {
     Room.databaseBuilder(appCtx, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
         .fallbackToDestructiveMigrationFrom(false, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-        // v99/v100 旧版 schema JSON 手写错误导致 runtime identityHash 不匹配，
-        // 用户 db room_master_table 中存的是错误 hash。fallbackDestructive 让
-        // 旧版用户直接重建 db（v99 之前的手写 migration_10_11 ... migration_98_99
-        // 走正常路径升级到 v102）。
-        .fallbackToDestructiveMigrationFrom(false, 99, 100)
+        // 用户可能从主仓库（Rimchars/legado v108）切换到本 fork（v102），
+        // DB 版本号高于本 fork 时直接重建，避免降级崩溃。
+        .fallbackToDestructiveMigrationOnDowngrade()
         .addMigrations(*DatabaseMigrations.migrations)
         .allowMainThreadQueries()
         .addCallback(AppDatabase.dbCallback)
@@ -157,8 +155,7 @@ val appDb by lazy {
         AutoMigration(from = 87, to = 88),
         AutoMigration(from = 88, to = 89),
         AutoMigration(from = 89, to = 90),
-        AutoMigration(from = 92, to = 93),
-        AutoMigration(from = 99, to = 100)
+        AutoMigration(from = 92, to = 93)
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
