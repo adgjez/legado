@@ -14,10 +14,8 @@ import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.help.ai.AiAgentStateStore
 import io.legado.app.help.ai.AiChatService
 import io.legado.app.help.ai.AiMemoryContext
-import io.legado.app.help.ai.AiMemoryStore
 import io.legado.app.help.ai.AiTaskKeepAlive
 import io.legado.app.help.ai.AiUsageStats
-import io.legado.app.help.ai.AiWorldBookManager
 import io.legado.app.help.config.AppConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +78,7 @@ class AiChatViewModel : ViewModel() {
     // ==================== Agent 运行时 ====================
 
     private var agentRun: AiAgentStateStore.Run? = null
+    private var keepAliveId: String? = null
 
     fun startAgentRun(prompt: String): String {
         val companion = currentCompanion
@@ -91,12 +90,9 @@ class AiChatViewModel : ViewModel() {
             inputJson = JSONObject().put("companionId", companion.id).toString()
         )
         agentRun = run
-        AiTaskKeepAlive.retain(
-            AiTaskKeepAlive.TaskState(
-                id = run.jobId,
-                title = companion.name,
-                content = prompt.take(160)
-            )
+        keepAliveId = AiTaskKeepAlive.retain(
+            title = companion.name,
+            content = prompt.take(160)
         )
         return run.jobId
     }
@@ -104,7 +100,8 @@ class AiChatViewModel : ViewModel() {
     fun finishAgentRun() {
         val run = agentRun
         if (run != null) {
-            AiTaskKeepAlive.release(run.jobId)
+            keepAliveId?.let { AiTaskKeepAlive.release(it) }
+            keepAliveId = null
             AiAgentStateStore.finish(run, success = true)
             agentRun = null
         }
@@ -113,7 +110,8 @@ class AiChatViewModel : ViewModel() {
     fun cancelAgentRun() {
         val run = agentRun
         if (run != null) {
-            AiTaskKeepAlive.release(run.jobId)
+            keepAliveId?.let { AiTaskKeepAlive.release(it) }
+            keepAliveId = null
             AiAgentStateStore.cancel(run)
             agentRun = null
         }
