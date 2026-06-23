@@ -53,7 +53,11 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
         binding.btnChapterMode.setOnClickListener { toggleChapterMode() }
         binding.btnSelectBook.setOnClickListener { showBookPicker() }
         binding.btnSelectChapterRange.setOnClickListener { showChapterRangePicker() }
+        binding.chipGenMode.setOnCheckedStateChangeListener { group, _ ->
+            updateGenModeUI()
+        }
         updateModeUI()
+        updateGenModeUI()
     }
 
     private fun toggleChapterMode() {
@@ -72,6 +76,31 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
             binding.layoutChapter.visibility = View.GONE
             binding.btnChapterMode.text = getString(R.string.ai_video_mode_chapter)
             binding.btnSubmit.text = getString(R.string.ai_video_submit)
+        }
+    }
+
+    /**
+     * 根据选中的生成模式更新 UI：
+     * - 文生视频: 隐藏首帧和多图
+     * - 图生视频: 显示首帧，隐藏多图
+     * - 多图视频: 隐藏首帧，显示多图
+     * - 关键帧动画: 隐藏首帧，显示多图
+     */
+    private fun updateGenModeUI() {
+        when (binding.chipGenMode.checkedChipId) {
+            R.id.chip_mode_i2v -> {
+                binding.tilFirstFrame.visibility = View.VISIBLE
+                binding.tilImages.visibility = View.GONE
+            }
+            R.id.chip_mode_multi, R.id.chip_mode_keyframes -> {
+                binding.tilFirstFrame.visibility = View.GONE
+                binding.tilImages.visibility = View.VISIBLE
+            }
+            else -> {
+                // 文生视频
+                binding.tilFirstFrame.visibility = View.GONE
+                binding.tilImages.visibility = View.GONE
+            }
         }
     }
 
@@ -177,6 +206,19 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
             else -> "16:9"
         }
         val firstFrame = binding.etFirstFrame.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        // 多图 URL：每行一个或逗号分隔
+        val images = binding.etImages.text?.toString()?.trim()?.takeIf { it.isNotBlank() }
+            ?.split("\n", ",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        // 生成模式
+        val genMode = when (binding.chipGenMode.checkedChipId) {
+            R.id.chip_mode_i2v -> "ti2vid"
+            R.id.chip_mode_keyframes -> "keyframes"
+            R.id.chip_mode_multi -> ""
+            else -> ""
+        }
         val metadata = AiVideoGalleryManager.VideoMetadata(
             sourceType = "user_prompt"
         )
@@ -186,6 +228,8 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
                     prompt = prompt,
                     negativePrompt = negative,
                     firstFrame = firstFrame,
+                    images = images,
+                    mode = genMode,
                     durationSec = duration,
                     aspectRatio = aspect,
                     metadata = metadata
