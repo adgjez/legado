@@ -1,6 +1,8 @@
 package io.legado.app.help.ai
 
 import io.legado.app.R
+import io.legado.app.data.entities.AiAgentTrace
+import io.legado.app.data.entities.AiMemoryItem
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.addHeaders
 import io.legado.app.help.http.newCallResponse
@@ -113,6 +115,101 @@ object AiChatService {
 
     suspend fun chat(messages: List<AiChatMessage>): String {
         return chatStream(messages, onPartial = {})
+    }
+
+    data class SingleToolCallResult(
+        val hasToolCall: Boolean,
+        val arguments: String,
+        val content: String,
+        val modelConfig: AiModelConfig?
+    )
+
+    /**
+     * 单次工具调用请求：使用指定模型发起一次带工具的补全请求，返回是否触发工具调用及参数。
+     */
+    suspend fun requestSingleToolCall(
+        messages: List<AiChatMessage>,
+        tool: AiResolvedTool,
+        modelConfigOverride: AiModelConfig? = null,
+        fallbackModelConfig: AiModelConfig? = null,
+        promptCacheKeyOverride: String? = null,
+        firstResponseTimeoutMillis: Long = 0L,
+        includeChatContext: Boolean = true,
+        onUsage: (AiUsageStats) -> Unit = {}
+    ): SingleToolCallResult {
+        val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
+            ?: throw AiChatException(message = "未配置 AI 模型", debugLog = "")
+        val provider = AppConfig.aiProviderForModel(modelConfig)
+            ?: throw AiChatException(message = "模型供应商不可用", debugLog = "")
+        val baseUrl = provider.baseUrl.trim()
+        val model = modelConfig.modelId.trim()
+        val apiMode = normalizeApiMode(provider.apiMode)
+        val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        require(baseUrl.isNotBlank()) { "Base URL is empty" }
+        require(model.isNotBlank()) { "Model is empty" }
+
+        val conversation: MutableList<JSONObject> = if (includeChatContext) {
+            buildConversation(messages = messages)
+        } else {
+            messages.map { message ->
+                JSONObject().apply {
+                    put("role", if (message.role == AiChatMessage.Role.USER) "user" else "assistant")
+                    put("content", message.content)
+                }
+            }.toMutableList()
+        }
+
+        val tools = listOf(tool)
+        val requestLog = StringBuilder().apply {
+            append("url=$chatUrl").append('\n')
+            append("model=$model").append('\n')
+            append("apiMode=$apiMode").append('\n')
+            append("provider=${provider.name}").append('\n')
+            append("tools=${tools.joinToString { it.name }}").append('\n')
+        }
+
+        val turn = if (firstResponseTimeoutMillis > 0L) {
+            withTimeout(firstResponseTimeoutMillis) {
+                requestCompletionStream(
+                    chatUrl = chatUrl,
+                    apiMode = apiMode,
+                    model = model,
+                    providerApiKey = provider.apiKey,
+                    providerHeaders = provider.headers ?: "",
+                    messages = conversation,
+                    tools = tools,
+                    promptCacheKey = promptCacheKeyOverride,
+                    requestLog = requestLog,
+                    round = 1,
+                    onPartial = {},
+                    onThinking = {}
+                )
+            }
+        } else {
+            requestCompletionStream(
+                chatUrl = chatUrl,
+                apiMode = apiMode,
+                model = model,
+                providerApiKey = provider.apiKey,
+                providerHeaders = provider.headers ?: "",
+                messages = conversation,
+                tools = tools,
+                promptCacheKey = promptCacheKeyOverride,
+                requestLog = requestLog,
+                round = 1,
+                onPartial = {},
+                onThinking = {}
+            )
+        }
+        onUsage(AiUsageStats.ZERO)
+
+        val toolCall = turn.toolCalls.firstOrNull()
+        return SingleToolCallResult(
+            hasToolCall = toolCall != null,
+            arguments = toolCall?.arguments ?: "{}",
+            content = turn.content,
+            modelConfig = modelConfig
+        )
     }
 
     suspend fun fetchModels(provider: AiProviderConfig): List<String> {
@@ -764,7 +861,7 @@ object AiChatService {
                 apiMode = fallbackApiMode,
                 model = fallbackModel,
                 providerApiKey = fallbackProvider.apiKey,
-                providerHeaders = fallbackProvider.headers,
+                providerHeaders = fallbackProvider.headers ?: "",
                 messages = messages,
                 tools = tools,
                 promptCacheKey = fallbackProvider.takeIf { it.promptCache }
@@ -1440,7 +1537,7 @@ object AiChatService {
         return safeDebugLog(toString())
     }
 
-    private fun safeDebugLog(text: String): String {
+    internal fun safeDebugLog(text: String): String {
         return safeDebugPayload(text, MAX_DEBUG_LOG_CHARS)
     }
 

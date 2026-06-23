@@ -106,9 +106,7 @@ object AiChapterSummaryService {
             messages = messages,
             onPartial = onPartial,
             onStatus = onStatus,
-            includeStructuredBlocks = false,
-            toolOverride = AiToolRegistry.resolveNativeTools(SUMMARY_TOOL_NAMES),
-            modelConfigOverride = AppConfig.aiSummaryModelConfig
+            includeStructuredBlocks = false
         )
     }
 
@@ -144,8 +142,7 @@ object AiChapterSummaryService {
             onPartial = onPartial,
             onStatus = onStatus,
             includeStructuredBlocks = false,
-            useAllTools = false,
-            modelConfigOverride = AppConfig.aiSummaryModelConfig
+            useAllTools = false
         )
     }
 

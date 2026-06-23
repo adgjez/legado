@@ -214,9 +214,8 @@ object AiAgentStateStore {
 
     private fun AiUsageStats.toJson(): JSONObject {
         return JSONObject()
-            .put("inputTokens", inputTokens)
-            .put("cachedInputTokens", cachedInputTokens)
-            .put("outputTokens", outputTokens)
+            .put("inputTokens", promptTokens)
+            .put("outputTokens", completionTokens)
             .put("totalTokens", totalTokens)
     }
 }

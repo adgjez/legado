@@ -523,6 +523,38 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         return aiProviderList.firstOrNull { it.id == model.providerId }
     }
 
+    val aiAgentToolMaxAttempts: Int
+        get() = appCtx.getPrefInt(PreferKey.aiAgentToolMaxAttempts, 5)
+
+    val aiAgentToolRetryBackoffMillis: Long
+        get() = appCtx.getPrefLong(PreferKey.aiAgentToolRetryBackoffMillis, 2000L)
+
+    val aiSummaryModelConfig: AiModelConfig?
+        get() = aiCurrentModelConfig
+
+    val aiReadAloudBgmEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudBgmEnabled, false)
+
+    val aiReadAloudAudioModelConfig: AiModelConfig?
+        get() = aiCurrentModelConfig
+
+    val aiReadAloudAudioBackupModelConfig: AiModelConfig?
+        get() = null
+
+    val aiReadAloudRoleFirstResponseTimeoutMillis: Long
+        get() = appCtx.getPrefLong(PreferKey.aiReadAloudRoleFirstResponseTimeoutMillis, 0L)
+
+    var aiReadAloudBgmPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudBgmPrompt) ?: ""
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudBgmPrompt, value) }
+
+    var aiReadAloudSoundEffectPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudSoundEffectPrompt) ?: ""
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudSoundEffectPrompt, value) }
+
+    val aiReadAloudRoleModelConfig: AiModelConfig?
+        get() = aiCurrentModelConfig
+
     var aiMcpServerList: List<AiMcpServerConfig>
         get() = readAiMcpServers()
         set(value) {
