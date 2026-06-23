@@ -519,6 +519,10 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiCurrentModelConfig: AiModelConfig?
         get() = aiModelConfigList.firstOrNull { it.id == aiCurrentModelId }
 
+    fun aiProviderForModel(model: AiModelConfig): AiProviderConfig? {
+        return aiProviderList.firstOrNull { it.id == model.providerId }
+    }
+
     var aiMcpServerList: List<AiMcpServerConfig>
         get() = readAiMcpServers()
         set(value) {

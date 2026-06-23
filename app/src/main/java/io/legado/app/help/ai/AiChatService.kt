@@ -12,6 +12,7 @@ import io.legado.app.ui.main.ai.AiChatMessage
 import io.legado.app.ui.main.ai.AiContextSummary
 import io.legado.app.ui.main.ai.AI_API_MODE_CHAT_COMPLETIONS
 import io.legado.app.ui.main.ai.AI_API_MODE_RESPONSES
+import io.legado.app.ui.main.ai.AiModelConfig
 import io.legado.app.ui.main.ai.AiProviderConfig
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -158,7 +159,8 @@ object AiChatService {
         useAllTools: Boolean = false,
         onUsage: (AiUsageStats) -> Unit = {},
         agentRun: AiAgentStateStore.Run? = null,
-        memoryContext: AiMemoryContext? = null
+        memoryContext: AiMemoryContext? = null,
+        fallbackModelConfigOverride: AiModelConfig? = null
     ): String {
         val provider = AppConfig.aiCurrentProvider
         val modelConfig = AppConfig.aiCurrentModelConfig
@@ -278,7 +280,8 @@ object AiChatService {
                 onStatus = onStatus,
                 includeStructuredBlocks = includeStructuredBlocks,
                 promptCacheKey = promptCacheKey,
-                useAllTools = useAllTools
+                useAllTools = useAllTools,
+                fallbackModelConfig = fallbackModelConfigOverride
             )
         }.onSuccess { content ->
             // 记忆记录
@@ -327,7 +330,8 @@ object AiChatService {
         onStatus: (JSONObject) -> Unit,
         includeStructuredBlocks: Boolean,
         promptCacheKey: String?,
-        useAllTools: Boolean
+        useAllTools: Boolean,
+        fallbackModelConfig: AiModelConfig? = null
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -345,7 +349,7 @@ object AiChatService {
                     put("success", true)
                 }
             )
-            val assistantTurn = requestCompletionStreamWithRetry(
+            val assistantTurn = requestCompletionStreamWithFallback(
                 chatUrl = chatUrl,
                 apiMode = apiMode,
                 model = model,
@@ -357,7 +361,8 @@ object AiChatService {
                 requestLog = requestLog,
                 round = roundNo,
                 onPartial = onPartial,
-                onThinking = onThinking
+                onThinking = onThinking,
+                fallbackModelConfig = fallbackModelConfig
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
@@ -637,6 +642,23 @@ object AiChatService {
         return false
     }
 
+    /**
+     * 判断异常是否适合快速回退到备用模型。
+     * 触发条件：网络中断 / 超时 / 429 限流。
+     */
+    private fun Throwable.isAiFastFallbackCandidate(): Boolean {
+        if (isRetryableNetworkAbort()) return true
+        var current: Throwable? = this
+        while (current != null) {
+            val message = current.message.orEmpty().lowercase()
+            if (current is java.io.InterruptedIOException) return true
+            if ("timeout" in message || "timed out" in message) return true
+            if ("429" in message || "rate limit" in message || "too many requests" in message) return true
+            current = current.cause
+        }
+        return false
+    }
+
     private suspend fun requestCompletionStreamWithRetry(
         chatUrl: String,
         apiMode: String,
@@ -683,6 +705,76 @@ object AiChatService {
             }
         }
         throw lastError ?: IllegalStateException("AI request failed")
+    }
+
+    /**
+     * 带模型回退的请求方法：先用主模型请求，失败时若为快速回退候选则切换备用模型重试。
+     */
+    private suspend fun requestCompletionStreamWithFallback(
+        chatUrl: String,
+        apiMode: String,
+        model: String,
+        providerApiKey: String,
+        providerHeaders: String,
+        messages: List<JSONObject>,
+        tools: List<AiResolvedTool>,
+        promptCacheKey: String?,
+        requestLog: StringBuilder,
+        round: Int,
+        onPartial: (String) -> Unit,
+        onThinking: (String) -> Unit,
+        fallbackModelConfig: AiModelConfig? = null
+    ): AssistantTurn {
+        try {
+            return requestCompletionStreamWithRetry(
+                chatUrl = chatUrl,
+                apiMode = apiMode,
+                model = model,
+                providerApiKey = providerApiKey,
+                providerHeaders = providerHeaders,
+                messages = messages,
+                tools = tools,
+                promptCacheKey = promptCacheKey,
+                requestLog = requestLog,
+                round = round,
+                onPartial = onPartial,
+                onThinking = onThinking
+            )
+        } catch (throwable: Throwable) {
+            // 无备用模型或非快速回退候选，直接抛出
+            val fallback = fallbackModelConfig
+                ?.takeIf { throwable.isAiFastFallbackCandidate() }
+                ?: throw throwable
+            // 解析备用模型的 provider 和端点
+            val fallbackProvider = AppConfig.aiProviderForModel(fallback)
+                ?: throw throwable
+            val fallbackBaseUrl = fallbackProvider.baseUrl.trim()
+            val fallbackModel = fallback.modelId.trim()
+            val fallbackApiMode = normalizeApiMode(fallbackProvider.apiMode)
+            val fallbackUrl = resolveChatUrl(fallbackBaseUrl, fallbackApiMode)
+            // 备用模型与主模型相同，不回退
+            if (fallbackUrl == chatUrl && fallbackModel == model) throw throwable
+            requestLog.append("round=").append(round)
+                .append(" fallbackModel=").append(fallbackModel)
+                .append(" reason=").append(throwable.message ?: throwable.javaClass.simpleName)
+                .append('\n')
+            onThinking("AI 请求超时，正在切换备用模型")
+            return requestCompletionStreamWithRetry(
+                chatUrl = fallbackUrl,
+                apiMode = fallbackApiMode,
+                model = fallbackModel,
+                providerApiKey = fallbackProvider.apiKey,
+                providerHeaders = fallbackProvider.headers,
+                messages = messages,
+                tools = tools,
+                promptCacheKey = fallbackProvider.takeIf { it.promptCache }
+                    ?.let { buildPromptCacheKey(it, fallbackModel) },
+                requestLog = requestLog,
+                round = round,
+                onPartial = onPartial,
+                onThinking = onThinking
+            )
+        }
     }
 
     private suspend fun requestCompletionStream(
