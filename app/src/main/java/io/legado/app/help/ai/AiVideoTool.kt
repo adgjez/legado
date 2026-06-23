@@ -82,12 +82,14 @@ object AiVideoTool {
     private fun generateDefinition(): JSONObject {
         return function(
             TOOL_GENERATE,
-            "提交一个 AI 视频生成任务。文生视频/图生视频。生成通常需要 1~30 分钟，提交后任务在后台运行，结果会写入 AI 视频画廊。返回 taskId 字符串，不要在当前轮阻塞等待。"
+            "提交一个 AI 视频生成任务。支持文生视频、图生视频、多图视频和关键帧动画。生成通常需要 1~30 分钟，提交后任务在后台运行，结果会写入 AI 视频画廊。返回 taskId 字符串，不要在当前轮阻塞等待。"
         ) {
-            put("prompt", stringProp("文本提示词，必填。"))
+            put("prompt", stringProp("文本提示词，必填。关键帧动画建议描述关键帧之间的过渡关系。"))
             put("negativePrompt", stringProp("负向提示词，可选。"))
             put("providerId", stringProp("可选，指定视频供应商 ID；只有用户明确选择某个视频模型时才传入，否则留空走当前默认。"))
             put("firstFrame", stringProp("可选，图生视频的首帧 URL 或本地路径。"))
+            put("images", arrayProp("可选，多图视频或关键帧动画的图片 URL 数组。"))
+            put("mode", stringProp("可选，生成模式：ti2vid（图生视频）/ keyframes（关键帧动画）。"))
             put("aspectRatio", stringProp("可选，比例，可选值 16:9 / 9:16 / 1:1 / 4:3。"))
             put("durationSec", intProp("可选，时长（秒），1-60。"))
         }
@@ -179,6 +181,10 @@ object AiVideoTool {
         }
         val negativePrompt = args?.optString("negativePrompt").orEmpty().trim()
         val firstFrame = args?.optString("firstFrame")?.trim()?.takeIf { it.isNotBlank() }
+        val images = args?.optJSONArray("images")?.let { arr ->
+            (0 until arr.length()).mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }
+        } ?: emptyList()
+        val mode = args?.optString("mode")?.trim()?.takeIf { it.isNotBlank() } ?: ""
         val aspectRatio = args?.optString("aspectRatio").orEmpty().trim()
         val durationSec = args?.optInt("durationSec", 0)?.coerceIn(0, 60) ?: 0
         val providerId = args?.optString("providerId").orEmpty().trim()
@@ -199,6 +205,8 @@ object AiVideoTool {
                 provider = provider,
                 negativePrompt = negativePrompt,
                 firstFrame = firstFrame,
+                images = images,
+                mode = mode,
                 durationSec = durationSec,
                 aspectRatio = aspectRatio,
                 metadata = metadata
@@ -737,6 +745,12 @@ object AiVideoTool {
     private fun booleanProp(description: String) = JSONObject().apply {
         put("type", "boolean")
         put("description", description)
+    }
+
+    private fun arrayProp(description: String) = JSONObject().apply {
+        put("type", "array")
+        put("description", description)
+        put("items", JSONObject().put("type", "string"))
     }
 
     private fun errorJson(message: String): String {

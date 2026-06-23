@@ -28,6 +28,8 @@ object AiVideoService {
         provider: AiVideoProviderConfig? = null,
         negativePrompt: String = "",
         firstFrame: String? = null,
+        images: List<String> = emptyList(),
+        mode: String = "",
         durationSec: Int = 0,
         aspectRatio: String = "",
         metadata: AiVideoGalleryManager.VideoMetadata = AiVideoGalleryManager.VideoMetadata()
@@ -41,6 +43,8 @@ object AiVideoService {
             prompt = prompt,
             negativePrompt = negativePrompt,
             firstFrame = firstFrame,
+            images = images,
+            mode = mode,
             durationSec = durationSec,
             aspectRatio = aspectRatio
         )

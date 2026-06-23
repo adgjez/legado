@@ -9,6 +9,10 @@ data class VideoGenerationParams(
     val negativePrompt: String = "",
     val firstFrame: String? = null,
     val lastFrame: String? = null,
+    /** 多图/关键帧模式的图片 URL 列表（Agnes extra_body.image） */
+    val images: List<String> = emptyList(),
+    /** 生成模式：ti2vid / keyframes 等（Agnes mode / extra_body.mode） */
+    val mode: String = "",
     val width: Int = 0,
     val height: Int = 0,
     val durationSec: Int = 0,

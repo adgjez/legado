@@ -85,6 +85,19 @@ class AiVideoOpenAiProvider(
             if (!params.lastFrame.isNullOrBlank()) {
                 put("last_frame", params.lastFrame)
             }
+            // 多图/关键帧模式：Agnes 用 extra_body.image 数组 + extra_body.mode
+            if (params.images.isNotEmpty()) {
+                val extraBody = JSONObject()
+                extraBody.put("image", org.json.JSONArray(params.images))
+                if (params.mode.isNotBlank()) {
+                    extraBody.put("mode", params.mode)
+                }
+                put("extra_body", extraBody)
+            }
+            // 生成模式（单图也支持 mode 字段）
+            if (params.mode.isNotBlank() && !has("mode")) {
+                put("mode", params.mode)
+            }
             // 尺寸：同时发送 size 字符串和独立 width/height，兼容两种风格
             if (params.width > 0 && params.height > 0) {
                 put("size", "${params.width}x${params.height}")
