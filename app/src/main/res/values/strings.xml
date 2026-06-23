@@ -766,6 +766,9 @@
     <string name="ai_video_mode_i2v">图生视频</string>
     <string name="ai_video_mode_multi">多图视频</string>
     <string name="ai_video_mode_keyframes">关键帧动画</string>
+    <string name="ai_video_pick_image">选择图片</string>
+    <string name="ai_video_pick_image_failed">图片读取失败</string>
+    <string name="ai_video_image_picked">已添加 %1$d 张图片</string>
     <string name="ai_video_view_in_gallery">在画廊中查看</string>
     <string name="ai_video_completed">AI 视频已生成：%1$s</string>
     <string name="ai_video_failed_msg">AI 视频生成失败：%1$s</string>

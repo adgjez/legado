@@ -59,19 +59,34 @@
                 android:minLines="2" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_first_frame"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="@string/ai_video_first_frame">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_first_frame"
-                android:layout_width="match_parent"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_first_frame"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:inputType="textUri" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_weight="1"
+                android:hint="@string/ai_video_first_frame">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_first_frame"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Button
+                android:id="@+id/btn_pick_first_frame"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_video_pick_image" />
+        </LinearLayout>
 
         <com.google.android.material.chip.ChipGroup
             android:id="@+id/chip_gen_mode"
@@ -116,21 +131,37 @@
                 android:text="@string/ai_video_mode_keyframes" />
         </com.google.android.material.chip.ChipGroup>
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/til_images"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="@string/ai_video_images_hint"
-            android:visibility="gone">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/et_images"
-                android:layout_width="match_parent"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_images"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:inputType="textMultiLine"
-                android:minLines="2" />
-        </com.google.android.material.textfield.TextInputLayout>
+                android:layout_weight="1"
+                android:hint="@string/ai_video_images_hint"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_images"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textMultiLine"
+                    android:minLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <Button
+                android:id="@+id/btn_pick_images"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/ai_video_pick_image"
+                android:visibility="gone" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

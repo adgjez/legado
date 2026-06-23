@@ -1,8 +1,16 @@
 package io.legado.app.ui.main.ai
 
+import android.app.Activity
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -21,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 
 /**
  * AI 视频生成对话框
@@ -38,6 +47,57 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
     private var selectedFromChapter: Int = -1
     private var selectedToChapter: Int = -1
 
+    /** 当前正在选择图片的目标：null=首帧, 非null=多图列表 */
+    private var pickingTarget: String? = null
+
+    private val pickImageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            pickingTarget = null
+            return@registerForActivityResult
+        }
+        val data = result.data
+        val uris = mutableListOf<Uri>()
+        val clipData = data?.clipData
+        if (clipData != null) {
+            for (i in 0 until clipData.itemCount) {
+                uris.add(clipData.getItemAt(i).uri)
+            }
+        } else {
+            data?.data?.let { uris.add(it) }
+        }
+        if (uris.isEmpty()) {
+            pickingTarget = null
+            return@registerForActivityResult
+        }
+        val target = pickingTarget
+        pickingTarget = null
+        viewLifecycleOwner.lifecycleScope.launch {
+            val dataUris = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri -> uriToBase64DataUri(uri) }
+            }
+            if (dataUris.isEmpty()) {
+                toastOnUi(R.string.ai_video_pick_image_failed)
+                return@launch
+            }
+            if (target == null) {
+                // 首帧
+                binding.etFirstFrame.setText(dataUris[0])
+            } else {
+                // 多图：追加到已有内容
+                val existing = binding.etImages.text?.toString().orEmpty().trim()
+                val all = if (existing.isBlank()) {
+                    dataUris.joinToString("\n")
+                } else {
+                    "$existing\n${dataUris.joinToString("\n")}"
+                }
+                binding.etImages.setText(all)
+            }
+            toastOnUi(getString(R.string.ai_video_image_picked, dataUris.size))
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         dialog?.window?.setLayout(
@@ -53,11 +113,73 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
         binding.btnChapterMode.setOnClickListener { toggleChapterMode() }
         binding.btnSelectBook.setOnClickListener { showBookPicker() }
         binding.btnSelectChapterRange.setOnClickListener { showChapterRangePicker() }
-        binding.chipGenMode.setOnCheckedStateChangeListener { group, _ ->
+        binding.chipGenMode.setOnCheckedStateChangeListener { _, _ ->
             updateGenModeUI()
+        }
+        binding.btnPickFirstFrame.setOnClickListener {
+            pickingTarget = null
+            launchImagePicker(single = true)
+        }
+        binding.btnPickImages.setOnClickListener {
+            pickingTarget = "images"
+            launchImagePicker(single = false)
         }
         updateModeUI()
         updateGenModeUI()
+    }
+
+    private fun launchImagePicker(single: Boolean) {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+            if (!single) {
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
+        }
+        pickImageLauncher.launch(Intent.createChooser(intent, getString(R.string.ai_video_pick_image)))
+    }
+
+    /**
+     * 将本地图片 Uri 转为 base64 data URI 格式。
+     * 大图自动压缩到 2MB 以下。
+     */
+    private suspend fun uriToBase64DataUri(uri: Uri): String? = withContext(Dispatchers.IO) {
+        try {
+            val mimeType = requireContext().contentResolver.getType(uri) ?: "image/png"
+            val bytes = requireContext().contentResolver.openInputStream(uri)?.use { input ->
+                ByteArrayOutputStream().use { baos ->
+                    input.copyTo(baos)
+                    baos.toByteArray()
+                }
+            } ?: return@withContext null
+            // 大于 2MB 时压缩
+            val finalBytes = if (bytes.size > 2 * 1024 * 1024) {
+                compressImage(bytes, mimeType)
+            } else {
+                bytes
+            }
+            val base64 = Base64.encodeToString(finalBytes, Base64.NO_WRAP)
+            "data:$mimeType;base64,$base64"
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun compressImage(bytes: ByteArray, mimeType: String): ByteArray {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        val baos = ByteArrayOutputStream()
+        var quality = 80
+        bitmap.compress(
+            if (mimeType.contains("png", true)) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
+            quality,
+            baos
+        )
+        while (baos.size() > 2 * 1024 * 1024 && quality > 20) {
+            baos.reset()
+            quality -= 10
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos)
+        }
+        bitmap.recycle()
+        return baos.toByteArray()
     }
 
     private fun toggleChapterMode() {
@@ -90,16 +212,22 @@ class AiVideoGenerateDialog : BaseDialogFragment(R.layout.dialog_ai_video_genera
         when (binding.chipGenMode.checkedChipId) {
             R.id.chip_mode_i2v -> {
                 binding.tilFirstFrame.visibility = View.VISIBLE
+                binding.btnPickFirstFrame.visibility = View.VISIBLE
                 binding.tilImages.visibility = View.GONE
+                binding.btnPickImages.visibility = View.GONE
             }
             R.id.chip_mode_multi, R.id.chip_mode_keyframes -> {
                 binding.tilFirstFrame.visibility = View.GONE
+                binding.btnPickFirstFrame.visibility = View.GONE
                 binding.tilImages.visibility = View.VISIBLE
+                binding.btnPickImages.visibility = View.VISIBLE
             }
             else -> {
                 // 文生视频
                 binding.tilFirstFrame.visibility = View.GONE
+                binding.btnPickFirstFrame.visibility = View.GONE
                 binding.tilImages.visibility = View.GONE
+                binding.btnPickImages.visibility = View.GONE
             }
         }
     }
