@@ -55,9 +55,25 @@ class AiVideoOpenAiProvider(
 
     override suspend fun submit(prompt: String, params: VideoGenerationParams): String {
         val url = "$baseUrl/videos"
+        // 合并供应商默认参数（defaultParamsJson）和调用方传入的 extra
+        val providerDefaults = runCatching {
+            JSONObject(config.defaultParamsJson.ifBlank { "{}" })
+        }.getOrDefault(JSONObject())
+        // 风格提示词：追加到 prompt 前面（与 AiImageService 行为一致）
+        val effectivePrompt = config.stylePrompt.trim().let { style ->
+            when {
+                style.isBlank() -> prompt
+                prompt.isBlank() -> style
+                else -> "$style\n\n$prompt"
+            }
+        }
         val payload = JSONObject().apply {
             put("model", config.model.ifBlank { "sora-1.0" })
-            put("prompt", prompt)
+            put("prompt", effectivePrompt)
+            // 先填入供应商默认参数（低优先级）
+            providerDefaults.keys().forEach { key ->
+                put(key, providerDefaults.get(key))
+            }
             if (params.negativePrompt.isNotBlank()) {
                 put("negative_prompt", params.negativePrompt)
             }
@@ -85,9 +101,9 @@ class AiVideoOpenAiProvider(
             if (params.seed >= 0) {
                 put("seed", params.seed)
             }
-            // 透传扩展参数（用户可通过 extra 覆盖以上任何字段）
+            // 最后填入调用方扩展参数（最高优先级，可覆盖以上任何字段）
             params.extra.keys().forEach { key ->
-                if (!has(key)) put(key, params.extra.get(key))
+                put(key, params.extra.get(key))
             }
         }
         val headers = buildHeaders().apply { put("Content-Type", "application/json") }

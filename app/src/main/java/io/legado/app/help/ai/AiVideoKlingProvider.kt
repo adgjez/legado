@@ -32,28 +32,43 @@ class AiVideoKlingProvider(
 
     override suspend fun submit(prompt: String, params: VideoGenerationParams): String {
         val url = "$baseUrl/videos/text2video"
+        val providerDefaults = runCatching {
+            JSONObject(config.defaultParamsJson.ifBlank { "{}" })
+        }.getOrDefault(JSONObject())
+        val effectivePrompt = config.stylePrompt.trim().let { style ->
+            when {
+                style.isBlank() -> prompt
+                prompt.isBlank() -> style
+                else -> "$style\n\n$prompt"
+            }
+        }
         val payload = JSONObject().apply {
             put("model_name", config.model.ifBlank { "kling-v1" })
-            put("prompt", prompt)
+            put("prompt", effectivePrompt)
+            // 先填入供应商默认参数（低优先级）
+            providerDefaults.keys().forEach { key ->
+                put(key, providerDefaults.get(key))
+            }
             if (params.negativePrompt.isNotBlank()) {
                 put("negative_prompt", params.negativePrompt)
             }
             if (params.durationSec > 0) {
                 put("duration", params.durationSec.toString())
-            } else {
+            } else if (!has("duration")) {
                 put("duration", "5")
             }
             if (params.aspectRatio.isNotBlank()) {
                 put("aspect_ratio", params.aspectRatio)
-            } else {
+            } else if (!has("aspect_ratio")) {
                 put("aspect_ratio", "16:9")
             }
             if (!params.firstFrame.isNullOrBlank()) {
                 put("image", params.firstFrame)
             }
-            put("mode", "std")
+            if (!has("mode")) put("mode", "std")
+            // 最后填入调用方扩展参数（最高优先级）
             params.extra.keys().forEach { key ->
-                if (!has(key)) put(key, params.extra.get(key))
+                put(key, params.extra.get(key))
             }
         }
         val headers = mutableMapOf<String, String>()
