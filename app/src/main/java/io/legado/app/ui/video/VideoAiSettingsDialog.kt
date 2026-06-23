@@ -37,7 +37,7 @@ class VideoAiSettingsDialog : BaseDialogFragment(R.layout.dialog_video_ai_settin
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         val subtitleEnabled = appCtx.getPrefBoolean(PreferKey.videoAiSubtitleEnabled, false)
         val language = appCtx.getPrefString(PreferKey.videoAiSubtitleLanguage) ?: "zh-CN"
-        val chapterEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, true)
+        val chapterEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, false)
 
         binding.switchSubtitle.isChecked = subtitleEnabled
         binding.tvLanguageValue.text = language
@@ -74,7 +74,7 @@ class VideoAiSettingsDialog : BaseDialogFragment(R.layout.dialog_video_ai_settin
         val settings = VideoAiSettings(
             subtitleEnabled = appCtx.getPrefBoolean(PreferKey.videoAiSubtitleEnabled, false),
             subtitleLanguage = appCtx.getPrefString(PreferKey.videoAiSubtitleLanguage) ?: "zh-CN",
-            chapterMarkerEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, true)
+            chapterMarkerEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, false)
         )
         onSettingsChanged?.invoke(settings)
     }

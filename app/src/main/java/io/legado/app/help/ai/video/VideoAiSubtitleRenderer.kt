@@ -110,18 +110,24 @@ class VideoAiSubtitleRenderer(
     }
 
     private suspend fun loadSubtitlesFromCache() {
-        val analysis = appDb.aiVideoAnalysisDao.byBookAndKind(
-            bookId, AiVideoAnalysis.KIND_SUBTITLE, subtitleLanguage
-        )
-        if (analysis?.status == AiVideoAnalysis.STATUS_SUCCESS && analysis.payloadJson.isNotBlank()) {
-            val srt = parseSrtFromPayload(analysis.payloadJson)
-            cues = parseSrt(srt)
-            loaded = true
-        } else {
-            // 无缓存，在主线程提示用户
-            scope.launch(Dispatchers.Main) {
-                promptGenerateSubtitles()
+        try {
+            val analysis = appDb.aiVideoAnalysisDao.byBookAndKind(
+                bookId, AiVideoAnalysis.KIND_SUBTITLE, subtitleLanguage
+            )
+            if (analysis?.status == AiVideoAnalysis.STATUS_SUCCESS && analysis.payloadJson.isNotBlank()) {
+                val srt = parseSrtFromPayload(analysis.payloadJson)
+                cues = parseSrt(srt)
+                loaded = true
+            } else {
+                // 无缓存，在主线程提示用户
+                scope.launch(Dispatchers.Main) {
+                    promptGenerateSubtitles()
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // 数据库未就绪或表不存在，忽略
         }
     }
 
@@ -135,6 +141,7 @@ class VideoAiSubtitleRenderer(
      * 提示用户是否立即生成字幕。
      */
     private fun promptGenerateSubtitles() {
+        if (activity.isDestroyed || activity.isFinishing) return
         if (videoPath.isNullOrBlank()) {
             activity.toastOnUi(R.string.video_ai_subtitle_not_found)
             return

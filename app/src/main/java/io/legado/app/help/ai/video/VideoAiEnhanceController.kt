@@ -98,7 +98,7 @@ class VideoAiEnhanceController(
             subtitleEnabled = appCtx.getPrefBoolean(PreferKey.videoAiSubtitleEnabled, false),
             subtitleLanguage = appCtx.getPrefString(PreferKey.videoAiSubtitleLanguage)
                 ?: "zh-CN",
-            chapterMarkerEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, true)
+            chapterMarkerEnabled = appCtx.getPrefBoolean(PreferKey.videoAiChapterMarkerEnabled, false)
         )
     }
 
@@ -106,6 +106,7 @@ class VideoAiEnhanceController(
 
     private fun ensureSubtitleView() {
         if (subtitleView != null) return
+        val parent = player.parent as? ViewGroup ?: return
         val tv = TextView(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -122,7 +123,7 @@ class VideoAiEnhanceController(
             gravity = Gravity.CENTER
             visibility = View.GONE
         }
-        (player.parent as? ViewGroup)?.addView(tv)
+        parent.addView(tv)
         subtitleView = tv
     }
 
@@ -165,8 +166,14 @@ class VideoAiEnhanceController(
         pollJob = scope.launch {
             while (isActive) {
                 delay(200) // 5fps 刷新
-                val pos = player.getCurrentPositionWhenPlaying().toLong()
-                subtitleRenderer?.onPositionChanged(pos)
+                try {
+                    val pos = player.getCurrentPositionWhenPlaying().toLong()
+                    subtitleRenderer?.onPositionChanged(pos)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // 播放器未就绪或已释放，忽略
+                }
             }
         }
     }

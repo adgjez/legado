@@ -65,16 +65,22 @@ class VideoAiChapterOverlay(
     }
 
     private suspend fun loadChaptersFromCache() {
-        val analysis = appDb.aiVideoAnalysisDao.byBookAndKind(
-            bookId, AiVideoAnalysis.KIND_CHAPTERS, ""
-        )
-        if (analysis?.status == AiVideoAnalysis.STATUS_SUCCESS && analysis.payloadJson.isNotBlank()) {
-            chapters = parseChapters(analysis.payloadJson)
-            if (chapters.isNotEmpty()) {
-                scope.launch(Dispatchers.Main) {
-                    createMarkers()
+        try {
+            val analysis = appDb.aiVideoAnalysisDao.byBookAndKind(
+                bookId, AiVideoAnalysis.KIND_CHAPTERS, ""
+            )
+            if (analysis?.status == AiVideoAnalysis.STATUS_SUCCESS && analysis.payloadJson.isNotBlank()) {
+                chapters = parseChapters(analysis.payloadJson)
+                if (chapters.isNotEmpty()) {
+                    scope.launch(Dispatchers.Main) {
+                        createMarkers()
+                    }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // 数据库未就绪或表不存在，忽略
         }
     }
 
@@ -96,50 +102,58 @@ class VideoAiChapterOverlay(
      * 标记按 startMs / duration 比例水平排列。
      */
     private fun createMarkers() {
-        val parent = player.parent as? ViewGroup ?: return
-        val duration = player.getDuration()
-        if (duration <= 0) return
+        try {
+            val parent = player.parent as? ViewGroup ?: return
+            val duration = player.getDuration()
+            if (duration <= 0) return
 
-        // 移除旧容器
-        markerContainer?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            // 移除旧容器
+            markerContainer?.let { (it.parent as? ViewGroup)?.removeView(it) }
 
-        val container = FrameLayout(activity).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.BOTTOM
-                bottomMargin = 24.dpToPx() // 在进度条上方
-            }
-        }
-
-        val parentWidth = parent.width
-
-        for (chapter in chapters) {
-            if (chapter.startMs <= 0L || chapter.startMs >= duration) continue
-            val ratio = chapter.startMs.toFloat() / duration.toFloat()
-            val marker = ImageView(activity).apply {
-                setImageResource(R.drawable.ic_video_chapter_marker)
+            val container = FrameLayout(activity).apply {
                 layoutParams = FrameLayout.LayoutParams(
-                    2.dpToPx(),
-                    10.dpToPx()
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    if (parentWidth > 0) {
-                        leftMargin = (ratio * parentWidth).toInt()
-                    }
-                    gravity = Gravity.START or Gravity.BOTTOM
-                }
-                contentDescription = chapter.title
-                setOnClickListener {
-                    player.seekTo(chapter.startMs)
-                    activity.toastOnUi(chapter.title)
+                    gravity = Gravity.BOTTOM
+                    bottomMargin = 24.dpToPx() // 在进度条上方
                 }
             }
-            container.addView(marker)
-        }
 
-        parent.addView(container)
-        markerContainer = container
+            val parentWidth = parent.width
+
+            for (chapter in chapters) {
+                if (chapter.startMs <= 0L || chapter.startMs >= duration) continue
+                val ratio = chapter.startMs.toFloat() / duration.toFloat()
+                val marker = ImageView(activity).apply {
+                    setImageResource(R.drawable.ic_video_chapter_marker)
+                    layoutParams = FrameLayout.LayoutParams(
+                        2.dpToPx(),
+                        10.dpToPx()
+                    ).apply {
+                        if (parentWidth > 0) {
+                            leftMargin = (ratio * parentWidth).toInt()
+                        }
+                        gravity = Gravity.START or Gravity.BOTTOM
+                    }
+                    contentDescription = chapter.title
+                    setOnClickListener {
+                        try {
+                            player.seekTo(chapter.startMs)
+                            activity.toastOnUi(chapter.title)
+                        } catch (e: Throwable) {
+                            // 播放器已释放，忽略
+                        }
+                    }
+                }
+                container.addView(marker)
+            }
+
+            parent.addView(container)
+            markerContainer = container
+        } catch (e: Throwable) {
+            // 播放器未就绪，忽略
+        }
     }
 
     data class ChapterMark(
