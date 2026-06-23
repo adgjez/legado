@@ -69,10 +69,14 @@ class AiVideoTaskService : BaseService() {
                 val intent = Intent(context, AiVideoTaskService::class.java).apply {
                     action = IntentAction.start
                 }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
+                runCatching {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                }.onFailure { e ->
+                    AppLog.put("AiVideoTaskService startIfNeeded failed", e)
                 }
             }
         }

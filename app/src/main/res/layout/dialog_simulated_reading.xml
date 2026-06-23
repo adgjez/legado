@@ -37,6 +37,7 @@
                 android:id="@+id/sr_enabled"
                 android:layout_weight="1"
                 android:gravity="start|center_vertical"
+                android:text=""
                 style="@style/Widget.AppCompat.CompoundButton.Switch"
                 android:layout_width="match_parent"
                 android:width="20dp" />

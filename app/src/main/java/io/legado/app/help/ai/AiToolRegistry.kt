@@ -48,6 +48,13 @@ object AiToolRegistry {
         "list_ai_gallery_images",
         "set_book_character_avatar_from_gallery",
         "generate_book_character_avatar",
+        "generate_video",
+        "list_ai_gallery_videos",
+        "get_ai_gallery_video",
+        "set_book_character_avatar_from_video_gallery",
+        "generate_book_character_short_video",
+        "generate_book_chapter_video",
+        "generate_book_chapter_video_range",
         "get_app_settings",
         "set_app_setting",
         "set_app_settings_batch"

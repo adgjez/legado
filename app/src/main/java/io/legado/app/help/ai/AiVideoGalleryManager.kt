@@ -129,18 +129,23 @@ object AiVideoGalleryManager {
         val videoFile = File(videoDir, "$id.mp4")
         val coverFile = File(videoDir, "${id}_cover.jpg")
         val writtenVideoUrl = videoUrl?.takeIf { it.isNotBlank() }
-        if (writtenVideoUrl != null) {
-            runCatching {
-                AiVideoApi.downloadToFile(
-                    url = writtenVideoUrl,
-                    target = videoFile,
-                    headers = buildHeaderMap(provider),
-                    timeoutMs = 10 * 60 * 1000L
-                )
-            }.onFailure {
-                runCatching { videoFile.delete() }
-                throw it
-            }
+            ?: error("Provider returned SUCCESS but videoUrl is null/empty for $videoId")
+        // 下载视频文件，失败则抛异常让调用方标记 FAILED
+        runCatching {
+            AiVideoApi.downloadToFile(
+                url = writtenVideoUrl,
+                target = videoFile,
+                headers = buildHeaderMap(provider),
+                timeoutMs = 10 * 60 * 1000L
+            )
+        }.onFailure {
+            runCatching { videoFile.delete() }
+            throw it
+        }
+        // 校验下载结果
+        if (!videoFile.isFile || videoFile.length() == 0L) {
+            runCatching { videoFile.delete() }
+            error("Video download succeeded but file is missing or empty for $videoId")
         }
         val coverSrc = coverUrl?.takeIf { it.isNotBlank() }
         if (coverSrc != null) {
