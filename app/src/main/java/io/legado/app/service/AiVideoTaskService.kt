@@ -109,12 +109,16 @@ class AiVideoTaskService : BaseService() {
         super.onCreate()
         isRun = true
         stopping.set(false)
+        // 必须在 5 秒内调用 startForeground，否则 startForegroundService 会崩溃
+        startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
         observeProgress()
         // 启动时恢复 pending/running 任务
         recoverTasks()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 确保前台通知已启动（onCreate 可能因某些原因未执行）
+        startForeground(NotificationId.AiVideoTaskService, notificationBuilder.build())
         intent?.action?.let { action ->
             when (action) {
                 IntentAction.start -> ensureDispatcherRunning()
@@ -160,11 +164,14 @@ class AiVideoTaskService : BaseService() {
         }
         notificationBuilder.setContentText(text)
         val notification = notificationBuilder.build()
-        val nm = splitties.systemservices.notificationManager
-        if (total > 0) {
-            nm.notify(NotificationId.AiVideoTaskService, notification)
-        } else {
-            nm.cancel(NotificationId.AiVideoTaskService)
+        // 前台服务必须始终有通知，不能 cancel
+        splitties.systemservices.notificationManager.notify(
+            NotificationId.AiVideoTaskService, notification
+        )
+        // 无任务时自动停止服务
+        if (total <= 0 && !stopping.get()) {
+            stopping.set(true)
+            stopSelf()
         }
     }
 
