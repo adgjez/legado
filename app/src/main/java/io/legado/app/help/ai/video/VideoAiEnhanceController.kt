@@ -165,7 +165,7 @@ class VideoAiEnhanceController(
         pollJob = scope.launch {
             while (isActive) {
                 delay(200) // 5fps 刷新
-                val pos = player.getCurrentPlayer().currentPosition
+                val pos = player.getCurrentPositionWhenPlaying().toLong()
                 subtitleRenderer?.onPositionChanged(pos)
             }
         }

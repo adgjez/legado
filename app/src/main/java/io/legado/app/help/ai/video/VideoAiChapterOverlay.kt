@@ -97,7 +97,7 @@ class VideoAiChapterOverlay(
      */
     private fun createMarkers() {
         val parent = player.parent as? ViewGroup ?: return
-        val duration = player.getCurrentPlayer().duration
+        val duration = player.getDuration()
         if (duration <= 0) return
 
         // 移除旧容器
@@ -131,7 +131,7 @@ class VideoAiChapterOverlay(
                 }
                 contentDescription = chapter.title
                 setOnClickListener {
-                    player.getCurrentPlayer().seekTo(chapter.startMs)
+                    player.seekTo(chapter.startMs)
                     activity.toastOnUi(chapter.title)
                 }
             }
