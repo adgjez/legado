@@ -30,15 +30,25 @@ class WhisperAsrEngine(
 
     private suspend fun callWhisper(audio: File, language: String): String =
         withContext(Dispatchers.IO) {
+            require(config.apiKey.isNotBlank()) { "ASR apiKey is empty" }
             val baseUrl = config.baseUrl.ifBlank { DEFAULT_BASE_URL }
             val url = (baseUrl.trimEnd('/') + "/audio/transcriptions").toHttpUrl()
+            // 根据文件扩展名选择 Content-Type
+            val contentType = when (audio.extension.lowercase()) {
+                "m4a", "mp4" -> "audio/mp4"
+                "wav" -> "audio/wav"
+                "flac" -> "audio/flac"
+                "ogg" -> "audio/ogg"
+                "webm" -> "audio/webm"
+                else -> "audio/mpeg"
+            }
             val form: Map<String, Any> = buildMap {
                 put(
                     "file",
                     mapOf(
                         "fileName" to audio.name,
                         "file" to audio,
-                        "contentType" to "audio/mpeg"
+                        "contentType" to contentType
                     )
                 )
                 put("model", config.model.ifBlank { "whisper-1" })
@@ -48,12 +58,21 @@ class WhisperAsrEngine(
             }
             val strResp = okHttpClient.newCallStrResponse(0) {
                 url(url)
-                if (config.apiKey.isNotBlank()) {
-                    header("Authorization", "Bearer ${config.apiKey}")
-                }
+                header("Authorization", "Bearer ${config.apiKey}")
                 postMultipart("multipart/form-data", form)
             }
-            strResp.body.orEmpty()
+            val body = strResp.body.orEmpty()
+            // 检查错误响应
+            val obj = runCatching { org.json.JSONObject(body) }.getOrNull()
+            if (obj?.has("error") == true) {
+                val errMsg = obj.optJSONObject("error")?.optString("message") ?: body
+                error("ASR API error: $errMsg")
+            }
+            if (obj?.has("segments") == false && body.isNotBlank()) {
+                // 响应不是预期的 verbose_json 格式
+                error("ASR unexpected response: ${body.take(200)}")
+            }
+            body
         }
 
     companion object {

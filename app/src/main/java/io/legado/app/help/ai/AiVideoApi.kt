@@ -150,6 +150,8 @@ object AiVideoApi {
                     // 5xx 重试
                     throw IOException("HTTP ${response.code} ${response.message}: $text")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 lastError = e
                 if (attempt >= maxRetries) throw e

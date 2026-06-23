@@ -286,6 +286,9 @@ object AiVideoAnalysisService {
     }
 
     private suspend fun summarizeByLlm(llm: AiProviderConfig, text: String): String {
+        // 检查 LLM 是否已配置
+        val provider = AppConfig.aiCurrentProvider
+            ?: error("未配置 LLM Provider，请在 AI 设置中配置")
         val prompt = "你是视频内容总结助手。请基于以下字幕内容生成 200 字以内的中文摘要，分段列出要点：\n\n$text"
         val reply = AiChatService.chat(
             listOf(
@@ -296,6 +299,9 @@ object AiVideoAnalysisService {
     }
 
     private suspend fun chaptersByLlm(llm: AiProviderConfig, srtText: String): List<Pair<Long, String>> {
+        // 检查 LLM 是否已配置
+        val provider = AppConfig.aiCurrentProvider
+            ?: error("未配置 LLM Provider，请在 AI 设置中配置")
         val prompt = "你是视频章节识别助手。请基于以下带时间戳的字幕，输出 5~10 个章节，每章一行，格式 `startMs|标题`：\n\n$srtText"
         val reply = AiChatService.chat(
             listOf(

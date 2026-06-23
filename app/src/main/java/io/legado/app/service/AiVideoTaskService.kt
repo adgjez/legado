@@ -84,11 +84,12 @@ class AiVideoTaskService : BaseService() {
         ).asCoroutineDispatcher()
     }
     private val queue = ConcurrentLinkedQueue<String>()
-    private val jobMap = HashMap<String, Job>()
-    private val mutex = Mutex()
+    private val jobMap = java.util.concurrent.ConcurrentHashMap<String, Job>()
     private val scope = CoroutineScope(SupervisorJob() + pool)
     private val stopping = AtomicBoolean(false)
     private var notificationUpdateJob: Job? = null
+    @Volatile
+    private var dispatcherRunning = false
 
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdAiVideo)
@@ -182,18 +183,27 @@ class AiVideoTaskService : BaseService() {
     }
 
     private fun ensureDispatcherRunning() {
-        // 已经有一个常驻 dispatcher 协程在跑
+        if (dispatcherRunning) return
+        dispatcherRunning = true
         scope.launch {
-            while (isActive && !stopping.get()) {
-                val next: String? = queue.poll()
-                if (next == null) {
-                    delay(500)
-                } else {
-                    if (jobMap[next]?.isActive == true) continue
-                    jobMap[next] = scope.launch {
-                        runOne(next)
+            try {
+                while (isActive && !stopping.get()) {
+                    val next: String? = queue.poll()
+                    if (next == null) {
+                        delay(500)
+                    } else {
+                        if (jobMap[next]?.isActive == true) continue
+                        jobMap[next] = scope.launch {
+                            try {
+                                runOne(next)
+                            } finally {
+                                jobMap.remove(next)
+                            }
+                        }
                     }
                 }
+            } finally {
+                dispatcherRunning = false
             }
         }
     }

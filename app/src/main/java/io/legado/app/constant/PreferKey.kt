@@ -76,6 +76,12 @@ object PreferKey {
     const val aiVideoDefaultDurationSec = "aiVideoDefaultDurationSec"
     const val aiVideoDefaultAspect = "aiVideoDefaultAspect"
     const val aiVideoKeepTempDays = "aiVideoKeepTempDays"
+    // P3: ASR 配置
+    const val asrType = "asrType"
+    const val asrBaseUrl = "asrBaseUrl"
+    const val asrApiKey = "asrApiKey"
+    const val asrModel = "asrModel"
+    const val asrScript = "asrScript"
     // P4: 视频播放 AI 增强
     const val videoAiSubtitleEnabled = "videoAiSubtitleEnabled"
     const val videoAiSubtitleLanguage = "videoAiSubtitleLanguage"

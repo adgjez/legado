@@ -448,7 +448,18 @@ object AiVideoTool {
         val chapterResults = JSONArray()
         for (idx in fromChapter..toChapter) {
             chapterArgs.put("chapterIndex", idx)
-            val result = executeGenerateChapterVideo(chapterArgs)
+            val result = try {
+                executeGenerateChapterVideo(chapterArgs)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // 单章失败不中断整个区间
+                JSONObject().apply {
+                    put("ok", false)
+                    put("chapterIndex", idx)
+                    put("error", e.message ?: e.javaClass.simpleName)
+                }
+            }
             chapterResults.put(JSONObject(result))
         }
         JSONObject().apply {
@@ -486,7 +497,9 @@ object AiVideoTool {
 
     private suspend fun readChapterContent(book: Book, chapter: BookChapter): String? {
         // 优先读缓存
-        BookHelp.getContent(book, chapter)?.let { return it }
+        runCatching {
+            BookHelp.getContent(book, chapter)?.let { return it }
+        }
         // 缓存未命中，尝试从书源获取
         return runCatching {
             val source = appDb.bookSourceDao.getBookSource(book.origin)

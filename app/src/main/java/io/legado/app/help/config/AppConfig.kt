@@ -849,13 +849,23 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     /**
-     * 当前 ASR 配置（v1：固定走 Whisper 占位）。真实凭据由用户通过 aiVideo 之外的
-     * "AI 服务" 设置页（待 P4 实现）配置；当前只暴露接口让 P3 UI 不为空。
+     * 当前 ASR 配置。从用户偏好读取，未配置时返回 null。
      */
     fun asrConfig(): io.legado.app.help.ai.asr.AsrConfig? {
-        // v1：直接给一个 Whisper 占位（baseUrl/apiKey 留空，调用方会判定空给提示）
+        val type = appCtx.getPrefString(PreferKey.asrType) ?: return null
+        if (type.isBlank()) return null
+        val baseUrl = appCtx.getPrefString(PreferKey.asrBaseUrl) ?: ""
+        val apiKey = appCtx.getPrefString(PreferKey.asrApiKey) ?: ""
+        val model = appCtx.getPrefString(PreferKey.asrModel) ?: "whisper-1"
+        val script = appCtx.getPrefString(PreferKey.asrScript) ?: ""
+        // apiKey 为空时无法使用 ASR
+        if (type != io.legado.app.help.ai.asr.AsrConfig.TYPE_LOCAL && apiKey.isBlank()) return null
         return io.legado.app.help.ai.asr.AsrConfig(
-            type = io.legado.app.help.ai.asr.AsrConfig.TYPE_WHISPER
+            type = type,
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            model = model,
+            script = script
         )
     }
 
