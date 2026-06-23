@@ -1146,10 +1146,9 @@ object AiReadAloudRoleService {
                 previewSegments = previewSegments,
                 elapsedMillis = usageSnapshot.elapsedMillis,
                 requestCount = usageSnapshot.requestCount,
-                inputTokens = usage.inputTokens,
-                outputTokens = usage.outputTokens,
+                inputTokens = usage.promptTokens,
+                outputTokens = usage.completionTokens,
                 totalTokens = usage.totalTokens,
-                cachedInputTokens = usage.cachedInputTokens,
                 error = error
             )
         )
@@ -3026,9 +3025,8 @@ object AiReadAloudRoleService {
             put("usage", JSONObject().apply {
                 put("elapsedMillis", usageSnapshot.elapsedMillis)
                 put("requestCount", usageSnapshot.requestCount)
-                put("inputTokens", usageSnapshot.usage.inputTokens)
-                put("cachedInputTokens", usageSnapshot.usage.cachedInputTokens)
-                put("outputTokens", usageSnapshot.usage.outputTokens)
+                put("inputTokens", usageSnapshot.usage.promptTokens)
+                put("outputTokens", usageSnapshot.usage.completionTokens)
                 put("totalTokens", usageSnapshot.usage.totalTokens)
             })
             put("segments", toJsonArray())

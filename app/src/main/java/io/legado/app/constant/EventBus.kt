@@ -47,4 +47,5 @@ object EventBus {
     const val AI_VIDEO_PROGRESS = "aiVideoProgress"
     const val AI_VIDEO_COMPLETED = "aiVideoCompleted"
     const val AI_VIDEO_FAILED = "aiVideoFailed"
+    const val AI_READ_ALOUD_ROLE_STATE = "aiReadAloudRoleState"
 }

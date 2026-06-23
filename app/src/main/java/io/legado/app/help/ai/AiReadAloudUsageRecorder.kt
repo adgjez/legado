@@ -55,9 +55,8 @@ object AiReadAloudUsageRecorder {
         val provider = modelConfig?.let { AppConfig.aiProviderForModel(it) }
         val usage = snapshot.usage
         if (usage.totalTokens <= 0 &&
-            usage.inputTokens <= 0 &&
-            usage.outputTokens <= 0 &&
-            usage.cachedInputTokens <= 0 &&
+            usage.promptTokens <= 0 &&
+            usage.completionTokens <= 0 &&
             status == AiReadAloudUsageRecord.STATUS_CACHE
         ) {
             return
@@ -76,9 +75,8 @@ object AiReadAloudUsageRecorder {
                 modelId = modelConfig?.modelId.orEmpty(),
                 elapsedMillis = snapshot.elapsedMillis,
                 requestCount = snapshot.requestCount,
-                inputTokens = usage.inputTokens,
-                cachedInputTokens = usage.cachedInputTokens,
-                outputTokens = usage.outputTokens,
+                inputTokens = usage.promptTokens,
+                outputTokens = usage.completionTokens,
                 totalTokens = usage.totalTokens,
                 summary = summary.take(240),
                 error = error.take(500),

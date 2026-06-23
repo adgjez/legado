@@ -36,6 +36,8 @@ data class BookCharacter(
     var personality: String = "",
     @ColumnInfo(defaultValue = "")
     var biography: String = "",
+    @ColumnInfo(defaultValue = "")
+    var speechRouteJson: String = "",
     @ColumnInfo(defaultValue = "0")
     var roleLevel: Int = ROLE_NORMAL,
     @ColumnInfo(defaultValue = "0")

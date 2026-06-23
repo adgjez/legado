@@ -25,6 +25,7 @@ object DatabaseMigrations {
             migration_99_100, migration_100_101, migration_101_102,
             migration_102_103,
             migration_103_104,
+            migration_104_105,
         )
     }
 
@@ -1044,6 +1045,12 @@ object DatabaseMigrations {
                 )
             """.trimIndent())
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_read_aloud_speaker_group_items_groupId` ON `read_aloud_speaker_group_items` (`groupId`)")
+        }
+    }
+
+    private val migration_104_105 = object : Migration(104, 105) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `speechRouteJson` TEXT NOT NULL DEFAULT ''")
         }
     }
 

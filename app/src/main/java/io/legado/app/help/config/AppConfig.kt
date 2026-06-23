@@ -555,6 +555,36 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiReadAloudRoleModelConfig: AiModelConfig?
         get() = aiCurrentModelConfig
 
+    const val AI_READ_ALOUD_ROLE_MODE_FULL = "full"
+
+    val aiReadAloudRoleEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudRoleEnabled, false)
+
+    var aiReadAloudRolePrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePrompt) ?: ""
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudRolePrompt, value) }
+
+    var aiReadAloudAutoCreateCharacterPrompt: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt) ?: ""
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt, value) }
+
+    var aiReadAloudRoleMode: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRoleMode) ?: "full"
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudRoleMode, value) }
+
+    var aiReadAloudRolePreprocessRules: String
+        get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePreprocessRules) ?: ""
+        set(value) { appCtx.putPrefString(PreferKey.aiReadAloudRolePreprocessRules, value) }
+
+    val aiReadAloudRoleContextParagraphs: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleContextParagraphs, 8)
+
+    val aiReadAloudRoleMergeGapParagraphs: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleMergeGapParagraphs, 2)
+
+    val aiReadAloudRoleThreadCount: Int
+        get() = appCtx.getPrefInt(PreferKey.aiReadAloudRoleThreadCount, 2)
+
     var aiMcpServerList: List<AiMcpServerConfig>
         get() = readAiMcpServers()
         set(value) {
