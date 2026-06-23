@@ -155,7 +155,10 @@ object AiChatService {
         contextSummary: AiContextSummary? = null,
         onContextSummary: (AiContextSummary) -> Unit = {},
         onContextStats: (JSONObject) -> Unit = {},
-        useAllTools: Boolean = false
+        useAllTools: Boolean = false,
+        onUsage: (AiUsageStats) -> Unit = {},
+        agentRun: AiAgentStateStore.Run? = null,
+        memoryContext: AiMemoryContext? = null
     ): String {
         val provider = AppConfig.aiCurrentProvider
         val modelConfig = AppConfig.aiCurrentModelConfig
@@ -163,6 +166,9 @@ object AiChatService {
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
         val chatUrl = resolveChatUrl(baseUrl, apiMode)
+        // Companion 解析与系统提示词
+        val chatCompanion = resolveChatCompanion(memoryContext)
+        val systemPrompt = buildCompanionSystemPrompt(chatCompanion)
         val promptCacheKey = provider
             ?.takeIf { it.promptCache }
             ?.let { buildPromptCacheKey(it, model) }
@@ -177,6 +183,7 @@ object AiChatService {
             append("model=$model").append('\n')
             append("apiMode=$apiMode").append('\n')
             append("provider=${provider?.name.orEmpty()}").append('\n')
+            append("companion=${chatCompanion.name}:${chatCompanion.id}").append('\n')
             append("tools=${tools.joinToString { it.name }}").append('\n')
         }
         val reserveTokens = estimateStaticRequestTokens(messages, tools)
@@ -185,25 +192,76 @@ object AiChatService {
         preparedContext.summary
             ?.takeIf { preparedContext.compressed && it.isValid }
             ?.let(onContextSummary)
+
+        // 记忆检索 + Agent 追踪
+        val retrievedMemory = AiMemoryRetriever.retrieve(memoryContext, preparedContext.messages)
+        if (retrievedMemory.isNotEmpty) {
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_MEMORY_RETRIEVED,
+                payload = JSONObject()
+                    .put("items", retrievedMemory.items.size)
+                    .put("fragments", retrievedMemory.fragments.size),
+                success = true
+            )
+        }
+
+        // 世界书检索 + Agent 追踪
+        val worldBookContext = AiWorldBookManager.retrieve(memoryContext, preparedContext.messages)
+        if (worldBookContext.isNotEmpty) {
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_WORLD_BOOK_RETRIEVED,
+                payload = JSONObject().put("entries", worldBookContext.hits.size),
+                success = true
+            )
+        }
+
+        // 动态上下文 token 计算
+        val dynamicContextTokens = AiContextManager.estimateTokens(worldBookContext.toTokenText()) +
+                AiContextManager.estimateTokens(retrievedMemory.toSystemPrompt())
+        val totalTokensWithDynamicContext = estimatedTotalTokens + dynamicContextTokens
+
         onContextStats(
             JSONObject().apply {
                 put("compressed", preparedContext.compressed)
                 put("inputTokens", preparedContext.inputTokens)
                 put("limitTokens", preparedContext.limitTokens)
                 put("reserveTokens", reserveTokens)
-                put("totalTokens", estimatedTotalTokens)
+                put("dynamicContextTokens", dynamicContextTokens)
+                put("totalTokens", totalTokensWithDynamicContext)
             }
         )
-        val conversation = buildConversation(preparedContext.messages, preparedContext.summary)
-        if (estimatedTotalTokens > preparedContext.limitTokens) {
+
+        // 构建对话（注入记忆/世界书/Companion 系统提示词）
+        val conversation = buildConversation(
+            messages = preparedContext.messages,
+            contextSummary = preparedContext.summary,
+            retrievedMemory = retrievedMemory,
+            worldBookContext = worldBookContext,
+            systemPromptOverride = systemPrompt
+        )
+        if (totalTokensWithDynamicContext > preparedContext.limitTokens) {
             throw AiChatException(
                 message = "当前 AI 静态配置或本轮输入超过上下文限制，已自动压缩但仍无法放入，请减少系统提示词、Skill、工具或本次输入。",
-                debugLog = requestLog.append("estimatedTotalTokens=$estimatedTotalTokens\n")
+                debugLog = requestLog.append("estimatedTotalTokens=$totalTokensWithDynamicContext\n")
+                    .append("dynamicContextTokens=$dynamicContextTokens\n")
                     .append("limitTokens=${preparedContext.limitTokens}\n")
                     .toSafeDebugLog()
             )
         }
 
+        // Agent 请求追踪
+        AiAgentStateStore.trace(
+            run = agentRun,
+            eventType = AiAgentTrace.EVENT_MODEL_REQUEST,
+            payload = JSONObject()
+                .put("estimatedTotalTokens", totalTokensWithDynamicContext)
+                .put("dynamicContextTokens", dynamicContextTokens)
+                .put("tools", tools.map { it.name }.joinToString(","))
+        )
+
+        var totalUsage = AiUsageStats()
         return runCatching {
             executeToolLoop(
                 baseUrl = baseUrl,
@@ -222,7 +280,27 @@ object AiChatService {
                 promptCacheKey = promptCacheKey,
                 useAllTools = useAllTools
             )
+        }.onSuccess { content ->
+            // 记忆记录
+            AiMemoryExtractor.recordConversation(memoryContext, messages, content)
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_STATUS,
+                payload = JSONObject()
+                    .put("stage", "chat_success")
+                    .put("outputChars", content.length)
+                    .put("totalTokens", totalUsage.totalTokens),
+                success = true,
+                usage = totalUsage
+            )
         }.getOrElse { throwable ->
+            AiAgentStateStore.trace(
+                run = agentRun,
+                eventType = AiAgentTrace.EVENT_ERROR,
+                payload = JSONObject()
+                    .put("message", throwable.localizedMessage ?: throwable.javaClass.simpleName),
+                success = false
+            )
             if (throwable is AiChatException) {
                 throw throwable
             }
@@ -1143,23 +1221,53 @@ object AiChatService {
 
     private fun buildConversation(
         messages: List<AiChatMessage>,
-        contextSummary: AiContextSummary? = null
+        contextSummary: AiContextSummary? = null,
+        retrievedMemory: AiRetrievedMemory? = null,
+        worldBookContext: AiWorldBookContext? = null,
+        systemPromptOverride: String? = null
     ): MutableList<JSONObject> {
         val conversation = mutableListOf<JSONObject>()
+        // 系统提示词（支持 Companion 覆盖）
+        val systemPrompt = systemPromptOverride?.takeIf { it.isNotBlank() }
+            ?: AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT }
         conversation += JSONObject().apply {
             put("role", "system")
-            put("content", AppConfig.aiSystemPrompt.ifBlank { AppConfig.DEFAULT_AI_SYSTEM_PROMPT })
+            put("content", systemPrompt)
         }
-        AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { personaPrompt ->
-            conversation += JSONObject().apply {
-                put("role", "system")
-                put("content", personaPrompt)
+        // Persona 提示词（仅当未使用 Companion 覆盖时）
+        if (systemPromptOverride.isNullOrBlank()) {
+            AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { personaPrompt ->
+                conversation += JSONObject().apply {
+                    put("role", "system")
+                    put("content", personaPrompt)
+                }
             }
         }
+        // 上下文摘要
         contextSummary?.summary?.takeIf { it.isNotBlank() }?.let { summary ->
             conversation += JSONObject().apply {
                 put("role", "system")
                 put("content", "Conversation summary from earlier context:\n$summary")
+            }
+        }
+        // 记忆上下文注入
+        retrievedMemory?.takeIf { it.isNotEmpty }?.let { memory ->
+            val memoryText = memory.toSystemPrompt()
+            if (memoryText.isNotBlank()) {
+                conversation += JSONObject().apply {
+                    put("role", "system")
+                    put("content", memoryText)
+                }
+            }
+        }
+        // 世界书上下文注入
+        worldBookContext?.takeIf { it.isNotEmpty }?.let { wb ->
+            val wbText = wb.toTokenText()
+            if (wbText.isNotBlank()) {
+                conversation += JSONObject().apply {
+                    put("role", "system")
+                    put("content", wbText)
+                }
             }
         }
         AppConfig.aiEnabledSkills.forEach { skill ->
@@ -1555,6 +1663,34 @@ object AiChatService {
     }
 
     // ==================== Companion 系统提示词 ====================
+
+    fun resolveChatCompanion(memoryContext: AiMemoryContext?): AiChatCompanionConfig {
+        val companionId = memoryContext?.companionId?.takeIf { it.isNotBlank() }
+            ?: AppConfig.aiCurrentChatCompanionId
+        return AppConfig.aiChatCompanionList.firstOrNull { it.id == companionId && it.enabled }
+            ?: AppConfig.aiChatCompanionList.firstOrNull { it.id == AiChatCompanionConfig.DEFAULT_COMPANION_ID }
+            ?: AiChatCompanionConfig(
+                id = AiChatCompanionConfig.DEFAULT_COMPANION_ID,
+                name = "Assistant"
+            )
+    }
+
+    fun buildCompanionSystemPrompt(companion: AiChatCompanionConfig): String {
+        val parts = mutableListOf<String>()
+        // 基础系统提示词
+        val basePrompt = AppConfig.aiSystemPrompt
+        if (basePrompt.isNotBlank()) parts.add(basePrompt)
+        // Persona 提示词
+        AppConfig.aiCurrentPersona?.prompt?.takeIf { it.isNotBlank() }?.let { parts.add(it) }
+        // Companion 自定义提示词
+        if (companion.prompt.isNotBlank()) parts.add(companion.prompt)
+        // 角色提示词
+        if (companion.type == AiChatCompanionConfig.TYPE_CHARACTER && companion.bookKey.isNotBlank()) {
+            val charPrompt = buildCharacterSystemPrompt(companion)
+            if (charPrompt.isNotBlank()) parts.add(charPrompt)
+        }
+        return parts.joinToString("\n\n")
+    }
 
     fun resolveCompanionSystemPrompt(companion: AiChatCompanionConfig): String {
         val parts = mutableListOf<String>()
