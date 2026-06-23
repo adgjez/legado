@@ -254,13 +254,17 @@ object AiChatService {
         onContextSummary: (AiContextSummary) -> Unit = {},
         onContextStats: (JSONObject) -> Unit = {},
         useAllTools: Boolean = false,
+        extraTools: List<AiResolvedTool> = emptyList(),
+        modelConfigOverride: AiModelConfig? = null,
+        firstResponseTimeoutMillis: Long = 0L,
         onUsage: (AiUsageStats) -> Unit = {},
         agentRun: AiAgentStateStore.Run? = null,
         memoryContext: AiMemoryContext? = null,
         fallbackModelConfigOverride: AiModelConfig? = null
     ): String {
-        val provider = AppConfig.aiCurrentProvider
-        val modelConfig = AppConfig.aiCurrentModelConfig
+        val modelConfig = modelConfigOverride ?: AppConfig.aiCurrentModelConfig
+        val provider = modelConfigOverride?.let { AppConfig.aiProviderForModel(it) }
+            ?: AppConfig.aiCurrentProvider
         val baseUrl = provider?.baseUrl?.trim().orEmpty()
         val model = modelConfig?.modelId?.trim().orEmpty()
         val apiMode = normalizeApiMode(provider?.apiMode)
@@ -277,6 +281,8 @@ object AiChatService {
         val tools = runCatching {
             if (useAllTools) AiToolRegistry.resolveAllTools() else AiToolRegistry.resolveAvailableTools()
         }.getOrDefault(emptyList())
+            .plus(extraTools)
+            .distinctBy { it.name }
         val requestLog = StringBuilder().apply {
             append("url=$chatUrl").append('\n')
             append("model=$model").append('\n')
@@ -378,7 +384,8 @@ object AiChatService {
                 includeStructuredBlocks = includeStructuredBlocks,
                 promptCacheKey = promptCacheKey,
                 useAllTools = useAllTools,
-                fallbackModelConfig = fallbackModelConfigOverride
+                fallbackModelConfig = fallbackModelConfigOverride,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis
             )
         }.onSuccess { content ->
             // 记忆记录
@@ -428,7 +435,8 @@ object AiChatService {
         includeStructuredBlocks: Boolean,
         promptCacheKey: String?,
         useAllTools: Boolean,
-        fallbackModelConfig: AiModelConfig? = null
+        fallbackModelConfig: AiModelConfig? = null,
+        firstResponseTimeoutMillis: Long = 0L
     ): String {
         val toolMap = tools.associateBy { it.name }
         val searchResultCards = JSONArray()
@@ -459,7 +467,8 @@ object AiChatService {
                 round = roundNo,
                 onPartial = onPartial,
                 onThinking = onThinking,
-                fallbackModelConfig = fallbackModelConfig
+                fallbackModelConfig = fallbackModelConfig,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis
             )
             conversation += assistantTurn.rawMessage
             if (assistantTurn.toolCalls.isEmpty()) {
@@ -579,7 +588,8 @@ object AiChatService {
             requestLog = requestLog,
             round = MAX_TOOL_ROUNDS + 1,
             onPartial = onPartial,
-            onThinking = onThinking
+            onThinking = onThinking,
+            firstResponseTimeoutMillis = firstResponseTimeoutMillis
         )
         if (finalTurn.content.isBlank()) {
             throw AiChatException(
@@ -644,10 +654,13 @@ object AiChatService {
         }.getOrDefault(true)
     }
 
-    private fun aiChatHttpClient() = okHttpClient.newBuilder()
+    private fun aiChatHttpClient(firstResponseTimeoutMillis: Long = 0L) = okHttpClient.newBuilder()
         .connectTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(300, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(
+            if (firstResponseTimeoutMillis > 0L) firstResponseTimeoutMillis else 300_000L,
+            TimeUnit.MILLISECONDS
+        )
         .callTimeout(300, TimeUnit.SECONDS)
         .build()
 
@@ -767,6 +780,7 @@ object AiChatService {
         promptCacheKey: String?,
         requestLog: StringBuilder,
         round: Int,
+        firstResponseTimeoutMillis: Long = 0L,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit
     ): AssistantTurn {
@@ -791,6 +805,7 @@ object AiChatService {
                     promptCacheKey = promptCacheKey,
                     requestLog = requestLog,
                     round = round,
+                    firstResponseTimeoutMillis = firstResponseTimeoutMillis,
                     onPartial = onPartial,
                     onThinking = onThinking
                 )
@@ -820,7 +835,8 @@ object AiChatService {
         round: Int,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit,
-        fallbackModelConfig: AiModelConfig? = null
+        fallbackModelConfig: AiModelConfig? = null,
+        firstResponseTimeoutMillis: Long = 0L
     ): AssistantTurn {
         try {
             return requestCompletionStreamWithRetry(
@@ -834,6 +850,7 @@ object AiChatService {
                 promptCacheKey = promptCacheKey,
                 requestLog = requestLog,
                 round = round,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis,
                 onPartial = onPartial,
                 onThinking = onThinking
             )
@@ -868,6 +885,7 @@ object AiChatService {
                     ?.let { buildPromptCacheKey(it, fallbackModel) },
                 requestLog = requestLog,
                 round = round,
+                firstResponseTimeoutMillis = firstResponseTimeoutMillis,
                 onPartial = onPartial,
                 onThinking = onThinking
             )
@@ -885,6 +903,7 @@ object AiChatService {
         promptCacheKey: String?,
         requestLog: StringBuilder,
         round: Int,
+        firstResponseTimeoutMillis: Long = 0L,
         onPartial: (String) -> Unit,
         onThinking: (String) -> Unit
     ): AssistantTurn {
@@ -898,7 +917,7 @@ object AiChatService {
         )
         requestLog.append("round=").append(round).append('\n')
             .append("request=").append(safeDebugPayload(requestBody)).append('\n')
-        val response = aiChatHttpClient().newCallResponse {
+        val response = aiChatHttpClient(firstResponseTimeoutMillis).newCallResponse {
             url(chatUrl)
             addHeader("Accept", "text/event-stream, application/json")
             addHeader("Content-Type", "application/json")
@@ -931,10 +950,19 @@ object AiChatService {
             val reasoningRendered = StringBuilder()
             val rawPayload = StringBuilder()
             val toolCallBuilders = linkedMapOf<Int, ToolCallBuilder>()
-            body.byteStream().bufferedReader().use { reader ->
+            val source = body.source()
+            var firstPayloadReceived = false
+            if (firstResponseTimeoutMillis > 0L) {
+                source.timeout().timeout(firstResponseTimeoutMillis, TimeUnit.MILLISECONDS)
+            }
+            source.use {
                 while (true) {
-                    val rawLine = reader.readLine()?.trim() ?: break
+                    val rawLine = it.readUtf8Line()?.trim() ?: break
                     if (rawLine.isEmpty()) continue
+                    if (!firstPayloadReceived) {
+                        firstPayloadReceived = true
+                        it.timeout().timeout(300, TimeUnit.SECONDS)
+                    }
                     rawPayload.append(rawLine).append('\n')
                     if (rawLine.startsWith("data:")) {
                         val payload = rawLine.removePrefix("data:").trim()

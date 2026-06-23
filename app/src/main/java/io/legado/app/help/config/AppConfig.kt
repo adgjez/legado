@@ -555,6 +555,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val aiReadAloudRoleModelConfig: AiModelConfig?
         get() = aiCurrentModelConfig
 
+    val aiReadAloudRoleBackupModelConfig: AiModelConfig?
+        get() = null
+
     const val AI_READ_ALOUD_ROLE_MODE_FULL = "full"
 
     val aiReadAloudRoleEnabled: Boolean
@@ -564,9 +567,17 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.aiReadAloudRolePrompt) ?: ""
         set(value) { appCtx.putPrefString(PreferKey.aiReadAloudRolePrompt, value) }
 
+    var aiReadAloudAutoCreateCharacters: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, true)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateCharacters, value)
+
     var aiReadAloudAutoCreateCharacterPrompt: String
         get() = appCtx.getPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt) ?: ""
         set(value) { appCtx.putPrefString(PreferKey.aiReadAloudAutoCreateCharacterPrompt, value) }
+
+    var aiReadAloudAutoCreateAvatar: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.aiReadAloudAutoCreateAvatar, value)
 
     var aiReadAloudRoleMode: String
         get() = appCtx.getPrefString(PreferKey.aiReadAloudRoleMode) ?: "full"

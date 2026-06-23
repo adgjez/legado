@@ -26,6 +26,7 @@ object DatabaseMigrations {
             migration_102_103,
             migration_103_104,
             migration_104_105,
+            migration_105_106,
         )
     }
 
@@ -1051,6 +1052,15 @@ object DatabaseMigrations {
     private val migration_104_105 = object : Migration(104, 105) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `speechRouteJson` TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    private val migration_105_106 = object : Migration(105, 106) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `gender` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `autoCreated` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `source` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `book_characters` ADD COLUMN `lastDetectedAt` INTEGER NOT NULL DEFAULT 0")
         }
     }
 
