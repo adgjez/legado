@@ -9,11 +9,14 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import io.legado.app.data.dao.AiAgentDao
 import io.legado.app.data.dao.AiGeneratedImageDao
 import io.legado.app.data.dao.AiGeneratedVideoDao
 import io.legado.app.data.dao.AiImageGroupDao
+import io.legado.app.data.dao.AiMemoryDao
 import io.legado.app.data.dao.AiVideoAnalysisDao
 import io.legado.app.data.dao.AiVideoGroupDao
+import io.legado.app.data.dao.BookAiChapterSummaryDao
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookCharacterDao
 import io.legado.app.data.dao.BookDao
@@ -40,12 +43,20 @@ import io.legado.app.data.dao.SearchBookDao
 import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import io.legado.app.data.entities.AiAgentJob
+import io.legado.app.data.entities.AiAgentSession
+import io.legado.app.data.entities.AiAgentTrace
 import io.legado.app.data.entities.AiGeneratedImage
 import io.legado.app.data.entities.AiGeneratedVideo
 import io.legado.app.data.entities.AiImageGroup
+import io.legado.app.data.entities.AiMemoryFragment
+import io.legado.app.data.entities.AiMemoryFragmentFts
+import io.legado.app.data.entities.AiMemoryItem
+import io.legado.app.data.entities.AiMemoryItemFts
 import io.legado.app.data.entities.AiVideoAnalysis
 import io.legado.app.data.entities.AiVideoGroup
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookAiChapterSummary
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookCharacter
 import io.legado.app.data.entities.BookCharacterRelation
@@ -93,7 +104,7 @@ val appDb by lazy {
 }
 
 @Database(
-    version = 102,
+    version = 103,
     exportSchema = true,
     entities = [Book::class, BookGroup::class, BookSource::class, BookChapter::class,
         ReplaceRule::class, SearchBook::class, SearchKeyword::class, Cookie::class,
@@ -105,7 +116,11 @@ val appDb by lazy {
         ParagraphRuleVar::class, ReadMenuCustomButton::class,
         AiImageGroup::class, AiGeneratedImage::class, AiVideoGroup::class, AiGeneratedVideo::class,
         BookCharacter::class, BookCharacterRelation::class,
-        AiVideoAnalysis::class],
+        AiVideoAnalysis::class,
+        AiAgentSession::class, AiAgentJob::class, AiAgentTrace::class,
+        AiMemoryItem::class, AiMemoryFragment::class,
+        AiMemoryItemFts::class, AiMemoryFragmentFts::class,
+        BookAiChapterSummary::class],
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 43, to = 44),
@@ -191,6 +206,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract val aiVideoGroupDao: AiVideoGroupDao
     abstract val aiGeneratedVideoDao: AiGeneratedVideoDao
     abstract val aiVideoAnalysisDao: AiVideoAnalysisDao
+    abstract val aiAgentDao: AiAgentDao
+    abstract val aiMemoryDao: AiMemoryDao
+    abstract val bookAiChapterSummaryDao: BookAiChapterSummaryDao
 
     companion object {
 

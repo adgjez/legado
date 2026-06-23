@@ -23,6 +23,7 @@ object DatabaseMigrations {
             migration_90_91, migration_91_92, migration_93_94, migration_94_95,
             migration_95_96, migration_96_97, migration_97_98, migration_98_99,
             migration_99_100, migration_100_101, migration_101_102,
+            migration_102_103,
         )
     }
 
@@ -829,6 +830,116 @@ object DatabaseMigrations {
         override fun migrate(db: SupportSQLiteDatabase) {
             // No-op: DEFAULT 约束已由 migration_97_98 / migration_98_99 写入 db，
             // 此处仅升级版本号让 Room 用 102.json 校验 schema。
+        }
+    }
+
+    private val migration_102_103 = object : Migration(102, 103) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Agent 表
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_agent_sessions` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `scope` TEXT NOT NULL,
+                    `scopeKey` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `contextJson` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_sessions_scope_scopeKey` ON `ai_agent_sessions` (`scope`, `scopeKey`)")
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_agent_jobs` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `sessionId` INTEGER NOT NULL,
+                    `type` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `payloadJson` TEXT NOT NULL DEFAULT '',
+                    `resultJson` TEXT NOT NULL DEFAULT '',
+                    `error` TEXT NOT NULL DEFAULT '',
+                    `retryCount` INTEGER NOT NULL DEFAULT 0,
+                    `maxRetries` INTEGER NOT NULL DEFAULT 3,
+                    `leaseUntil` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`sessionId`) REFERENCES `ai_agent_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_sessionId` ON `ai_agent_jobs` (`sessionId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_jobs_status` ON `ai_agent_jobs` (`status`)")
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_agent_traces` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `sessionId` INTEGER NOT NULL,
+                    `jobId` INTEGER,
+                    `event` TEXT NOT NULL,
+                    `detail` TEXT NOT NULL DEFAULT '',
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(`sessionId`) REFERENCES `ai_agent_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_ai_agent_traces_sessionId` ON `ai_agent_traces` (`sessionId`)")
+
+            // 记忆系统表
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_memory_items` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `scope` TEXT NOT NULL,
+                    `scopeKey` TEXT NOT NULL,
+                    `subject` TEXT NOT NULL,
+                    `predicate` TEXT NOT NULL,
+                    `object` TEXT NOT NULL,
+                    `source` TEXT NOT NULL DEFAULT '',
+                    `fingerprint` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0,
+                    `updatedAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_items_scope_scopeKey_fingerprint` ON `ai_memory_items` (`scope`, `scopeKey`, `fingerprint`)")
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `ai_memory_fragments` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `scope` TEXT NOT NULL,
+                    `scopeKey` TEXT NOT NULL,
+                    `content` TEXT NOT NULL,
+                    `contentHash` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_ai_memory_fragments_scope_scopeKey_contentHash` ON `ai_memory_fragments` (`scope`, `scopeKey`, `contentHash`)")
+
+            // FTS 表
+            db.execSQL("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_items_fts` USING FTS4(
+                    `content` TEXT,
+                    `docid` INTEGER,
+                    content=`ai_memory_items`
+                )
+            """.trimIndent())
+            db.execSQL("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS `ai_memory_fragments_fts` USING FTS4(
+                    `content` TEXT,
+                    `docid` INTEGER,
+                    content=`ai_memory_fragments`
+                )
+            """.trimIndent())
+
+            // 章节摘要表
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `book_ai_chapter_summaries` (
+                    `id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    `bookUrl` TEXT NOT NULL,
+                    `chapterIndex` INTEGER NOT NULL,
+                    `contentHash` TEXT NOT NULL,
+                    `summary` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL DEFAULT 0
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_chapterIndex` ON `book_ai_chapter_summaries` (`bookUrl`, `chapterIndex`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_book_ai_chapter_summaries_bookUrl_contentHash` ON `book_ai_chapter_summaries` (`bookUrl`, `contentHash`)")
         }
     }
 

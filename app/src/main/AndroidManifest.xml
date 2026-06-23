@@ -637,6 +637,9 @@
         <service
             android:name=".service.AiVideoTaskService"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.AiTaskKeepAliveService"
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".receiver.MediaButtonReceiver"

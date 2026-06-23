@@ -57,7 +57,17 @@ object AiToolRegistry {
         "generate_book_chapter_video_range",
         "get_app_settings",
         "set_app_setting",
-        "set_app_settings_batch"
+        "set_app_settings_batch",
+        "list_world_books",
+        "upsert_world_book",
+        "delete_world_book",
+        "upsert_world_book_entry",
+        "delete_world_book_entry",
+        "list_world_book_bindings",
+        "upsert_world_book_binding",
+        "delete_world_book_binding",
+        "import_world_book_json",
+        "export_world_book_json"
     )
 
     private val nativeToolLabels = mapOf(
@@ -100,7 +110,17 @@ object AiToolRegistry {
         "generate_book_chapter_video_range" to "批量章节视频",
         "get_app_settings" to "读取应用设置",
         "set_app_setting" to "修改应用设置",
-        "set_app_settings_batch" to "批量修改设置"
+        "set_app_settings_batch" to "批量修改设置",
+        "list_world_books" to "列出世界书",
+        "upsert_world_book" to "新增或更新世界书",
+        "delete_world_book" to "删除世界书",
+        "upsert_world_book_entry" to "新增或更新世界书条目",
+        "delete_world_book_entry" to "删除世界书条目",
+        "list_world_book_bindings" to "列出世界书绑定",
+        "upsert_world_book_binding" to "新增或更新世界书绑定",
+        "delete_world_book_binding" to "删除世界书绑定",
+        "import_world_book_json" to "导入世界书 JSON",
+        "export_world_book_json" to "导出世界书 JSON"
     )
 
     private val nativeToolGroups = mapOf(
@@ -143,7 +163,17 @@ object AiToolRegistry {
         "generate_book_chapter_video_range" to "AI 视频",
         "get_app_settings" to "设置",
         "set_app_setting" to "设置",
-        "set_app_settings_batch" to "设置"
+        "set_app_settings_batch" to "设置",
+        "list_world_books" to "世界书",
+        "upsert_world_book" to "世界书",
+        "delete_world_book" to "世界书",
+        "upsert_world_book_entry" to "世界书",
+        "delete_world_book_entry" to "世界书",
+        "list_world_book_bindings" to "世界书",
+        "upsert_world_book_binding" to "世界书",
+        "delete_world_book_binding" to "世界书",
+        "import_world_book_json" to "世界书",
+        "export_world_book_json" to "世界书"
     )
 
     fun groupLabelOfTool(name: String): String {
@@ -178,6 +208,7 @@ object AiToolRegistry {
         tools += AiImageTool.resolvedTools()
         tools += AiBookCharacterTool.resolvedTools()
         tools += AiVideoTool.resolvedTools()
+        tools += AiWorldBookTool.resolvedTools()
         return tools.distinctBy { it.name }
     }
 
