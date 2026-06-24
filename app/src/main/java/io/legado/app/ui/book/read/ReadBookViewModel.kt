@@ -20,6 +20,7 @@ import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
@@ -405,7 +406,14 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
     fun removeFromBookshelf(success: (() -> Unit)?) {
         val book = ReadBook.book
         Coroutine.async {
-            book?.delete()
+            val dbBook = book?.bookUrl?.let { appDb.bookDao.getBook(it) }
+            when {
+                dbBook?.isNotShelf == true -> dbBook.delete()
+                book?.isNotShelf == true && dbBook == null -> book.delete()
+                book != null -> AppLog.put(
+                    "跳过删除正式书架书: ${book.name}, bookUrl=${book.bookUrl}, inBookshelf=${ReadBook.inBookshelf}"
+                )
+            }
         }.onSuccess {
             success?.invoke()
         }
